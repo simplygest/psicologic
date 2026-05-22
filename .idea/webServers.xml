@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="04e0f5c6-affc-4b01-9fcf-cc5ce614e8ff" name="psicologic" url="http://waws-prod-esc-005.ftp.azurewebsites.windows.net">
+        <fileTransfer rootFolder="/site/wwwroot" accessType="FTPS" host="waws-prod-esc-005.ftp.azurewebsites.windows.net" port="21">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>

@@ -1,0 +1,428 @@
+<?php
+session_start();
+if (!isset($_SESSION['user_id'])) {
+  header('Location: index.php');
+  exit;
+}
+require_once 'db.php';
+require_once 'settings_helpers.php';
+$is_admin = ($_SESSION['role'] === 'admin');
+$branding = get_public_branding_settings($mysqli);
+$app_name = $branding['app_name'];
+$profile_image_path = $branding['profile_image_path'];
+?>
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - <?= htmlspecialchars($app_name) ?></title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css?v=<?= filemtime(__DIR__ . '/css/style.css') ?>">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+</head>
+
+<body>
+
+  <nav class="navbar navbar-expand-lg py-3">
+    <div class="container">
+      <a class="navbar-brand d-flex align-items-center gap-2" id="app-brand-link" href="#">
+        <?php if ($profile_image_path): ?>
+          <img src="<?= htmlspecialchars($profile_image_path) ?>" alt="" class="brand-avatar" id="app-brand-image">
+        <?php else: ?>
+          <img src="" alt="" class="brand-avatar d-none" id="app-brand-image">
+        <?php endif; ?>
+        <span id="app-brand"><?= htmlspecialchars($app_name) ?></span>
+      </a>
+      <div class="d-flex align-items-center">
+        <span class="me-3 d-none d-md-inline" style="color: var(--text-color);">Hola,
+          <?= htmlspecialchars($_SESSION['name']) ?></span>
+        <?php if ($is_admin): ?>
+          <button class="btn btn-light btn-sm me-2" id="btn-open-settings" type="button">
+            <i class="bi bi-gear"></i> Configuración
+          </button>
+        <?php endif; ?>
+        <a href="logout.php" class="btn btn-outline-secondary btn-sm">Salir</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h4 class="mb-0">Calendario de Citas</h4>
+      <div class="d-flex gap-2">
+        <button class="btn btn-light" id="btn-prev-week"><i class="bi bi-chevron-left"></i> Semana Anterior</button>
+        <button class="btn btn-light" id="btn-next-week">Semana Siguiente <i class="bi bi-chevron-right"></i></button>
+      </div>
+    </div>
+
+    <?php if ($is_admin): ?>
+      <div class="mb-4 d-flex gap-2 flex-wrap">
+        <button class="btn btn-primary" id="btn-generate-invite"><i class="bi bi-link-45deg"></i> Generar
+          Invitación</button>
+        <span id="admin-actions-msg" class="align-self-center ms-2 text-success" style="display: none;"></span>
+      </div>
+    <?php endif; ?>
+
+    <div id="calendar-container">
+      <div class="text-center text-muted py-5">
+        <div class="spinner-border text-secondary" role="status"></div><br>Cargando calendario...
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="appointmentModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content" style="border-radius: 12px;">
+        <div class="modal-header border-0">
+          <h5 class="modal-title" id="modalTitle">Gestión de Cita</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body py-4 text-center">
+          <p id="modalDesc" class="mb-4">¿Qué deseas hacer?</p>
+          <input type="hidden" id="modalDate">
+          <input type="hidden" id="modalTime">
+          <input type="hidden" id="modalStatus">
+
+          <?php if ($is_admin): ?>
+            <div id="adminPatientSelect" class="mb-3 d-none">
+              <select id="patientSelect" class="form-select">
+                <option value="">Selecciona un paciente...</option>
+              </select>
+            </div>
+          <?php endif; ?>
+
+          <button class="btn btn-primary px-4" id="btn-confirm-action">Confirmar</button>
+          <?php if (!$is_admin): ?>
+            <div id="payment-options" class="mt-3 d-none">
+              <div class="small text-muted mb-2" id="payment-options-text"></div>
+              <div class="d-flex gap-2 justify-content-center flex-wrap">
+                <button class="btn btn-success btn-sm" id="btn-pay-card" type="button">
+                  <i class="bi bi-credit-card"></i> Pagar con tarjeta
+                </button>
+                <button class="btn btn-success btn-sm" id="btn-pay-bizum" type="button">
+                  <i class="bi bi-phone"></i> Pagar con Bizum
+                </button>
+              </div>
+            </div>
+          <?php endif; ?>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <?php if ($is_admin): ?>
+    <div class="modal fade" id="settingsModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content settings-modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Configuración</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <ul class="nav nav-tabs mb-4" id="settings-tabs" role="tablist">
+              <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="closed-days-tab" data-bs-toggle="tab" data-bs-target="#closed-days-panel"
+                  type="button" role="tab">General</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="booking-settings-tab" data-bs-toggle="tab" data-bs-target="#booking-settings-panel"
+                  type="button" role="tab">Reservas</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="payment-settings-tab" data-bs-toggle="tab" data-bs-target="#payment-settings-panel"
+                  type="button" role="tab">Pago online</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="email-settings-tab" data-bs-toggle="tab" data-bs-target="#email-settings-panel"
+                  type="button" role="tab">Envío de emails</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="calendar-settings-tab" data-bs-toggle="tab" data-bs-target="#calendar-settings-panel"
+                  type="button" role="tab">Sincronizar con Calendario</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="sms-settings-tab" data-bs-toggle="tab" data-bs-target="#sms-settings-panel"
+                  type="button" role="tab">SMS</button>
+              </li>
+            </ul>
+
+            <div class="tab-content">
+              <div class="tab-pane fade show active" id="closed-days-panel" role="tabpanel" aria-labelledby="closed-days-tab">
+                <div id="general-settings-alert" class="alert d-none"></div>
+                <div class="mb-4">
+                  <label class="form-label" for="app-name">Título de la web</label>
+                  <input type="text" class="form-control" id="app-name" placeholder="PsicoLogic">
+                </div>
+                <div class="mb-3">
+                  <label class="form-label" for="profile-image">Foto o imagen del dashboard</label>
+                  <input type="file" class="form-control" id="profile-image" accept="image/jpeg,image/png,image/webp,image/gif">
+                  <div class="form-text">Formatos permitidos: JPG, PNG, WEBP o GIF. Máximo 2 MB.</div>
+                </div>
+                <div class="d-flex align-items-center gap-3 mb-3" id="profile-image-preview-row" style="display: none !important;">
+                  <img src="" alt="" class="settings-image-preview" id="profile-image-preview">
+                  <div class="small text-muted" id="profile-image-status"></div>
+                </div>
+                <div class="form-check form-switch mb-4">
+                  <input class="form-check-input" type="checkbox" id="show-profile-image-public">
+                  <label class="form-check-label" for="show-profile-image-public">Mostrar también esta imagen en login y registro</label>
+                </div>
+                <hr class="my-4">
+
+                <form id="add-closed-form" class="mb-4">
+                  <div class="row g-2">
+                    <div class="col-md-3">
+                      <label class="form-label" for="closed-start-date">Desde</label>
+                      <input type="date" class="form-control" id="closed-start-date" required>
+                    </div>
+                    <div class="col-md-3">
+                      <label class="form-label" for="closed-end-date">Hasta</label>
+                      <input type="date" class="form-control" id="closed-end-date">
+                    </div>
+                    <div class="col-md-4">
+                      <label class="form-label" for="closed-reason">Motivo</label>
+                      <input type="text" class="form-control" id="closed-reason" placeholder="Motivo (ej. Vacaciones)" required>
+                    </div>
+                    <div class="col-md-2 d-grid align-items-end">
+                      <button class="btn btn-primary" type="submit">Añadir</button>
+                    </div>
+                  </div>
+                </form>
+                <ul class="list-group" id="closed-days-list"></ul>
+                <div class="text-end mt-4">
+                  <button type="button" class="btn btn-primary" id="btn-save-general-settings">Guardar configuración</button>
+                </div>
+              </div>
+
+              <div class="tab-pane fade" id="booking-settings-panel" role="tabpanel" aria-labelledby="booking-settings-tab">
+                <div id="booking-settings-alert" class="alert d-none"></div>
+                <div class="row">
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label" for="min-booking-notice-days">Mínimo de días de antelación</label>
+                    <input type="number" class="form-control" id="min-booking-notice-days" min="0" step="1">
+                    <div class="form-text">Usa 0 para permitir reservas desde hoy.</div>
+                  </div>
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label" for="max-booking-notice-days">Máximo de días de antelación</label>
+                    <input type="number" class="form-control" id="max-booking-notice-days" min="0" step="1">
+                    <div class="form-text">Usa 0 para no aplicar límite máximo.</div>
+                  </div>
+                </div>
+                <hr class="my-4">
+                <div class="row">
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label" for="appointment-start-time">Primera cita disponible</label>
+                    <input type="time" class="form-control" id="appointment-start-time" step="3600" value="10:00">
+                  </div>
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label" for="appointment-end-time">Última cita disponible</label>
+                    <input type="time" class="form-control" id="appointment-end-time" step="3600" value="19:00">
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label" for="break-start-time">Inicio de descanso</label>
+                    <input type="time" class="form-control" id="break-start-time" step="3600" value="15:00">
+                  </div>
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label" for="break-end-time">Fin de descanso</label>
+                    <input type="time" class="form-control" id="break-end-time" step="3600" value="16:00">
+                    <div class="form-text">Deja el descanso vacío si no quieres bloquear horas intermedias.</div>
+                  </div>
+                </div>
+                <div class="text-end">
+                  <button type="button" class="btn btn-primary" id="btn-save-booking-settings">Guardar configuración</button>
+                </div>
+              </div>
+
+              <div class="tab-pane fade" id="payment-settings-panel" role="tabpanel" aria-labelledby="payment-settings-tab">
+                <form id="payment-settings-form">
+                  <div id="payment-settings-alert" class="alert d-none"></div>
+
+                  <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="online-payment-enabled">
+                    <label class="form-check-label" for="online-payment-enabled">Activar pago online opcional</label>
+                  </div>
+
+                  <div id="payment-config-fields">
+                    <div class="mb-3">
+                      <label class="form-label" for="payment-environment">Modo de la pasarela</label>
+                      <select class="form-select" id="payment-environment" required>
+                        <option value="sandbox">Sandbox / pruebas</option>
+                        <option value="real">Real</option>
+                      </select>
+                    </div>
+
+                    <div class="mb-3">
+                      <label class="form-label" for="merchant-code">Código del Comercio</label>
+                      <input type="text" class="form-control" id="merchant-code" autocomplete="off">
+                    </div>
+
+                    <div class="mb-3">
+                      <label class="form-label" for="merchant-terminal">Nº de Terminal</label>
+                      <input type="text" class="form-control" id="merchant-terminal" autocomplete="off">
+                    </div>
+
+                    <div class="mb-3">
+                      <label class="form-label" for="appointment-price">Importe de la cita</label>
+                      <div class="input-group">
+                        <input type="number" class="form-control" id="appointment-price" min="0" step="0.01">
+                        <span class="input-group-text">€</span>
+                      </div>
+                    </div>
+
+                    <div class="mb-3">
+                      <label class="form-label" for="merchant-key">Clave</label>
+                      <input type="password" class="form-control" id="merchant-key" autocomplete="new-password"
+                        placeholder="Déjala en blanco para conservar la actual">
+                      <div class="form-text" id="merchant-key-status"></div>
+                    </div>
+                  </div>
+
+                  <div class="text-end">
+                    <button type="submit" class="btn btn-primary">Guardar configuración</button>
+                  </div>
+                </form>
+              </div>
+
+              <div class="tab-pane fade" id="email-settings-panel" role="tabpanel" aria-labelledby="email-settings-tab">
+                <div id="email-settings-alert" class="alert d-none"></div>
+
+                <div class="mb-3">
+                  <label class="form-label" for="admin-notification-email">Email del administrador para notificaciones</label>
+                  <input type="email" class="form-control" id="admin-notification-email" autocomplete="email">
+                </div>
+                <div class="mb-3">
+                  <label class="form-label" for="smtp-from-name">Nombre remitente</label>
+                  <input type="text" class="form-control" id="smtp-from-name" placeholder="PsicoLogic">
+                </div>
+
+
+                <div class="mb-3">
+                  <label class="form-label" for="email-provider">Sistema de envío</label>
+                  <select class="form-select" id="email-provider">
+                    <option value="phpmailer">PHPMailer / SMTP</option>
+                    <option value="google">Google Gmail API</option>
+                  </select>
+                </div>
+
+                <div id="smtp-settings-block">
+                  <div class="row">
+                    <div class="col-md-8 mb-3">
+                      <label class="form-label" for="smtp-host">Host SMTP</label>
+                      <input type="text" class="form-control" id="smtp-host" placeholder="smtp.gmail.com">
+                    </div>
+                    <div class="col-md-4 mb-3">
+                      <label class="form-label" for="smtp-port">Puerto</label>
+                      <input type="number" class="form-control" id="smtp-port" min="1" value="587">
+                    </div>
+                  </div>
+                  <div class="row">
+                    <div class="col-md-8 mb-3">
+                      <label class="form-label" for="smtp-username">Usuario SMTP</label>
+                      <input type="text" class="form-control" id="smtp-username" autocomplete="username">
+                    </div>
+                    <div class="col-md-4 mb-3">
+                      <label class="form-label" for="smtp-secure">Cifrado</label>
+                      <select class="form-select" id="smtp-secure">
+                        <option value="tls">TLS</option>
+                        <option value="ssl">SSL</option>
+                        <option value="none">Ninguno</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label" for="smtp-password">Contraseña SMTP</label>
+                    <input type="password" class="form-control" id="smtp-password" autocomplete="new-password"
+                      placeholder="Déjala en blanco para conservar la actual">
+                    <div class="form-text" id="smtp-password-status"></div>
+                  </div>
+                  <div class="row">
+                    <div class="col-md-6 mb-3">
+                      <label class="form-label" for="smtp-from-email">Email remitente</label>
+                      <input type="email" class="form-control" id="smtp-from-email">
+                    </div>
+                  </div>
+                </div>
+
+                <div id="google-email-settings-block">
+                  <input type="hidden" id="google-connected-email">
+                  <input type="hidden" id="google-redirect-uri">
+                  <input type="hidden" id="google-refresh-token">
+                  <div class="mb-3">
+                    <label class="form-label" for="google-client-id">Google Client ID</label>
+                    <input type="text" class="form-control" id="google-client-id">
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label" for="google-client-secret">Google Client Secret</label>
+                    <input type="password" class="form-control" id="google-client-secret" autocomplete="new-password"
+                      placeholder="Déjalo en blanco para conservar el actual">
+                    <div class="form-text" id="google-client-secret-status"></div>
+                  </div>
+                  <div class="small text-muted mb-3" id="google-connected-status"></div>
+                  <div class="d-flex gap-2 flex-wrap mb-3">
+                    <button type="button" class="btn btn-outline-primary" id="btn-google-connect">
+                      Conectar con Google
+                    </button>
+                  </div>
+                </div>
+
+                <hr class="my-4">
+                <div class="form-check form-switch mb-3">
+                  <input class="form-check-input" type="checkbox" id="appointment-reminder-enabled" name="appointment_reminder_enabled">
+                  <label class="form-check-label" for="appointment-reminder-enabled">Enviar email de recordatorio al paciente 24 horas antes de la cita</label>
+                </div>
+
+                <div class="text-end settings-actions">
+                  <button type="button" class="btn btn-primary" id="btn-save-email-settings">Guardar configuración</button>
+                </div>
+              </div>
+
+              <div class="tab-pane fade" id="calendar-settings-panel" role="tabpanel" aria-labelledby="calendar-settings-tab">
+                <div id="calendar-settings-alert" class="alert d-none"></div>
+                <div class="form-check form-switch mb-3">
+                  <input class="form-check-input" type="checkbox" id="google-calendar-enabled">
+                  <label class="form-check-label" for="google-calendar-enabled">Sincronizar citas con Google Calendar</label>
+                </div>
+                <div id="calendar-config-fields">
+                  <div class="mb-3">
+                    <label class="form-label" for="google-calendar-id">Calendar ID</label>
+                    <input type="text" class="form-control" id="google-calendar-id" placeholder="primary">
+                  </div>
+                  <div class="text-muted mb-3">
+                    Usa las mismas credenciales Google configuradas en la pestaña Envío de emails.
+                  </div>
+                  <div class="d-flex gap-2 flex-wrap mb-3">
+                    <button type="button" class="btn btn-outline-primary" id="btn-google-connect-calendar">
+                      Conectar/Reautorizar Google
+                    </button>
+                  </div>
+                </div>
+                <div class="text-end">
+                  <button type="button" class="btn btn-primary" id="btn-save-calendar-settings">Guardar configuración</button>
+                </div>
+              </div>
+
+              <div class="tab-pane fade" id="sms-settings-panel" role="tabpanel" aria-labelledby="sms-settings-tab">
+                <div class="text-muted">
+                  La configuración de SMS se añadirá aquí cuando elijas la plataforma de envío.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  <?php endif; ?>
+
+  <script>
+    const IS_ADMIN = <?= $is_admin ? 'true' : 'false' ?>;
+  </script>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="js/app.js?v=<?= filemtime(__DIR__ . '/js/app.js') ?>"></script>
+</body>
+
+</html>

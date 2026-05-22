@@ -1,0 +1,202 @@
+<?php
+require_once 'db.php';
+require_once 'payment_helpers.php';
+require_once 'mail_helpers.php';
+require_once 'google_helpers.php';
+
+ensure_appointment_payment_columns($mysqli);
+
+$token = $_GET['t'] ?? ($_POST['token'] ?? '');
+$token = preg_match('/^[a-f0-9]{64}$/', $token) ? $token : '';
+$message = '';
+$message_type = 'danger';
+$appointment = null;
+$cancelled = false;
+
+if ($token) {
+    $stmt = $mysqli->prepare("
+        SELECT a.id, a.appointment_date, a.appointment_time, a.status,
+               COALESCE(a.payment_status, 'pending') AS payment_status,
+               a.payment_method, u.name, u.email
+        FROM appointments a
+        JOIN users u ON u.id = a.user_id
+        WHERE a.cancel_token = ?
+    ");
+    $stmt->bind_param("s", $token);
+    $stmt->execute();
+    $appointment = $stmt->get_result()->fetch_assoc();
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!$appointment || $appointment['status'] !== 'booked') {
+        $message = 'La cita no existe o ya no está activa.';
+    } else {
+        try {
+            google_delete_calendar_event($mysqli, (int) $appointment['id']);
+        } catch (\Exception $e) {
+            error_log('No se pudo eliminar evento en Google Calendar: ' . $e->getMessage());
+        }
+
+        $stmt = $mysqli->prepare("DELETE FROM appointments WHERE id = ? AND cancel_token = ?");
+        $stmt->bind_param("is", $appointment['id'], $token);
+        $stmt->execute();
+
+        $cancelled = $stmt->affected_rows > 0;
+        $message_type = $cancelled ? 'success' : 'danger';
+        $message = $cancelled ? 'Tu cita ha sido cancelada correctamente.' : 'No se pudo cancelar la cita.';
+        if ($cancelled) {
+            notify_appointment_cancelled($mysqli, $appointment);
+        }
+    }
+}
+
+$payment_settings = ['online_payment_enabled' => 0, 'appointment_price' => '70.00'];
+$settings_res = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
+if ($settings_res->num_rows > 0) {
+    $settings_res = $mysqli->query("SELECT online_payment_enabled, appointment_price FROM payment_settings WHERE id = 1");
+    if ($settings = $settings_res->fetch_assoc()) {
+        $payment_settings = $settings;
+    }
+}
+
+function payment_status_label($appointment)
+{
+    if (!$appointment) {
+        return '';
+    }
+
+    if ($appointment['payment_status'] === 'paid') {
+        return 'Pagada';
+    }
+
+    if ($appointment['payment_status'] === 'failed') {
+        return 'Pago fallido';
+    }
+
+    return 'Pendiente de pago';
+}
+?>
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Gestionar reserva - PsicoLogic</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body class="d-flex align-items-center justify-content-center" style="min-height: 100vh;">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <div class="card p-4">
+                    <h2 class="mb-3" style="color: var(--primary-color);">Gestionar reserva</h2>
+
+                    <?php if ($message): ?>
+                        <div class="alert alert-<?= htmlspecialchars($message_type) ?>"><?= htmlspecialchars($message) ?></div>
+                    <?php endif; ?>
+
+                    <?php if (!$token || !$appointment): ?>
+                        <p class="text-muted mb-0">El enlace de gestión no es válido.</p>
+                    <?php elseif (!$cancelled): ?>
+                        <p class="mb-3">Revisa los datos de tu reserva.</p>
+                        <ul class="list-group mb-4">
+                            <li class="list-group-item"><b>Paciente:</b> <?= htmlspecialchars($appointment['name']) ?></li>
+                            <li class="list-group-item"><b>Día:</b> <?= htmlspecialchars(date('d/m/Y', strtotime($appointment['appointment_date']))) ?></li>
+                            <li class="list-group-item"><b>Hora:</b> <?= htmlspecialchars(date('H:i', strtotime($appointment['appointment_time']))) ?></li>
+                            <?php if ((int) $payment_settings['online_payment_enabled'] === 1): ?>
+                                <li class="list-group-item"><b>Pago:</b> <?= htmlspecialchars(payment_status_label($appointment)) ?></li>
+                            <?php endif; ?>
+                        </ul>
+
+                        <?php if ($appointment['status'] === 'booked'): ?>
+                            <?php if ((int) $payment_settings['online_payment_enabled'] === 1 && $appointment['payment_status'] !== 'paid'): ?>
+                                <div class="mb-4">
+                                    <p class="text-muted mb-2">Puedes pagar ahora tu cita de <?= htmlspecialchars(number_format((float) $payment_settings['appointment_price'], 2, ',', '.')) ?> €.</p>
+                                    <div class="d-grid gap-2">
+                                        <button class="btn btn-success" type="button" id="btn-pay-card">Pagar con tarjeta</button>
+                                        <button class="btn btn-success" type="button" id="btn-pay-bizum">Pagar con Bizum</button>
+                                    </div>
+                                </div>
+                            <?php endif; ?>
+
+                            <form method="post" id="cancel-booking-form">
+                                <input type="hidden" name="token" value="<?= htmlspecialchars($token) ?>">
+                                <button type="submit" class="btn btn-danger w-100">Cancelar esta reserva</button>
+                            </form>
+                        <?php else: ?>
+                            <p class="text-muted mb-0">Esta cita ya no está activa.</p>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        const BOOKING_TOKEN = <?= json_encode($token) ?>;
+
+        function setButtonLoading(button, text) {
+            const $button = $(button);
+            if (!$button.data('original-html')) {
+                $button.data('original-html', $button.html());
+            }
+            $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>' + text);
+        }
+
+        function restoreButton(button) {
+            const $button = $(button);
+            $button.prop('disabled', false).html($button.data('original-html') || 'Aceptar');
+            $button.removeData('original-html');
+        }
+
+        function startPayment(method, button) {
+            setButtonLoading(button, 'Conectando...');
+            $('#btn-pay-card, #btn-pay-bizum').prop('disabled', true);
+            $.ajax({
+                url: 'api/payments.php?action=create_redsys_form',
+                method: 'POST',
+                dataType: 'json',
+                data: {
+                    token: BOOKING_TOKEN,
+                    payment_method: method
+                },
+                success: function (res) {
+                    if (!res.success) {
+                        alert(res.error || 'No se pudo iniciar el pago.');
+                        $('#btn-pay-card, #btn-pay-bizum').prop('disabled', false);
+                        restoreButton(button);
+                        return;
+                    }
+
+                    $('#redsys-payment-form').remove();
+                    $('body').append(res.form_html);
+                    $('#redsys-payment-form').trigger('submit');
+                },
+                error: function () {
+                    alert('No se pudo conectar con Redsys.');
+                    $('#btn-pay-card, #btn-pay-bizum').prop('disabled', false);
+                    restoreButton(button);
+                }
+            });
+        }
+
+        $('#btn-pay-card').on('click', function () {
+            startPayment('card', this);
+        });
+
+        $('#btn-pay-bizum').on('click', function () {
+            startPayment('bizum', this);
+        });
+
+        $('#cancel-booking-form').on('submit', function () {
+            setButtonLoading($(this).find('button[type="submit"]'), 'Cancelando...');
+        });
+    </script>
+</body>
+
+</html>
