@@ -2,6 +2,7 @@
     --primary-color: #8f7fba;
     /* Soft relaxing violet */
     --primary-light: #d6d1e6;
+    --primary-light: color-mix(in srgb, var(--primary-color) 25%, white);
     --background-color: #f7f9f9;
     --card-background: #ffffff;
     --text-color: #333333;
@@ -65,8 +66,9 @@ body {
 }
 
 .btn-primary:hover {
-    background-color: #7a6a9f;
-    border-color: #7a6a9f;
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    filter: brightness(0.92);
 }
 
 .form-control {
@@ -76,7 +78,7 @@ body {
 
 .form-control:focus {
     border-color: var(--primary-light);
-    box-shadow: 0 0 0 0.25rem rgba(143, 127, 186, 0.25);
+    box-shadow: 0 0 0 0.25rem color-mix(in srgb, var(--primary-color) 25%, transparent);
 }
 
 /* Calendar styling */

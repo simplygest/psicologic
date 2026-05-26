@@ -3,8 +3,10 @@ require_once 'db.php';
 require_once 'payment_helpers.php';
 require_once 'mail_helpers.php';
 require_once 'google_helpers.php';
+require_once 'settings_helpers.php';
 
 ensure_appointment_payment_columns($mysqli);
+$branding = get_public_branding_settings($mysqli);
 
 $token = $_GET['t'] ?? ($_POST['token'] ?? '');
 $token = preg_match('/^[a-f0-9]{64}$/', $token) ? $token : '';
@@ -92,6 +94,7 @@ function consultation_type_label($appointment)
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
+    <style>:root { --primary-color: <?= htmlspecialchars($branding['primary_color']) ?>; }</style>
 </head>
 
 <body class="d-flex align-items-center justify-content-center" style="min-height: 100vh;">

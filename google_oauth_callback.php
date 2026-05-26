@@ -2,6 +2,7 @@
 session_start();
 require_once 'db.php';
 require_once 'google_helpers.php';
+require_once 'settings_helpers.php';
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     header('Location: login.php');
@@ -10,6 +11,7 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
 
 $ok = false;
 $message = '';
+$branding = get_public_branding_settings($mysqli);
 
 try {
     if (empty($_GET['state']) || empty($_SESSION['google_oauth_state']) || $_GET['state'] !== $_SESSION['google_oauth_state']) {
@@ -43,6 +45,7 @@ try {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
+    <style>:root { --primary-color: <?= htmlspecialchars($branding['primary_color']) ?>; }</style>
 </head>
 
 <body class="d-flex align-items-center justify-content-center" style="min-height: 100vh;">

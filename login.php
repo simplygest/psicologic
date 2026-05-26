@@ -21,6 +21,7 @@ $profile_image_path = $branding['show_profile_image_public'] ? $branding['profil
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css?v=<?= filemtime(__DIR__ . '/css/style.css') ?>">
+    <style>:root { --primary-color: <?= htmlspecialchars($branding['primary_color']) ?>; }</style>
 </head>
 
 <body class="d-flex align-items-center justify-content-center" style="min-height: 100vh;">

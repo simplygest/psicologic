@@ -22,6 +22,7 @@ $profile_image_path = $branding['profile_image_path'];
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css?v=<?= filemtime(__DIR__ . '/css/style.css') ?>">
+  <style>:root { --primary-color: <?= htmlspecialchars($branding['primary_color']) ?>; }</style>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
 </head>
 
@@ -156,15 +157,15 @@ $profile_image_path = $branding['profile_image_path'];
                 <button class="nav-link" id="sms-settings-tab" data-bs-toggle="tab" data-bs-target="#sms-settings-panel"
                   type="button" role="tab">SMS</button>
               </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="interface-settings-tab" data-bs-toggle="tab" data-bs-target="#interface-settings-panel"
+                  type="button" role="tab">Interfaz</button>
+              </li>
             </ul>
 
             <div class="tab-content">
               <div class="tab-pane fade show active" id="closed-days-panel" role="tabpanel" aria-labelledby="closed-days-tab">
                 <div id="general-settings-alert" class="alert d-none"></div>
-                <div class="mb-4">
-                  <label class="form-label" for="app-name">Título de la web</label>
-                  <input type="text" class="form-control" id="app-name" placeholder="PsicoLogic">
-                </div>
                 <div class="mb-4">
                   <label class="form-label" for="appointment-delivery-mode">Modalidades de cita disponibles</label>
                   <select class="form-select" id="appointment-delivery-mode">
@@ -173,20 +174,6 @@ $profile_image_path = $branding['profile_image_path'];
                     <option value="online">Solo online</option>
                   </select>
                 </div>
-                <div class="mb-3">
-                  <label class="form-label" for="profile-image">Foto o imagen del dashboard</label>
-                  <input type="file" class="form-control" id="profile-image" accept="image/jpeg,image/png,image/webp,image/gif">
-                  <div class="form-text">Formatos permitidos: JPG, PNG, WEBP o GIF. Máximo 2 MB.</div>
-                </div>
-                <div class="d-flex align-items-center gap-3 mb-3" id="profile-image-preview-row" style="display: none !important;">
-                  <img src="" alt="" class="settings-image-preview" id="profile-image-preview">
-                  <div class="small text-muted" id="profile-image-status"></div>
-                </div>
-                <div class="form-check form-switch mb-4">
-                  <input class="form-check-input" type="checkbox" id="show-profile-image-public">
-                  <label class="form-check-label" for="show-profile-image-public">Mostrar también esta imagen en login y registro</label>
-                </div>
-                <hr class="my-4">
 
                 <form id="add-closed-form" class="mb-4">
                   <div class="row g-2">
@@ -210,6 +197,48 @@ $profile_image_path = $branding['profile_image_path'];
                 <ul class="list-group" id="closed-days-list"></ul>
                 <div class="text-end mt-4">
                   <button type="button" class="btn btn-primary" id="btn-save-general-settings">Guardar configuración</button>
+                </div>
+              </div>
+
+              <div class="tab-pane fade" id="interface-settings-panel" role="tabpanel" aria-labelledby="interface-settings-tab">
+                <div id="interface-settings-alert" class="alert d-none"></div>
+                <div class="mb-4">
+                  <label class="form-label" for="app-name">Título de la web</label>
+                  <input type="text" class="form-control" id="app-name" placeholder="PsicoLogic">
+                </div>
+                <div class="mb-4">
+                  <label class="form-label" for="primary-color">Color principal</label>
+                  <div class="d-flex gap-2 align-items-center">
+                    <input type="color" class="form-control form-control-color" id="primary-color" value="#8f7fba" title="Elige el color principal">
+                    <input type="text" class="form-control" id="primary-color-text" value="#8f7fba" maxlength="7" style="max-width: 120px;">
+                  </div>
+                  <div class="form-text">Se aplicará a botones, enlaces destacados y elementos principales de la interfaz.</div>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label" for="profile-image">Foto o imagen del dashboard</label>
+                  <input type="file" class="form-control" id="profile-image" accept="image/jpeg,image/png,image/webp,image/gif">
+                  <div class="form-text">Formatos permitidos: JPG, PNG, WEBP o GIF. Máximo 2 MB.</div>
+                </div>
+                <div class="d-flex align-items-center gap-3 mb-3" id="profile-image-preview-row" style="display: none !important;">
+                  <img src="" alt="" class="settings-image-preview" id="profile-image-preview">
+                  <div class="small text-muted" id="profile-image-status"></div>
+                </div>
+                <div class="form-check form-switch mb-4">
+                  <input class="form-check-input" type="checkbox" id="show-profile-image-public">
+                  <label class="form-check-label" for="show-profile-image-public">Mostrar también esta imagen en login y registro</label>
+                </div>
+                <hr class="my-4">
+                <div class="mb-3">
+                  <label class="form-label" for="landing-image">Foto de bienvenida de la página principal</label>
+                  <input type="file" class="form-control" id="landing-image" accept="image/jpeg,image/png,image/webp,image/gif">
+                  <div class="form-text">Se usa como imagen principal en la web comercial. Si no se sube, se mostrará un placeholder.</div>
+                </div>
+                <div class="d-flex align-items-center gap-3 mb-3" id="landing-image-preview-row" style="display: none !important;">
+                  <img src="" alt="" class="settings-image-preview" id="landing-image-preview">
+                  <div class="small text-muted" id="landing-image-status"></div>
+                </div>
+                <div class="text-end mt-4">
+                  <button type="button" class="btn btn-primary" id="btn-save-interface-settings">Guardar configuración</button>
                 </div>
               </div>
 

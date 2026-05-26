@@ -5,6 +5,7 @@ require_once 'settings_helpers.php';
 $branding = get_public_branding_settings($mysqli);
 $app_name = $branding['app_name'];
 $profile_image_path = $branding['show_profile_image_public'] ? $branding['profile_image_path'] : '';
+$landing_image_path = $branding['landing_image_path'] ?: '';
 $is_logged_in = isset($_SESSION['user_id']);
 $appointment_delivery_mode = 'both';
 $settings_table = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
@@ -42,6 +43,7 @@ function public_delivery_text($mode)
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css?v=<?= filemtime(__DIR__ . '/css/style.css') ?>">
+    <style>:root { --primary-color: <?= htmlspecialchars($branding['primary_color']) ?>; }</style>
 </head>
 
 <body class="public-site">
@@ -87,8 +89,8 @@ function public_delivery_text($mode)
                     </div>
                     <div class="col-lg-5">
                         <div class="landing-portrait">
-                            <?php if ($profile_image_path): ?>
-                                <img src="<?= htmlspecialchars($profile_image_path) ?>" alt="Stephanie Luis Baez">
+                            <?php if ($landing_image_path): ?>
+                                <img src="<?= htmlspecialchars($landing_image_path) ?>" alt="Stephanie Luis Baez">
                             <?php else: ?>
                                 <div class="landing-portrait-placeholder">
                                     <span>SLB</span>

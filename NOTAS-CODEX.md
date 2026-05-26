@@ -107,6 +107,17 @@ La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`.
 - Cada cita guarda `consultation_type` con valor `presencial` u `online`.
 - La modalidad se muestra en el slot del calendario y en `cancelar_cita.php`.
 - La modalidad viaja tambien en emails, recordatorios, pagos y eventos de Google Calendar.
+- Se creo la pestana `Interfaz` dentro del modal de configuracion.
+- Se movieron a `Interfaz` el titulo de la web, la imagen de dashboard/login/registro y la opcion de mostrarla en login/registro.
+- Se anadio imagen independiente para la pagina principal/landing (`landing_image_path`).
+- Se anadio color principal configurable (`primary_color`) con valor por defecto violeta `#8f7fba`.
+
+## Cambios de BD pendientes de aplicar manualmente si no se deja auto-migrar
+
+- `payment_settings.appointment_delivery_mode ENUM('both', 'presencial', 'online') NOT NULL DEFAULT 'both'`
+- `appointments.consultation_type VARCHAR(16) NOT NULL DEFAULT 'presencial'`
+- `payment_settings.landing_image_path VARCHAR(255) DEFAULT NULL`
+- `payment_settings.primary_color VARCHAR(7) NOT NULL DEFAULT '#8f7fba'`
 
 ## Avisos importantes
 

@@ -21,6 +21,8 @@ function ensure_payment_settings_table($mysqli)
             id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
             app_name VARCHAR(255) DEFAULT 'PsicoLogic',
             profile_image_path VARCHAR(255) DEFAULT NULL,
+            landing_image_path VARCHAR(255) DEFAULT NULL,
+            primary_color VARCHAR(7) NOT NULL DEFAULT '#8f7fba',
             show_profile_image_public TINYINT(1) NOT NULL DEFAULT 0,
             online_payment_enabled TINYINT(1) NOT NULL DEFAULT 0,
             environment ENUM('sandbox', 'real') NOT NULL DEFAULT 'sandbox',
@@ -79,6 +81,8 @@ function ensure_payment_settings_table($mysqli)
         'email_provider' => "ALTER TABLE payment_settings ADD email_provider ENUM('phpmailer', 'google') NOT NULL DEFAULT 'phpmailer' AFTER admin_notification_email",
         'app_name' => "ALTER TABLE payment_settings ADD app_name VARCHAR(255) DEFAULT 'PsicoLogic' AFTER id",
         'profile_image_path' => "ALTER TABLE payment_settings ADD profile_image_path VARCHAR(255) DEFAULT NULL AFTER app_name",
+        'landing_image_path' => "ALTER TABLE payment_settings ADD landing_image_path VARCHAR(255) DEFAULT NULL AFTER profile_image_path",
+        'primary_color' => "ALTER TABLE payment_settings ADD primary_color VARCHAR(7) NOT NULL DEFAULT '#8f7fba' AFTER landing_image_path",
         'show_profile_image_public' => "ALTER TABLE payment_settings ADD show_profile_image_public TINYINT(1) NOT NULL DEFAULT 0 AFTER profile_image_path",
         'appointment_delivery_mode' => "ALTER TABLE payment_settings ADD appointment_delivery_mode ENUM('both', 'presencial', 'online') NOT NULL DEFAULT 'both' AFTER admin_notification_email",
         'appointment_reminder_enabled' => "ALTER TABLE payment_settings ADD appointment_reminder_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER admin_notification_email",
@@ -161,6 +165,41 @@ function time_to_minutes($time)
 {
     [$hours, $minutes] = array_map('intval', explode(':', substr($time, 0, 5)));
     return ($hours * 60) + $minutes;
+}
+
+function save_uploaded_settings_image($file, $prefix)
+{
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        throw new \Exception('No se pudo subir la imagen.');
+    }
+
+    if ($file['size'] > 2 * 1024 * 1024) {
+        throw new \Exception('La imagen no puede superar 2 MB.');
+    }
+
+    $image_info = @getimagesize($file['tmp_name']);
+    if (!$image_info || !in_array($image_info['mime'], ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], true)) {
+        throw new \Exception('Formato de imagen no válido. Usa JPG, PNG, WEBP o GIF.');
+    }
+
+    $extensions = [
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+        'image/gif' => 'gif'
+    ];
+    $upload_dir = dirname(__DIR__) . '/uploads/settings';
+    if (!is_dir($upload_dir) && !mkdir($upload_dir, 0755, true)) {
+        throw new \Exception('No se pudo crear la carpeta de imágenes.');
+    }
+
+    $filename = $prefix . '_' . bin2hex(random_bytes(8)) . '.' . $extensions[$image_info['mime']];
+    $destination = $upload_dir . '/' . $filename;
+    if (!move_uploaded_file($file['tmp_name'], $destination)) {
+        throw new \Exception('No se pudo guardar la imagen.');
+    }
+
+    return 'uploads/settings/' . $filename;
 }
 
 if ($action === 'generate_invite') {
@@ -256,7 +295,7 @@ if ($action === 'generate_invite') {
     ensure_payment_settings_table($mysqli);
 
     $res = $mysqli->query("
-        SELECT app_name, profile_image_path, show_profile_image_public, online_payment_enabled, environment, merchant_code, terminal, appointment_price, admin_notification_email,
+        SELECT app_name, profile_image_path, landing_image_path, primary_color, show_profile_image_public, online_payment_enabled, environment, merchant_code, terminal, appointment_price, admin_notification_email,
                appointment_delivery_mode,
                appointment_reminder_enabled,
                min_booking_notice_days, max_booking_notice_days, appointment_start_time, appointment_end_time, break_start_time, break_end_time,
@@ -279,6 +318,7 @@ if ($action === 'generate_invite') {
 
     $enabled = isset($_POST['online_payment_enabled']) && $_POST['online_payment_enabled'] === '1' ? 1 : 0;
     $app_name = trim($_POST['app_name'] ?? '');
+    $primary_color = trim($_POST['primary_color'] ?? '#8f7fba');
     $environment = $_POST['environment'] ?? 'sandbox';
     $merchant_code = trim($_POST['merchant_code'] ?? '');
     $merchant_key = trim($_POST['merchant_key'] ?? '');
@@ -312,10 +352,17 @@ if ($action === 'generate_invite') {
     $google_calendar_id = trim($_POST['google_calendar_id'] ?? 'primary');
     $show_profile_image_public = isset($_POST['show_profile_image_public']) && $_POST['show_profile_image_public'] === '1' ? 1 : 0;
     $uploaded_profile_image_path = null;
+    $uploaded_landing_image_path = null;
 
     if ($app_name === '') {
         $app_name = 'PsicoLogic';
     }
+
+    if (!preg_match('/^#[0-9a-fA-F]{6}$/', $primary_color)) {
+        echo json_encode(['success' => false, 'error' => 'Color principal inválido']);
+        exit;
+    }
+    $primary_color = strtolower($primary_color);
 
     if (!in_array($environment, ['sandbox', 'real'], true)) {
         echo json_encode(['success' => false, 'error' => 'Modo de pasarela inválido']);
@@ -466,43 +513,16 @@ if ($action === 'generate_invite') {
         exit;
     }
 
-    if (isset($_FILES['profile_image']) && $_FILES['profile_image']['error'] !== UPLOAD_ERR_NO_FILE) {
-        if ($_FILES['profile_image']['error'] !== UPLOAD_ERR_OK) {
-            echo json_encode(['success' => false, 'error' => 'No se pudo subir la imagen.']);
-            exit;
+    try {
+        if (isset($_FILES['profile_image']) && $_FILES['profile_image']['error'] !== UPLOAD_ERR_NO_FILE) {
+            $uploaded_profile_image_path = save_uploaded_settings_image($_FILES['profile_image'], 'profile');
         }
-
-        if ($_FILES['profile_image']['size'] > 2 * 1024 * 1024) {
-            echo json_encode(['success' => false, 'error' => 'La imagen no puede superar 2 MB.']);
-            exit;
+        if (isset($_FILES['landing_image']) && $_FILES['landing_image']['error'] !== UPLOAD_ERR_NO_FILE) {
+            $uploaded_landing_image_path = save_uploaded_settings_image($_FILES['landing_image'], 'landing');
         }
-
-        $image_info = @getimagesize($_FILES['profile_image']['tmp_name']);
-        if (!$image_info || !in_array($image_info['mime'], ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], true)) {
-            echo json_encode(['success' => false, 'error' => 'Formato de imagen no válido. Usa JPG, PNG, WEBP o GIF.']);
-            exit;
-        }
-
-        $extensions = [
-            'image/jpeg' => 'jpg',
-            'image/png' => 'png',
-            'image/webp' => 'webp',
-            'image/gif' => 'gif'
-        ];
-        $upload_dir = dirname(__DIR__) . '/uploads/settings';
-        if (!is_dir($upload_dir) && !mkdir($upload_dir, 0755, true)) {
-            echo json_encode(['success' => false, 'error' => 'No se pudo crear la carpeta de imágenes.']);
-            exit;
-        }
-
-        $filename = 'profile_' . bin2hex(random_bytes(8)) . '.' . $extensions[$image_info['mime']];
-        $destination = $upload_dir . '/' . $filename;
-        if (!move_uploaded_file($_FILES['profile_image']['tmp_name'], $destination)) {
-            echo json_encode(['success' => false, 'error' => 'No se pudo guardar la imagen.']);
-            exit;
-        }
-
-        $uploaded_profile_image_path = 'uploads/settings/' . $filename;
+    } catch (\Exception $e) {
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        exit;
     }
 
     if ($merchant_key !== '') {
@@ -529,6 +549,10 @@ if ($action === 'generate_invite') {
 
     $stmt->execute();
 
+    $stmt = $mysqli->prepare("UPDATE payment_settings SET primary_color = ? WHERE id = 1");
+    $stmt->bind_param("s", $primary_color);
+    $stmt->execute();
+
     $stmt = $mysqli->prepare("UPDATE payment_settings SET appointment_delivery_mode = ? WHERE id = 1");
     $stmt->bind_param("s", $appointment_delivery_mode);
     $stmt->execute();
@@ -550,6 +574,12 @@ if ($action === 'generate_invite') {
     } else {
         $stmt = $mysqli->prepare("UPDATE payment_settings SET show_profile_image_public = ? WHERE id = 1");
         $stmt->bind_param("i", $show_profile_image_public);
+        $stmt->execute();
+    }
+
+    if ($uploaded_landing_image_path !== null) {
+        $stmt = $mysqli->prepare("UPDATE payment_settings SET landing_image_path = ? WHERE id = 1");
+        $stmt->bind_param("s", $uploaded_landing_image_path);
         $stmt->execute();
     }
 

@@ -418,6 +418,10 @@ $(document).ready(function () {
         savePaymentSettings('#general-settings-alert', null, this);
     });
 
+    $('#btn-save-interface-settings').click(function () {
+        savePaymentSettings('#interface-settings-alert', null, this);
+    });
+
     $('#email-provider').change(function () {
         toggleEmailProviderSettings();
     });
@@ -441,6 +445,32 @@ $(document).ready(function () {
             $('#profile-image-status').text('Imagen nueva lista para guardar.');
         };
         reader.readAsDataURL(file);
+    });
+
+    $('#landing-image').change(function () {
+        const file = this.files && this.files[0] ? this.files[0] : null;
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            $('#landing-image-preview').attr('src', e.target.result);
+            $('#landing-image-preview-row').attr('style', '');
+            $('#landing-image-status').text('Imagen nueva lista para guardar.');
+        };
+        reader.readAsDataURL(file);
+    });
+
+    $('#primary-color').change(function () {
+        $('#primary-color-text').val(this.value);
+        document.documentElement.style.setProperty('--primary-color', this.value);
+    });
+
+    $('#primary-color-text').on('input', function () {
+        const value = $(this).val().trim();
+        if (/^#[0-9a-fA-F]{6}$/.test(value)) {
+            $('#primary-color').val(value);
+            document.documentElement.style.setProperty('--primary-color', value);
+        }
     });
 
     $('#btn-google-connect').click(function () {
@@ -661,7 +691,7 @@ function showSettingsAlert(selector, type, message) {
 }
 
 function loadPaymentSettings() {
-    $('#payment-settings-alert, #email-settings-alert, #calendar-settings-alert, #booking-settings-alert, #general-settings-alert').addClass('d-none');
+    $('#payment-settings-alert, #email-settings-alert, #calendar-settings-alert, #booking-settings-alert, #general-settings-alert, #interface-settings-alert').addClass('d-none');
     $('#merchant-key').val('');
     $('#smtp-password').val('');
     $('#google-client-secret').val('');
@@ -681,6 +711,10 @@ function loadPaymentSettings() {
 
             let settings = res.settings || {};
             $('#app-name').val(settings.app_name || 'PsicoLogic');
+            const primaryColor = settings.primary_color || '#8f7fba';
+            $('#primary-color').val(primaryColor);
+            $('#primary-color-text').val(primaryColor);
+            document.documentElement.style.setProperty('--primary-color', primaryColor);
             $('#appointment-delivery-mode').val(settings.appointment_delivery_mode || 'both');
             $('#app-brand').text(settings.app_name || 'PsicoLogic');
             document.title = `Dashboard - ${settings.app_name || 'PsicoLogic'}`;
@@ -697,6 +731,16 @@ function loadPaymentSettings() {
                 $('#app-brand-image').attr('src', '').addClass('d-none');
             }
             $('#profile-image').val('');
+            if (settings.landing_image_path) {
+                $('#landing-image-preview').attr('src', settings.landing_image_path);
+                $('#landing-image-preview-row').attr('style', '');
+                $('#landing-image-status').text('Imagen actual guardada.');
+            } else {
+                $('#landing-image-preview-row').attr('style', 'display: none !important;');
+                $('#landing-image-preview').attr('src', '');
+                $('#landing-image-status').text('');
+            }
+            $('#landing-image').val('');
             $('#online-payment-enabled').prop('checked', settings.online_payment_enabled == 1);
             togglePaymentSettings();
             $('#payment-environment').val(settings.environment || 'sandbox');
@@ -790,7 +834,7 @@ function setSettingsButtonLoading(button, loading) {
 }
 
 function savePaymentSettings(alertSelector = '#payment-settings-alert', onSuccess = null, button = null) {
-    $('#payment-settings-alert, #email-settings-alert, #calendar-settings-alert, #booking-settings-alert, #general-settings-alert').addClass('d-none');
+    $('#payment-settings-alert, #email-settings-alert, #calendar-settings-alert, #booking-settings-alert, #general-settings-alert, #interface-settings-alert').addClass('d-none');
     setSettingsButtonLoading(button, true);
 
     const reminderInput = document.getElementById('appointment-reminder-enabled');
@@ -799,10 +843,14 @@ function savePaymentSettings(alertSelector = '#payment-settings-alert', onSucces
     const formData = new FormData();
     formData.append('online_payment_enabled', $('#online-payment-enabled').is(':checked') ? '1' : '0');
     formData.append('app_name', $('#app-name').val().trim());
+    formData.append('primary_color', $('#primary-color-text').val().trim());
     formData.append('appointment_delivery_mode', $('#appointment-delivery-mode').val());
     formData.append('show_profile_image_public', $('#show-profile-image-public').is(':checked') ? '1' : '0');
     if ($('#profile-image')[0] && $('#profile-image')[0].files[0]) {
         formData.append('profile_image', $('#profile-image')[0].files[0]);
+    }
+    if ($('#landing-image')[0] && $('#landing-image')[0].files[0]) {
+        formData.append('landing_image', $('#landing-image')[0].files[0]);
     }
     formData.append('environment', $('#payment-environment').val());
     formData.append('merchant_code', $('#merchant-code').val().trim());
