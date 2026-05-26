@@ -29,6 +29,7 @@ function ensure_payment_settings_table($mysqli)
             terminal VARCHAR(8) DEFAULT NULL,
             appointment_price DECIMAL(10,2) NOT NULL DEFAULT 70.00,
             admin_notification_email VARCHAR(255) DEFAULT NULL,
+            appointment_delivery_mode ENUM('both', 'presencial', 'online') NOT NULL DEFAULT 'both',
             appointment_reminder_enabled TINYINT(1) NOT NULL DEFAULT 0,
             min_booking_notice_days INT UNSIGNED NOT NULL DEFAULT 2,
             max_booking_notice_days INT UNSIGNED NOT NULL DEFAULT 40,
@@ -79,6 +80,7 @@ function ensure_payment_settings_table($mysqli)
         'app_name' => "ALTER TABLE payment_settings ADD app_name VARCHAR(255) DEFAULT 'PsicoLogic' AFTER id",
         'profile_image_path' => "ALTER TABLE payment_settings ADD profile_image_path VARCHAR(255) DEFAULT NULL AFTER app_name",
         'show_profile_image_public' => "ALTER TABLE payment_settings ADD show_profile_image_public TINYINT(1) NOT NULL DEFAULT 0 AFTER profile_image_path",
+        'appointment_delivery_mode' => "ALTER TABLE payment_settings ADD appointment_delivery_mode ENUM('both', 'presencial', 'online') NOT NULL DEFAULT 'both' AFTER admin_notification_email",
         'appointment_reminder_enabled' => "ALTER TABLE payment_settings ADD appointment_reminder_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER admin_notification_email",
         'min_booking_notice_days' => "ALTER TABLE payment_settings ADD min_booking_notice_days INT UNSIGNED NOT NULL DEFAULT 2 AFTER admin_notification_email",
         'max_booking_notice_days' => "ALTER TABLE payment_settings ADD max_booking_notice_days INT UNSIGNED NOT NULL DEFAULT 40 AFTER min_booking_notice_days",
@@ -255,6 +257,7 @@ if ($action === 'generate_invite') {
 
     $res = $mysqli->query("
         SELECT app_name, profile_image_path, show_profile_image_public, online_payment_enabled, environment, merchant_code, terminal, appointment_price, admin_notification_email,
+               appointment_delivery_mode,
                appointment_reminder_enabled,
                min_booking_notice_days, max_booking_notice_days, appointment_start_time, appointment_end_time, break_start_time, break_end_time,
                email_provider, smtp_host, smtp_port, smtp_username, smtp_secure, smtp_from_email, smtp_from_name,
@@ -282,6 +285,7 @@ if ($action === 'generate_invite') {
     $terminal = trim($_POST['terminal'] ?? '');
     $appointment_price = str_replace(',', '.', trim($_POST['appointment_price'] ?? '0'));
     $admin_notification_email = trim($_POST['admin_notification_email'] ?? '');
+    $appointment_delivery_mode = $_POST['appointment_delivery_mode'] ?? 'both';
     $posted_appointment_reminder_enabled = array_key_exists('appointment_reminder_enabled', $_POST)
         ? ($_POST['appointment_reminder_enabled'] === '1' ? 1 : 0)
         : null;
@@ -326,6 +330,11 @@ if ($action === 'generate_invite') {
 
     if ($admin_notification_email && !filter_var($admin_notification_email, FILTER_VALIDATE_EMAIL)) {
         echo json_encode(['success' => false, 'error' => 'Email de notificaciones inválido']);
+        exit;
+    }
+
+    if (!in_array($appointment_delivery_mode, ['both', 'presencial', 'online'], true)) {
+        echo json_encode(['success' => false, 'error' => 'Modalidad de citas inválida']);
         exit;
     }
 
@@ -518,6 +527,10 @@ if ($action === 'generate_invite') {
         bind_params_dynamic($stmt, "sisssdsiiississsssssis", [$app_name, $enabled, $environment, $merchant_code, $terminal, $appointment_price, $admin_notification_email, $appointment_reminder_enabled, $min_booking_notice_days, $max_booking_notice_days, $email_provider, $smtp_host, $smtp_port, $smtp_username, $smtp_secure, $smtp_from_email, $smtp_from_name, $google_client_id, $google_connected_email, $google_redirect_uri, $google_calendar_enabled, $google_calendar_id]);
     }
 
+    $stmt->execute();
+
+    $stmt = $mysqli->prepare("UPDATE payment_settings SET appointment_delivery_mode = ? WHERE id = 1");
+    $stmt->bind_param("s", $appointment_delivery_mode);
     $stmt->execute();
 
     $break_start_db = $break_start_time === '' ? null : $break_start_time;

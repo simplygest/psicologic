@@ -6,6 +6,29 @@ $branding = get_public_branding_settings($mysqli);
 $app_name = $branding['app_name'];
 $profile_image_path = $branding['show_profile_image_public'] ? $branding['profile_image_path'] : '';
 $is_logged_in = isset($_SESSION['user_id']);
+$appointment_delivery_mode = 'both';
+$settings_table = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
+if ($settings_table && $settings_table->num_rows > 0) {
+    $delivery_column = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'appointment_delivery_mode'");
+    if ($delivery_column && $delivery_column->num_rows > 0) {
+        $delivery_res = $mysqli->query("SELECT appointment_delivery_mode FROM payment_settings WHERE id = 1");
+        if ($delivery_row = $delivery_res->fetch_assoc()) {
+            $appointment_delivery_mode = $delivery_row['appointment_delivery_mode'] ?: 'both';
+        }
+    }
+}
+
+function public_delivery_text($mode)
+{
+    if ($mode === 'online') {
+        return 'sesiones online';
+    }
+    if ($mode === 'presencial') {
+        return 'sesiones presenciales';
+    }
+
+    return 'sesiones presenciales y online';
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -54,7 +77,7 @@ $is_logged_in = isset($_SESSION['user_id']);
                     <div class="col-lg-7">
                         <p class="landing-kicker">Psicologia sanitaria y neuropsicologia en Santa Cruz de Tenerife</p>
                         <h1>Stephanie Luis Baez</h1>
-                        <p class="landing-lead">Acompanamiento psicologico basado en evidencia, con atencion personalizada para adultos, infancia y adolescencia.</p>
+                        <p class="landing-lead">Acompanamiento psicologico basado en evidencia, con <?= htmlspecialchars(public_delivery_text($appointment_delivery_mode)) ?> para adultos, infancia y adolescencia.</p>
                         <div class="landing-actions">
                             <a href="<?= $is_logged_in ? 'dashboard.php' : 'login.php' ?>" class="btn btn-primary btn-lg">
                                 <?= $is_logged_in ? 'Gestionar mis citas' : 'Pedir cita' ?>
@@ -167,7 +190,7 @@ $is_logged_in = isset($_SESSION['user_id']);
                             <span>Consulta</span>
                             <h2>Gestiona tu cita online</h2>
                         </div>
-                        <p class="section-copy mb-0">Si ya tienes cuenta, puedes acceder al area de pacientes para consultar disponibilidad, reservar o cancelar una cita.</p>
+                        <p class="section-copy mb-0">Si ya tienes cuenta, puedes acceder al area de pacientes para consultar disponibilidad, reservar o cancelar una cita <?= htmlspecialchars(public_delivery_text($appointment_delivery_mode)) ?>.</p>
                     </div>
                     <div class="col-lg-5 text-lg-end">
                         <a href="<?= $is_logged_in ? 'dashboard.php' : 'login.php' ?>" class="btn btn-primary btn-lg">

@@ -105,8 +105,8 @@ body {
 }
 
 .slot {
-    height: 40px;
-    padding: 0 8px;
+    height: 66px;
+    padding: 6px 8px;
     margin-bottom: 8px;
     border-radius: 6px;
     text-align: center;
@@ -119,9 +119,33 @@ body {
     overflow: hidden;
 }
 
-.slot>.d-flex {
+.slot>.d-flex,
+.slot-content {
     width: 100%;
     min-width: 0;
+}
+
+.slot-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    height: 100%;
+    justify-content: center;
+}
+
+.slot-main-row,
+.slot-meta-row {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.slot-main-row {
+    justify-content: center;
+}
+
+.slot-meta-row {
+    justify-content: space-between;
 }
 
 .slot-label {
@@ -131,9 +155,17 @@ body {
     white-space: nowrap;
 }
 
+.slot-badges {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    overflow: hidden;
+}
+
 .slot-action-btn {
     width: 26px;
-    height: 24px;
+    height: 22px;
     padding: 0;
     margin-left: 8px;
     display: inline-flex;
@@ -213,10 +245,9 @@ body {
 
 .payment-badge {
     display: inline-block;
-    margin-left: 4px;
     padding: 1px 5px;
     border-radius: 4px;
-    font-size: 0.75em;
+    font-size: 0.72em;
     font-weight: 600;
     background: rgba(255, 255, 255, 0.25);
 }
@@ -234,6 +265,24 @@ body {
 .payment-badge.failed {
     color: #842029;
     background: #f8d7da;
+}
+
+.consultation-badge {
+    display: inline-block;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 0.72em;
+    font-weight: 600;
+}
+
+.consultation-badge.presencial {
+    color: #0f5132;
+    background: #d1e7dd;
+}
+
+.consultation-badge.online {
+    color: #084298;
+    background: #cfe2ff;
 }
 
 .settings-disabled {

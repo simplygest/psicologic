@@ -7,7 +7,8 @@ let PAYMENT_SETTINGS = {
     appointment_start_time: '10:00:00',
     appointment_end_time: '19:00:00',
     break_start_time: '15:00:00',
-    break_end_time: '16:00:00'
+    break_end_time: '16:00:00',
+    appointment_delivery_mode: 'both'
 };
 let isAppointmentRequestInProgress = false;
 
@@ -138,15 +139,21 @@ function renderSlot(dateStr, timeStr, dayApps) {
     // Convert current user ID if available in session? We rely on UI vs API limits mostly.
     if (app) {
         let paymentBadge = getPaymentBadge(app);
+        let consultationBadge = getConsultationBadge(app.consultation_type);
         let payButton = canPayAppointment(app)
             ? `<button class="btn btn-success slot-action-btn" onclick="event.stopPropagation(); openModal('${dateStr}', '${timeStr}', 'pay_own', '${app.id}');" title="Pagar cita"><i class="bi bi-credit-card"></i></button>`
             : '';
         if (IS_ADMIN) {
             cls = 'booked';
             text = `
-                <div class="d-flex justify-content-between align-items-center">
-                    <span class="slot-label">${timeStr} - ${app.name}${paymentBadge}</span>
-                    <button class="btn btn-danger slot-action-btn" onclick="event.stopPropagation(); openModal('${dateStr}', '${timeStr}', 'cancel_admin', '${app.name}', '${app.email}', '${app.phone}');" title="Cancelar cita"><i class="bi bi-trash"></i></button>
+                <div class="slot-content">
+                    <div class="slot-main-row">
+                        <span class="slot-label">${timeStr} - ${app.name}</span>
+                    </div>
+                    <div class="slot-meta-row">
+                        <span class="slot-badges">${consultationBadge}${paymentBadge}</span>
+                        <span class="slot-actions"><button class="btn btn-danger slot-action-btn" onclick="event.stopPropagation(); openModal('${dateStr}', '${timeStr}', 'cancel_admin', '${app.name}', '${app.email}', '${app.phone}');" title="Cancelar cita"><i class="bi bi-trash"></i></button></span>
+                    </div>
                 </div>
             `;
             onClick = ``;
@@ -154,9 +161,14 @@ function renderSlot(dateStr, timeStr, dayApps) {
             if (app.is_own) {
                 cls = 'booked-by-me';
                 text = `
-                    <div class="d-flex justify-content-between align-items-center">
-                        <span class="slot-label">${timeStr} - Tu reserva${paymentBadge}</span>
-                        <span class="slot-actions">${payButton}<button class="btn btn-danger slot-action-btn" onclick="event.stopPropagation(); openModal('${dateStr}', '${timeStr}', 'cancel_own');" title="Cancelar cita"><i class="bi bi-trash"></i></button></span>
+                    <div class="slot-content">
+                        <div class="slot-main-row">
+                            <span class="slot-label">${timeStr} - Tu reserva</span>
+                        </div>
+                        <div class="slot-meta-row">
+                            <span class="slot-badges">${consultationBadge}${paymentBadge}</span>
+                            <span class="slot-actions">${payButton}<button class="btn btn-danger slot-action-btn" onclick="event.stopPropagation(); openModal('${dateStr}', '${timeStr}', 'cancel_own');" title="Cancelar cita"><i class="bi bi-trash"></i></button></span>
+                        </div>
                     </div>
                 `;
                 onClick = ``; // do nothing on block click
@@ -223,6 +235,12 @@ function getPaymentBadge(app) {
     return ' <small class="payment-badge pending">Pendiente</small>';
 }
 
+function getConsultationBadge(consultationType) {
+    const label = consultationType === 'online' ? 'Online' : 'Presencial';
+    const cls = consultationType === 'online' ? 'online' : 'presencial';
+    return ` <small class="consultation-badge ${cls}">${label}</small>`;
+}
+
 function canPayAppointment(app) {
     return !IS_ADMIN
         && app
@@ -241,6 +259,7 @@ function openModal(date, time, status, extraName = '', extraEmail = '', extraPho
     $('#modalTime').val(time);
     $('#modalStatus').val(status);
     $('#payment-options').addClass('d-none');
+    $('#consultationTypeSelect').addClass('d-none');
     currentPaymentAppointmentId = null;
     $('#btn-confirm-action').removeClass('d-none').prop('disabled', false);
 
@@ -251,6 +270,10 @@ function openModal(date, time, status, extraName = '', extraEmail = '', extraPho
             $('#adminPatientSelect').removeClass('d-none');
         } else {
             $('#modalDesc').text('¿Estás seguro de que deseas reservar este horario?');
+        }
+        if ((PAYMENT_SETTINGS.appointment_delivery_mode || 'both') === 'both') {
+            $('#consultation-type').val('presencial');
+            $('#consultationTypeSelect').removeClass('d-none');
         }
         $('#btn-confirm-action').removeClass('btn-danger').addClass('btn-primary').text('Reservar');
     } else if (status === 'cancel_admin') {
@@ -440,7 +463,8 @@ function bookAppointment() {
 
     let data = {
         date: $('#modalDate').val(),
-        time: $('#modalTime').val()
+        time: $('#modalTime').val(),
+        consultation_type: selectedConsultationType()
     };
 
     if (IS_ADMIN) {
@@ -468,7 +492,7 @@ function bookAppointment() {
             if (!IS_ADMIN && PAYMENT_SETTINGS.online_payment_enabled == 1 && res.appointment_id) {
                 currentPaymentAppointmentId = res.appointment_id;
                 $('#modalTitle').text('Cita reservada');
-                $('#modalDesc').html(`Tu cita ha quedado reservada correctamente.<br><br>Si quieres, puedes pagarla ahora (${PAYMENT_SETTINGS.appointment_price} €).`);
+                $('#modalDesc').html(`Tu cita ${consultationTypeLabel(data.consultation_type).toLowerCase()} ha quedado reservada correctamente.<br><br>Si quieres, puedes pagarla ahora (${PAYMENT_SETTINGS.appointment_price} €).`);
                 $('#btn-confirm-action').addClass('d-none');
                 $('#payment-options-text').text('');
                 $('#payment-options').removeClass('d-none');
@@ -482,6 +506,21 @@ function bookAppointment() {
             setAppointmentActionLoading(false);
         }
     });
+}
+
+function selectedConsultationType() {
+    const mode = PAYMENT_SETTINGS.appointment_delivery_mode || 'both';
+    if (mode === 'online') {
+        return 'online';
+    }
+    if (mode === 'presencial') {
+        return 'presencial';
+    }
+    return $('#consultation-type').val() === 'online' ? 'online' : 'presencial';
+}
+
+function consultationTypeLabel(type) {
+    return type === 'online' ? 'Online' : 'Presencial';
 }
 
 function cancelAppointment() {
@@ -642,6 +681,7 @@ function loadPaymentSettings() {
 
             let settings = res.settings || {};
             $('#app-name').val(settings.app_name || 'PsicoLogic');
+            $('#appointment-delivery-mode').val(settings.appointment_delivery_mode || 'both');
             $('#app-brand').text(settings.app_name || 'PsicoLogic');
             document.title = `Dashboard - ${settings.app_name || 'PsicoLogic'}`;
             $('#show-profile-image-public').prop('checked', settings.show_profile_image_public == 1);
@@ -759,6 +799,7 @@ function savePaymentSettings(alertSelector = '#payment-settings-alert', onSucces
     const formData = new FormData();
     formData.append('online_payment_enabled', $('#online-payment-enabled').is(':checked') ? '1' : '0');
     formData.append('app_name', $('#app-name').val().trim());
+    formData.append('appointment_delivery_mode', $('#appointment-delivery-mode').val());
     formData.append('show_profile_image_public', $('#show-profile-image-public').is(':checked') ? '1' : '0');
     if ($('#profile-image')[0] && $('#profile-image')[0].files[0]) {
         formData.append('profile_image', $('#profile-image')[0].files[0]);

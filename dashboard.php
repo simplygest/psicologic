@@ -95,6 +95,14 @@ $profile_image_path = $branding['profile_image_path'];
             </div>
           <?php endif; ?>
 
+          <div id="consultationTypeSelect" class="mb-3 d-none text-start">
+            <label class="form-label" for="consultation-type">Modalidad de la cita</label>
+            <select id="consultation-type" class="form-select">
+              <option value="presencial">Presencial</option>
+              <option value="online">Online</option>
+            </select>
+          </div>
+
           <button class="btn btn-primary px-4" id="btn-confirm-action">Confirmar</button>
           <?php if (!$is_admin): ?>
             <div id="payment-options" class="mt-3 d-none">
@@ -156,6 +164,14 @@ $profile_image_path = $branding['profile_image_path'];
                 <div class="mb-4">
                   <label class="form-label" for="app-name">Título de la web</label>
                   <input type="text" class="form-control" id="app-name" placeholder="PsicoLogic">
+                </div>
+                <div class="mb-4">
+                  <label class="form-label" for="appointment-delivery-mode">Modalidades de cita disponibles</label>
+                  <select class="form-select" id="appointment-delivery-mode">
+                    <option value="both">Presencial y online</option>
+                    <option value="presencial">Solo presencial</option>
+                    <option value="online">Solo online</option>
+                  </select>
                 </div>
                 <div class="mb-3">
                   <label class="form-label" for="profile-image">Foto o imagen del dashboard</label>

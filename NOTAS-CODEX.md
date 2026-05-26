@@ -101,6 +101,12 @@ La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`.
 - La imagen de la landing reutiliza la imagen publica configurada desde la app (`profile_image_path`) si `show_profile_image_public` esta activo; si no, muestra un placeholder con iniciales.
 - Se anadieron estilos publicos en `css/style.css` bajo el bloque "Public landing".
 - Se anadio bloqueo temporal de indexacion: `robots.txt` con `Disallow: /` y meta `noindex, nofollow, noarchive` en paginas principales.
+- Se anadio configuracion de modalidad de cita en General: `Presencial y online`, `Solo presencial`, `Solo online`.
+- El valor predeterminado de modalidad es `Presencial y online`.
+- Cuando estan disponibles ambas modalidades, el paciente/admin elige la modalidad al reservar.
+- Cada cita guarda `consultation_type` con valor `presencial` u `online`.
+- La modalidad se muestra en el slot del calendario y en `cancelar_cita.php`.
+- La modalidad viaja tambien en emails, recordatorios, pagos y eventos de Google Calendar.
 
 ## Avisos importantes
 

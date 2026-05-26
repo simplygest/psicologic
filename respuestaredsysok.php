@@ -17,7 +17,7 @@ if ($token) {
 
     $stmt = $mysqli->prepare("
         SELECT pa.id, pa.appointment_id, pa.amount_cents, pa.payment_method, pa.status,
-               a.appointment_date, a.appointment_time, u.name, u.email, u.phone
+               a.appointment_date, a.appointment_time, a.consultation_type, u.name, u.email, u.phone
         FROM payment_attempts pa
         JOIN appointments a ON a.id = pa.appointment_id
         JOIN users u ON u.id = pa.user_id
@@ -57,7 +57,8 @@ if ($token) {
             $amount = format_payment_amount($payment['amount_cents']);
             $date = date('d/m/Y', strtotime($payment['appointment_date']));
             $time = date('H:i', strtotime($payment['appointment_time']));
-            $detail = "Cita de " . htmlspecialchars($payment['name']) . " el $date a las $time. Importe: $amount €. Método: $method.";
+            $consultation_text = appointment_consultation_label($payment['consultation_type'] ?? 'presencial');
+            $detail = "Cita " . htmlspecialchars(strtolower($consultation_text)) . " de " . htmlspecialchars($payment['name']) . " el $date a las $time. Importe: $amount €. Método: $method.";
 
             notify_admin(
                 $mysqli,
@@ -65,6 +66,7 @@ if ($token) {
                 '<p>Se ha recibido un pago online.</p>' .
                 '<p><b>Paciente:</b> ' . htmlspecialchars($payment['name']) . '<br>' .
                 '<b>Cita:</b> ' . htmlspecialchars("$date a las $time") . '<br>' .
+                '<b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '<br>' .
                 '<b>Importe:</b> ' . htmlspecialchars($amount) . ' €<br>' .
                 '<b>Método:</b> ' . htmlspecialchars($method) . '</p>',
                 $payment['email'] ?? null
@@ -75,8 +77,9 @@ if ($token) {
                     $payment['email'],
                     'Pago de cita confirmado',
                     '<p>Hola ' . htmlspecialchars($payment['name']) . ',</p>' .
-                    '<p>Hemos recibido correctamente el pago de tu cita del ' . htmlspecialchars("$date a las $time") . '.</p>' .
+                    '<p>Hemos recibido correctamente el pago de tu cita ' . htmlspecialchars(strtolower($consultation_text)) . ' del ' . htmlspecialchars("$date a las $time") . '.</p>' .
                     '<p><b>Importe:</b> ' . htmlspecialchars($amount) . ' €<br>' .
+                    '<b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '<br>' .
                     '<b>Método:</b> ' . htmlspecialchars($method) . '</p>',
                     null,
                     $mysqli

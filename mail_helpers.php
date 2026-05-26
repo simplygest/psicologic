@@ -225,6 +225,11 @@ function appointment_label($date, $time)
     return date('d/m/Y', strtotime($date)) . ' a las ' . date('H:i', strtotime($time));
 }
 
+function appointment_consultation_label($consultation_type)
+{
+    return $consultation_type === 'online' ? 'Online' : 'Presencial';
+}
+
 function appointment_payment_label($payment_status)
 {
     if ($payment_status === 'paid') {
@@ -247,6 +252,7 @@ function notify_appointment_cancelled($mysqli, $appointment)
     $patient_name = $appointment['name'] ?? '';
     $patient_email = $appointment['email'] ?? '';
     $appointment_text = appointment_label($appointment['appointment_date'], $appointment['appointment_time']);
+    $consultation_text = appointment_consultation_label($appointment['consultation_type'] ?? 'presencial');
     $payment_status = $appointment['payment_status'] ?? 'pending';
     $payment_text = appointment_payment_label($payment_status);
     $paid_warning = $payment_status === 'paid'
@@ -259,6 +265,7 @@ function notify_appointment_cancelled($mysqli, $appointment)
         '<p>Se ha cancelado una cita.</p>' .
         '<p><b>Paciente:</b> ' . htmlspecialchars($patient_name) . '<br>' .
         '<b>Fecha:</b> ' . htmlspecialchars($appointment_text) . '<br>' .
+        '<b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '<br>' .
         '<b>Estado del pago:</b> ' . htmlspecialchars($payment_text) . '</p>' .
         $paid_warning,
         $patient_email ?: null
@@ -269,7 +276,8 @@ function notify_appointment_cancelled($mysqli, $appointment)
             $patient_email,
             'Cita cancelada',
             '<p>Hola ' . htmlspecialchars($patient_name) . ',</p>' .
-            '<p>Tu cita para el ' . htmlspecialchars($appointment_text) . ' ha sido cancelada correctamente.</p>',
+            '<p>Tu cita ' . htmlspecialchars(strtolower($consultation_text)) . ' para el ' . htmlspecialchars($appointment_text) . ' ha sido cancelada correctamente.</p>' .
+            '<p><b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '</p>',
             null,
             $mysqli
         );

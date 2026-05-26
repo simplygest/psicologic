@@ -43,7 +43,7 @@ ensure_appointment_payment_columns($mysqli);
 
 $lookup_where = $cancel_token ? 'a.cancel_token = ?' : 'a.id = ?';
 $stmt = $mysqli->prepare("
-    SELECT a.id, a.user_id, a.appointment_date, a.appointment_time,
+    SELECT a.id, a.user_id, a.appointment_date, a.appointment_time, a.consultation_type,
            COALESCE(a.payment_status, 'pending') AS payment_status,
            u.name
     FROM appointments a
@@ -126,7 +126,7 @@ $url_pago = $settings['environment'] === 'sandbox'
 
 $url_ok = $base_url . 'respuestaredsysok.php?t=' . urlencode($token);
 $url_ko = $base_url . 'respuestaredsysko.php?t=' . urlencode($token);
-$description = 'Cita ' . date('d/m/Y', strtotime($appointment['appointment_date'])) . ' ' . date('H:i', strtotime($appointment['appointment_time']));
+$description = 'Cita ' . (($appointment['consultation_type'] ?? 'presencial') === 'online' ? 'online' : 'presencial') . ' ' . date('d/m/Y', strtotime($appointment['appointment_date'])) . ' ' . date('H:i', strtotime($appointment['appointment_time']));
 
 $redsys = new RedsysAPI();
 $redsys->setParameter('DS_MERCHANT_AMOUNT', (string) $amount_cents);

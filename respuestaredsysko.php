@@ -16,7 +16,7 @@ if ($token) {
 
     $stmt = $mysqli->prepare("
         SELECT pa.id, pa.appointment_id, pa.amount_cents, pa.payment_method,
-               a.appointment_date, a.appointment_time, u.name, u.email, u.phone
+               a.appointment_date, a.appointment_time, a.consultation_type, u.name, u.email, u.phone
         FROM payment_attempts pa
         JOIN appointments a ON a.id = pa.appointment_id
         JOIN users u ON u.id = pa.user_id
@@ -47,7 +47,8 @@ if ($token) {
             $amount = format_payment_amount($payment['amount_cents']);
             $date = date('d/m/Y', strtotime($payment['appointment_date']));
             $time = date('H:i', strtotime($payment['appointment_time']));
-            $detail = "La cita del $date a las $time sigue reservada, pero el pago de $amount € no se ha completado.";
+            $consultation_text = appointment_consultation_label($payment['consultation_type'] ?? 'presencial');
+            $detail = "La cita " . strtolower($consultation_text) . " del $date a las $time sigue reservada, pero el pago de $amount € no se ha completado.";
 
             notify_admin(
                 $mysqli,
@@ -55,6 +56,7 @@ if ($token) {
                 '<p>Un pago online no se ha completado correctamente.</p>' .
                 '<p><b>Paciente:</b> ' . htmlspecialchars($payment['name']) . '<br>' .
                 '<b>Cita:</b> ' . htmlspecialchars("$date a las $time") . '<br>' .
+                '<b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '<br>' .
                 '<b>Importe:</b> ' . htmlspecialchars($amount) . ' €<br>' .
                 '<b>Método:</b> ' . htmlspecialchars($payment['payment_method'] === 'bizum' ? 'Bizum' : 'tarjeta') . '</p>',
                 $payment['email'] ?? null
@@ -65,7 +67,8 @@ if ($token) {
                     $payment['email'],
                     'Pago de cita no completado',
                     '<p>Hola ' . htmlspecialchars($payment['name']) . ',</p>' .
-                    '<p>El pago online de tu cita del ' . htmlspecialchars("$date a las $time") . ' no se ha completado correctamente.</p>' .
+                    '<p>El pago online de tu cita ' . htmlspecialchars(strtolower($consultation_text)) . ' del ' . htmlspecialchars("$date a las $time") . ' no se ha completado correctamente.</p>' .
+                    '<p><b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '</p>' .
                     '<p>La cita sigue reservada. Puedes contactar con la consulta si necesitas ayuda.</p>',
                     null,
                     $mysqli

@@ -40,7 +40,7 @@ if ((int) ($settings['appointment_reminder_enabled'] ?? 0) !== 1) {
 }
 
 $stmt = $mysqli->prepare("
-    SELECT a.id, a.appointment_date, a.appointment_time, a.cancel_token,
+    SELECT a.id, a.appointment_date, a.appointment_time, a.consultation_type, a.cancel_token,
            COALESCE(a.payment_status, 'pending') AS payment_status,
            u.name, u.email
     FROM appointments a
@@ -73,6 +73,7 @@ foreach ($appointments as $appointment) {
     $manage_link = $base_url . 'cancelar_cita.php?t=' . urlencode($cancel_token);
     $date = date('d/m/Y', strtotime($appointment['appointment_date']));
     $time = date('H:i', strtotime($appointment['appointment_time']));
+    $consultation_text = appointment_consultation_label($appointment['consultation_type'] ?? 'presencial');
     $payment_note = '';
 
     if ($payment_enabled && $appointment['payment_status'] !== 'paid') {
@@ -81,7 +82,8 @@ foreach ($appointments as $appointment) {
 
     $body =
         '<p>Hola ' . htmlspecialchars($appointment['name']) . ',</p>' .
-        '<p>Recuerda que tienes cita para el dia ' . htmlspecialchars($date) . ' a las ' . htmlspecialchars($time) . '.</p>' .
+        '<p>Recuerda que tienes cita ' . htmlspecialchars(strtolower($consultation_text)) . ' para el dia ' . htmlspecialchars($date) . ' a las ' . htmlspecialchars($time) . '.</p>' .
+        '<p><b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '</p>' .
         '<p>Por favor, si no puedes acudir, puedes cancelar la cita en el siguiente enlace:</p>' .
         '<p><a href="' . htmlspecialchars($manage_link) . '">Gestionar reserva</a></p>' .
         $payment_note;

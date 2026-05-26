@@ -15,7 +15,7 @@ $cancelled = false;
 
 if ($token) {
     $stmt = $mysqli->prepare("
-        SELECT a.id, a.appointment_date, a.appointment_time, a.status,
+        SELECT a.id, a.appointment_date, a.appointment_time, a.status, a.consultation_type,
                COALESCE(a.payment_status, 'pending') AS payment_status,
                a.payment_method, u.name, u.email
         FROM appointments a
@@ -75,6 +75,11 @@ function payment_status_label($appointment)
 
     return 'Pendiente de pago';
 }
+
+function consultation_type_label($appointment)
+{
+    return ($appointment['consultation_type'] ?? 'presencial') === 'online' ? 'Online' : 'Presencial';
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -108,6 +113,7 @@ function payment_status_label($appointment)
                             <li class="list-group-item"><b>Paciente:</b> <?= htmlspecialchars($appointment['name']) ?></li>
                             <li class="list-group-item"><b>Día:</b> <?= htmlspecialchars(date('d/m/Y', strtotime($appointment['appointment_date']))) ?></li>
                             <li class="list-group-item"><b>Hora:</b> <?= htmlspecialchars(date('H:i', strtotime($appointment['appointment_time']))) ?></li>
+                            <li class="list-group-item"><b>Modalidad:</b> <?= htmlspecialchars(consultation_type_label($appointment)) ?></li>
                             <?php if ((int) $payment_settings['online_payment_enabled'] === 1): ?>
                                 <li class="list-group-item"><b>Pago:</b> <?= htmlspecialchars(payment_status_label($appointment)) ?></li>
                             <?php endif; ?>
