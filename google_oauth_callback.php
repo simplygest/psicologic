@@ -4,7 +4,7 @@ require_once 'db.php';
 require_once 'google_helpers.php';
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: index.php');
+    header('Location: login.php');
     exit;
 }
 

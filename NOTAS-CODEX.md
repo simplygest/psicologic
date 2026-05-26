@@ -1,18 +1,19 @@
 # Notas Codex - PsicoLogic
 
-Ultima revision: 2026-05-22
+Ultima revision: 2026-05-26
 
 Este archivo sirve como historial compartido entre PCs para retomar el trabajo con Codex sin depender del chat local.
 
 ## Estado general de la app
 
-PsicoLogic es una app PHP/jQuery/Bootstrap para gestionar citas de una consulta. Usa sesiones PHP, MySQL remoto en Azure y vistas principales en `index.php`, `register.php`, `dashboard.php` y `cancelar_cita.php`.
+PsicoLogic es una app PHP/jQuery/Bootstrap para la web publica y la gestion de citas de una consulta. Usa sesiones PHP, MySQL remoto en Azure y vistas principales en `index.php`, `login.php`, `register.php`, `dashboard.php` y `cancelar_cita.php`.
 
 La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`. Actualmente la zona horaria esta en `Atlantic/Canary`.
 
 ## Funcionalidad detectada
 
-- Login por email o telefono en `api/auth.php`.
+- Landing publica informativa en `index.php`.
+- Login por email o telefono en `login.php` + `api/auth.php`.
 - Registro de pacientes mediante invitaciones generadas por admin.
 - Dashboard semanal de lunes a viernes con slots configurables.
 - Reservas y cancelaciones desde `api/appointments.php`.
@@ -45,6 +46,8 @@ La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`.
 ## Archivos clave
 
 - `dashboard.php`: interfaz principal, modal de citas y modal de configuracion admin.
+- `index.php`: pagina publica informativa/comercial de Stephanie Luis Baez.
+- `login.php`: acceso al area de pacientes, separado de la landing publica.
 - `js/app.js`: render del calendario, acciones AJAX, pagos, ajustes, Google y UI.
 - `api/admin.php`: endpoints admin, migraciones ligeras de columnas, ajustes, imagenes y Fastcron.
 - `api/appointments.php`: calendario semanal, reserva, cancelacion, emails y Google Calendar.
@@ -80,6 +83,24 @@ La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`.
 - Se cambio la zona horaria de la app a `Atlantic/Canary`.
 - Al crear nuevos crons en Fastcron se envia tambien `timezone = date_default_timezone_get()`, por lo que usara `Atlantic/Canary` para nuevas creaciones.
 - Se quitaron los mensajes de debug temporal de Fastcron tras confirmar que funcionaba.
+
+## Cambios del 2026-05-26
+
+- Se separo la pagina publica de la app privada de citas.
+- `index.php` dejo de ser el login y ahora es una landing informativa/comercial para Stephanie Luis Baez.
+- Se creo `login.php` con el formulario de acceso anterior.
+- Las redirecciones privadas de `dashboard.php`, `google_oauth_start.php` y `google_oauth_callback.php` apuntan ahora a `login.php`.
+- `register.php` enlaza a `login.php` en "Ya tengo una cuenta".
+- `logout.php` sigue redirigiendo a `index.php`, que ahora es la pagina publica.
+- La landing usa informacion publica recopilada de Top Doctors y Doctoralia:
+  - Psicologa sanitaria y neuropsicologa.
+  - Numero de colegiada T-04491.
+  - Consulta en Santa Cruz de Tenerife.
+  - Areas: psicologia general sanitaria, neuropsicologia, infancia/adolescencia, TDAH, autismo, estimulacion cognitiva, bienestar emocional y adicciones.
+  - Formacion: Universidad de La Laguna, UAM, UCM, UDIMA y preparacion PIR.
+- La imagen de la landing reutiliza la imagen publica configurada desde la app (`profile_image_path`) si `show_profile_image_public` esta activo; si no, muestra un placeholder con iniciales.
+- Se anadieron estilos publicos en `css/style.css` bajo el bloque "Public landing".
+- Se anadio bloqueo temporal de indexacion: `robots.txt` con `Disallow: /` y meta `noindex, nofollow, noarchive` en paginas principales.
 
 ## Avisos importantes
 
