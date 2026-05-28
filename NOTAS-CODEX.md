@@ -21,6 +21,7 @@ La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`.
 - Dias cerrados admiten rango de fechas y se guardan en `closed_days`.
 - Limites de reserva configurables: antelacion minima y maxima.
 - Horario configurable: primera cita, ultima cita y descanso intermedio.
+- Dias de consulta configurables en Reservas: lunes a viernes activos por defecto y sabado opcional.
 - Marca configurable: titulo de la web, imagen del dashboard y opcion para mostrar imagen tambien en login/registro.
 - Subidas de imagen en `uploads/settings`.
 - Pago online opcional con Redsys:
@@ -111,6 +112,7 @@ La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`.
 - Se movieron a `Interfaz` el titulo de la web, la imagen de dashboard/login/registro y la opcion de mostrarla en login/registro.
 - Se anadio imagen independiente para la pagina principal/landing (`landing_image_path`).
 - Se anadio color principal configurable (`primary_color`) con valor por defecto violeta `#8f7fba`.
+- Se anadio configuracion de dias disponibles para consulta (`available_weekdays`), que controla las columnas visibles del calendario y valida reservas en backend.
 
 ## Cambios de BD pendientes de aplicar manualmente si no se deja auto-migrar
 
@@ -118,6 +120,7 @@ La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`.
 - `appointments.consultation_type VARCHAR(16) NOT NULL DEFAULT 'presencial'`
 - `payment_settings.landing_image_path VARCHAR(255) DEFAULT NULL`
 - `payment_settings.primary_color VARCHAR(7) NOT NULL DEFAULT '#8f7fba'`
+- `payment_settings.available_weekdays VARCHAR(32) NOT NULL DEFAULT '1,2,3,4,5'`
 
 ## Avisos importantes
 

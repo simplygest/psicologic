@@ -278,6 +278,49 @@ $profile_image_path = $branding['profile_image_path'];
                     <div class="form-text">Deja el descanso vacío si no quieres bloquear horas intermedias.</div>
                   </div>
                 </div>
+                <hr class="my-4">
+                <div class="mb-4">
+                  <label class="form-label d-block">Días disponibles para consulta</label>
+                  <div class="row g-2">
+                    <div class="col-sm-6 col-lg-4">
+                      <div class="form-check">
+                        <input class="form-check-input available-weekday" type="checkbox" id="available-weekday-1" value="1" checked>
+                        <label class="form-check-label" for="available-weekday-1">Lunes</label>
+                      </div>
+                    </div>
+                    <div class="col-sm-6 col-lg-4">
+                      <div class="form-check">
+                        <input class="form-check-input available-weekday" type="checkbox" id="available-weekday-2" value="2" checked>
+                        <label class="form-check-label" for="available-weekday-2">Martes</label>
+                      </div>
+                    </div>
+                    <div class="col-sm-6 col-lg-4">
+                      <div class="form-check">
+                        <input class="form-check-input available-weekday" type="checkbox" id="available-weekday-3" value="3" checked>
+                        <label class="form-check-label" for="available-weekday-3">Miércoles</label>
+                      </div>
+                    </div>
+                    <div class="col-sm-6 col-lg-4">
+                      <div class="form-check">
+                        <input class="form-check-input available-weekday" type="checkbox" id="available-weekday-4" value="4" checked>
+                        <label class="form-check-label" for="available-weekday-4">Jueves</label>
+                      </div>
+                    </div>
+                    <div class="col-sm-6 col-lg-4">
+                      <div class="form-check">
+                        <input class="form-check-input available-weekday" type="checkbox" id="available-weekday-5" value="5" checked>
+                        <label class="form-check-label" for="available-weekday-5">Viernes</label>
+                      </div>
+                    </div>
+                    <div class="col-sm-6 col-lg-4">
+                      <div class="form-check">
+                        <input class="form-check-input available-weekday" type="checkbox" id="available-weekday-6" value="6">
+                        <label class="form-check-label" for="available-weekday-6">Sábado</label>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="form-text">El calendario mostrará solo los días seleccionados.</div>
+                </div>
                 <div class="text-end">
                   <button type="button" class="btn btn-primary" id="btn-save-booking-settings">Guardar configuración</button>
                 </div>

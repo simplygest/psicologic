@@ -8,6 +8,7 @@ let PAYMENT_SETTINGS = {
     appointment_end_time: '19:00:00',
     break_start_time: '15:00:00',
     break_end_time: '16:00:00',
+    available_weekdays: '1,2,3,4,5',
     appointment_delivery_mode: 'both'
 };
 let isAppointmentRequestInProgress = false;
@@ -58,14 +59,22 @@ function loadCalendar(startDateStr) {
 }
 
 function drawCalendar(startDateStr, appointmentsMap, closedDays) {
-    let html = '<div class="calendar-grid">';
+    const activeDays = getActiveWeekdays();
+    let html = `<div class="calendar-grid" style="--calendar-days: ${activeDays.length};">`;
     let startD = new Date(startDateStr);
 
-    const daysArr = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+    const daysArr = {
+        1: 'Lunes',
+        2: 'Martes',
+        3: 'Miércoles',
+        4: 'Jueves',
+        5: 'Viernes',
+        6: 'Sábado'
+    };
 
-    for (let i = 0; i < 5; i++) {
+    activeDays.forEach(dayNumber => {
         let currentDay = new Date(startD);
-        currentDay.setDate(currentDay.getDate() + i);
+        currentDay.setDate(currentDay.getDate() + (dayNumber - 1));
         let dateStr = formatDate(currentDay);
         let displayDate = ('0' + currentDay.getDate()).slice(-2) + '/' + ('0' + (currentDay.getMonth() + 1)).slice(-2);
 
@@ -73,7 +82,7 @@ function drawCalendar(startDateStr, appointmentsMap, closedDays) {
         let closedReason = isClosed ? closedDays[dateStr] : '';
 
         html += `<div class="calendar-day">
-                    <div class="day-header">${daysArr[i]}<br><small class="text-muted">${displayDate}</small></div>`;
+                    <div class="day-header">${daysArr[dayNumber]}<br><small class="text-muted">${displayDate}</small></div>`;
 
         if (isClosed) {
             html += `<div class="alert alert-danger text-center p-2 mb-0" style="font-size:0.9em">${closedReason}</div>`;
@@ -88,10 +97,19 @@ function drawCalendar(startDateStr, appointmentsMap, closedDays) {
         }
 
         html += `</div>`;
-    }
+    });
 
     html += '</div>';
     $('#calendar-container').html(html);
+}
+
+function getActiveWeekdays() {
+    const raw = String(PAYMENT_SETTINGS.available_weekdays || '1,2,3,4,5');
+    const days = raw.split(',')
+        .map(day => parseInt(day, 10))
+        .filter(day => day >= 1 && day <= 6);
+    const uniqueDays = [...new Set(days)].sort((a, b) => a - b);
+    return uniqueDays.length ? uniqueDays : [1, 2, 3, 4, 5];
 }
 
 function timeToMinutes(time) {
@@ -553,6 +571,16 @@ function consultationTypeLabel(type) {
     return type === 'online' ? 'Online' : 'Presencial';
 }
 
+function setAvailableWeekdays(value) {
+    const activeDays = String(value || '1,2,3,4,5')
+        .split(',')
+        .map(day => day.trim());
+    $('.available-weekday').prop('checked', false);
+    activeDays.forEach(day => {
+        $(`.available-weekday[value="${day}"]`).prop('checked', true);
+    });
+}
+
 function cancelAppointment() {
     setAppointmentActionLoading(true);
     $.ajax({
@@ -753,6 +781,7 @@ function loadPaymentSettings() {
             $('#appointment-end-time').val((settings.appointment_end_time || '19:00').slice(0, 5));
             $('#break-start-time').val(settings.break_start_time ? settings.break_start_time.slice(0, 5) : '15:00');
             $('#break-end-time').val(settings.break_end_time ? settings.break_end_time.slice(0, 5) : '16:00');
+            setAvailableWeekdays(settings.available_weekdays || '1,2,3,4,5');
             $('#admin-notification-email').val(settings.admin_notification_email || '');
             $('#appointment-reminder-enabled').prop('checked', settings.appointment_reminder_enabled == 1);
             $('#email-provider').val(settings.email_provider || 'phpmailer');
@@ -862,6 +891,9 @@ function savePaymentSettings(alertSelector = '#payment-settings-alert', onSucces
     formData.append('appointment_end_time', $('#appointment-end-time').val().trim());
     formData.append('break_start_time', $('#break-start-time').val().trim());
     formData.append('break_end_time', $('#break-end-time').val().trim());
+    $('.available-weekday:checked').each(function () {
+        formData.append('available_weekdays[]', this.value);
+    });
     formData.append('admin_notification_email', $('#admin-notification-email').val().trim());
     formData.append('appointment_reminder_enabled', reminderEnabledValue);
     formData.append('merchant_key', $('#merchant-key').val().trim());
@@ -895,6 +927,7 @@ function savePaymentSettings(alertSelector = '#payment-settings-alert', onSucces
                 $('#google-client-secret').val('');
                 $('#google-refresh-token').val('');
                 loadPaymentSettings();
+                renderWeekInfo();
                 showSettingsAlert(alertSelector, 'success', res.message || 'Configuración guardada correctamente.');
                 if (onSuccess) {
                     onSuccess();

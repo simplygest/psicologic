@@ -38,8 +38,8 @@ function public_delivery_text($mode)
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow, noarchive">
-    <title>Stephanie Luis Baez - Psicologa sanitaria y neuropsicologa</title>
-    <meta name="description" content="Consulta de psicologia sanitaria y neuropsicologia en Santa Cruz de Tenerife. Atencion a adultos, infancia y adolescencia.">
+    <title>Stephanie Luis Báez - Psicóloga sanitaria y neuropsicóloga</title>
+    <meta name="description" content="Consulta de psicología sanitaria y neuropsicología en Santa Cruz de Tenerife. Atención a adultos, infancia y adolescencia.">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css?v=<?= filemtime(__DIR__ . '/css/style.css') ?>">
@@ -53,19 +53,19 @@ function public_delivery_text($mode)
                 <?php if ($profile_image_path): ?>
                     <img src="<?= htmlspecialchars($profile_image_path) ?>" alt="" class="brand-avatar">
                 <?php endif; ?>
-                <span>Stephanie Luis Baez</span>
+                <span>Stephanie Luis Báez</span>
             </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#publicNav" aria-controls="publicNav" aria-expanded="false" aria-label="Abrir menu">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#publicNav" aria-controls="publicNav" aria-expanded="false" aria-label="Abrir menú">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="publicNav">
                 <div class="navbar-nav ms-auto align-items-lg-center gap-lg-2">
                     <a class="nav-link" href="#servicios">Servicios</a>
                     <a class="nav-link" href="#experiencia">Experiencia</a>
-                    <a class="nav-link" href="#formacion">Formacion</a>
+                    <a class="nav-link" href="#formacion">Formación</a>
                     <a class="nav-link" href="#consulta">Consulta</a>
                     <a class="btn btn-primary btn-sm ms-lg-2" href="<?= $is_logged_in ? 'dashboard.php' : 'login.php' ?>">
-                        <?= $is_logged_in ? 'Ir a mis citas' : 'Area pacientes' ?>
+                        <?= $is_logged_in ? 'Ir a mis citas' : 'Área pacientes' ?>
                     </a>
                 </div>
             </div>
@@ -77,9 +77,9 @@ function public_delivery_text($mode)
             <div class="container">
                 <div class="row align-items-center g-5">
                     <div class="col-lg-7">
-                        <p class="landing-kicker">Psicologia sanitaria y neuropsicologia en Santa Cruz de Tenerife</p>
-                        <h1>Stephanie Luis Baez</h1>
-                        <p class="landing-lead">Acompanamiento psicologico basado en evidencia, con <?= htmlspecialchars(public_delivery_text($appointment_delivery_mode)) ?> para adultos, infancia y adolescencia.</p>
+                        <p class="landing-kicker">Psicología sanitaria y neuropsicología en Santa Cruz de Tenerife</p>
+                        <h1>Stephanie Luis Báez</h1>
+                        <p class="landing-lead">Acompañamiento psicológico basado en evidencia, con <?= htmlspecialchars(public_delivery_text($appointment_delivery_mode)) ?> para adultos, infancia y adolescencia.</p>
                         <div class="landing-actions">
                             <a href="<?= $is_logged_in ? 'dashboard.php' : 'login.php' ?>" class="btn btn-primary btn-lg">
                                 <?= $is_logged_in ? 'Gestionar mis citas' : 'Pedir cita' ?>
@@ -90,14 +90,14 @@ function public_delivery_text($mode)
                     <div class="col-lg-5">
                         <div class="landing-portrait">
                             <?php if ($landing_image_path): ?>
-                                <img src="<?= htmlspecialchars($landing_image_path) ?>" alt="Stephanie Luis Baez">
+                                <img src="<?= htmlspecialchars($landing_image_path) ?>" alt="Stephanie Luis Báez">
                             <?php else: ?>
                                 <div class="landing-portrait-placeholder">
                                     <span>SLB</span>
                                 </div>
                             <?php endif; ?>
                             <div class="landing-portrait-caption">
-                                <strong>N. colegiada T-04491</strong>
+                                <strong>N.º colegiada T-04491</strong>
                                 <span>Consulta privada en Santa Cruz de Tenerife</span>
                             </div>
                         </div>
@@ -110,24 +110,24 @@ function public_delivery_text($mode)
             <div class="container">
                 <div class="section-heading">
                     <span>Servicios</span>
-                    <h2>Areas de intervencion</h2>
+                    <h2>Áreas de intervención</h2>
                 </div>
                 <div class="service-grid">
                     <article class="service-card">
-                        <h3>Psicologia general sanitaria</h3>
-                        <p>Evaluacion e intervencion psicologica adaptada a las necesidades de cada persona, con un enfoque practico y basado en la evidencia.</p>
+                        <h3>Psicología general sanitaria</h3>
+                        <p>Evaluación e intervención psicológica adaptada a las necesidades de cada persona, con un enfoque práctico y basado en la evidencia.</p>
                     </article>
                     <article class="service-card">
-                        <h3>Neuropsicologia</h3>
-                        <p>Valoracion, estimulacion y rehabilitacion cognitiva en dificultades de memoria, atencion, funciones ejecutivas y dano cerebral adquirido.</p>
+                        <h3>Neuropsicología</h3>
+                        <p>Valoración, estimulación y rehabilitación cognitiva en dificultades de memoria, atención, funciones ejecutivas y daño cerebral adquirido.</p>
                     </article>
                     <article class="service-card">
                         <h3>Infancia y adolescencia</h3>
-                        <p>Atencion a dificultades emocionales, conductuales y del neurodesarrollo, incluyendo TDAH, autismo y apoyo a familias.</p>
+                        <p>Atención a dificultades emocionales, conductuales y del neurodesarrollo, incluyendo TDAH, autismo y apoyo a familias.</p>
                     </article>
                     <article class="service-card">
                         <h3>Bienestar emocional</h3>
-                        <p>Acompanamiento en ansiedad, depresion, autoestima, duelo, estres, adicciones y problemas relacionales.</p>
+                        <p>Acompañamiento en ansiedad, depresión, autoestima, duelo, estrés, adicciones y problemas relacionales.</p>
                     </article>
                 </div>
             </div>
@@ -139,23 +139,23 @@ function public_delivery_text($mode)
                     <div class="col-lg-5">
                         <div class="section-heading">
                             <span>Experiencia</span>
-                            <h2>Trayectoria clinica y comunitaria</h2>
+                            <h2>Trayectoria clínica y comunitaria</h2>
                         </div>
-                        <p class="section-copy">Stephanie Luis Baez es psicologa sanitaria y neuropsicologa. Su experiencia incluye trabajo en hospitales, clinicas, gabinetes de psicologia, programas comunitarios y recursos especializados.</p>
+                        <p class="section-copy">Stephanie Luis Báez es psicóloga sanitaria y neuropsicóloga. Su experiencia incluye trabajo en hospitales, clínicas, gabinetes de psicología, programas comunitarios y recursos especializados.</p>
                     </div>
                     <div class="col-lg-7">
                         <div class="timeline-list">
                             <div>
                                 <strong>Neurocentro Tenerife</strong>
-                                <span>Psicologa y neuropsicologa en la actualidad.</span>
+                                <span>Psicóloga y neuropsicóloga en la actualidad.</span>
                             </div>
                             <div>
-                                <strong>Fundacion Instituto Spiral</strong>
-                                <span>Intervencion neuropsicologica y apoyo en procesos de rehabilitacion.</span>
+                                <strong>Fundación Instituto Spiral</strong>
+                                <span>Intervención neuropsicológica y apoyo en procesos de rehabilitación.</span>
                             </div>
                             <div>
-                                <strong>Ayuntamiento de San Cristobal de La Laguna</strong>
-                                <span>Experiencia en programas de atencion comunitaria.</span>
+                                <strong>Ayuntamiento de San Cristóbal de La Laguna</strong>
+                                <span>Experiencia en programas de atención comunitaria.</span>
                             </div>
                             <div>
                                 <strong>Hospital Universitario de Canarias y gabinetes privados</strong>
@@ -170,16 +170,16 @@ function public_delivery_text($mode)
         <section class="landing-section" id="formacion">
             <div class="container">
                 <div class="section-heading">
-                    <span>Formacion</span>
-                    <h2>Especializacion academica</h2>
+                    <span>Formación</span>
+                    <h2>Especialización académica</h2>
                 </div>
                 <div class="education-grid">
-                    <div>Grado en Psicologia por la Universidad de La Laguna.</div>
-                    <div>Master en Psicologia General Sanitaria por la Universidad Autonoma de Madrid.</div>
-                    <div>Master en Neuropsicologia Clinica por la Universidad Complutense de Madrid.</div>
+                    <div>Grado en Psicología por la Universidad de La Laguna.</div>
+                    <div>Máster en Psicología General Sanitaria por la Universidad Autónoma de Madrid.</div>
+                    <div>Máster en Neuropsicología Clínica por la Universidad Complutense de Madrid.</div>
                     <div>Experta universitaria en Trastornos de la Personalidad por la UDIMA.</div>
-                    <div>Experta universitaria en Psicopatologia Clinica Infanto-Juvenil por la UDIMA.</div>
-                    <div>Preparacion PIR en Academia APIR.</div>
+                    <div>Experta universitaria en Psicopatología Clínica Infanto-Juvenil por la UDIMA.</div>
+                    <div>Preparación PIR en Academia APIR.</div>
                 </div>
             </div>
         </section>
@@ -192,11 +192,11 @@ function public_delivery_text($mode)
                             <span>Consulta</span>
                             <h2>Gestiona tu cita online</h2>
                         </div>
-                        <p class="section-copy mb-0">Si ya tienes cuenta, puedes acceder al area de pacientes para consultar disponibilidad, reservar o cancelar una cita <?= htmlspecialchars(public_delivery_text($appointment_delivery_mode)) ?>.</p>
+                        <p class="section-copy mb-0">Si ya tienes cuenta, puedes acceder al área de pacientes para consultar disponibilidad, reservar o cancelar una cita <?= htmlspecialchars(public_delivery_text($appointment_delivery_mode)) ?>.</p>
                     </div>
                     <div class="col-lg-5 text-lg-end">
                         <a href="<?= $is_logged_in ? 'dashboard.php' : 'login.php' ?>" class="btn btn-primary btn-lg">
-                            <?= $is_logged_in ? 'Abrir calendario' : 'Acceder al area de pacientes' ?>
+                            <?= $is_logged_in ? 'Abrir calendario' : 'Acceder al área de pacientes' ?>
                         </a>
                     </div>
                 </div>
@@ -206,8 +206,8 @@ function public_delivery_text($mode)
 
     <footer class="public-footer">
         <div class="container d-flex flex-column flex-md-row justify-content-between gap-2">
-            <span>&copy; <?= date('Y') ?> Stephanie Luis Baez</span>
-            <span>Psicologa sanitaria y neuropsicologa. Santa Cruz de Tenerife.</span>
+            <span>&copy; <?= date('Y') ?> Stephanie Luis Báez</span>
+            <span>Psicóloga sanitaria y neuropsicóloga. Santa Cruz de Tenerife.</span>
         </div>
     </footer>
 

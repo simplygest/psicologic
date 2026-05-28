@@ -39,6 +39,7 @@ function ensure_payment_settings_table($mysqli)
             appointment_end_time TIME NOT NULL DEFAULT '19:00:00',
             break_start_time TIME DEFAULT '15:00:00',
             break_end_time TIME DEFAULT '16:00:00',
+            available_weekdays VARCHAR(32) NOT NULL DEFAULT '1,2,3,4,5',
             email_provider ENUM('phpmailer', 'google') NOT NULL DEFAULT 'phpmailer',
             smtp_host VARCHAR(255) DEFAULT NULL,
             smtp_port INT UNSIGNED DEFAULT 587,
@@ -92,6 +93,7 @@ function ensure_payment_settings_table($mysqli)
         'appointment_end_time' => "ALTER TABLE payment_settings ADD appointment_end_time TIME NOT NULL DEFAULT '19:00:00' AFTER appointment_start_time",
         'break_start_time' => "ALTER TABLE payment_settings ADD break_start_time TIME DEFAULT '15:00:00' AFTER appointment_end_time",
         'break_end_time' => "ALTER TABLE payment_settings ADD break_end_time TIME DEFAULT '16:00:00' AFTER break_start_time",
+        'available_weekdays' => "ALTER TABLE payment_settings ADD available_weekdays VARCHAR(32) NOT NULL DEFAULT '1,2,3,4,5' AFTER break_end_time",
         'smtp_host' => "ALTER TABLE payment_settings ADD smtp_host VARCHAR(255) DEFAULT NULL AFTER email_provider",
         'smtp_port' => "ALTER TABLE payment_settings ADD smtp_port INT UNSIGNED DEFAULT 587 AFTER smtp_host",
         'smtp_username' => "ALTER TABLE payment_settings ADD smtp_username VARCHAR(255) DEFAULT NULL AFTER smtp_port",
@@ -165,6 +167,20 @@ function time_to_minutes($time)
 {
     [$hours, $minutes] = array_map('intval', explode(':', substr($time, 0, 5)));
     return ($hours * 60) + $minutes;
+}
+
+function normalize_available_weekdays($value)
+{
+    $selected = [];
+    foreach ((array) $value as $day) {
+        $day = (int) $day;
+        if ($day >= 1 && $day <= 6 && !in_array($day, $selected, true)) {
+            $selected[] = $day;
+        }
+    }
+
+    sort($selected);
+    return $selected ? implode(',', $selected) : '';
 }
 
 function save_uploaded_settings_image($file, $prefix)
@@ -299,6 +315,7 @@ if ($action === 'generate_invite') {
                appointment_delivery_mode,
                appointment_reminder_enabled,
                min_booking_notice_days, max_booking_notice_days, appointment_start_time, appointment_end_time, break_start_time, break_end_time,
+               available_weekdays,
                email_provider, smtp_host, smtp_port, smtp_username, smtp_secure, smtp_from_email, smtp_from_name,
                google_client_id, google_connected_email, google_redirect_uri, google_calendar_enabled, google_calendar_id,
                fastcron_reminder_cron_id,
@@ -335,6 +352,7 @@ if ($action === 'generate_invite') {
     $appointment_end_time = normalize_time_field($_POST['appointment_end_time'] ?? '', '19:00:00');
     $break_start_time = normalize_time_field($_POST['break_start_time'] ?? '', '');
     $break_end_time = normalize_time_field($_POST['break_end_time'] ?? '', '');
+    $available_weekdays = normalize_available_weekdays($_POST['available_weekdays'] ?? []);
     $email_provider = $_POST['email_provider'] ?? 'phpmailer';
     $smtp_host = trim($_POST['smtp_host'] ?? '');
     $smtp_port = (int) ($_POST['smtp_port'] ?? 587);
@@ -412,6 +430,11 @@ if ($action === 'generate_invite') {
 
     if ($break_start_time !== '' && time_to_minutes($break_start_time) >= time_to_minutes($break_end_time)) {
         echo json_encode(['success' => false, 'error' => 'El inicio del descanso debe ser anterior al fin']);
+        exit;
+    }
+
+    if ($available_weekdays === '') {
+        echo json_encode(['success' => false, 'error' => 'Selecciona al menos un día disponible para consulta']);
         exit;
     }
 
@@ -561,10 +584,10 @@ if ($action === 'generate_invite') {
     $break_end_db = $break_end_time === '' ? null : $break_end_time;
     $stmt = $mysqli->prepare("
         UPDATE payment_settings
-        SET appointment_start_time = ?, appointment_end_time = ?, break_start_time = ?, break_end_time = ?
+        SET appointment_start_time = ?, appointment_end_time = ?, break_start_time = ?, break_end_time = ?, available_weekdays = ?
         WHERE id = 1
     ");
-    $stmt->bind_param("ssss", $appointment_start_time, $appointment_end_time, $break_start_db, $break_end_db);
+    $stmt->bind_param("sssss", $appointment_start_time, $appointment_end_time, $break_start_db, $break_end_db, $available_weekdays);
     $stmt->execute();
 
     if ($uploaded_profile_image_path !== null) {

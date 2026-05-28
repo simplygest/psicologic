@@ -23,7 +23,8 @@ function ensure_schedule_setting_columns($mysqli)
         'appointment_start_time' => "ALTER TABLE payment_settings ADD appointment_start_time TIME NOT NULL DEFAULT '10:00:00'",
         'appointment_end_time' => "ALTER TABLE payment_settings ADD appointment_end_time TIME NOT NULL DEFAULT '19:00:00'",
         'break_start_time' => "ALTER TABLE payment_settings ADD break_start_time TIME DEFAULT '15:00:00'",
-        'break_end_time' => "ALTER TABLE payment_settings ADD break_end_time TIME DEFAULT '16:00:00'"
+        'break_end_time' => "ALTER TABLE payment_settings ADD break_end_time TIME DEFAULT '16:00:00'",
+        'available_weekdays' => "ALTER TABLE payment_settings ADD available_weekdays VARCHAR(32) NOT NULL DEFAULT '1,2,3,4,5'"
     ];
 
     foreach ($columns as $column => $sql) {
@@ -66,10 +67,24 @@ function schedule_slot_list($settings)
     return $slots;
 }
 
+function active_weekdays($settings)
+{
+    $raw = $settings['available_weekdays'] ?? '1,2,3,4,5';
+    $days = [];
+    foreach (explode(',', $raw) as $day) {
+        $day = (int) trim($day);
+        if ($day >= 1 && $day <= 6 && !in_array($day, $days, true)) {
+            $days[] = $day;
+        }
+    }
+    sort($days);
+    return $days ?: [1, 2, 3, 4, 5];
+}
+
 if ($action === 'get_week') {
     // start_date expected to be a Monday (YYYY-MM-DD)
     $start_date = $_GET['start_date'] ?? date('Y-m-d', strtotime('monday this week'));
-    $end_date = date('Y-m-d', strtotime($start_date . ' +4 days')); // Friday
+    $end_date = date('Y-m-d', strtotime($start_date . ' +5 days')); // Saturday when enabled
 
     // Get appointments in range
     $stmt = $mysqli->prepare("
@@ -127,6 +142,7 @@ if ($action === 'get_week') {
         'appointment_end_time' => '19:00:00',
         'break_start_time' => '15:00:00',
         'break_end_time' => '16:00:00',
+        'available_weekdays' => '1,2,3,4,5',
         'appointment_delivery_mode' => 'both'
     ];
     $settings_res = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
@@ -150,7 +166,7 @@ if ($action === 'get_week') {
         $settings_res = $mysqli->query("
             SELECT online_payment_enabled, appointment_price, min_booking_notice_days, max_booking_notice_days,
                    appointment_start_time, appointment_end_time, break_start_time, break_end_time,
-                   appointment_delivery_mode
+                   available_weekdays, appointment_delivery_mode
             FROM payment_settings
             WHERE id = 1
         ");
@@ -193,7 +209,7 @@ if ($action === 'get_week') {
         $settings_res = $mysqli->query("
             SELECT min_booking_notice_days, max_booking_notice_days,
                    appointment_start_time, appointment_end_time, break_start_time, break_end_time,
-                   appointment_delivery_mode
+                   available_weekdays, appointment_delivery_mode
             FROM payment_settings
             WHERE id = 1
         ");
@@ -221,6 +237,11 @@ if ($action === 'get_week') {
 
     if ($invert) {
         echo json_encode(['success' => false, 'error' => 'No puedes reservar en el pasado.']);
+        exit;
+    }
+
+    if (!empty($settings) && !in_array((int) $booking_date->format('N'), active_weekdays($settings), true)) {
+        echo json_encode(['success' => false, 'error' => 'El día seleccionado no está disponible para consulta.']);
         exit;
     }
     if ($min_booking_notice_days > 0 && $diff < $min_booking_notice_days && !$is_admin) {
