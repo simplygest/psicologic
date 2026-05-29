@@ -30,8 +30,12 @@ function ensure_payment_settings_table($mysqli)
             merchant_key VARCHAR(255) DEFAULT NULL,
             terminal VARCHAR(8) DEFAULT NULL,
             appointment_price DECIMAL(10,2) NOT NULL DEFAULT 70.00,
+            online_appointment_price DECIMAL(10,2) NOT NULL DEFAULT 70.00,
+            couple_appointment_price DECIMAL(10,2) NOT NULL DEFAULT 90.00,
+            online_couple_appointment_price DECIMAL(10,2) NOT NULL DEFAULT 90.00,
             admin_notification_email VARCHAR(255) DEFAULT NULL,
             appointment_delivery_mode ENUM('both', 'presencial', 'online') NOT NULL DEFAULT 'both',
+            available_session_types VARCHAR(32) NOT NULL DEFAULT 'individual',
             appointment_reminder_enabled TINYINT(1) NOT NULL DEFAULT 0,
             min_booking_notice_days INT UNSIGNED NOT NULL DEFAULT 2,
             max_booking_notice_days INT UNSIGNED NOT NULL DEFAULT 40,
@@ -61,12 +65,7 @@ function ensure_payment_settings_table($mysqli)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     ");
 
-    $columns = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'appointment_price'");
-    if ($columns->num_rows === 0) {
-        $mysqli->query("ALTER TABLE payment_settings ADD appointment_price DECIMAL(10,2) NOT NULL DEFAULT 70.00 AFTER terminal");
-    } else {
-        $mysqli->query("ALTER TABLE payment_settings ALTER appointment_price SET DEFAULT 70.00");
-    }
+    ensure_payment_settings_price_columns($mysqli);
 
     $mysqli->query("
         INSERT IGNORE INTO payment_settings
@@ -86,6 +85,7 @@ function ensure_payment_settings_table($mysqli)
         'primary_color' => "ALTER TABLE payment_settings ADD primary_color VARCHAR(7) NOT NULL DEFAULT '#8f7fba' AFTER landing_image_path",
         'show_profile_image_public' => "ALTER TABLE payment_settings ADD show_profile_image_public TINYINT(1) NOT NULL DEFAULT 0 AFTER profile_image_path",
         'appointment_delivery_mode' => "ALTER TABLE payment_settings ADD appointment_delivery_mode ENUM('both', 'presencial', 'online') NOT NULL DEFAULT 'both' AFTER admin_notification_email",
+        'available_session_types' => "ALTER TABLE payment_settings ADD available_session_types VARCHAR(32) NOT NULL DEFAULT 'individual' AFTER appointment_delivery_mode",
         'appointment_reminder_enabled' => "ALTER TABLE payment_settings ADD appointment_reminder_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER admin_notification_email",
         'min_booking_notice_days' => "ALTER TABLE payment_settings ADD min_booking_notice_days INT UNSIGNED NOT NULL DEFAULT 2 AFTER admin_notification_email",
         'max_booking_notice_days' => "ALTER TABLE payment_settings ADD max_booking_notice_days INT UNSIGNED NOT NULL DEFAULT 40 AFTER min_booking_notice_days",
@@ -181,6 +181,19 @@ function normalize_available_weekdays($value)
 
     sort($selected);
     return $selected ? implode(',', $selected) : '';
+}
+
+function normalize_available_session_types($value)
+{
+    $selected = ['individual'];
+    foreach ((array) $value as $type) {
+        $type = trim((string) $type);
+        if ($type === 'couple' && !in_array('couple', $selected, true)) {
+            $selected[] = 'couple';
+        }
+    }
+
+    return implode(',', $selected);
 }
 
 function save_uploaded_settings_image($file, $prefix)
@@ -311,8 +324,9 @@ if ($action === 'generate_invite') {
     ensure_payment_settings_table($mysqli);
 
     $res = $mysqli->query("
-        SELECT app_name, profile_image_path, landing_image_path, primary_color, show_profile_image_public, online_payment_enabled, environment, merchant_code, terminal, appointment_price, admin_notification_email,
-               appointment_delivery_mode,
+        SELECT app_name, profile_image_path, landing_image_path, primary_color, show_profile_image_public, online_payment_enabled, environment, merchant_code, terminal,
+               appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, admin_notification_email,
+               appointment_delivery_mode, available_session_types,
                appointment_reminder_enabled,
                min_booking_notice_days, max_booking_notice_days, appointment_start_time, appointment_end_time, break_start_time, break_end_time,
                available_weekdays,
@@ -341,8 +355,12 @@ if ($action === 'generate_invite') {
     $merchant_key = trim($_POST['merchant_key'] ?? '');
     $terminal = trim($_POST['terminal'] ?? '');
     $appointment_price = str_replace(',', '.', trim($_POST['appointment_price'] ?? '0'));
+    $online_appointment_price = str_replace(',', '.', trim($_POST['online_appointment_price'] ?? '70'));
+    $couple_appointment_price = str_replace(',', '.', trim($_POST['couple_appointment_price'] ?? '90'));
+    $online_couple_appointment_price = str_replace(',', '.', trim($_POST['online_couple_appointment_price'] ?? '90'));
     $admin_notification_email = trim($_POST['admin_notification_email'] ?? '');
     $appointment_delivery_mode = $_POST['appointment_delivery_mode'] ?? 'both';
+    $available_session_types = normalize_available_session_types($_POST['available_session_types'] ?? []);
     $posted_appointment_reminder_enabled = array_key_exists('appointment_reminder_enabled', $_POST)
         ? ($_POST['appointment_reminder_enabled'] === '1' ? 1 : 0)
         : null;
@@ -392,6 +410,24 @@ if ($action === 'generate_invite') {
         exit;
     }
     $appointment_price = (float) $appointment_price;
+
+    if (!is_numeric($online_appointment_price) || (float) $online_appointment_price < 0) {
+        echo json_encode(['success' => false, 'error' => 'Importe de cita online inválido']);
+        exit;
+    }
+    $online_appointment_price = (float) $online_appointment_price;
+
+    if (!is_numeric($couple_appointment_price) || (float) $couple_appointment_price < 0) {
+        echo json_encode(['success' => false, 'error' => 'Importe de cita de pareja inválido']);
+        exit;
+    }
+    $couple_appointment_price = (float) $couple_appointment_price;
+
+    if (!is_numeric($online_couple_appointment_price) || (float) $online_couple_appointment_price < 0) {
+        echo json_encode(['success' => false, 'error' => 'Importe de cita online de pareja inválido']);
+        exit;
+    }
+    $online_couple_appointment_price = (float) $online_couple_appointment_price;
 
     if ($admin_notification_email && !filter_var($admin_notification_email, FILTER_VALIDATE_EMAIL)) {
         echo json_encode(['success' => false, 'error' => 'Email de notificaciones inválido']);
@@ -482,8 +518,10 @@ if ($action === 'generate_invite') {
         ? $posted_appointment_reminder_enabled
         : (int) ($current_settings['appointment_reminder_enabled'] ?? 0);
 
-    if ($enabled && (!$merchant_code || !$terminal || (float) $appointment_price <= 0 || ($merchant_key === '' && !$has_merchant_key))) {
-        echo json_encode(['success' => false, 'error' => 'Código de comercio, clave, terminal e importe son obligatorios para activar el pago online.']);
+    $requires_online_price = in_array($appointment_delivery_mode, ['both', 'online'], true);
+    $requires_couple_price = strpos($available_session_types, 'couple') !== false;
+    if ($enabled && (!$merchant_code || !$terminal || (float) $appointment_price <= 0 || ($requires_online_price && (float) $online_appointment_price <= 0) || ($requires_couple_price && (float) $couple_appointment_price <= 0) || ($requires_online_price && $requires_couple_price && (float) $online_couple_appointment_price <= 0) || ($merchant_key === '' && !$has_merchant_key))) {
+        echo json_encode(['success' => false, 'error' => 'Código de comercio, clave, terminal e importes son obligatorios para activar el pago online.']);
         exit;
     }
 
@@ -551,23 +589,23 @@ if ($action === 'generate_invite') {
     if ($merchant_key !== '') {
         $stmt = $mysqli->prepare("
             UPDATE payment_settings
-            SET app_name = ?, online_payment_enabled = ?, environment = ?, merchant_code = ?, merchant_key = ?, terminal = ?, appointment_price = ?, admin_notification_email = ?,
+            SET app_name = ?, online_payment_enabled = ?, environment = ?, merchant_code = ?, merchant_key = ?, terminal = ?, appointment_price = ?, online_appointment_price = ?, couple_appointment_price = ?, online_couple_appointment_price = ?, admin_notification_email = ?,
                 appointment_reminder_enabled = ?, min_booking_notice_days = ?, max_booking_notice_days = ?,
                 email_provider = ?, smtp_host = ?, smtp_port = ?, smtp_username = ?, smtp_secure = ?, smtp_from_email = ?, smtp_from_name = ?,
                 google_client_id = ?, google_connected_email = ?, google_redirect_uri = ?, google_calendar_enabled = ?, google_calendar_id = ?
             WHERE id = 1
         ");
-        bind_params_dynamic($stmt, "sissssdsiiississsssssis", [$app_name, $enabled, $environment, $merchant_code, $merchant_key, $terminal, $appointment_price, $admin_notification_email, $appointment_reminder_enabled, $min_booking_notice_days, $max_booking_notice_days, $email_provider, $smtp_host, $smtp_port, $smtp_username, $smtp_secure, $smtp_from_email, $smtp_from_name, $google_client_id, $google_connected_email, $google_redirect_uri, $google_calendar_enabled, $google_calendar_id]);
+        bind_params_dynamic($stmt, "sissssddddsiiississsssssis", [$app_name, $enabled, $environment, $merchant_code, $merchant_key, $terminal, $appointment_price, $online_appointment_price, $couple_appointment_price, $online_couple_appointment_price, $admin_notification_email, $appointment_reminder_enabled, $min_booking_notice_days, $max_booking_notice_days, $email_provider, $smtp_host, $smtp_port, $smtp_username, $smtp_secure, $smtp_from_email, $smtp_from_name, $google_client_id, $google_connected_email, $google_redirect_uri, $google_calendar_enabled, $google_calendar_id]);
     } else {
         $stmt = $mysqli->prepare("
             UPDATE payment_settings
-            SET app_name = ?, online_payment_enabled = ?, environment = ?, merchant_code = ?, terminal = ?, appointment_price = ?, admin_notification_email = ?,
+            SET app_name = ?, online_payment_enabled = ?, environment = ?, merchant_code = ?, terminal = ?, appointment_price = ?, online_appointment_price = ?, couple_appointment_price = ?, online_couple_appointment_price = ?, admin_notification_email = ?,
                 appointment_reminder_enabled = ?, min_booking_notice_days = ?, max_booking_notice_days = ?,
                 email_provider = ?, smtp_host = ?, smtp_port = ?, smtp_username = ?, smtp_secure = ?, smtp_from_email = ?, smtp_from_name = ?,
                 google_client_id = ?, google_connected_email = ?, google_redirect_uri = ?, google_calendar_enabled = ?, google_calendar_id = ?
             WHERE id = 1
         ");
-        bind_params_dynamic($stmt, "sisssdsiiississsssssis", [$app_name, $enabled, $environment, $merchant_code, $terminal, $appointment_price, $admin_notification_email, $appointment_reminder_enabled, $min_booking_notice_days, $max_booking_notice_days, $email_provider, $smtp_host, $smtp_port, $smtp_username, $smtp_secure, $smtp_from_email, $smtp_from_name, $google_client_id, $google_connected_email, $google_redirect_uri, $google_calendar_enabled, $google_calendar_id]);
+        bind_params_dynamic($stmt, "sisssddddsiiississsssssis", [$app_name, $enabled, $environment, $merchant_code, $terminal, $appointment_price, $online_appointment_price, $couple_appointment_price, $online_couple_appointment_price, $admin_notification_email, $appointment_reminder_enabled, $min_booking_notice_days, $max_booking_notice_days, $email_provider, $smtp_host, $smtp_port, $smtp_username, $smtp_secure, $smtp_from_email, $smtp_from_name, $google_client_id, $google_connected_email, $google_redirect_uri, $google_calendar_enabled, $google_calendar_id]);
     }
 
     $stmt->execute();
@@ -578,6 +616,10 @@ if ($action === 'generate_invite') {
 
     $stmt = $mysqli->prepare("UPDATE payment_settings SET appointment_delivery_mode = ? WHERE id = 1");
     $stmt->bind_param("s", $appointment_delivery_mode);
+    $stmt->execute();
+
+    $stmt = $mysqli->prepare("UPDATE payment_settings SET available_session_types = ? WHERE id = 1");
+    $stmt->bind_param("s", $available_session_types);
     $stmt->execute();
 
     $break_start_db = $break_start_time === '' ? null : $break_start_time;

@@ -104,6 +104,14 @@ $profile_image_path = $branding['profile_image_path'];
             </select>
           </div>
 
+          <div id="serviceTypeSelect" class="mb-3 d-none text-start">
+            <label class="form-label" for="service-type">Tipo de sesión</label>
+            <select id="service-type" class="form-select">
+              <option value="individual">Individual</option>
+              <option value="couple">Pareja</option>
+            </select>
+          </div>
+
           <button class="btn btn-primary px-4" id="btn-confirm-action">Confirmar</button>
           <?php if (!$is_admin): ?>
             <div id="payment-options" class="mt-3 d-none">
@@ -173,6 +181,57 @@ $profile_image_path = $branding['profile_image_path'];
                     <option value="presencial">Solo presencial</option>
                     <option value="online">Solo online</option>
                   </select>
+                </div>
+
+                <hr class="my-4">
+                <div class="mb-4">
+                  <label class="form-label d-block">Servicios ofrecidos</label>
+                  <div class="row g-2">
+                    <div class="col-sm-6">
+                      <div class="form-check">
+                        <input class="form-check-input available-session-type" type="checkbox" id="available-session-individual" value="individual" checked disabled>
+                        <label class="form-check-label" for="available-session-individual">Sesión individual</label>
+                      </div>
+                    </div>
+                    <div class="col-sm-6">
+                      <div class="form-check">
+                        <input class="form-check-input available-session-type" type="checkbox" id="available-session-couple" value="couple">
+                        <label class="form-check-label" for="available-session-couple">Sesión de pareja</label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <hr class="my-4">
+                <div class="row">
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label" for="appointment-price">Precio individual presencial</label>
+                    <div class="input-group">
+                      <input type="number" class="form-control" id="appointment-price" min="0" step="0.01">
+                      <span class="input-group-text">€</span>
+                    </div>
+                  </div>
+                  <div class="col-md-6 mb-3" id="online-appointment-price-row">
+                    <label class="form-label" for="online-appointment-price">Precio individual online</label>
+                    <div class="input-group">
+                      <input type="number" class="form-control" id="online-appointment-price" min="0" step="0.01">
+                      <span class="input-group-text">€</span>
+                    </div>
+                  </div>
+                  <div class="col-md-6 mb-3 couple-price-row">
+                    <label class="form-label" for="couple-appointment-price">Precio pareja presencial</label>
+                    <div class="input-group">
+                      <input type="number" class="form-control" id="couple-appointment-price" min="0" step="0.01">
+                      <span class="input-group-text">€</span>
+                    </div>
+                  </div>
+                  <div class="col-md-6 mb-3 couple-price-row" id="online-couple-appointment-price-row">
+                    <label class="form-label" for="online-couple-appointment-price">Precio pareja online</label>
+                    <div class="input-group">
+                      <input type="number" class="form-control" id="online-couple-appointment-price" min="0" step="0.01">
+                      <span class="input-group-text">€</span>
+                    </div>
+                  </div>
                 </div>
 
                 <form id="add-closed-form" class="mb-4">
@@ -352,14 +411,6 @@ $profile_image_path = $branding['profile_image_path'];
                     <div class="mb-3">
                       <label class="form-label" for="merchant-terminal">Nº de Terminal</label>
                       <input type="text" class="form-control" id="merchant-terminal" autocomplete="off">
-                    </div>
-
-                    <div class="mb-3">
-                      <label class="form-label" for="appointment-price">Importe de la cita</label>
-                      <div class="input-group">
-                        <input type="number" class="form-control" id="appointment-price" min="0" step="0.01">
-                        <span class="input-group-text">€</span>
-                      </div>
                     </div>
 
                     <div class="mb-3">

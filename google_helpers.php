@@ -222,7 +222,7 @@ function google_create_calendar_event($mysqli, $appointment_id)
     }
 
     $stmt = $mysqli->prepare("
-        SELECT a.appointment_date, a.appointment_time, a.consultation_type, u.name, u.email, u.phone
+        SELECT a.appointment_date, a.appointment_time, a.consultation_type, a.service_type, u.name, u.email, u.phone
         FROM appointments a
         JOIN users u ON u.id = a.user_id
         WHERE a.id = ?
@@ -240,7 +240,8 @@ function google_create_calendar_event($mysqli, $appointment_id)
     $end->modify('+1 hour');
 
     $consultation_text = appointment_consultation_label($appointment['consultation_type'] ?? 'presencial');
-    $description = 'Paciente: ' . $appointment['name'] . "\nModalidad: " . $consultation_text;
+    $service_text = appointment_service_label($appointment['service_type'] ?? 'individual');
+    $description = 'Paciente: ' . $appointment['name'] . "\nServicio: " . $service_text . "\nModalidad: " . $consultation_text;
     if (!empty($appointment['phone'])) {
         $description .= "\nTeléfono: " . $appointment['phone'];
     }
@@ -249,7 +250,7 @@ function google_create_calendar_event($mysqli, $appointment_id)
     }
 
     $event = [
-        'summary' => 'Cita ' . $consultation_text . ' - ' . $appointment['name'],
+        'summary' => 'Cita ' . $service_text . ' ' . $consultation_text . ' - ' . $appointment['name'],
         'description' => $description,
         'start' => [
             'dateTime' => $start->format(DateTime::RFC3339),

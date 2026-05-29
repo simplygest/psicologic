@@ -2,6 +2,10 @@ let currentStartDate = getMonday(new Date());
 let PAYMENT_SETTINGS = {
     online_payment_enabled: 0,
     appointment_price: '70.00',
+    online_appointment_price: '70.00',
+    couple_appointment_price: '90.00',
+    online_couple_appointment_price: '90.00',
+    available_session_types: 'individual',
     min_booking_notice_days: 2,
     max_booking_notice_days: 40,
     appointment_start_time: '10:00:00',
@@ -158,8 +162,9 @@ function renderSlot(dateStr, timeStr, dayApps) {
     if (app) {
         let paymentBadge = getPaymentBadge(app);
         let consultationBadge = getConsultationBadge(app.consultation_type);
+        let serviceBadge = getServiceBadge(app.service_type);
         let payButton = canPayAppointment(app)
-            ? `<button class="btn btn-success slot-action-btn" onclick="event.stopPropagation(); openModal('${dateStr}', '${timeStr}', 'pay_own', '${app.id}');" title="Pagar cita"><i class="bi bi-credit-card"></i></button>`
+            ? `<button class="btn btn-success slot-action-btn" onclick="event.stopPropagation(); openModal('${dateStr}', '${timeStr}', 'pay_own', '${app.id}', '${app.service_type || 'individual'}', '${app.consultation_type || 'presencial'}');" title="Pagar cita"><i class="bi bi-credit-card"></i></button>`
             : '';
         if (IS_ADMIN) {
             cls = 'booked';
@@ -169,7 +174,7 @@ function renderSlot(dateStr, timeStr, dayApps) {
                         <span class="slot-label">${timeStr} - ${app.name}</span>
                     </div>
                     <div class="slot-meta-row">
-                        <span class="slot-badges">${consultationBadge}${paymentBadge}</span>
+                        <span class="slot-badges">${serviceBadge}${consultationBadge}${paymentBadge}</span>
                         <span class="slot-actions"><button class="btn btn-danger slot-action-btn" onclick="event.stopPropagation(); openModal('${dateStr}', '${timeStr}', 'cancel_admin', '${app.name}', '${app.email}', '${app.phone}');" title="Cancelar cita"><i class="bi bi-trash"></i></button></span>
                     </div>
                 </div>
@@ -184,7 +189,7 @@ function renderSlot(dateStr, timeStr, dayApps) {
                             <span class="slot-label">${timeStr} - Tu reserva</span>
                         </div>
                         <div class="slot-meta-row">
-                            <span class="slot-badges">${consultationBadge}${paymentBadge}</span>
+                            <span class="slot-badges">${serviceBadge}${consultationBadge}${paymentBadge}</span>
                             <span class="slot-actions">${payButton}<button class="btn btn-danger slot-action-btn" onclick="event.stopPropagation(); openModal('${dateStr}', '${timeStr}', 'cancel_own');" title="Cancelar cita"><i class="bi bi-trash"></i></button></span>
                         </div>
                     </div>
@@ -259,6 +264,13 @@ function getConsultationBadge(consultationType) {
     return ` <small class="consultation-badge ${cls}">${label}</small>`;
 }
 
+function getServiceBadge(serviceType) {
+    if (serviceType !== 'couple') {
+        return '';
+    }
+    return ' <small class="service-badge couple">Pareja</small>';
+}
+
 function canPayAppointment(app) {
     return !IS_ADMIN
         && app
@@ -278,6 +290,7 @@ function openModal(date, time, status, extraName = '', extraEmail = '', extraPho
     $('#modalStatus').val(status);
     $('#payment-options').addClass('d-none');
     $('#consultationTypeSelect').addClass('d-none');
+    $('#serviceTypeSelect').addClass('d-none');
     currentPaymentAppointmentId = null;
     $('#btn-confirm-action').removeClass('d-none').prop('disabled', false);
 
@@ -293,6 +306,10 @@ function openModal(date, time, status, extraName = '', extraEmail = '', extraPho
             $('#consultation-type').val('presencial');
             $('#consultationTypeSelect').removeClass('d-none');
         }
+        if (isCoupleServiceEnabled()) {
+            $('#service-type').val('individual');
+            $('#serviceTypeSelect').removeClass('d-none');
+        }
         $('#btn-confirm-action').removeClass('btn-danger').addClass('btn-primary').text('Reservar');
     } else if (status === 'cancel_admin') {
         $('#modalTitle').text(`Cancelar cita: ${formatDisplayDate(date)} a las ${time}`);
@@ -306,7 +323,7 @@ function openModal(date, time, status, extraName = '', extraEmail = '', extraPho
     } else if (status === 'pay_own') {
         currentPaymentAppointmentId = parseInt(extraName, 10);
         $('#modalTitle').text(`Pagar cita: ${formatDisplayDate(date)} a las ${time}`);
-        $('#modalDesc').html(`Tu cita está reservada correctamente.<br><br>Elige cómo quieres pagarla (${PAYMENT_SETTINGS.appointment_price} €).`);
+        $('#modalDesc').html(`Tu cita está reservada correctamente.<br><br>Elige cómo quieres pagarla (${appointmentPriceForType(extraPhone, extraEmail)} €).`);
         $('#btn-confirm-action').addClass('d-none');
         $('#payment-options-text').text('');
         $('#payment-options').removeClass('d-none');
@@ -452,6 +469,15 @@ $(document).ready(function () {
         toggleCalendarSettings();
     });
 
+    $('#appointment-delivery-mode').change(function () {
+        togglePriceRows();
+    });
+
+    $('.available-session-type').change(function () {
+        $('#available-session-individual').prop('checked', true);
+        togglePriceRows();
+    });
+
     $('#profile-image').change(function () {
         const file = this.files && this.files[0] ? this.files[0] : null;
         if (!file) return;
@@ -512,7 +538,8 @@ function bookAppointment() {
     let data = {
         date: $('#modalDate').val(),
         time: $('#modalTime').val(),
-        consultation_type: selectedConsultationType()
+        consultation_type: selectedConsultationType(),
+        service_type: selectedServiceType()
     };
 
     if (IS_ADMIN) {
@@ -540,7 +567,7 @@ function bookAppointment() {
             if (!IS_ADMIN && PAYMENT_SETTINGS.online_payment_enabled == 1 && res.appointment_id) {
                 currentPaymentAppointmentId = res.appointment_id;
                 $('#modalTitle').text('Cita reservada');
-                $('#modalDesc').html(`Tu cita ${consultationTypeLabel(data.consultation_type).toLowerCase()} ha quedado reservada correctamente.<br><br>Si quieres, puedes pagarla ahora (${PAYMENT_SETTINGS.appointment_price} €).`);
+                $('#modalDesc').html(`Tu cita ${serviceTypeLabel(data.service_type).toLowerCase()} ${consultationTypeLabel(data.consultation_type).toLowerCase()} ha quedado reservada correctamente.<br><br>Si quieres, puedes pagarla ahora (${appointmentPriceForType(data.consultation_type, data.service_type)} €).`);
                 $('#btn-confirm-action').addClass('d-none');
                 $('#payment-options-text').text('');
                 $('#payment-options').removeClass('d-none');
@@ -567,8 +594,35 @@ function selectedConsultationType() {
     return $('#consultation-type').val() === 'online' ? 'online' : 'presencial';
 }
 
+function selectedServiceType() {
+    return isCoupleServiceEnabled() && $('#service-type').val() === 'couple' ? 'couple' : 'individual';
+}
+
 function consultationTypeLabel(type) {
     return type === 'online' ? 'Online' : 'Presencial';
+}
+
+function serviceTypeLabel(type) {
+    return type === 'couple' ? 'Pareja' : 'Individual';
+}
+
+function isCoupleServiceEnabled() {
+    return String(PAYMENT_SETTINGS.available_session_types || 'individual').split(',').includes('couple');
+}
+
+function appointmentPriceForType(consultationType, serviceType = 'individual') {
+    let rawPrice = PAYMENT_SETTINGS.appointment_price || '70.00';
+    if (serviceType === 'couple') {
+        rawPrice = consultationType === 'online'
+            ? (PAYMENT_SETTINGS.online_couple_appointment_price || PAYMENT_SETTINGS.couple_appointment_price || '90.00')
+            : (PAYMENT_SETTINGS.couple_appointment_price || '90.00');
+    } else if (consultationType === 'online') {
+        rawPrice = PAYMENT_SETTINGS.online_appointment_price || PAYMENT_SETTINGS.appointment_price || '70.00';
+    }
+    const price = parseFloat(String(rawPrice).replace(',', '.'));
+    return Number.isFinite(price)
+        ? price.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : rawPrice;
 }
 
 function setAvailableWeekdays(value) {
@@ -579,6 +633,14 @@ function setAvailableWeekdays(value) {
     activeDays.forEach(day => {
         $(`.available-weekday[value="${day}"]`).prop('checked', true);
     });
+}
+
+function setAvailableSessionTypes(value) {
+    const activeTypes = String(value || 'individual')
+        .split(',')
+        .map(type => type.trim());
+    $('#available-session-individual').prop('checked', true);
+    $('#available-session-couple').prop('checked', activeTypes.includes('couple'));
 }
 
 function cancelAppointment() {
@@ -774,7 +836,11 @@ function loadPaymentSettings() {
             $('#payment-environment').val(settings.environment || 'sandbox');
             $('#merchant-code').val(settings.merchant_code || '');
             $('#merchant-terminal').val(settings.terminal || '');
+            setAvailableSessionTypes(settings.available_session_types || 'individual');
             $('#appointment-price').val(settings.appointment_price || '70.00');
+            $('#online-appointment-price').val(settings.online_appointment_price || settings.appointment_price || '70.00');
+            $('#couple-appointment-price').val(settings.couple_appointment_price || '90.00');
+            $('#online-couple-appointment-price').val(settings.online_couple_appointment_price || settings.couple_appointment_price || '90.00');
             $('#min-booking-notice-days').val(settings.min_booking_notice_days !== undefined && settings.min_booking_notice_days !== null ? settings.min_booking_notice_days : '2');
             $('#max-booking-notice-days').val(settings.max_booking_notice_days || '0');
             $('#appointment-start-time').val((settings.appointment_start_time || '10:00').slice(0, 5));
@@ -814,6 +880,7 @@ function loadPaymentSettings() {
             $('#google-client-secret-status').text(settings.has_google_client_secret == 1
                 ? 'Ya hay un Client Secret guardado. Escribe uno nuevo solo si quieres cambiarlo.'
                 : 'Todavía no hay Client Secret guardado.');
+            togglePriceRows();
         },
         error: function () {
             showPaymentSettingsAlert('danger', 'Error de conexión al cargar la configuración.');
@@ -833,7 +900,18 @@ function setFieldBlockEnabled(selector, enabled) {
 }
 
 function togglePaymentSettings() {
-    setFieldBlockEnabled('#payment-config-fields', $('#online-payment-enabled').is(':checked'));
+    const enabled = $('#online-payment-enabled').is(':checked');
+    const gatewayFields = '#payment-environment, #merchant-code, #merchant-terminal, #merchant-key';
+    $(gatewayFields).prop('disabled', !enabled).closest('.mb-3').toggleClass('settings-disabled', !enabled);
+    togglePriceRows();
+}
+
+function togglePriceRows() {
+    const deliveryMode = $('#appointment-delivery-mode').val() || 'both';
+    const hasCouple = $('#available-session-couple').is(':checked');
+    $('#online-appointment-price-row').toggle(deliveryMode !== 'presencial');
+    $('.couple-price-row').toggle(hasCouple);
+    $('#online-couple-appointment-price-row').toggle(hasCouple && deliveryMode !== 'presencial');
 }
 
 function toggleCalendarSettings() {
@@ -874,6 +952,10 @@ function savePaymentSettings(alertSelector = '#payment-settings-alert', onSucces
     formData.append('app_name', $('#app-name').val().trim());
     formData.append('primary_color', $('#primary-color-text').val().trim());
     formData.append('appointment_delivery_mode', $('#appointment-delivery-mode').val());
+    formData.append('available_session_types[]', 'individual');
+    if ($('#available-session-couple').is(':checked')) {
+        formData.append('available_session_types[]', 'couple');
+    }
     formData.append('show_profile_image_public', $('#show-profile-image-public').is(':checked') ? '1' : '0');
     if ($('#profile-image')[0] && $('#profile-image')[0].files[0]) {
         formData.append('profile_image', $('#profile-image')[0].files[0]);
@@ -885,6 +967,9 @@ function savePaymentSettings(alertSelector = '#payment-settings-alert', onSucces
     formData.append('merchant_code', $('#merchant-code').val().trim());
     formData.append('terminal', $('#merchant-terminal').val().trim());
     formData.append('appointment_price', $('#appointment-price').val().trim());
+    formData.append('online_appointment_price', $('#online-appointment-price').val().trim());
+    formData.append('couple_appointment_price', $('#couple-appointment-price').val().trim());
+    formData.append('online_couple_appointment_price', $('#online-couple-appointment-price').val().trim());
     formData.append('min_booking_notice_days', $('#min-booking-notice-days').val().trim());
     formData.append('max_booking_notice_days', $('#max-booking-notice-days').val().trim());
     formData.append('appointment_start_time', $('#appointment-start-time').val().trim());

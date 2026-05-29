@@ -253,6 +253,7 @@ function notify_appointment_cancelled($mysqli, $appointment)
     $patient_email = $appointment['email'] ?? '';
     $appointment_text = appointment_label($appointment['appointment_date'], $appointment['appointment_time']);
     $consultation_text = appointment_consultation_label($appointment['consultation_type'] ?? 'presencial');
+    $service_text = appointment_service_label($appointment['service_type'] ?? 'individual');
     $payment_status = $appointment['payment_status'] ?? 'pending';
     $payment_text = appointment_payment_label($payment_status);
     $paid_warning = $payment_status === 'paid'
@@ -265,6 +266,7 @@ function notify_appointment_cancelled($mysqli, $appointment)
         '<p>Se ha cancelado una cita.</p>' .
         '<p><b>Paciente:</b> ' . htmlspecialchars($patient_name) . '<br>' .
         '<b>Fecha:</b> ' . htmlspecialchars($appointment_text) . '<br>' .
+        '<b>Servicio:</b> ' . htmlspecialchars($service_text) . '<br>' .
         '<b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '<br>' .
         '<b>Estado del pago:</b> ' . htmlspecialchars($payment_text) . '</p>' .
         $paid_warning,
@@ -276,7 +278,8 @@ function notify_appointment_cancelled($mysqli, $appointment)
             $patient_email,
             'Cita cancelada',
             '<p>Hola ' . htmlspecialchars($patient_name) . ',</p>' .
-            '<p>Tu cita ' . htmlspecialchars(strtolower($consultation_text)) . ' para el ' . htmlspecialchars($appointment_text) . ' ha sido cancelada correctamente.</p>' .
+            '<p>Tu cita ' . htmlspecialchars(strtolower($service_text)) . ' ' . htmlspecialchars(strtolower($consultation_text)) . ' para el ' . htmlspecialchars($appointment_text) . ' ha sido cancelada correctamente.</p>' .
+            '<p><b>Servicio:</b> ' . htmlspecialchars($service_text) . '</p>' .
             '<p><b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '</p>',
             null,
             $mysqli

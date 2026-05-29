@@ -43,6 +43,14 @@ function ensure_delivery_setting_column($mysqli)
     }
 }
 
+function ensure_session_setting_column($mysqli)
+{
+    $column_res = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'available_session_types'");
+    if ($column_res && $column_res->num_rows === 0) {
+        $mysqli->query("ALTER TABLE payment_settings ADD available_session_types VARCHAR(32) NOT NULL DEFAULT 'individual' AFTER appointment_delivery_mode");
+    }
+}
+
 function minutes_from_time($time)
 {
     [$hours, $minutes] = array_map('intval', explode(':', substr($time, 0, 5)));
@@ -90,7 +98,7 @@ if ($action === 'get_week') {
     $stmt = $mysqli->prepare("
         SELECT a.id, a.appointment_date, a.appointment_time, a.user_id,
                COALESCE(a.payment_status, 'pending') AS payment_status,
-               a.payment_method, a.paid_at, a.consultation_type, u.name, u.email, u.phone 
+               a.payment_method, a.paid_at, a.consultation_type, a.service_type, u.name, u.email, u.phone 
         FROM appointments a
         JOIN users u ON a.user_id = u.id
         WHERE a.appointment_date BETWEEN ? AND ? AND a.status = 'booked'
@@ -129,6 +137,7 @@ if ($action === 'get_week') {
             'payment_method' => $app['payment_method'] ?? null,
             'paid_at' => $app['paid_at'] ?? null,
             'consultation_type' => $app['consultation_type'] ?? 'presencial',
+            'service_type' => $app['service_type'] ?? 'individual',
             'is_own' => ($app['user_id'] == $user_id)
         ];
     }
@@ -136,6 +145,10 @@ if ($action === 'get_week') {
     $payment_settings = [
         'online_payment_enabled' => 0,
         'appointment_price' => '70.00',
+        'online_appointment_price' => '70.00',
+        'couple_appointment_price' => '90.00',
+        'online_couple_appointment_price' => '90.00',
+        'available_session_types' => 'individual',
         'min_booking_notice_days' => 2,
         'max_booking_notice_days' => MAX_BOOKING_DAYS,
         'appointment_start_time' => '10:00:00',
@@ -147,10 +160,7 @@ if ($action === 'get_week') {
     ];
     $settings_res = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
     if ($settings_res->num_rows > 0) {
-        $price_column = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'appointment_price'");
-        if ($price_column->num_rows === 0) {
-            $mysqli->query("ALTER TABLE payment_settings ADD appointment_price DECIMAL(10,2) NOT NULL DEFAULT 70.00 AFTER terminal");
-        }
+        ensure_payment_settings_price_columns($mysqli);
         $limit_columns = [
             'min_booking_notice_days' => "ALTER TABLE payment_settings ADD min_booking_notice_days INT UNSIGNED NOT NULL DEFAULT 2",
             'max_booking_notice_days' => "ALTER TABLE payment_settings ADD max_booking_notice_days INT UNSIGNED NOT NULL DEFAULT 40"
@@ -163,8 +173,10 @@ if ($action === 'get_week') {
         }
         ensure_schedule_setting_columns($mysqli);
         ensure_delivery_setting_column($mysqli);
+        ensure_session_setting_column($mysqli);
         $settings_res = $mysqli->query("
-            SELECT online_payment_enabled, appointment_price, min_booking_notice_days, max_booking_notice_days,
+            SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, available_session_types,
+                   min_booking_notice_days, max_booking_notice_days,
                    appointment_start_time, appointment_end_time, break_start_time, break_end_time,
                    available_weekdays, appointment_delivery_mode
             FROM payment_settings
@@ -181,6 +193,7 @@ if ($action === 'get_week') {
     $date = $_POST['date'] ?? '';
     $time = $_POST['time'] ?? '';
     $consultation_type = $_POST['consultation_type'] ?? '';
+    $service_type = $_POST['service_type'] ?? 'individual';
     $target_user_id = $is_admin ? ($_POST['user_id'] ?? '') : $user_id;
 
     if (!$date || !$time || !$target_user_id) {
@@ -206,10 +219,11 @@ if ($action === 'get_week') {
         }
         ensure_schedule_setting_columns($mysqli);
         ensure_delivery_setting_column($mysqli);
+        ensure_session_setting_column($mysqli);
         $settings_res = $mysqli->query("
             SELECT min_booking_notice_days, max_booking_notice_days,
                    appointment_start_time, appointment_end_time, break_start_time, break_end_time,
-                   available_weekdays, appointment_delivery_mode
+                   available_weekdays, appointment_delivery_mode, available_session_types
             FROM payment_settings
             WHERE id = 1
         ");
@@ -226,6 +240,13 @@ if ($action === 'get_week') {
         $consultation_type = 'presencial';
     } elseif (!in_array($consultation_type, ['presencial', 'online'], true)) {
         echo json_encode(['success' => false, 'error' => 'Selecciona si la cita será presencial u online.']);
+        exit;
+    }
+
+    $service_type = $service_type === 'couple' ? 'couple' : 'individual';
+    $available_session_types = explode(',', $settings['available_session_types'] ?? 'individual');
+    if ($service_type === 'couple' && !in_array('couple', $available_session_types, true)) {
+        echo json_encode(['success' => false, 'error' => 'La sesión de pareja no está disponible.']);
         exit;
     }
 
@@ -273,8 +294,8 @@ if ($action === 'get_week') {
     }
 
     try {
-        $stmt = $mysqli->prepare("INSERT INTO appointments (user_id, appointment_date, appointment_time, consultation_type, status) VALUES (?, ?, ?, ?, 'booked')");
-        $stmt->bind_param("isss", $target_user_id, $date, $time, $consultation_type);
+        $stmt = $mysqli->prepare("INSERT INTO appointments (user_id, appointment_date, appointment_time, consultation_type, service_type, status) VALUES (?, ?, ?, ?, ?, 'booked')");
+        $stmt->bind_param("issss", $target_user_id, $date, $time, $consultation_type, $service_type);
         $stmt->execute();
         $appointment_id = $mysqli->insert_id;
         $cancel_token = bin2hex(random_bytes(32));
@@ -288,6 +309,18 @@ if ($action === 'get_week') {
         $patient = $stmt->get_result()->fetch_assoc();
         $appointment_text = appointment_label($date, $time);
         $consultation_text = appointment_consultation_label($consultation_type);
+        $service_text = appointment_service_label($service_type);
+        $price_settings = null;
+        $appointment_price_text = null;
+        $settings_res = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
+        if ($settings_res->num_rows > 0) {
+            ensure_payment_settings_price_columns($mysqli);
+            $settings_res = $mysqli->query("SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price FROM payment_settings WHERE id = 1");
+            $price_settings = $settings_res->fetch_assoc();
+            if ($price_settings) {
+                $appointment_price_text = format_appointment_price(appointment_price_for_type($price_settings, $consultation_type, $service_type));
+            }
+        }
 
         try {
             google_create_calendar_event($mysqli, $appointment_id);
@@ -301,7 +334,9 @@ if ($action === 'get_week') {
             '<p>Se ha reservado una nueva cita.</p>' .
             '<p><b>Paciente:</b> ' . htmlspecialchars($patient['name'] ?? '') . '<br>' .
             '<b>Fecha:</b> ' . htmlspecialchars($appointment_text) . '<br>' .
+            '<b>Servicio:</b> ' . htmlspecialchars($service_text) . '<br>' .
             '<b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '<br>' .
+            ($appointment_price_text !== null ? '<b>Importe:</b> ' . htmlspecialchars($appointment_price_text) . ' &euro;<br>' : '') .
             '<b>Email:</b> ' . htmlspecialchars($patient['email'] ?? 'Sin email') . '<br>' .
             '<b>Teléfono:</b> ' . htmlspecialchars($patient['phone'] ?? 'Sin teléfono') . '</p>',
             $patient['email'] ?? null
@@ -309,21 +344,18 @@ if ($action === 'get_week') {
 
         if (!empty($patient['email'])) {
             $payment_note = '<p>Recuerda que puedes pagar directamente en la consulta.</p>';
-            $settings_res = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
-            if ($settings_res->num_rows > 0) {
-                $settings_res = $mysqli->query("SELECT online_payment_enabled FROM payment_settings WHERE id = 1");
-                $settings = $settings_res->fetch_assoc();
-                if ($settings && (int) $settings['online_payment_enabled'] === 1) {
-                    $payment_note = '<p><b>Importante:</b> este email confirma la reserva de la cita, pero no confirma el pago. Recibirás otro email cuando el pago se complete correctamente.</p>';
-                }
+            if ($price_settings && (int) $price_settings['online_payment_enabled'] === 1) {
+                $payment_note = '<p><b>Importante:</b> este email confirma la reserva de la cita, pero no confirma el pago. Recibirás otro email cuando el pago se complete correctamente.</p>';
             }
 
             send_app_email(
                 $patient['email'],
                 'Cita reservada',
                 '<p>Hola ' . htmlspecialchars($patient['name']) . ',</p>' .
-                '<p>Tu cita ' . htmlspecialchars(strtolower($consultation_text)) . ' para el ' . htmlspecialchars($appointment_text) . ' ha quedado reservada correctamente.</p>' .
+                '<p>Tu cita ' . htmlspecialchars(strtolower($service_text)) . ' ' . htmlspecialchars(strtolower($consultation_text)) . ' para el ' . htmlspecialchars($appointment_text) . ' ha quedado reservada correctamente.</p>' .
+                '<p><b>Servicio:</b> ' . htmlspecialchars($service_text) . '</p>' .
                 '<p><b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '</p>' .
+                ($appointment_price_text !== null ? '<p><b>Importe:</b> ' . htmlspecialchars($appointment_price_text) . ' &euro;</p>' : '') .
                 $payment_note .
                 '<p>Por favor, si no puedes asistir te rogamos gestionar tu cita directamente en la web.</p>' .
                 '<p><a href="' . htmlspecialchars(app_public_base_url() . 'cancelar_cita.php?t=' . $cancel_token) . '">Gestionar reserva</a></p>',
@@ -342,7 +374,7 @@ if ($action === 'get_week') {
     $time = $_POST['time'] ?? '';
 
     $lookup_sql = "
-        SELECT a.id, a.appointment_date, a.appointment_time, a.consultation_type,
+        SELECT a.id, a.appointment_date, a.appointment_time, a.consultation_type, a.service_type,
                COALESCE(a.payment_status, 'pending') AS payment_status,
                u.name, u.email
         FROM appointments a

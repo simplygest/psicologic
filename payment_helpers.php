@@ -10,7 +10,8 @@ function ensure_appointment_payment_columns($mysqli)
         'google_calendar_event_id' => "ALTER TABLE appointments ADD google_calendar_event_id VARCHAR(255) DEFAULT NULL",
         'cancel_token' => "ALTER TABLE appointments ADD cancel_token VARCHAR(64) DEFAULT NULL",
         'reminder_sent_at' => "ALTER TABLE appointments ADD reminder_sent_at DATETIME DEFAULT NULL",
-        'consultation_type' => "ALTER TABLE appointments ADD consultation_type VARCHAR(16) NOT NULL DEFAULT 'presencial'"
+        'consultation_type' => "ALTER TABLE appointments ADD consultation_type VARCHAR(16) NOT NULL DEFAULT 'presencial'",
+        'service_type' => "ALTER TABLE appointments ADD service_type VARCHAR(16) NOT NULL DEFAULT 'individual'"
     ];
 
     foreach ($columns as $column => $sql) {
@@ -52,6 +53,61 @@ function ensure_payment_attempts_table($mysqli)
             INDEX idx_payment_attempts_user (user_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     ");
+}
+
+function ensure_payment_settings_price_columns($mysqli)
+{
+    $table = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
+    if (!$table || $table->num_rows === 0) {
+        return;
+    }
+
+    $columns = [
+        'appointment_price' => "ALTER TABLE payment_settings ADD appointment_price DECIMAL(10,2) NOT NULL DEFAULT 70.00 AFTER terminal",
+        'online_appointment_price' => "ALTER TABLE payment_settings ADD online_appointment_price DECIMAL(10,2) NOT NULL DEFAULT 70.00 AFTER appointment_price",
+        'couple_appointment_price' => "ALTER TABLE payment_settings ADD couple_appointment_price DECIMAL(10,2) NOT NULL DEFAULT 90.00 AFTER online_appointment_price",
+        'online_couple_appointment_price' => "ALTER TABLE payment_settings ADD online_couple_appointment_price DECIMAL(10,2) NOT NULL DEFAULT 90.00 AFTER couple_appointment_price"
+    ];
+
+    foreach ($columns as $column => $sql) {
+        $res = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE '$column'");
+        if ($res && $res->num_rows === 0) {
+            $mysqli->query($sql);
+        }
+    }
+
+    $mysqli->query("ALTER TABLE payment_settings ALTER appointment_price SET DEFAULT 70.00");
+    $mysqli->query("ALTER TABLE payment_settings ALTER online_appointment_price SET DEFAULT 70.00");
+    $mysqli->query("ALTER TABLE payment_settings ALTER couple_appointment_price SET DEFAULT 90.00");
+    $mysqli->query("ALTER TABLE payment_settings ALTER online_couple_appointment_price SET DEFAULT 90.00");
+}
+
+function appointment_price_for_type($settings, $consultation_type, $service_type = 'individual')
+{
+    $default_price = isset($settings['appointment_price']) ? (float) $settings['appointment_price'] : 70.00;
+    if ($service_type === 'couple') {
+        if ($consultation_type === 'online') {
+            return isset($settings['online_couple_appointment_price']) ? (float) $settings['online_couple_appointment_price'] : (isset($settings['couple_appointment_price']) ? (float) $settings['couple_appointment_price'] : 90.00);
+        }
+
+        return isset($settings['couple_appointment_price']) ? (float) $settings['couple_appointment_price'] : 90.00;
+    }
+
+    if ($consultation_type === 'online') {
+        return isset($settings['online_appointment_price']) ? (float) $settings['online_appointment_price'] : $default_price;
+    }
+
+    return $default_price;
+}
+
+function appointment_service_label($service_type)
+{
+    return $service_type === 'couple' ? 'Pareja' : 'Individual';
+}
+
+function format_appointment_price($price)
+{
+    return number_format((float) $price, 2, ',', '.');
 }
 
 function format_payment_amount($amount_cents)

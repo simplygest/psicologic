@@ -43,7 +43,7 @@ ensure_appointment_payment_columns($mysqli);
 
 $lookup_where = $cancel_token ? 'a.cancel_token = ?' : 'a.id = ?';
 $stmt = $mysqli->prepare("
-    SELECT a.id, a.user_id, a.appointment_date, a.appointment_time, a.consultation_type,
+    SELECT a.id, a.user_id, a.appointment_date, a.appointment_time, a.consultation_type, a.service_type,
            COALESCE(a.payment_status, 'pending') AS payment_status,
            u.name
     FROM appointments a
@@ -76,13 +76,10 @@ if ($settings_table->num_rows === 0) {
     exit;
 }
 
-$price_column = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'appointment_price'");
-if ($price_column->num_rows === 0) {
-    $mysqli->query("ALTER TABLE payment_settings ADD appointment_price DECIMAL(10,2) NOT NULL DEFAULT 70.00 AFTER terminal");
-}
+ensure_payment_settings_price_columns($mysqli);
 
 $settings_res = $mysqli->query("
-    SELECT online_payment_enabled, environment, merchant_code, merchant_key, terminal, appointment_price
+    SELECT online_payment_enabled, environment, merchant_code, merchant_key, terminal, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price
     FROM payment_settings
     WHERE id = 1
 ");
@@ -93,12 +90,14 @@ if (!$settings || (int) $settings['online_payment_enabled'] !== 1) {
     exit;
 }
 
-if (!$settings['merchant_code'] || !$settings['merchant_key'] || !$settings['terminal'] || (float) $settings['appointment_price'] <= 0) {
+$appointment_price = appointment_price_for_type($settings, $appointment['consultation_type'] ?? 'presencial', $appointment['service_type'] ?? 'individual');
+
+if (!$settings['merchant_code'] || !$settings['merchant_key'] || !$settings['terminal'] || (float) $appointment_price <= 0) {
     echo json_encode(['success' => false, 'error' => 'La configuración de Redsys está incompleta']);
     exit;
 }
 
-$amount = number_format((float) $settings['appointment_price'], 2, '.', '');
+$amount = number_format((float) $appointment_price, 2, '.', '');
 $amount_cents = (int) str_replace('.', '', $amount);
 $order = sprintf('%04d%06d', $appointment_id % 10000, random_int(0, 999999));
 $token = hash('sha256', $appointment_id . '|' . $user_id . '|' . $order . '|' . $amount_cents);
@@ -126,7 +125,7 @@ $url_pago = $settings['environment'] === 'sandbox'
 
 $url_ok = $base_url . 'respuestaredsysok.php?t=' . urlencode($token);
 $url_ko = $base_url . 'respuestaredsysko.php?t=' . urlencode($token);
-$description = 'Cita ' . (($appointment['consultation_type'] ?? 'presencial') === 'online' ? 'online' : 'presencial') . ' ' . date('d/m/Y', strtotime($appointment['appointment_date'])) . ' ' . date('H:i', strtotime($appointment['appointment_time']));
+$description = 'Cita ' . (($appointment['service_type'] ?? 'individual') === 'couple' ? 'pareja' : 'individual') . ' ' . (($appointment['consultation_type'] ?? 'presencial') === 'online' ? 'online' : 'presencial') . ' ' . date('d/m/Y', strtotime($appointment['appointment_date'])) . ' ' . date('H:i', strtotime($appointment['appointment_time']));
 
 $redsys = new RedsysAPI();
 $redsys->setParameter('DS_MERCHANT_AMOUNT', (string) $amount_cents);

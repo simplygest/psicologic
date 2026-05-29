@@ -17,7 +17,7 @@ $cancelled = false;
 
 if ($token) {
     $stmt = $mysqli->prepare("
-        SELECT a.id, a.appointment_date, a.appointment_time, a.status, a.consultation_type,
+        SELECT a.id, a.appointment_date, a.appointment_time, a.status, a.consultation_type, a.service_type,
                COALESCE(a.payment_status, 'pending') AS payment_status,
                a.payment_method, u.name, u.email
         FROM appointments a
@@ -52,10 +52,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$payment_settings = ['online_payment_enabled' => 0, 'appointment_price' => '70.00'];
+$payment_settings = ['online_payment_enabled' => 0, 'appointment_price' => '70.00', 'online_appointment_price' => '70.00', 'couple_appointment_price' => '90.00', 'online_couple_appointment_price' => '90.00'];
 $settings_res = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
 if ($settings_res->num_rows > 0) {
-    $settings_res = $mysqli->query("SELECT online_payment_enabled, appointment_price FROM payment_settings WHERE id = 1");
+    ensure_payment_settings_price_columns($mysqli);
+    $settings_res = $mysqli->query("SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price FROM payment_settings WHERE id = 1");
     if ($settings = $settings_res->fetch_assoc()) {
         $payment_settings = $settings;
     }
@@ -81,6 +82,16 @@ function payment_status_label($appointment)
 function consultation_type_label($appointment)
 {
     return ($appointment['consultation_type'] ?? 'presencial') === 'online' ? 'Online' : 'Presencial';
+}
+
+function service_type_label($appointment)
+{
+    return appointment_service_label($appointment['service_type'] ?? 'individual');
+}
+
+function current_appointment_price($settings, $appointment)
+{
+    return appointment_price_for_type($settings, $appointment['consultation_type'] ?? 'presencial', $appointment['service_type'] ?? 'individual');
 }
 ?>
 <!DOCTYPE html>
@@ -116,7 +127,9 @@ function consultation_type_label($appointment)
                             <li class="list-group-item"><b>Paciente:</b> <?= htmlspecialchars($appointment['name']) ?></li>
                             <li class="list-group-item"><b>Día:</b> <?= htmlspecialchars(date('d/m/Y', strtotime($appointment['appointment_date']))) ?></li>
                             <li class="list-group-item"><b>Hora:</b> <?= htmlspecialchars(date('H:i', strtotime($appointment['appointment_time']))) ?></li>
+                            <li class="list-group-item"><b>Servicio:</b> <?= htmlspecialchars(service_type_label($appointment)) ?></li>
                             <li class="list-group-item"><b>Modalidad:</b> <?= htmlspecialchars(consultation_type_label($appointment)) ?></li>
+                            <li class="list-group-item"><b>Importe:</b> <?= htmlspecialchars(format_appointment_price(current_appointment_price($payment_settings, $appointment))) ?> €</li>
                             <?php if ((int) $payment_settings['online_payment_enabled'] === 1): ?>
                                 <li class="list-group-item"><b>Pago:</b> <?= htmlspecialchars(payment_status_label($appointment)) ?></li>
                             <?php endif; ?>
@@ -125,7 +138,7 @@ function consultation_type_label($appointment)
                         <?php if ($appointment['status'] === 'booked'): ?>
                             <?php if ((int) $payment_settings['online_payment_enabled'] === 1 && $appointment['payment_status'] !== 'paid'): ?>
                                 <div class="mb-4">
-                                    <p class="text-muted mb-2">Puedes pagar ahora tu cita de <?= htmlspecialchars(number_format((float) $payment_settings['appointment_price'], 2, ',', '.')) ?> €.</p>
+                                    <p class="text-muted mb-2">Puedes pagar ahora tu cita de <?= htmlspecialchars(format_appointment_price(current_appointment_price($payment_settings, $appointment))) ?> €.</p>
                                     <div class="d-grid gap-2">
                                         <button class="btn btn-success" type="button" id="btn-pay-card">Pagar con tarjeta</button>
                                         <button class="btn btn-success" type="button" id="btn-pay-bizum">Pagar con Bizum</button>

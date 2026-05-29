@@ -24,10 +24,13 @@ La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`.
 - Dias de consulta configurables en Reservas: lunes a viernes activos por defecto y sabado opcional.
 - Marca configurable: titulo de la web, imagen del dashboard y opcion para mostrar imagen tambien en login/registro.
 - Subidas de imagen en `uploads/settings`.
+- Precio de servicios configurable por modalidad y tipo de sesion:
+  - Individual presencial/online.
+  - Pareja presencial/online si el admin activa ese servicio.
 - Pago online opcional con Redsys:
   - Tarjeta.
   - Bizum.
-  - Precio configurable.
+  - Precio configurable por modalidad: presencial y online.
   - Entorno sandbox/real.
   - Estados de pago en la cita.
   - Intentos de pago en `payment_attempts`.
@@ -113,6 +116,9 @@ La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`.
 - Se anadio imagen independiente para la pagina principal/landing (`landing_image_path`).
 - Se anadio color principal configurable (`primary_color`) con valor por defecto violeta `#8f7fba`.
 - Se anadio configuracion de dias disponibles para consulta (`available_weekdays`), que controla las columnas visibles del calendario y valida reservas en backend.
+- Se anadio precio independiente para sesiones online (`online_appointment_price`), usado en Redsys, emails y pagina publica de gestion de reserva.
+- Se anadio selector de servicios ofrecidos (`available_session_types`) con individual por defecto y pareja opcional.
+- Cada cita guarda `service_type` (`individual` o `couple`) y se muestra en slots, emails, Google Calendar, pagos y gestion publica de reserva.
 
 ## Cambios de BD pendientes de aplicar manualmente si no se deja auto-migrar
 
@@ -121,6 +127,11 @@ La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`.
 - `payment_settings.landing_image_path VARCHAR(255) DEFAULT NULL`
 - `payment_settings.primary_color VARCHAR(7) NOT NULL DEFAULT '#8f7fba'`
 - `payment_settings.available_weekdays VARCHAR(32) NOT NULL DEFAULT '1,2,3,4,5'`
+- `payment_settings.online_appointment_price DECIMAL(10,2) NOT NULL DEFAULT 70.00`
+- `payment_settings.couple_appointment_price DECIMAL(10,2) NOT NULL DEFAULT 90.00`
+- `payment_settings.online_couple_appointment_price DECIMAL(10,2) NOT NULL DEFAULT 90.00`
+- `payment_settings.available_session_types VARCHAR(32) NOT NULL DEFAULT 'individual'`
+- `appointments.service_type VARCHAR(16) NOT NULL DEFAULT 'individual'`
 
 ## Avisos importantes
 
