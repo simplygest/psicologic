@@ -15,6 +15,7 @@ require_once 'payment_helpers.php';
 require_once 'mail_helpers.php';
 
 ensure_appointment_payment_columns($mysqli);
+ensure_appointment_services_tables($mysqli);
 
 $settings_table = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
 if (!$settings_table || $settings_table->num_rows === 0) {
@@ -42,9 +43,13 @@ if ((int) ($settings['appointment_reminder_enabled'] ?? 0) !== 1) {
 
 $stmt = $mysqli->prepare("
     SELECT a.id, a.appointment_date, a.appointment_time, a.consultation_type, a.service_type, a.cancel_token,
+           COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
+           so.price AS service_price, s.name AS service_name,
            COALESCE(a.payment_status, 'pending') AS payment_status,
            u.name, u.email
     FROM appointments a
+    LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
+    LEFT JOIN appointment_services s ON s.id = so.service_id
     JOIN users u ON u.id = a.user_id
     WHERE a.status = 'booked'
       AND a.reminder_sent_at IS NULL
@@ -74,8 +79,8 @@ foreach ($appointments as $appointment) {
     $date = date('d/m/Y', strtotime($appointment['appointment_date']));
     $time = date('H:i', strtotime($appointment['appointment_time']));
     $consultation_text = appointment_consultation_label($appointment['consultation_type'] ?? 'presencial');
-    $service_text = appointment_service_label($appointment['service_type'] ?? 'individual');
-    $price = format_appointment_price(appointment_price_for_type($settings, $appointment['consultation_type'] ?? 'presencial', $appointment['service_type'] ?? 'individual'));
+    $service_text = appointment_service_option_label($appointment);
+    $price = format_appointment_price(appointment_price_for_row($settings, $appointment));
     $payment_note = '';
 
     if ($payment_enabled && $appointment['payment_status'] !== 'paid') {

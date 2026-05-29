@@ -301,6 +301,30 @@ body {
     background: #e5dbff;
 }
 
+.services-table th,
+.services-table td {
+    white-space: nowrap;
+}
+
+.service-group-row td {
+    background: #f8f9fb;
+}
+
+.prices-public-table {
+    background: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.prices-public-table .table {
+    margin-bottom: 0;
+}
+
+.prices-page-section {
+    min-height: calc(100vh - 170px);
+}
+
 .settings-disabled {
     opacity: 0.45;
 }

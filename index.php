@@ -6,6 +6,7 @@ $branding = get_public_branding_settings($mysqli);
 $app_name = $branding['app_name'];
 $profile_image_path = $branding['show_profile_image_public'] ? $branding['profile_image_path'] : '';
 $landing_image_path = $branding['landing_image_path'] ?: '';
+$show_prices_public = (int) ($branding['show_prices_public'] ?? 0) === 1;
 $is_logged_in = isset($_SESSION['user_id']);
 $appointment_delivery_mode = 'both';
 $settings_table = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
@@ -61,6 +62,9 @@ function public_delivery_text($mode)
             <div class="collapse navbar-collapse" id="publicNav">
                 <div class="navbar-nav ms-auto align-items-lg-center gap-lg-2">
                     <a class="nav-link" href="#servicios">Servicios</a>
+                    <?php if ($show_prices_public): ?>
+                        <a class="nav-link" href="precios.php">Precios</a>
+                    <?php endif; ?>
                     <a class="nav-link" href="#experiencia">Experiencia</a>
                     <a class="nav-link" href="#formacion">Formación</a>
                     <a class="nav-link" href="#consulta">Consulta</a>

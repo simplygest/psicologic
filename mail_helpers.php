@@ -253,7 +253,9 @@ function notify_appointment_cancelled($mysqli, $appointment)
     $patient_email = $appointment['email'] ?? '';
     $appointment_text = appointment_label($appointment['appointment_date'], $appointment['appointment_time']);
     $consultation_text = appointment_consultation_label($appointment['consultation_type'] ?? 'presencial');
-    $service_text = appointment_service_label($appointment['service_type'] ?? 'individual');
+    $service_text = function_exists('appointment_service_option_label')
+        ? appointment_service_option_label($appointment)
+        : appointment_service_label($appointment['service_type'] ?? 'individual');
     $payment_status = $appointment['payment_status'] ?? 'pending';
     $payment_text = appointment_payment_label($payment_status);
     $paid_warning = $payment_status === 'paid'

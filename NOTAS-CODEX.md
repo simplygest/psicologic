@@ -119,6 +119,14 @@ La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`.
 - Se anadio precio independiente para sesiones online (`online_appointment_price`), usado en Redsys, emails y pagina publica de gestion de reserva.
 - Se anadio selector de servicios ofrecidos (`available_session_types`) con individual por defecto y pareja opcional.
 - Cada cita guarda `service_type` (`individual` o `couple`) y se muestra en slots, emails, Google Calendar, pagos y gestion publica de reserva.
+- Se esta migrando la configuracion de servicios a una pestana `Servicios` con servicio, modalidad, duracion y precio.
+- La pestana se renombra a `Precios`; las modalidades, servicios ofrecidos y duraciones se configuran desde `General`.
+- La tabla de `Precios` solo muestra combinaciones activas segun `General` para evitar ruido visual.
+- Se anadieron las duraciones 60, 90 y 120 minutos por servicio/modalidad.
+- Se anadio configuracion `available_session_durations` para mostrar/permitir solo duraciones concretas.
+- La tabla de servicios/precios se filtra por `appointment_delivery_mode` y `available_session_durations`.
+- Las citas nuevas pueden guardar `service_option_id` y `duration_minutes`; las citas antiguas siguen funcionando con `service_type`.
+- Se anadio la opcion `show_prices_public` para mostrar u ocultar una pagina publica `precios.php`.
 
 ## Cambios de BD pendientes de aplicar manualmente si no se deja auto-migrar
 
@@ -132,6 +140,12 @@ La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`.
 - `payment_settings.online_couple_appointment_price DECIMAL(10,2) NOT NULL DEFAULT 90.00`
 - `payment_settings.available_session_types VARCHAR(32) NOT NULL DEFAULT 'individual'`
 - `appointments.service_type VARCHAR(16) NOT NULL DEFAULT 'individual'`
+- `appointments.service_option_id INT UNSIGNED DEFAULT NULL`
+- `appointments.duration_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 60`
+- `payment_settings.show_prices_public TINYINT(1) NOT NULL DEFAULT 0`
+- `payment_settings.available_session_durations VARCHAR(16) NOT NULL DEFAULT '60'`
+- Nueva tabla `appointment_services`
+- Nueva tabla `appointment_service_options`
 
 ## Avisos importantes
 

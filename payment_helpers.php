@@ -11,7 +11,9 @@ function ensure_appointment_payment_columns($mysqli)
         'cancel_token' => "ALTER TABLE appointments ADD cancel_token VARCHAR(64) DEFAULT NULL",
         'reminder_sent_at' => "ALTER TABLE appointments ADD reminder_sent_at DATETIME DEFAULT NULL",
         'consultation_type' => "ALTER TABLE appointments ADD consultation_type VARCHAR(16) NOT NULL DEFAULT 'presencial'",
-        'service_type' => "ALTER TABLE appointments ADD service_type VARCHAR(16) NOT NULL DEFAULT 'individual'"
+        'service_type' => "ALTER TABLE appointments ADD service_type VARCHAR(16) NOT NULL DEFAULT 'individual'",
+        'service_option_id' => "ALTER TABLE appointments ADD service_option_id INT UNSIGNED DEFAULT NULL",
+        'duration_minutes' => "ALTER TABLE appointments ADD duration_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 60"
     ];
 
     foreach ($columns as $column => $sql) {
@@ -20,6 +22,227 @@ function ensure_appointment_payment_columns($mysqli)
             $mysqli->query($sql);
         }
     }
+}
+
+function ensure_appointment_services_tables($mysqli)
+{
+    $mysqli->query("
+        CREATE TABLE IF NOT EXISTS appointment_services (
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            service_key VARCHAR(32) NOT NULL UNIQUE,
+            name VARCHAR(120) NOT NULL,
+            is_active TINYINT(1) NOT NULL DEFAULT 1,
+            sort_order INT NOT NULL DEFAULT 0,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+
+    $mysqli->query("
+        CREATE TABLE IF NOT EXISTS appointment_service_options (
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            service_id INT UNSIGNED NOT NULL,
+            duration_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 60,
+            consultation_type ENUM('presencial', 'online') NOT NULL DEFAULT 'presencial',
+            price DECIMAL(10,2) NOT NULL DEFAULT 70.00,
+            is_active TINYINT(1) NOT NULL DEFAULT 1,
+            sort_order INT NOT NULL DEFAULT 0,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uniq_service_option (service_id, duration_minutes, consultation_type),
+            INDEX idx_service_options_service (service_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+
+    seed_default_appointment_services($mysqli);
+}
+
+function seed_default_appointment_services($mysqli)
+{
+    ensure_payment_settings_price_columns($mysqli);
+
+    $settings = [
+        'appointment_price' => 70.00,
+        'online_appointment_price' => 70.00,
+        'couple_appointment_price' => 90.00,
+        'online_couple_appointment_price' => 90.00,
+        'available_session_types' => 'individual',
+        'available_session_durations' => '60',
+        'appointment_delivery_mode' => 'both'
+    ];
+
+    $settings_table = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
+    if ($settings_table && $settings_table->num_rows > 0) {
+        $columns = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'available_session_types'");
+        if ($columns && $columns->num_rows === 0) {
+            $mysqli->query("ALTER TABLE payment_settings ADD available_session_types VARCHAR(32) NOT NULL DEFAULT 'individual'");
+        }
+        $columns = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'available_session_durations'");
+        if ($columns && $columns->num_rows === 0) {
+            $mysqli->query("ALTER TABLE payment_settings ADD available_session_durations VARCHAR(16) NOT NULL DEFAULT '60'");
+        }
+        $columns = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'appointment_delivery_mode'");
+        if ($columns && $columns->num_rows === 0) {
+            $mysqli->query("ALTER TABLE payment_settings ADD appointment_delivery_mode ENUM('both', 'presencial', 'online') NOT NULL DEFAULT 'both'");
+        }
+        $res = $mysqli->query("
+            SELECT appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price,
+                   available_session_types, available_session_durations, appointment_delivery_mode
+            FROM payment_settings
+            WHERE id = 1
+        ");
+        if ($res && ($row = $res->fetch_assoc())) {
+            $settings = array_merge($settings, $row);
+        }
+    }
+
+    $legacy_couple_enabled = strpos((string) $settings['available_session_types'], 'couple') !== false;
+    $services = [
+        'individual' => ['name' => 'Sesión individual', 'active' => 1, 'sort' => 10],
+        'couple' => ['name' => 'Sesión de pareja', 'active' => $legacy_couple_enabled ? 1 : 0, 'sort' => 20]
+    ];
+
+    foreach ($services as $key => $service) {
+        $stmt = $mysqli->prepare("
+            INSERT INTO appointment_services (service_key, name, is_active, sort_order)
+            VALUES (?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE service_key = service_key
+        ");
+        $stmt->bind_param("ssii", $key, $service['name'], $service['active'], $service['sort']);
+        $stmt->execute();
+    }
+
+    $service_ids = [];
+    $res = $mysqli->query("SELECT id, service_key FROM appointment_services WHERE service_key IN ('individual', 'couple')");
+    while ($row = $res->fetch_assoc()) {
+        $service_ids[$row['service_key']] = (int) $row['id'];
+    }
+
+    $mode = $settings['appointment_delivery_mode'] ?? 'both';
+    $modalities = ['presencial', 'online'];
+    $durations = [60, 90, 120];
+
+    foreach ($service_ids as $key => $service_id) {
+        foreach ($durations as $duration) {
+            foreach ($modalities as $consultation_type) {
+                $base_price = appointment_default_option_price($settings, $key, $consultation_type, $duration);
+                $is_active = $duration === 60 ? 1 : 0;
+                if ($key === 'couple' && !$legacy_couple_enabled) {
+                    $is_active = 0;
+                }
+                if ($mode === 'presencial' && $consultation_type === 'online') {
+                    $is_active = 0;
+                }
+                if ($mode === 'online' && $consultation_type === 'presencial') {
+                    $is_active = 0;
+                }
+                $sort = ($duration * 10) + ($consultation_type === 'online' ? 1 : 0);
+                $stmt = $mysqli->prepare("
+                    INSERT INTO appointment_service_options (service_id, duration_minutes, consultation_type, price, is_active, sort_order)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE service_id = service_id
+                ");
+                $stmt->bind_param("iisdii", $service_id, $duration, $consultation_type, $base_price, $is_active, $sort);
+                $stmt->execute();
+            }
+        }
+    }
+}
+
+function appointment_default_option_price($settings, $service_key, $consultation_type, $duration)
+{
+    $base = appointment_price_for_type($settings, $consultation_type, $service_key === 'couple' ? 'couple' : 'individual');
+    if ((int) $duration === 90) {
+        return $service_key === 'couple' ? max($base, 120.00) : max($base, 90.00);
+    }
+    if ((int) $duration === 120) {
+        return $service_key === 'couple' ? max($base, 150.00) : max($base, 120.00);
+    }
+    return $base;
+}
+
+function fetch_appointment_services($mysqli, $only_active_options = false)
+{
+    ensure_appointment_services_tables($mysqli);
+    $services = [];
+
+    $res = $mysqli->query("
+        SELECT id, service_key, name, is_active, sort_order
+        FROM appointment_services
+        ORDER BY sort_order ASC, id ASC
+    ");
+    while ($row = $res->fetch_assoc()) {
+        $row['id'] = (int) $row['id'];
+        $row['is_active'] = (int) $row['is_active'];
+        $row['options'] = [];
+        $services[$row['id']] = $row;
+    }
+
+    $where = $only_active_options ? "WHERE o.is_active = 1 AND s.is_active = 1" : "";
+    $res = $mysqli->query("
+        SELECT o.id, o.service_id, o.duration_minutes, o.consultation_type, o.price, o.is_active, o.sort_order
+        FROM appointment_service_options o
+        JOIN appointment_services s ON s.id = o.service_id
+        $where
+        ORDER BY s.sort_order ASC, o.sort_order ASC, o.id ASC
+    ");
+    while ($row = $res->fetch_assoc()) {
+        $service_id = (int) $row['service_id'];
+        if (!isset($services[$service_id])) {
+            continue;
+        }
+        $row['id'] = (int) $row['id'];
+        $row['service_id'] = $service_id;
+        $row['duration_minutes'] = (int) $row['duration_minutes'];
+        $row['price'] = number_format((float) $row['price'], 2, '.', '');
+        $row['is_active'] = (int) $row['is_active'];
+        $services[$service_id]['options'][] = $row;
+    }
+
+    return array_values($services);
+}
+
+function fetch_service_option($mysqli, $option_id)
+{
+    ensure_appointment_services_tables($mysqli);
+    $stmt = $mysqli->prepare("
+        SELECT o.id, o.service_id, o.duration_minutes, o.consultation_type, o.price, o.is_active,
+               s.service_key, s.name AS service_name, s.is_active AS service_active
+        FROM appointment_service_options o
+        JOIN appointment_services s ON s.id = o.service_id
+        WHERE o.id = ?
+        LIMIT 1
+    ");
+    $stmt->bind_param("i", $option_id);
+    $stmt->execute();
+    $option = $stmt->get_result()->fetch_assoc();
+    if (!$option) {
+        return null;
+    }
+    $option['id'] = (int) $option['id'];
+    $option['duration_minutes'] = (int) $option['duration_minutes'];
+    $option['price'] = (float) $option['price'];
+    $option['is_active'] = (int) $option['is_active'];
+    $option['service_active'] = (int) $option['service_active'];
+    return $option;
+}
+
+function appointment_service_option_label($appointment)
+{
+    $service = trim($appointment['service_name'] ?? '');
+    if ($service === '') {
+        $service = appointment_service_label($appointment['service_type'] ?? 'individual');
+    }
+    $duration = (int) ($appointment['duration_minutes'] ?? 60);
+    return $service . ' (' . $duration . ' min)';
+}
+
+function appointment_price_for_row($settings, $appointment)
+{
+    if (isset($appointment['service_price']) && $appointment['service_price'] !== null) {
+        return (float) $appointment['service_price'];
+    }
+    return appointment_price_for_type($settings, $appointment['consultation_type'] ?? 'presencial', $appointment['service_type'] ?? 'individual');
 }
 
 function app_public_base_url()

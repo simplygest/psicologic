@@ -215,6 +215,7 @@ function google_send_email($mysqli, $to, $subject, $html_body, $reply_to = null)
 function google_create_calendar_event($mysqli, $appointment_id)
 {
     ensure_appointment_payment_columns($mysqli);
+    ensure_appointment_services_tables($mysqli);
 
     $settings = google_get_settings($mysqli);
     if ((int) ($settings['google_calendar_enabled'] ?? 0) !== 1) {
@@ -222,8 +223,13 @@ function google_create_calendar_event($mysqli, $appointment_id)
     }
 
     $stmt = $mysqli->prepare("
-        SELECT a.appointment_date, a.appointment_time, a.consultation_type, a.service_type, u.name, u.email, u.phone
+        SELECT a.appointment_date, a.appointment_time, a.consultation_type, a.service_type,
+               COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
+               s.name AS service_name,
+               u.name, u.email, u.phone
         FROM appointments a
+        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
+        LEFT JOIN appointment_services s ON s.id = so.service_id
         JOIN users u ON u.id = a.user_id
         WHERE a.id = ?
     ");
@@ -237,10 +243,10 @@ function google_create_calendar_event($mysqli, $appointment_id)
 
     $start = new DateTime($appointment['appointment_date'] . ' ' . $appointment['appointment_time']);
     $end = clone $start;
-    $end->modify('+1 hour');
+    $end->modify('+' . (int) ($appointment['duration_minutes'] ?? 60) . ' minutes');
 
     $consultation_text = appointment_consultation_label($appointment['consultation_type'] ?? 'presencial');
-    $service_text = appointment_service_label($appointment['service_type'] ?? 'individual');
+    $service_text = appointment_service_option_label($appointment);
     $description = 'Paciente: ' . $appointment['name'] . "\nServicio: " . $service_text . "\nModalidad: " . $consultation_text;
     if (!empty($appointment['phone'])) {
         $description .= "\nTeléfono: " . $appointment['phone'];

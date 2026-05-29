@@ -15,12 +15,18 @@ $token = preg_match('/^[a-f0-9]{64}$/', $token) ? $token : '';
 if ($token) {
     ensure_payment_attempts_table($mysqli);
     ensure_appointment_payment_columns($mysqli);
+    ensure_appointment_services_tables($mysqli);
 
     $stmt = $mysqli->prepare("
         SELECT pa.id, pa.appointment_id, pa.amount_cents, pa.payment_method,
-               a.appointment_date, a.appointment_time, a.consultation_type, a.service_type, u.name, u.email, u.phone
+               a.appointment_date, a.appointment_time, a.consultation_type, a.service_type,
+               COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
+               s.name AS service_name,
+               u.name, u.email, u.phone
         FROM payment_attempts pa
         JOIN appointments a ON a.id = pa.appointment_id
+        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
+        LEFT JOIN appointment_services s ON s.id = so.service_id
         JOIN users u ON u.id = pa.user_id
         WHERE pa.token = ?
     ");
@@ -50,7 +56,7 @@ if ($token) {
             $date = date('d/m/Y', strtotime($payment['appointment_date']));
             $time = date('H:i', strtotime($payment['appointment_time']));
             $consultation_text = appointment_consultation_label($payment['consultation_type'] ?? 'presencial');
-            $service_text = appointment_service_label($payment['service_type'] ?? 'individual');
+            $service_text = appointment_service_option_label($payment);
             $detail = "La cita " . strtolower($service_text) . " " . strtolower($consultation_text) . " del $date a las $time sigue reservada, pero el pago de $amount € no se ha completado.";
 
             notify_admin(

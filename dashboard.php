@@ -112,6 +112,11 @@ $profile_image_path = $branding['profile_image_path'];
             </select>
           </div>
 
+          <div id="serviceOptionSelect" class="mb-3 d-none text-start">
+            <label class="form-label" for="service-option">Servicio</label>
+            <select id="service-option" class="form-select"></select>
+          </div>
+
           <button class="btn btn-primary px-4" id="btn-confirm-action">Confirmar</button>
           <?php if (!$is_admin): ?>
             <div id="payment-options" class="mt-3 d-none">
@@ -144,6 +149,10 @@ $profile_image_path = $branding['profile_image_path'];
               <li class="nav-item" role="presentation">
                 <button class="nav-link active" id="closed-days-tab" data-bs-toggle="tab" data-bs-target="#closed-days-panel"
                   type="button" role="tab">General</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="services-settings-tab" data-bs-toggle="tab" data-bs-target="#services-settings-panel"
+                  type="button" role="tab">Precios</button>
               </li>
               <li class="nav-item" role="presentation">
                 <button class="nav-link" id="booking-settings-tab" data-bs-toggle="tab" data-bs-target="#booking-settings-panel"
@@ -203,6 +212,32 @@ $profile_image_path = $branding['profile_image_path'];
                 </div>
 
                 <hr class="my-4">
+                <div class="mb-4">
+                  <label class="form-label d-block">Duraciones disponibles</label>
+                  <div class="row g-2">
+                    <div class="col-sm-4">
+                      <div class="form-check">
+                        <input class="form-check-input available-session-duration" type="checkbox" id="available-duration-60" value="60" checked>
+                        <label class="form-check-label" for="available-duration-60">60 minutos</label>
+                      </div>
+                    </div>
+                    <div class="col-sm-4">
+                      <div class="form-check">
+                        <input class="form-check-input available-session-duration" type="checkbox" id="available-duration-90" value="90">
+                        <label class="form-check-label" for="available-duration-90">90 minutos</label>
+                      </div>
+                    </div>
+                    <div class="col-sm-4">
+                      <div class="form-check">
+                        <input class="form-check-input available-session-duration" type="checkbox" id="available-duration-120" value="120">
+                        <label class="form-check-label" for="available-duration-120">120 minutos</label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="d-none">
+                <hr class="my-4">
                 <div class="row">
                   <div class="col-md-6 mb-3">
                     <label class="form-label" for="appointment-price">Precio individual presencial</label>
@@ -234,6 +269,8 @@ $profile_image_path = $branding['profile_image_path'];
                   </div>
                 </div>
 
+                </div>
+
                 <form id="add-closed-form" class="mb-4">
                   <div class="row g-2">
                     <div class="col-md-3">
@@ -256,6 +293,30 @@ $profile_image_path = $branding['profile_image_path'];
                 <ul class="list-group" id="closed-days-list"></ul>
                 <div class="text-end mt-4">
                   <button type="button" class="btn btn-primary" id="btn-save-general-settings">Guardar configuración</button>
+                </div>
+              </div>
+
+              <div class="tab-pane fade" id="services-settings-panel" role="tabpanel" aria-labelledby="services-settings-tab">
+                <div id="services-settings-alert" class="alert d-none"></div>
+                <div class="table-responsive services-table-wrap">
+                  <table class="table align-middle services-table">
+                    <thead>
+                      <tr>
+                        <th>Servicio</th>
+                        <th>Duración</th>
+                        <th>Modalidad</th>
+                        <th>Precio</th>
+                      </tr>
+                    </thead>
+                    <tbody id="services-settings-body">
+                      <tr>
+                        <td colspan="4" class="text-muted text-center py-4">Cargando precios...</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div class="text-end mt-4">
+                  <button type="button" class="btn btn-primary" id="btn-save-services-settings">Guardar precios</button>
                 </div>
               </div>
 
@@ -285,6 +346,10 @@ $profile_image_path = $branding['profile_image_path'];
                 <div class="form-check form-switch mb-4">
                   <input class="form-check-input" type="checkbox" id="show-profile-image-public">
                   <label class="form-check-label" for="show-profile-image-public">Mostrar también esta imagen en login y registro</label>
+                </div>
+                <div class="form-check form-switch mb-4">
+                  <input class="form-check-input" type="checkbox" id="show-prices-public">
+                  <label class="form-check-label" for="show-prices-public">Mostrar precios en la página principal/comercial</label>
                 </div>
                 <hr class="my-4">
                 <div class="mb-3">

@@ -40,13 +40,18 @@ if (!$user_id && !$cancel_token) {
 
 ensure_payment_attempts_table($mysqli);
 ensure_appointment_payment_columns($mysqli);
+ensure_appointment_services_tables($mysqli);
 
 $lookup_where = $cancel_token ? 'a.cancel_token = ?' : 'a.id = ?';
 $stmt = $mysqli->prepare("
     SELECT a.id, a.user_id, a.appointment_date, a.appointment_time, a.consultation_type, a.service_type,
+           COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
+           so.price AS service_price, s.name AS service_name,
            COALESCE(a.payment_status, 'pending') AS payment_status,
            u.name
     FROM appointments a
+    LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
+    LEFT JOIN appointment_services s ON s.id = so.service_id
     JOIN users u ON a.user_id = u.id
     WHERE $lookup_where AND a.status = 'booked'
 ");
@@ -90,7 +95,7 @@ if (!$settings || (int) $settings['online_payment_enabled'] !== 1) {
     exit;
 }
 
-$appointment_price = appointment_price_for_type($settings, $appointment['consultation_type'] ?? 'presencial', $appointment['service_type'] ?? 'individual');
+$appointment_price = appointment_price_for_row($settings, $appointment);
 
 if (!$settings['merchant_code'] || !$settings['merchant_key'] || !$settings['terminal'] || (float) $appointment_price <= 0) {
     echo json_encode(['success' => false, 'error' => 'La configuración de Redsys está incompleta']);
@@ -125,7 +130,7 @@ $url_pago = $settings['environment'] === 'sandbox'
 
 $url_ok = $base_url . 'respuestaredsysok.php?t=' . urlencode($token);
 $url_ko = $base_url . 'respuestaredsysko.php?t=' . urlencode($token);
-$description = 'Cita ' . (($appointment['service_type'] ?? 'individual') === 'couple' ? 'pareja' : 'individual') . ' ' . (($appointment['consultation_type'] ?? 'presencial') === 'online' ? 'online' : 'presencial') . ' ' . date('d/m/Y', strtotime($appointment['appointment_date'])) . ' ' . date('H:i', strtotime($appointment['appointment_time']));
+$description = 'Cita ' . appointment_service_option_label($appointment) . ' ' . (($appointment['consultation_type'] ?? 'presencial') === 'online' ? 'online' : 'presencial') . ' ' . date('d/m/Y', strtotime($appointment['appointment_date'])) . ' ' . date('H:i', strtotime($appointment['appointment_time']));
 
 $redsys = new RedsysAPI();
 $redsys->setParameter('DS_MERCHANT_AMOUNT', (string) $amount_cents);

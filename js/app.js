@@ -13,8 +13,11 @@ let PAYMENT_SETTINGS = {
     break_start_time: '15:00:00',
     break_end_time: '16:00:00',
     available_weekdays: '1,2,3,4,5',
-    appointment_delivery_mode: 'both'
+    appointment_delivery_mode: 'both',
+    available_session_durations: '60'
 };
+let APPOINTMENT_SERVICES = [];
+let ACTIVE_SERVICE_OPTIONS = [];
 let isAppointmentRequestInProgress = false;
 
 function getMonday(d) {
@@ -56,6 +59,9 @@ function loadCalendar(startDateStr) {
         success: function (res) {
             if (res.success) {
                 PAYMENT_SETTINGS = res.payment_settings || PAYMENT_SETTINGS;
+                if (Array.isArray(res.service_options)) {
+                    ACTIVE_SERVICE_OPTIONS = res.service_options;
+                }
                 drawCalendar(startDateStr, res.appointments, res.closed_days);
             }
         }
@@ -149,8 +155,24 @@ function getScheduleItems() {
     return items;
 }
 
+function findOverlappingAppointment(dayApps, timeStr) {
+    if (!dayApps) {
+        return null;
+    }
+    const slotStart = timeToMinutes(timeStr);
+    for (const app of Object.values(dayApps)) {
+        const appStart = timeToMinutes(app.time || '');
+        const duration = parseInt(app.duration_minutes || 60, 10);
+        if (app.time !== timeStr && slotStart >= appStart && slotStart < appStart + duration) {
+            return app;
+        }
+    }
+    return null;
+}
+
 function renderSlot(dateStr, timeStr, dayApps) {
     let app = dayApps ? dayApps[timeStr] : null;
+    let overlapApp = !app ? findOverlappingAppointment(dayApps, timeStr) : null;
     let isPast = isPastSlot(dateStr, timeStr);
     let isOutsideBookingWindow = isOutsideAllowedBookingWindow(dateStr);
     let cls = 'available';
@@ -159,12 +181,18 @@ function renderSlot(dateStr, timeStr, dayApps) {
     let onClick = `openModal('${dateStr}', '${timeStr}', 'available')`;
 
     // Convert current user ID if available in session? We rely on UI vs API limits mostly.
-    if (app) {
+    if (overlapApp) {
+        cls = 'booked';
+        text = `${timeStr} - Ocupado`;
+        onClick = `alert('Este horario no estÃ¡ disponible')`;
+    } else if (app) {
         let paymentBadge = getPaymentBadge(app);
         let consultationBadge = getConsultationBadge(app.consultation_type);
-        let serviceBadge = getServiceBadge(app.service_type);
+        let serviceBadge = getServiceBadge(app);
+        let payPriceArg = escapeJsString(app.price || '');
+        let payLabelArg = escapeJsString(app.service_label || '');
         let payButton = canPayAppointment(app)
-            ? `<button class="btn btn-success slot-action-btn" onclick="event.stopPropagation(); openModal('${dateStr}', '${timeStr}', 'pay_own', '${app.id}', '${app.service_type || 'individual'}', '${app.consultation_type || 'presencial'}');" title="Pagar cita"><i class="bi bi-credit-card"></i></button>`
+            ? `<button class="btn btn-success slot-action-btn" onclick="event.stopPropagation(); openModal('${dateStr}', '${timeStr}', 'pay_own', '${app.id}', '${payPriceArg}', '${payLabelArg}');" title="Pagar cita"><i class="bi bi-credit-card"></i></button>`
             : '';
         if (IS_ADMIN) {
             cls = 'booked';
@@ -264,11 +292,21 @@ function getConsultationBadge(consultationType) {
     return ` <small class="consultation-badge ${cls}">${label}</small>`;
 }
 
-function getServiceBadge(serviceType) {
-    if (serviceType !== 'couple') {
+function getServiceBadge(app) {
+    if (!app) {
         return '';
     }
-    return ' <small class="service-badge couple">Pareja</small>';
+    const duration = parseInt(app.duration_minutes || 60, 10);
+    let label = '';
+    if (app.service_type === 'couple') {
+        label = duration === 60 ? 'Pareja' : `Pareja ${duration} min`;
+    } else if (duration !== 60) {
+        label = `${duration} min`;
+    } else if (app.service_name && !/individual/i.test(app.service_name)) {
+        label = app.service_name;
+    }
+    if (!label) return '';
+    return ` <small class="service-badge couple">${escapeHtml(label)}</small>`;
 }
 
 function canPayAppointment(app) {
@@ -291,6 +329,7 @@ function openModal(date, time, status, extraName = '', extraEmail = '', extraPho
     $('#payment-options').addClass('d-none');
     $('#consultationTypeSelect').addClass('d-none');
     $('#serviceTypeSelect').addClass('d-none');
+    $('#serviceOptionSelect').addClass('d-none');
     currentPaymentAppointmentId = null;
     $('#btn-confirm-action').removeClass('d-none').prop('disabled', false);
 
@@ -302,14 +341,8 @@ function openModal(date, time, status, extraName = '', extraEmail = '', extraPho
         } else {
             $('#modalDesc').text('¿Estás seguro de que deseas reservar este horario?');
         }
-        if ((PAYMENT_SETTINGS.appointment_delivery_mode || 'both') === 'both') {
-            $('#consultation-type').val('presencial');
-            $('#consultationTypeSelect').removeClass('d-none');
-        }
-        if (isCoupleServiceEnabled()) {
-            $('#service-type').val('individual');
-            $('#serviceTypeSelect').removeClass('d-none');
-        }
+        renderBookingServiceOptions();
+        $('#serviceOptionSelect').removeClass('d-none');
         $('#btn-confirm-action').removeClass('btn-danger').addClass('btn-primary').text('Reservar');
     } else if (status === 'cancel_admin') {
         $('#modalTitle').text(`Cancelar cita: ${formatDisplayDate(date)} a las ${time}`);
@@ -323,7 +356,9 @@ function openModal(date, time, status, extraName = '', extraEmail = '', extraPho
     } else if (status === 'pay_own') {
         currentPaymentAppointmentId = parseInt(extraName, 10);
         $('#modalTitle').text(`Pagar cita: ${formatDisplayDate(date)} a las ${time}`);
-        $('#modalDesc').html(`Tu cita está reservada correctamente.<br><br>Elige cómo quieres pagarla (${appointmentPriceForType(extraPhone, extraEmail)} €).`);
+        const paymentAmount = extraEmail ? ` (${formatPrice(extraEmail)} €)` : '';
+        const serviceText = extraPhone ? `<br>${escapeHtml(extraPhone)}` : '';
+        $('#modalDesc').html(`Tu cita está reservada correctamente.${serviceText}<br><br>Elige cómo quieres pagarla${paymentAmount}.`);
         $('#btn-confirm-action').addClass('d-none');
         $('#payment-options-text').text('');
         $('#payment-options').removeClass('d-none');
@@ -457,6 +492,10 @@ $(document).ready(function () {
         savePaymentSettings('#interface-settings-alert', null, this);
     });
 
+    $('#btn-save-services-settings').click(function () {
+        saveServicesSettings(this);
+    });
+
     $('#email-provider').change(function () {
         toggleEmailProviderSettings();
     });
@@ -471,11 +510,18 @@ $(document).ready(function () {
 
     $('#appointment-delivery-mode').change(function () {
         togglePriceRows();
+        renderServicesSettings();
     });
 
     $('.available-session-type').change(function () {
         $('#available-session-individual').prop('checked', true);
         togglePriceRows();
+        renderServicesSettings();
+    });
+
+    $('.available-session-duration').change(function () {
+        $('#available-duration-60').prop('checked', true);
+        renderServicesSettings();
     });
 
     $('#profile-image').change(function () {
@@ -539,12 +585,17 @@ function bookAppointment() {
         date: $('#modalDate').val(),
         time: $('#modalTime').val(),
         consultation_type: selectedConsultationType(),
-        service_type: selectedServiceType()
+        service_type: selectedServiceType(),
+        service_option_id: selectedServiceOption() ? selectedServiceOption().id : ''
     };
 
     if (IS_ADMIN) {
         data.user_id = $('#patientSelect').val();
         if (!data.user_id) { alert('Selecciona un paciente'); return; }
+    }
+    if (!data.service_option_id) {
+        alert('Selecciona un servicio disponible');
+        return;
     }
 
     setAppointmentActionLoading(true);
@@ -567,7 +618,9 @@ function bookAppointment() {
             if (!IS_ADMIN && PAYMENT_SETTINGS.online_payment_enabled == 1 && res.appointment_id) {
                 currentPaymentAppointmentId = res.appointment_id;
                 $('#modalTitle').text('Cita reservada');
-                $('#modalDesc').html(`Tu cita ${serviceTypeLabel(data.service_type).toLowerCase()} ${consultationTypeLabel(data.consultation_type).toLowerCase()} ha quedado reservada correctamente.<br><br>Si quieres, puedes pagarla ahora (${appointmentPriceForType(data.consultation_type, data.service_type)} €).`);
+                const serviceLabel = res.service_label || serviceTypeLabel(data.service_type);
+                const price = res.price || appointmentPriceForType(data.consultation_type, data.service_type);
+                $('#modalDesc').html(`Tu cita ${serviceLabel.toLowerCase()} ${consultationTypeLabel(data.consultation_type).toLowerCase()} ha quedado reservada correctamente.<br><br>Si quieres, puedes pagarla ahora (${formatPrice(price)} €).`);
                 $('#btn-confirm-action').addClass('d-none');
                 $('#payment-options-text').text('');
                 $('#payment-options').removeClass('d-none');
@@ -584,6 +637,10 @@ function bookAppointment() {
 }
 
 function selectedConsultationType() {
+    const option = selectedServiceOption();
+    if (option) {
+        return option.consultation_type;
+    }
     const mode = PAYMENT_SETTINGS.appointment_delivery_mode || 'both';
     if (mode === 'online') {
         return 'online';
@@ -595,7 +652,19 @@ function selectedConsultationType() {
 }
 
 function selectedServiceType() {
+    const option = selectedServiceOption();
+    if (option) {
+        return option.service_key === 'couple' ? 'couple' : 'individual';
+    }
     return isCoupleServiceEnabled() && $('#service-type').val() === 'couple' ? 'couple' : 'individual';
+}
+
+function selectedServiceOption() {
+    const selectedId = parseInt($('#service-option').val(), 10);
+    if (!selectedId) {
+        return null;
+    }
+    return ACTIVE_SERVICE_OPTIONS.find(option => parseInt(option.id, 10) === selectedId) || null;
 }
 
 function consultationTypeLabel(type) {
@@ -625,6 +694,27 @@ function appointmentPriceForType(consultationType, serviceType = 'individual') {
         : rawPrice;
 }
 
+function formatPrice(value) {
+    const price = parseFloat(String(value).replace(',', '.'));
+    return Number.isFinite(price)
+        ? price.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : value;
+}
+
+function renderBookingServiceOptions() {
+    const $select = $('#service-option');
+    $select.empty();
+    const mode = PAYMENT_SETTINGS.appointment_delivery_mode || 'both';
+    const visibleOptions = ACTIVE_SERVICE_OPTIONS.filter(option => mode === 'both' || option.consultation_type === mode);
+    visibleOptions.forEach(option => {
+        const label = `${option.service_name} · ${option.duration_minutes} min · ${consultationTypeLabel(option.consultation_type)} · ${formatPrice(option.price)} €`;
+        $select.append(`<option value="${option.id}">${label}</option>`);
+    });
+    if (!visibleOptions.length) {
+        $select.append('<option value="">No hay servicios activos</option>');
+    }
+}
+
 function setAvailableWeekdays(value) {
     const activeDays = String(value || '1,2,3,4,5')
         .split(',')
@@ -641,6 +731,17 @@ function setAvailableSessionTypes(value) {
         .map(type => type.trim());
     $('#available-session-individual').prop('checked', true);
     $('#available-session-couple').prop('checked', activeTypes.includes('couple'));
+}
+
+function setAvailableSessionDurations(value) {
+    const activeDurations = String(value || '60')
+        .split(',')
+        .map(duration => duration.trim());
+    $('.available-session-duration').prop('checked', false);
+    activeDurations.forEach(duration => {
+        $(`.available-session-duration[value="${duration}"]`).prop('checked', true);
+    });
+    $('#available-duration-60').prop('checked', true);
 }
 
 function cancelAppointment() {
@@ -781,7 +882,7 @@ function showSettingsAlert(selector, type, message) {
 }
 
 function loadPaymentSettings() {
-    $('#payment-settings-alert, #email-settings-alert, #calendar-settings-alert, #booking-settings-alert, #general-settings-alert, #interface-settings-alert').addClass('d-none');
+    $('#payment-settings-alert, #email-settings-alert, #calendar-settings-alert, #booking-settings-alert, #general-settings-alert, #interface-settings-alert, #services-settings-alert').addClass('d-none');
     $('#merchant-key').val('');
     $('#smtp-password').val('');
     $('#google-client-secret').val('');
@@ -800,6 +901,7 @@ function loadPaymentSettings() {
             }
 
             let settings = res.settings || {};
+            APPOINTMENT_SERVICES = Array.isArray(res.services) ? res.services : [];
             $('#app-name').val(settings.app_name || 'PsicoLogic');
             const primaryColor = settings.primary_color || '#8f7fba';
             $('#primary-color').val(primaryColor);
@@ -809,6 +911,9 @@ function loadPaymentSettings() {
             $('#app-brand').text(settings.app_name || 'PsicoLogic');
             document.title = `Dashboard - ${settings.app_name || 'PsicoLogic'}`;
             $('#show-profile-image-public').prop('checked', settings.show_profile_image_public == 1);
+            $('#show-prices-public').prop('checked', settings.show_prices_public == 1);
+            setAvailableSessionDurations(settings.available_session_durations || '60');
+            renderServicesSettings();
             if (settings.profile_image_path) {
                 $('#profile-image-preview').attr('src', settings.profile_image_path);
                 $('#profile-image-preview-row').attr('style', '');
@@ -918,6 +1023,147 @@ function toggleCalendarSettings() {
     setFieldBlockEnabled('#calendar-config-fields', $('#google-calendar-enabled').is(':checked'));
 }
 
+function renderServicesSettings() {
+    const $body = $('#services-settings-body');
+    if (!$body.length) {
+        return;
+    }
+    if (!APPOINTMENT_SERVICES.length) {
+        $body.html('<tr><td colspan="4" class="text-muted text-center py-4">No hay precios configurados.</td></tr>');
+        return;
+    }
+
+    const visibleDurations = selectedSessionDurations();
+    const visibleMode = $('#appointment-delivery-mode').val() || PAYMENT_SETTINGS.appointment_delivery_mode || 'both';
+    const showCouple = $('#available-session-couple').is(':checked');
+    let html = '';
+    APPOINTMENT_SERVICES.forEach(service => {
+        const serviceKey = service.service_key === 'couple' ? 'couple' : 'individual';
+        if (serviceKey === 'couple' && !showCouple) {
+            return;
+        }
+        const serviceOptions = (Array.isArray(service.options) ? service.options : [])
+            .filter(option => visibleDurations.includes(parseInt(option.duration_minutes, 10)))
+            .filter(option => visibleMode === 'both' || option.consultation_type === visibleMode);
+        if (!serviceOptions.length) {
+            return;
+        }
+        html += `
+            <tr class="service-group-row" data-service-id="${service.id}">
+                <td colspan="4">
+                    <input type="text" class="form-control form-control-sm service-name-input" value="${escapeHtml(service.name || '')}">
+                </td>
+            </tr>
+        `;
+        serviceOptions.forEach(option => {
+            html += `
+                <tr class="service-option-row" data-service-id="${service.id}" data-option-id="${option.id}" data-duration="${option.duration_minutes}">
+                    <td class="text-muted small">${escapeHtml(service.name || '')}</td>
+                    <td>${option.duration_minutes} minutos</td>
+                    <td>${consultationTypeLabel(option.consultation_type)}</td>
+                    <td>
+                        <div class="input-group input-group-sm">
+                            <input type="number" class="form-control option-price-input" min="0" step="0.01" value="${option.price}">
+                            <span class="input-group-text">€</span>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+    });
+    $body.html(html || '<tr><td colspan="4" class="text-muted text-center py-4">No hay precios para la configuración seleccionada.</td></tr>');
+}
+
+function selectedSessionDurations() {
+    const durations = [];
+    $('.available-session-duration:checked').each(function () {
+        const duration = parseInt(this.value, 10);
+        if ([60, 90, 120].includes(duration)) {
+            durations.push(duration);
+        }
+    });
+    return durations.length ? [...new Set(durations)].sort((a, b) => a - b) : [60];
+}
+
+function collectServicesSettings() {
+    const visibleDurations = selectedSessionDurations();
+    const visibleMode = $('#appointment-delivery-mode').val() || PAYMENT_SETTINGS.appointment_delivery_mode || 'both';
+    const showCouple = $('#available-session-couple').is(':checked');
+    return APPOINTMENT_SERVICES.map(service => {
+        const $serviceRow = $(`.service-group-row[data-service-id="${service.id}"]`);
+        const serviceKey = service.service_key === 'couple' ? 'couple' : 'individual';
+        const serviceVisible = serviceKey === 'individual' || showCouple;
+        const options = (service.options || []).map(option => {
+            const $optionRow = $(`.service-option-row[data-option-id="${option.id}"]`);
+            const isVisible = visibleDurations.includes(parseInt(option.duration_minutes, 10))
+                && (visibleMode === 'both' || option.consultation_type === visibleMode)
+                && serviceVisible;
+            return {
+                id: option.id,
+                duration_minutes: parseInt(option.duration_minutes, 10),
+                consultation_type: option.consultation_type,
+                price: isVisible ? $optionRow.find('.option-price-input').val() : option.price,
+                is_active: isVisible ? 1 : 0
+            };
+        });
+        return {
+            id: service.id,
+            name: ($serviceRow.find('.service-name-input').val() || service.name || '').trim(),
+            is_active: serviceVisible ? 1 : 0,
+            options
+        };
+    });
+}
+
+function saveServicesSettings(button = null) {
+    $('#services-settings-alert').addClass('d-none');
+    setSettingsButtonLoading(button, true);
+
+    $.ajax({
+        url: 'api/admin.php?action=save_services',
+        method: 'POST',
+        dataType: 'json',
+        data: {
+            services_json: JSON.stringify(collectServicesSettings()),
+            appointment_delivery_mode: $('#appointment-delivery-mode').val(),
+            available_session_durations: selectedSessionDurations()
+        },
+        success: function (res) {
+            if (res.success) {
+                APPOINTMENT_SERVICES = Array.isArray(res.services) ? res.services : APPOINTMENT_SERVICES;
+                renderServicesSettings();
+                renderWeekInfo();
+                showSettingsAlert('#services-settings-alert', 'success', res.message || 'Precios guardados correctamente.');
+            } else {
+                showSettingsAlert('#services-settings-alert', 'danger', res.error || 'No se pudieron guardar los precios.');
+            }
+        },
+        error: function () {
+            showSettingsAlert('#services-settings-alert', 'danger', 'Error de conexión al guardar los precios.');
+        },
+        complete: function () {
+            setSettingsButtonLoading(button, false);
+        }
+    });
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function escapeJsString(value) {
+    return String(value)
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/\r/g, '')
+        .replace(/\n/g, ' ');
+}
+
 function currentGoogleRedirectUri() {
     return window.location.origin + window.location.pathname.replace(/dashboard\.php$/, '') + 'google_oauth_callback.php';
 }
@@ -941,7 +1187,7 @@ function setSettingsButtonLoading(button, loading) {
 }
 
 function savePaymentSettings(alertSelector = '#payment-settings-alert', onSuccess = null, button = null) {
-    $('#payment-settings-alert, #email-settings-alert, #calendar-settings-alert, #booking-settings-alert, #general-settings-alert, #interface-settings-alert').addClass('d-none');
+    $('#payment-settings-alert, #email-settings-alert, #calendar-settings-alert, #booking-settings-alert, #general-settings-alert, #interface-settings-alert, #services-settings-alert').addClass('d-none');
     setSettingsButtonLoading(button, true);
 
     const reminderInput = document.getElementById('appointment-reminder-enabled');
@@ -956,7 +1202,11 @@ function savePaymentSettings(alertSelector = '#payment-settings-alert', onSucces
     if ($('#available-session-couple').is(':checked')) {
         formData.append('available_session_types[]', 'couple');
     }
+    $('.available-session-duration:checked').each(function () {
+        formData.append('available_session_durations[]', this.value);
+    });
     formData.append('show_profile_image_public', $('#show-profile-image-public').is(':checked') ? '1' : '0');
+    formData.append('show_prices_public', $('#show-prices-public').is(':checked') ? '1' : '0');
     if ($('#profile-image')[0] && $('#profile-image')[0].files[0]) {
         formData.append('profile_image', $('#profile-image')[0].files[0]);
     }

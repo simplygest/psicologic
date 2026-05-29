@@ -24,6 +24,7 @@ function ensure_payment_settings_table($mysqli)
             landing_image_path VARCHAR(255) DEFAULT NULL,
             primary_color VARCHAR(7) NOT NULL DEFAULT '#8f7fba',
             show_profile_image_public TINYINT(1) NOT NULL DEFAULT 0,
+            show_prices_public TINYINT(1) NOT NULL DEFAULT 0,
             online_payment_enabled TINYINT(1) NOT NULL DEFAULT 0,
             environment ENUM('sandbox', 'real') NOT NULL DEFAULT 'sandbox',
             merchant_code VARCHAR(32) DEFAULT NULL,
@@ -36,6 +37,7 @@ function ensure_payment_settings_table($mysqli)
             admin_notification_email VARCHAR(255) DEFAULT NULL,
             appointment_delivery_mode ENUM('both', 'presencial', 'online') NOT NULL DEFAULT 'both',
             available_session_types VARCHAR(32) NOT NULL DEFAULT 'individual',
+            available_session_durations VARCHAR(16) NOT NULL DEFAULT '60',
             appointment_reminder_enabled TINYINT(1) NOT NULL DEFAULT 0,
             min_booking_notice_days INT UNSIGNED NOT NULL DEFAULT 2,
             max_booking_notice_days INT UNSIGNED NOT NULL DEFAULT 40,
@@ -76,6 +78,7 @@ function ensure_payment_settings_table($mysqli)
 
     ensure_admin_notification_email_column($mysqli);
     ensure_branding_columns($mysqli);
+    ensure_appointment_services_tables($mysqli);
 
     $columns = [
         'email_provider' => "ALTER TABLE payment_settings ADD email_provider ENUM('phpmailer', 'google') NOT NULL DEFAULT 'phpmailer' AFTER admin_notification_email",
@@ -84,8 +87,10 @@ function ensure_payment_settings_table($mysqli)
         'landing_image_path' => "ALTER TABLE payment_settings ADD landing_image_path VARCHAR(255) DEFAULT NULL AFTER profile_image_path",
         'primary_color' => "ALTER TABLE payment_settings ADD primary_color VARCHAR(7) NOT NULL DEFAULT '#8f7fba' AFTER landing_image_path",
         'show_profile_image_public' => "ALTER TABLE payment_settings ADD show_profile_image_public TINYINT(1) NOT NULL DEFAULT 0 AFTER profile_image_path",
+        'show_prices_public' => "ALTER TABLE payment_settings ADD show_prices_public TINYINT(1) NOT NULL DEFAULT 0 AFTER show_profile_image_public",
         'appointment_delivery_mode' => "ALTER TABLE payment_settings ADD appointment_delivery_mode ENUM('both', 'presencial', 'online') NOT NULL DEFAULT 'both' AFTER admin_notification_email",
         'available_session_types' => "ALTER TABLE payment_settings ADD available_session_types VARCHAR(32) NOT NULL DEFAULT 'individual' AFTER appointment_delivery_mode",
+        'available_session_durations' => "ALTER TABLE payment_settings ADD available_session_durations VARCHAR(16) NOT NULL DEFAULT '60' AFTER available_session_types",
         'appointment_reminder_enabled' => "ALTER TABLE payment_settings ADD appointment_reminder_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER admin_notification_email",
         'min_booking_notice_days' => "ALTER TABLE payment_settings ADD min_booking_notice_days INT UNSIGNED NOT NULL DEFAULT 2 AFTER admin_notification_email",
         'max_booking_notice_days' => "ALTER TABLE payment_settings ADD max_booking_notice_days INT UNSIGNED NOT NULL DEFAULT 40 AFTER min_booking_notice_days",
@@ -194,6 +199,47 @@ function normalize_available_session_types($value)
     }
 
     return implode(',', $selected);
+}
+
+function normalize_available_session_durations($value)
+{
+    $selected = [];
+    foreach ((array) $value as $duration) {
+        $duration = (int) $duration;
+        if (in_array($duration, [60, 90, 120], true) && !in_array($duration, $selected, true)) {
+            $selected[] = $duration;
+        }
+    }
+
+    sort($selected);
+    return $selected ? implode(',', $selected) : '60';
+}
+
+function sync_service_availability($mysqli, $available_session_types, $available_session_durations, $appointment_delivery_mode)
+{
+    ensure_appointment_services_tables($mysqli);
+
+    $show_couple = strpos($available_session_types, 'couple') !== false;
+    $stmt = $mysqli->prepare("UPDATE appointment_services SET is_active = CASE WHEN service_key = 'couple' THEN ? ELSE 1 END");
+    $couple_active = $show_couple ? 1 : 0;
+    $stmt->bind_param("i", $couple_active);
+    $stmt->execute();
+
+    $active_durations = array_map('intval', explode(',', $available_session_durations ?: '60'));
+    $services = fetch_appointment_services($mysqli);
+    foreach ($services as $service) {
+        $service_allowed = $service['service_key'] !== 'couple' || $show_couple;
+        foreach ($service['options'] as $option) {
+            $is_active = $service_allowed
+                && in_array((int) $option['duration_minutes'], $active_durations, true)
+                && ($appointment_delivery_mode === 'both' || $option['consultation_type'] === $appointment_delivery_mode)
+                ? 1
+                : 0;
+            $stmt = $mysqli->prepare("UPDATE appointment_service_options SET is_active = ? WHERE id = ?");
+            $stmt->bind_param("ii", $is_active, $option['id']);
+            $stmt->execute();
+        }
+    }
 }
 
 function save_uploaded_settings_image($file, $prefix)
@@ -324,9 +370,9 @@ if ($action === 'generate_invite') {
     ensure_payment_settings_table($mysqli);
 
     $res = $mysqli->query("
-        SELECT app_name, profile_image_path, landing_image_path, primary_color, show_profile_image_public, online_payment_enabled, environment, merchant_code, terminal,
+        SELECT app_name, profile_image_path, landing_image_path, primary_color, show_profile_image_public, show_prices_public, online_payment_enabled, environment, merchant_code, terminal,
                appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, admin_notification_email,
-               appointment_delivery_mode, available_session_types,
+               appointment_delivery_mode, available_session_types, available_session_durations,
                appointment_reminder_enabled,
                min_booking_notice_days, max_booking_notice_days, appointment_start_time, appointment_end_time, break_start_time, break_end_time,
                available_weekdays,
@@ -343,7 +389,90 @@ if ($action === 'generate_invite') {
     ");
     $settings = $res->fetch_assoc();
 
-    echo json_encode(['success' => true, 'settings' => $settings]);
+    echo json_encode(['success' => true, 'settings' => $settings, 'services' => fetch_appointment_services($mysqli)]);
+} elseif ($action === 'save_services') {
+    ensure_payment_settings_table($mysqli);
+    ensure_appointment_services_tables($mysqli);
+
+    $services_json = $_POST['services_json'] ?? '';
+    $services = json_decode($services_json, true);
+    $available_session_durations = normalize_available_session_durations($_POST['available_session_durations'] ?? ['60']);
+    $active_durations = array_map('intval', explode(',', $available_session_durations));
+    $appointment_delivery_mode = $_POST['appointment_delivery_mode'] ?? 'both';
+    if (!in_array($appointment_delivery_mode, ['both', 'presencial', 'online'], true)) {
+        $appointment_delivery_mode = 'both';
+    }
+    if (!is_array($services)) {
+        echo json_encode(['success' => false, 'error' => 'Configuracion de servicios invalida']);
+        exit;
+    }
+
+    $mysqli->begin_transaction();
+    try {
+        foreach ($services as $service) {
+            $service_id = (int) ($service['id'] ?? 0);
+            $name = trim((string) ($service['name'] ?? ''));
+            $is_active = !empty($service['is_active']) ? 1 : 0;
+
+            if ($service_id <= 0 || $name === '') {
+                throw new \Exception('Hay un servicio sin nombre o identificador valido.');
+            }
+
+            $stmt = $mysqli->prepare("UPDATE appointment_services SET name = ?, is_active = ? WHERE id = ?");
+            $stmt->bind_param("sii", $name, $is_active, $service_id);
+            $stmt->execute();
+
+            foreach (($service['options'] ?? []) as $option) {
+                $option_id = (int) ($option['id'] ?? 0);
+                $duration = (int) ($option['duration_minutes'] ?? 0);
+                $consultation_type = $option['consultation_type'] ?? '';
+                $price = str_replace(',', '.', trim((string) ($option['price'] ?? '')));
+                $option_active = !empty($option['is_active']) ? 1 : 0;
+
+                if ($option_id <= 0 || !in_array($duration, [60, 90, 120], true) || !in_array($consultation_type, ['presencial', 'online'], true)) {
+                    throw new \Exception('Hay una opcion de servicio no valida.');
+                }
+                if (!is_numeric($price) || (float) $price < 0) {
+                    throw new \Exception('Hay un precio de servicio no valido.');
+                }
+
+                $price = (float) $price;
+                if (!in_array($duration, $active_durations, true) || ($appointment_delivery_mode !== 'both' && $consultation_type !== $appointment_delivery_mode)) {
+                    $option_active = 0;
+                }
+                $stmt = $mysqli->prepare("
+                    UPDATE appointment_service_options
+                    SET duration_minutes = ?, consultation_type = ?, price = ?, is_active = ?
+                    WHERE id = ? AND service_id = ?
+                ");
+                $stmt->bind_param("isdiii", $duration, $consultation_type, $price, $option_active, $option_id, $service_id);
+                $stmt->execute();
+            }
+        }
+
+        $active_keys = ['individual'];
+        $res = $mysqli->query("SELECT service_key FROM appointment_services WHERE is_active = 1");
+        while ($row = $res->fetch_assoc()) {
+            if ($row['service_key'] === 'couple') {
+                $active_keys[] = 'couple';
+            }
+        }
+        $available_session_types = implode(',', array_unique($active_keys));
+        $stmt = $mysqli->prepare("UPDATE payment_settings SET available_session_types = ? WHERE id = 1");
+        $stmt->bind_param("s", $available_session_types);
+        $stmt->execute();
+
+        $stmt = $mysqli->prepare("UPDATE payment_settings SET available_session_durations = ? WHERE id = 1");
+        $stmt->bind_param("s", $available_session_durations);
+        $stmt->execute();
+        sync_service_availability($mysqli, $available_session_types, $available_session_durations, $appointment_delivery_mode);
+
+        $mysqli->commit();
+        echo json_encode(['success' => true, 'message' => 'Precios guardados correctamente.', 'services' => fetch_appointment_services($mysqli)]);
+    } catch (\Exception $e) {
+        $mysqli->rollback();
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
 } elseif ($action === 'save_payment_settings') {
     ensure_payment_settings_table($mysqli);
 
@@ -361,6 +490,7 @@ if ($action === 'generate_invite') {
     $admin_notification_email = trim($_POST['admin_notification_email'] ?? '');
     $appointment_delivery_mode = $_POST['appointment_delivery_mode'] ?? 'both';
     $available_session_types = normalize_available_session_types($_POST['available_session_types'] ?? []);
+    $available_session_durations = normalize_available_session_durations($_POST['available_session_durations'] ?? ['60']);
     $posted_appointment_reminder_enabled = array_key_exists('appointment_reminder_enabled', $_POST)
         ? ($_POST['appointment_reminder_enabled'] === '1' ? 1 : 0)
         : null;
@@ -387,6 +517,7 @@ if ($action === 'generate_invite') {
     $google_calendar_enabled = isset($_POST['google_calendar_enabled']) && $_POST['google_calendar_enabled'] === '1' ? 1 : 0;
     $google_calendar_id = trim($_POST['google_calendar_id'] ?? 'primary');
     $show_profile_image_public = isset($_POST['show_profile_image_public']) && $_POST['show_profile_image_public'] === '1' ? 1 : 0;
+    $show_prices_public = isset($_POST['show_prices_public']) && $_POST['show_prices_public'] === '1' ? 1 : 0;
     $uploaded_profile_image_path = null;
     $uploaded_landing_image_path = null;
 
@@ -622,6 +753,11 @@ if ($action === 'generate_invite') {
     $stmt->bind_param("s", $available_session_types);
     $stmt->execute();
 
+    $stmt = $mysqli->prepare("UPDATE payment_settings SET available_session_durations = ? WHERE id = 1");
+    $stmt->bind_param("s", $available_session_durations);
+    $stmt->execute();
+    sync_service_availability($mysqli, $available_session_types, $available_session_durations, $appointment_delivery_mode);
+
     $break_start_db = $break_start_time === '' ? null : $break_start_time;
     $break_end_db = $break_end_time === '' ? null : $break_end_time;
     $stmt = $mysqli->prepare("
@@ -633,12 +769,12 @@ if ($action === 'generate_invite') {
     $stmt->execute();
 
     if ($uploaded_profile_image_path !== null) {
-        $stmt = $mysqli->prepare("UPDATE payment_settings SET profile_image_path = ?, show_profile_image_public = ? WHERE id = 1");
-        $stmt->bind_param("si", $uploaded_profile_image_path, $show_profile_image_public);
+        $stmt = $mysqli->prepare("UPDATE payment_settings SET profile_image_path = ?, show_profile_image_public = ?, show_prices_public = ? WHERE id = 1");
+        $stmt->bind_param("sii", $uploaded_profile_image_path, $show_profile_image_public, $show_prices_public);
         $stmt->execute();
     } else {
-        $stmt = $mysqli->prepare("UPDATE payment_settings SET show_profile_image_public = ? WHERE id = 1");
-        $stmt->bind_param("i", $show_profile_image_public);
+        $stmt = $mysqli->prepare("UPDATE payment_settings SET show_profile_image_public = ?, show_prices_public = ? WHERE id = 1");
+        $stmt->bind_param("ii", $show_profile_image_public, $show_prices_public);
         $stmt->execute();
     }
 

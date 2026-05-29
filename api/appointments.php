@@ -16,6 +16,7 @@ $user_id = $_SESSION['user_id'];
 $is_admin = ($_SESSION['role'] === 'admin');
 
 ensure_appointment_payment_columns($mysqli);
+ensure_appointment_services_tables($mysqli);
 
 function ensure_schedule_setting_columns($mysqli)
 {
@@ -49,6 +50,24 @@ function ensure_session_setting_column($mysqli)
     if ($column_res && $column_res->num_rows === 0) {
         $mysqli->query("ALTER TABLE payment_settings ADD available_session_types VARCHAR(32) NOT NULL DEFAULT 'individual' AFTER appointment_delivery_mode");
     }
+
+    $column_res = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'available_session_durations'");
+    if ($column_res && $column_res->num_rows === 0) {
+        $mysqli->query("ALTER TABLE payment_settings ADD available_session_durations VARCHAR(16) NOT NULL DEFAULT '60' AFTER available_session_types");
+    }
+}
+
+function active_session_durations($settings)
+{
+    $durations = [];
+    foreach (explode(',', $settings['available_session_durations'] ?? '60') as $duration) {
+        $duration = (int) trim($duration);
+        if (in_array($duration, [60, 90, 120], true) && !in_array($duration, $durations, true)) {
+            $durations[] = $duration;
+        }
+    }
+    sort($durations);
+    return $durations ?: [60];
 }
 
 function minutes_from_time($time)
@@ -98,8 +117,13 @@ if ($action === 'get_week') {
     $stmt = $mysqli->prepare("
         SELECT a.id, a.appointment_date, a.appointment_time, a.user_id,
                COALESCE(a.payment_status, 'pending') AS payment_status,
-               a.payment_method, a.paid_at, a.consultation_type, a.service_type, u.name, u.email, u.phone 
+               a.payment_method, a.paid_at, a.consultation_type, a.service_type,
+               COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
+               so.price AS service_price, s.name AS service_name, s.service_key,
+               u.name, u.email, u.phone
         FROM appointments a
+        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
+        LEFT JOIN appointment_services s ON s.id = so.service_id
         JOIN users u ON a.user_id = u.id
         WHERE a.appointment_date BETWEEN ? AND ? AND a.status = 'booked'
     ");
@@ -138,6 +162,11 @@ if ($action === 'get_week') {
             'paid_at' => $app['paid_at'] ?? null,
             'consultation_type' => $app['consultation_type'] ?? 'presencial',
             'service_type' => $app['service_type'] ?? 'individual',
+            'service_label' => appointment_service_option_label($app),
+            'service_name' => $app['service_name'] ?? null,
+            'duration_minutes' => (int) ($app['duration_minutes'] ?? 60),
+            'time' => $time,
+            'price' => isset($app['service_price']) ? number_format((float) $app['service_price'], 2, '.', '') : null,
             'is_own' => ($app['user_id'] == $user_id)
         ];
     }
@@ -156,7 +185,8 @@ if ($action === 'get_week') {
         'break_start_time' => '15:00:00',
         'break_end_time' => '16:00:00',
         'available_weekdays' => '1,2,3,4,5',
-        'appointment_delivery_mode' => 'both'
+        'appointment_delivery_mode' => 'both',
+        'available_session_durations' => '60'
     ];
     $settings_res = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
     if ($settings_res->num_rows > 0) {
@@ -175,7 +205,7 @@ if ($action === 'get_week') {
         ensure_delivery_setting_column($mysqli);
         ensure_session_setting_column($mysqli);
         $settings_res = $mysqli->query("
-            SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, available_session_types,
+            SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, available_session_types, available_session_durations,
                    min_booking_notice_days, max_booking_notice_days,
                    appointment_start_time, appointment_end_time, break_start_time, break_end_time,
                    available_weekdays, appointment_delivery_mode
@@ -187,17 +217,44 @@ if ($action === 'get_week') {
         }
     }
 
-    echo json_encode(['success' => true, 'appointments' => $apps_map, 'closed_days' => $closed_days, 'payment_settings' => $payment_settings]);
+    $service_options = [];
+    $active_durations = active_session_durations($payment_settings);
+    $active_delivery_mode = $payment_settings['appointment_delivery_mode'] ?? 'both';
+    $active_service_types = explode(',', $payment_settings['available_session_types'] ?? 'individual');
+    foreach (fetch_appointment_services($mysqli, true) as $service) {
+        if ($service['service_key'] === 'couple' && !in_array('couple', $active_service_types, true)) {
+            continue;
+        }
+        foreach ($service['options'] as $option) {
+            if (!in_array((int) $option['duration_minutes'], $active_durations, true)) {
+                continue;
+            }
+            if ($active_delivery_mode !== 'both' && $option['consultation_type'] !== $active_delivery_mode) {
+                continue;
+            }
+            $option['service_name'] = $service['name'];
+            $option['service_key'] = $service['service_key'];
+            $service_options[] = $option;
+        }
+    }
+
+    echo json_encode(['success' => true, 'appointments' => $apps_map, 'closed_days' => $closed_days, 'payment_settings' => $payment_settings, 'service_options' => $service_options]);
 
 } elseif ($action === 'book') {
     $date = $_POST['date'] ?? '';
     $time = $_POST['time'] ?? '';
     $consultation_type = $_POST['consultation_type'] ?? '';
     $service_type = $_POST['service_type'] ?? 'individual';
+    $service_option_id = (int) ($_POST['service_option_id'] ?? 0);
     $target_user_id = $is_admin ? ($_POST['user_id'] ?? '') : $user_id;
 
     if (!$date || !$time || !$target_user_id) {
         echo json_encode(['success' => false, 'error' => 'Faltan datos']);
+        exit;
+    }
+
+    if ($service_option_id <= 0) {
+        echo json_encode(['success' => false, 'error' => 'Selecciona un servicio disponible.']);
         exit;
     }
 
@@ -223,7 +280,7 @@ if ($action === 'get_week') {
         $settings_res = $mysqli->query("
             SELECT min_booking_notice_days, max_booking_notice_days,
                    appointment_start_time, appointment_end_time, break_start_time, break_end_time,
-                   available_weekdays, appointment_delivery_mode, available_session_types
+                   available_weekdays, appointment_delivery_mode, available_session_types, available_session_durations
             FROM payment_settings
             WHERE id = 1
         ");
@@ -232,6 +289,22 @@ if ($action === 'get_week') {
             $max_booking_notice_days = (int) $settings['max_booking_notice_days'];
             $appointment_delivery_mode = $settings['appointment_delivery_mode'] ?? 'both';
         }
+    }
+
+    $service_option = $service_option_id > 0 ? fetch_service_option($mysqli, $service_option_id) : null;
+    if (!$service_option || (int) $service_option['is_active'] !== 1 || (int) $service_option['service_active'] !== 1) {
+        echo json_encode(['success' => false, 'error' => 'El servicio seleccionado no está disponible.']);
+        exit;
+    }
+    $consultation_type = $service_option['consultation_type'];
+    $service_type = $service_option['service_key'] === 'couple' ? 'couple' : 'individual';
+    if ($appointment_delivery_mode !== 'both' && $consultation_type !== $appointment_delivery_mode) {
+        echo json_encode(['success' => false, 'error' => 'La modalidad seleccionada no está disponible.']);
+        exit;
+    }
+    if (!in_array((int) $service_option['duration_minutes'], active_session_durations($settings), true)) {
+        echo json_encode(['success' => false, 'error' => 'La duración seleccionada no está disponible.']);
+        exit;
     }
 
     if ($appointment_delivery_mode === 'online') {
@@ -249,6 +322,7 @@ if ($action === 'get_week') {
         echo json_encode(['success' => false, 'error' => 'La sesión de pareja no está disponible.']);
         exit;
     }
+    $duration_minutes = $service_option ? (int) $service_option['duration_minutes'] : 60;
 
     // Checking booking limits
     $booking_date = new DateTime($date);
@@ -293,9 +367,29 @@ if ($action === 'get_week') {
         exit;
     }
 
+    $new_start = minutes_from_time($time);
+    $new_end = $new_start + $duration_minutes;
+    $stmt = $mysqli->prepare("
+        SELECT appointment_time, COALESCE(duration_minutes, 60) AS duration_minutes
+        FROM appointments
+        WHERE appointment_date = ? AND status = 'booked'
+    ");
+    $stmt->bind_param("s", $date);
+    $stmt->execute();
+    $existing_res = $stmt->get_result();
+    while ($existing = $existing_res->fetch_assoc()) {
+        $existing_start = minutes_from_time($existing['appointment_time']);
+        $existing_end = $existing_start + (int) ($existing['duration_minutes'] ?? 60);
+        if ($new_start < $existing_end && $new_end > $existing_start) {
+            echo json_encode(['success' => false, 'error' => 'El horario ya está ocupado']);
+            exit;
+        }
+    }
+
     try {
-        $stmt = $mysqli->prepare("INSERT INTO appointments (user_id, appointment_date, appointment_time, consultation_type, service_type, status) VALUES (?, ?, ?, ?, ?, 'booked')");
-        $stmt->bind_param("issss", $target_user_id, $date, $time, $consultation_type, $service_type);
+        $stmt = $mysqli->prepare("INSERT INTO appointments (user_id, appointment_date, appointment_time, consultation_type, service_type, service_option_id, duration_minutes, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'booked')");
+        $nullable_service_option_id = $service_option ? $service_option_id : null;
+        $stmt->bind_param("issssii", $target_user_id, $date, $time, $consultation_type, $service_type, $nullable_service_option_id, $duration_minutes);
         $stmt->execute();
         $appointment_id = $mysqli->insert_id;
         $cancel_token = bin2hex(random_bytes(32));
@@ -309,7 +403,7 @@ if ($action === 'get_week') {
         $patient = $stmt->get_result()->fetch_assoc();
         $appointment_text = appointment_label($date, $time);
         $consultation_text = appointment_consultation_label($consultation_type);
-        $service_text = appointment_service_label($service_type);
+        $service_text = $service_option ? $service_option['service_name'] . ' (' . $duration_minutes . ' min)' : appointment_service_label($service_type);
         $price_settings = null;
         $appointment_price_text = null;
         $settings_res = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
@@ -318,7 +412,7 @@ if ($action === 'get_week') {
             $settings_res = $mysqli->query("SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price FROM payment_settings WHERE id = 1");
             $price_settings = $settings_res->fetch_assoc();
             if ($price_settings) {
-                $appointment_price_text = format_appointment_price(appointment_price_for_type($price_settings, $consultation_type, $service_type));
+                $appointment_price_text = format_appointment_price($service_option ? $service_option['price'] : appointment_price_for_type($price_settings, $consultation_type, $service_type));
             }
         }
 
@@ -364,7 +458,14 @@ if ($action === 'get_week') {
             );
         }
 
-        echo json_encode(['success' => true, 'appointment_id' => $appointment_id]);
+        echo json_encode([
+            'success' => true,
+            'appointment_id' => $appointment_id,
+            'service_label' => $service_text,
+            'consultation_type' => $consultation_type,
+            'service_type' => $service_type,
+            'price' => $service_option ? number_format((float) $service_option['price'], 2, '.', '') : null
+        ]);
     } catch (\Exception $e) {
         echo json_encode(['success' => false, 'error' => 'El horario ya está ocupado']);
     }
@@ -375,9 +476,13 @@ if ($action === 'get_week') {
 
     $lookup_sql = "
         SELECT a.id, a.appointment_date, a.appointment_time, a.consultation_type, a.service_type,
+               COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
+               s.name AS service_name,
                COALESCE(a.payment_status, 'pending') AS payment_status,
                u.name, u.email
         FROM appointments a
+        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
+        LEFT JOIN appointment_services s ON s.id = so.service_id
         JOIN users u ON u.id = a.user_id
         WHERE a.appointment_date = ? AND a.appointment_time = ? AND a.status = 'booked'
     ";

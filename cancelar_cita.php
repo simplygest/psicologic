@@ -6,6 +6,7 @@ require_once 'google_helpers.php';
 require_once 'settings_helpers.php';
 
 ensure_appointment_payment_columns($mysqli);
+ensure_appointment_services_tables($mysqli);
 $branding = get_public_branding_settings($mysqli);
 
 $token = $_GET['t'] ?? ($_POST['token'] ?? '');
@@ -18,9 +19,13 @@ $cancelled = false;
 if ($token) {
     $stmt = $mysqli->prepare("
         SELECT a.id, a.appointment_date, a.appointment_time, a.status, a.consultation_type, a.service_type,
+               COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
+               so.price AS service_price, s.name AS service_name,
                COALESCE(a.payment_status, 'pending') AS payment_status,
                a.payment_method, u.name, u.email
         FROM appointments a
+        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
+        LEFT JOIN appointment_services s ON s.id = so.service_id
         JOIN users u ON u.id = a.user_id
         WHERE a.cancel_token = ?
     ");
@@ -86,12 +91,12 @@ function consultation_type_label($appointment)
 
 function service_type_label($appointment)
 {
-    return appointment_service_label($appointment['service_type'] ?? 'individual');
+    return appointment_service_option_label($appointment);
 }
 
 function current_appointment_price($settings, $appointment)
 {
-    return appointment_price_for_type($settings, $appointment['consultation_type'] ?? 'presencial', $appointment['service_type'] ?? 'individual');
+    return appointment_price_for_row($settings, $appointment);
 }
 ?>
 <!DOCTYPE html>
