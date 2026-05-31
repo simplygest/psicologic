@@ -127,6 +127,10 @@ La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`.
 - La tabla de servicios/precios se filtra por `appointment_delivery_mode` y `available_session_durations`.
 - Las citas nuevas pueden guardar `service_option_id` y `duration_minutes`; las citas antiguas siguen funcionando con `service_type`.
 - Se anadio la opcion `show_prices_public` para mostrar u ocultar una pagina publica `precios.php`.
+- Se preparo una primera fase de bonos: pestana `Bonos`, configuracion de bonos de 4 y 10 sesiones, y visualizacion publica en `precios.php` si estan activos.
+- Si los bonos estan activos y el paciente tiene saldo, el modal de reserva muestra "Incluida con bono" con sesiones restantes.
+- Las reservas individuales pueden consumir una sesion de bono, quedan marcadas como pagadas por `bonus` y al cancelar se devuelve la sesion al bono.
+- Queda pendiente implementar la compra/pago de bonos y una pantalla de administracion del saldo de cada paciente.
 
 ## Cambios de BD pendientes de aplicar manualmente si no se deja auto-migrar
 
@@ -142,10 +146,14 @@ La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`.
 - `appointments.service_type VARCHAR(16) NOT NULL DEFAULT 'individual'`
 - `appointments.service_option_id INT UNSIGNED DEFAULT NULL`
 - `appointments.duration_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 60`
+- `appointments.patient_bonus_id INT UNSIGNED DEFAULT NULL`
 - `payment_settings.show_prices_public TINYINT(1) NOT NULL DEFAULT 0`
 - `payment_settings.available_session_durations VARCHAR(16) NOT NULL DEFAULT '60'`
 - Nueva tabla `appointment_services`
 - Nueva tabla `appointment_service_options`
+- `payment_settings.bonuses_enabled TINYINT(1) NOT NULL DEFAULT 0`
+- Nueva tabla `appointment_bonuses`
+- Nueva tabla `patient_bonuses`
 
 ## Avisos importantes
 

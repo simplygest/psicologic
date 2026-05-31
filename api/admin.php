@@ -25,6 +25,7 @@ function ensure_payment_settings_table($mysqli)
             primary_color VARCHAR(7) NOT NULL DEFAULT '#8f7fba',
             show_profile_image_public TINYINT(1) NOT NULL DEFAULT 0,
             show_prices_public TINYINT(1) NOT NULL DEFAULT 0,
+            bonuses_enabled TINYINT(1) NOT NULL DEFAULT 0,
             online_payment_enabled TINYINT(1) NOT NULL DEFAULT 0,
             environment ENUM('sandbox', 'real') NOT NULL DEFAULT 'sandbox',
             merchant_code VARCHAR(32) DEFAULT NULL,
@@ -79,6 +80,7 @@ function ensure_payment_settings_table($mysqli)
     ensure_admin_notification_email_column($mysqli);
     ensure_branding_columns($mysqli);
     ensure_appointment_services_tables($mysqli);
+    ensure_bonus_tables($mysqli);
 
     $columns = [
         'email_provider' => "ALTER TABLE payment_settings ADD email_provider ENUM('phpmailer', 'google') NOT NULL DEFAULT 'phpmailer' AFTER admin_notification_email",
@@ -88,6 +90,7 @@ function ensure_payment_settings_table($mysqli)
         'primary_color' => "ALTER TABLE payment_settings ADD primary_color VARCHAR(7) NOT NULL DEFAULT '#8f7fba' AFTER landing_image_path",
         'show_profile_image_public' => "ALTER TABLE payment_settings ADD show_profile_image_public TINYINT(1) NOT NULL DEFAULT 0 AFTER profile_image_path",
         'show_prices_public' => "ALTER TABLE payment_settings ADD show_prices_public TINYINT(1) NOT NULL DEFAULT 0 AFTER show_profile_image_public",
+        'bonuses_enabled' => "ALTER TABLE payment_settings ADD bonuses_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER show_prices_public",
         'appointment_delivery_mode' => "ALTER TABLE payment_settings ADD appointment_delivery_mode ENUM('both', 'presencial', 'online') NOT NULL DEFAULT 'both' AFTER admin_notification_email",
         'available_session_types' => "ALTER TABLE payment_settings ADD available_session_types VARCHAR(32) NOT NULL DEFAULT 'individual' AFTER appointment_delivery_mode",
         'available_session_durations' => "ALTER TABLE payment_settings ADD available_session_durations VARCHAR(16) NOT NULL DEFAULT '60' AFTER available_session_types",
@@ -370,7 +373,7 @@ if ($action === 'generate_invite') {
     ensure_payment_settings_table($mysqli);
 
     $res = $mysqli->query("
-        SELECT app_name, profile_image_path, landing_image_path, primary_color, show_profile_image_public, show_prices_public, online_payment_enabled, environment, merchant_code, terminal,
+        SELECT app_name, profile_image_path, landing_image_path, primary_color, show_profile_image_public, show_prices_public, bonuses_enabled, online_payment_enabled, environment, merchant_code, terminal,
                appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, admin_notification_email,
                appointment_delivery_mode, available_session_types, available_session_durations,
                appointment_reminder_enabled,
@@ -389,7 +392,58 @@ if ($action === 'generate_invite') {
     ");
     $settings = $res->fetch_assoc();
 
-    echo json_encode(['success' => true, 'settings' => $settings, 'services' => fetch_appointment_services($mysqli)]);
+    echo json_encode(['success' => true, 'settings' => $settings, 'services' => fetch_appointment_services($mysqli), 'bonuses' => fetch_appointment_bonuses($mysqli)]);
+} elseif ($action === 'save_bonuses') {
+    ensure_payment_settings_table($mysqli);
+    ensure_bonus_tables($mysqli);
+
+    $bonuses_enabled = isset($_POST['bonuses_enabled']) && $_POST['bonuses_enabled'] === '1' ? 1 : 0;
+    $bonuses_json = $_POST['bonuses_json'] ?? '';
+    $bonuses = json_decode($bonuses_json, true);
+    if (!is_array($bonuses)) {
+        echo json_encode(['success' => false, 'error' => 'Configuracion de bonos invalida']);
+        exit;
+    }
+
+    $mysqli->begin_transaction();
+    try {
+        foreach ($bonuses as $bonus) {
+            $bonus_id = (int) ($bonus['id'] ?? 0);
+            $name = trim((string) ($bonus['name'] ?? ''));
+            $session_count = (int) ($bonus['session_count'] ?? 0);
+            $price = str_replace(',', '.', trim((string) ($bonus['price'] ?? '')));
+            $is_active = !empty($bonus['is_active']) ? 1 : 0;
+
+            if ($bonus_id <= 0 || $name === '' || !in_array($session_count, [4, 10], true)) {
+                throw new \Exception('Hay un bono sin nombre, sesiones o identificador valido.');
+            }
+            if (!is_numeric($price) || (float) $price < 0) {
+                throw new \Exception('Hay un precio de bono no valido.');
+            }
+            if (!$bonuses_enabled) {
+                $is_active = 0;
+            }
+
+            $price = (float) $price;
+            $stmt = $mysqli->prepare("
+                UPDATE appointment_bonuses
+                SET name = ?, session_count = ?, price = ?, is_active = ?
+                WHERE id = ?
+            ");
+            $stmt->bind_param("sidii", $name, $session_count, $price, $is_active, $bonus_id);
+            $stmt->execute();
+        }
+
+        $stmt = $mysqli->prepare("UPDATE payment_settings SET bonuses_enabled = ? WHERE id = 1");
+        $stmt->bind_param("i", $bonuses_enabled);
+        $stmt->execute();
+
+        $mysqli->commit();
+        echo json_encode(['success' => true, 'message' => 'Bonos guardados correctamente.', 'bonuses' => fetch_appointment_bonuses($mysqli)]);
+    } catch (\Exception $e) {
+        $mysqli->rollback();
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
 } elseif ($action === 'save_services') {
     ensure_payment_settings_table($mysqli);
     ensure_appointment_services_tables($mysqli);

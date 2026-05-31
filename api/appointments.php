@@ -17,6 +17,7 @@ $is_admin = ($_SESSION['role'] === 'admin');
 
 ensure_appointment_payment_columns($mysqli);
 ensure_appointment_services_tables($mysqli);
+ensure_bonus_tables($mysqli);
 
 function ensure_schedule_setting_columns($mysqli)
 {
@@ -117,7 +118,7 @@ if ($action === 'get_week') {
     $stmt = $mysqli->prepare("
         SELECT a.id, a.appointment_date, a.appointment_time, a.user_id,
                COALESCE(a.payment_status, 'pending') AS payment_status,
-               a.payment_method, a.paid_at, a.consultation_type, a.service_type,
+               a.payment_method, a.paid_at, a.patient_bonus_id, a.consultation_type, a.service_type,
                COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
                so.price AS service_price, s.name AS service_name, s.service_key,
                u.name, u.email, u.phone
@@ -160,6 +161,7 @@ if ($action === 'get_week') {
             'payment_status' => $app['payment_status'] ?? 'pending',
             'payment_method' => $app['payment_method'] ?? null,
             'paid_at' => $app['paid_at'] ?? null,
+            'patient_bonus_id' => $app['patient_bonus_id'] ?? null,
             'consultation_type' => $app['consultation_type'] ?? 'presencial',
             'service_type' => $app['service_type'] ?? 'individual',
             'service_label' => appointment_service_option_label($app),
@@ -396,6 +398,17 @@ if ($action === 'get_week') {
         $stmt = $mysqli->prepare("UPDATE appointments SET cancel_token = ? WHERE id = ?");
         $stmt->bind_param("si", $cancel_token, $appointment_id);
         $stmt->execute();
+        $bonus_claim = null;
+        if ($service_type === 'individual') {
+            $bonus_claim = claim_patient_bonus_session($mysqli, (int) $target_user_id);
+            if ($bonus_claim) {
+                $payment_method = 'bonus';
+                $payment_status = 'paid';
+                $stmt = $mysqli->prepare("UPDATE appointments SET patient_bonus_id = ?, payment_status = ?, payment_method = ?, paid_at = NOW() WHERE id = ?");
+                $stmt->bind_param("issi", $bonus_claim['patient_bonus_id'], $payment_status, $payment_method, $appointment_id);
+                $stmt->execute();
+            }
+        }
 
         $stmt = $mysqli->prepare("SELECT name, email, phone FROM users WHERE id = ?");
         $stmt->bind_param("i", $target_user_id);
@@ -411,7 +424,9 @@ if ($action === 'get_week') {
             ensure_payment_settings_price_columns($mysqli);
             $settings_res = $mysqli->query("SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price FROM payment_settings WHERE id = 1");
             $price_settings = $settings_res->fetch_assoc();
-            if ($price_settings) {
+            if ($bonus_claim) {
+                $appointment_price_text = null;
+            } elseif ($price_settings) {
                 $appointment_price_text = format_appointment_price($service_option ? $service_option['price'] : appointment_price_for_type($price_settings, $consultation_type, $service_type));
             }
         }
@@ -430,6 +445,7 @@ if ($action === 'get_week') {
             '<b>Fecha:</b> ' . htmlspecialchars($appointment_text) . '<br>' .
             '<b>Servicio:</b> ' . htmlspecialchars($service_text) . '<br>' .
             '<b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '<br>' .
+            ($bonus_claim ? '<b>Bono:</b> Incluida con bono (' . (int) $bonus_claim['remaining_after'] . ' sesiones restantes)<br>' : '') .
             ($appointment_price_text !== null ? '<b>Importe:</b> ' . htmlspecialchars($appointment_price_text) . ' &euro;<br>' : '') .
             '<b>Email:</b> ' . htmlspecialchars($patient['email'] ?? 'Sin email') . '<br>' .
             '<b>Teléfono:</b> ' . htmlspecialchars($patient['phone'] ?? 'Sin teléfono') . '</p>',
@@ -438,7 +454,9 @@ if ($action === 'get_week') {
 
         if (!empty($patient['email'])) {
             $payment_note = '<p>Recuerda que puedes pagar directamente en la consulta.</p>';
-            if ($price_settings && (int) $price_settings['online_payment_enabled'] === 1) {
+            if ($bonus_claim) {
+                $payment_note = '<p><b>Bono:</b> esta cita queda incluida en tu bono. Te quedan ' . (int) $bonus_claim['remaining_after'] . ' sesiones.</p>';
+            } elseif ($price_settings && (int) $price_settings['online_payment_enabled'] === 1) {
                 $payment_note = '<p><b>Importante:</b> este email confirma la reserva de la cita, pero no confirma el pago. Recibirás otro email cuando el pago se complete correctamente.</p>';
             }
 
@@ -464,11 +482,29 @@ if ($action === 'get_week') {
             'service_label' => $service_text,
             'consultation_type' => $consultation_type,
             'service_type' => $service_type,
-            'price' => $service_option ? number_format((float) $service_option['price'], 2, '.', '') : null
+            'price' => $service_option ? number_format((float) $service_option['price'], 2, '.', '') : null,
+            'bonus_applied' => $bonus_claim ? 1 : 0,
+            'bonus_remaining' => $bonus_claim ? (int) $bonus_claim['remaining_after'] : null
         ]);
     } catch (\Exception $e) {
         echo json_encode(['success' => false, 'error' => 'El horario ya está ocupado']);
     }
+
+} elseif ($action === 'get_bonus_balance') {
+    $target_user_id = $is_admin ? (int) ($_GET['user_id'] ?? 0) : (int) $user_id;
+    if (!$target_user_id) {
+        echo json_encode(['success' => false, 'error' => 'Selecciona un paciente.']);
+        exit;
+    }
+
+    $enabled = bonuses_are_enabled($mysqli);
+    $balance = $enabled ? fetch_patient_bonus_balance($mysqli, $target_user_id) : ['total_remaining' => 0, 'bonuses' => []];
+    echo json_encode([
+        'success' => true,
+        'bonuses_enabled' => $enabled ? 1 : 0,
+        'total_remaining' => (int) $balance['total_remaining'],
+        'bonuses' => $balance['bonuses']
+    ]);
 
 } elseif ($action === 'cancel') {
     $date = $_POST['date'] ?? '';
@@ -479,6 +515,7 @@ if ($action === 'get_week') {
                COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
                s.name AS service_name,
                COALESCE(a.payment_status, 'pending') AS payment_status,
+               a.payment_method, a.patient_bonus_id,
                u.name, u.email
         FROM appointments a
         LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
@@ -517,6 +554,9 @@ if ($action === 'get_week') {
     }
 
     if ($stmt->affected_rows > 0) {
+        if (!empty($appointment_to_cancel['patient_bonus_id']) && ($appointment_to_cancel['payment_method'] ?? '') === 'bonus') {
+            restore_patient_bonus_session($mysqli, (int) $appointment_to_cancel['patient_bonus_id']);
+        }
         notify_appointment_cancelled($mysqli, $appointment_to_cancel);
         echo json_encode(['success' => true]);
     } else {

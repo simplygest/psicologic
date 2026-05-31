@@ -13,7 +13,8 @@ function ensure_appointment_payment_columns($mysqli)
         'consultation_type' => "ALTER TABLE appointments ADD consultation_type VARCHAR(16) NOT NULL DEFAULT 'presencial'",
         'service_type' => "ALTER TABLE appointments ADD service_type VARCHAR(16) NOT NULL DEFAULT 'individual'",
         'service_option_id' => "ALTER TABLE appointments ADD service_option_id INT UNSIGNED DEFAULT NULL",
-        'duration_minutes' => "ALTER TABLE appointments ADD duration_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 60"
+        'duration_minutes' => "ALTER TABLE appointments ADD duration_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 60",
+        'patient_bonus_id' => "ALTER TABLE appointments ADD patient_bonus_id INT UNSIGNED DEFAULT NULL"
     ];
 
     foreach ($columns as $column => $sql) {
@@ -55,6 +56,195 @@ function ensure_appointment_services_tables($mysqli)
     ");
 
     seed_default_appointment_services($mysqli);
+}
+
+function ensure_bonus_tables($mysqli)
+{
+    $settings_table = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
+    if ($settings_table && $settings_table->num_rows > 0) {
+        $column_res = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'bonuses_enabled'");
+        if ($column_res && $column_res->num_rows === 0) {
+            $mysqli->query("ALTER TABLE payment_settings ADD bonuses_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER show_prices_public");
+        }
+    }
+
+    $mysqli->query("
+        CREATE TABLE IF NOT EXISTS appointment_bonuses (
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            bonus_key VARCHAR(32) NOT NULL UNIQUE,
+            name VARCHAR(120) NOT NULL,
+            session_count SMALLINT UNSIGNED NOT NULL,
+            price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+            is_active TINYINT(1) NOT NULL DEFAULT 0,
+            sort_order INT NOT NULL DEFAULT 0,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+
+    $mysqli->query("
+        CREATE TABLE IF NOT EXISTS patient_bonuses (
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            user_id INT UNSIGNED NOT NULL,
+            bonus_id INT UNSIGNED NOT NULL,
+            total_sessions SMALLINT UNSIGNED NOT NULL,
+            remaining_sessions SMALLINT UNSIGNED NOT NULL,
+            status ENUM('active', 'used', 'expired', 'cancelled') NOT NULL DEFAULT 'active',
+            purchased_at DATETIME DEFAULT NULL,
+            expires_at DATE DEFAULT NULL,
+            payment_attempt_id INT UNSIGNED DEFAULT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_patient_bonuses_user (user_id),
+            INDEX idx_patient_bonuses_bonus (bonus_id),
+            INDEX idx_patient_bonuses_status (status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+
+    seed_default_bonuses($mysqli);
+}
+
+function seed_default_bonuses($mysqli)
+{
+    $bonuses = [
+        ['4_sessions', 'Bono de 4 sesiones', 4, 250.00, 10],
+        ['10_sessions', 'Bono de 10 sesiones', 10, 600.00, 20]
+    ];
+
+    foreach ($bonuses as $bonus) {
+        [$key, $name, $sessions, $price, $sort] = $bonus;
+        $stmt = $mysqli->prepare("
+            INSERT INTO appointment_bonuses (bonus_key, name, session_count, price, is_active, sort_order)
+            VALUES (?, ?, ?, ?, 0, ?)
+            ON DUPLICATE KEY UPDATE bonus_key = bonus_key
+        ");
+        $stmt->bind_param("ssidi", $key, $name, $sessions, $price, $sort);
+        $stmt->execute();
+    }
+}
+
+function fetch_appointment_bonuses($mysqli, $only_active = false)
+{
+    ensure_bonus_tables($mysqli);
+    $where = $only_active ? "WHERE is_active = 1" : "";
+    $res = $mysqli->query("
+        SELECT id, bonus_key, name, session_count, price, is_active, sort_order
+        FROM appointment_bonuses
+        $where
+        ORDER BY sort_order ASC, id ASC
+    ");
+
+    $bonuses = [];
+    while ($row = $res->fetch_assoc()) {
+        $row['id'] = (int) $row['id'];
+        $row['session_count'] = (int) $row['session_count'];
+        $row['price'] = number_format((float) $row['price'], 2, '.', '');
+        $row['is_active'] = (int) $row['is_active'];
+        $bonuses[] = $row;
+    }
+
+    return $bonuses;
+}
+
+function bonuses_are_enabled($mysqli)
+{
+    ensure_bonus_tables($mysqli);
+    $res = $mysqli->query("SELECT bonuses_enabled FROM payment_settings WHERE id = 1");
+    if (!$res || !($row = $res->fetch_assoc())) {
+        return false;
+    }
+    return (int) ($row['bonuses_enabled'] ?? 0) === 1;
+}
+
+function fetch_patient_bonus_balance($mysqli, $user_id)
+{
+    ensure_bonus_tables($mysqli);
+    $stmt = $mysqli->prepare("
+        SELECT pb.id, pb.bonus_id, pb.total_sessions, pb.remaining_sessions, pb.status,
+               pb.purchased_at, pb.expires_at, b.name, b.session_count
+        FROM patient_bonuses pb
+        JOIN appointment_bonuses b ON b.id = pb.bonus_id
+        WHERE pb.user_id = ?
+          AND pb.status = 'active'
+          AND pb.remaining_sessions > 0
+          AND b.is_active = 1
+          AND (pb.expires_at IS NULL OR pb.expires_at >= CURDATE())
+        ORDER BY pb.expires_at IS NULL ASC, pb.expires_at ASC, pb.purchased_at ASC, pb.id ASC
+    ");
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $bonuses = [];
+    $total_remaining = 0;
+
+    while ($row = $res->fetch_assoc()) {
+        $row['id'] = (int) $row['id'];
+        $row['bonus_id'] = (int) $row['bonus_id'];
+        $row['total_sessions'] = (int) $row['total_sessions'];
+        $row['remaining_sessions'] = (int) $row['remaining_sessions'];
+        $row['session_count'] = (int) $row['session_count'];
+        $total_remaining += $row['remaining_sessions'];
+        $bonuses[] = $row;
+    }
+
+    return [
+        'total_remaining' => $total_remaining,
+        'bonuses' => $bonuses
+    ];
+}
+
+function claim_patient_bonus_session($mysqli, $user_id)
+{
+    if (!bonuses_are_enabled($mysqli)) {
+        return null;
+    }
+
+    $balance = fetch_patient_bonus_balance($mysqli, $user_id);
+    if (empty($balance['bonuses'])) {
+        return null;
+    }
+
+    $bonus = $balance['bonuses'][0];
+    $patient_bonus_id = (int) $bonus['id'];
+    $stmt = $mysqli->prepare("
+        UPDATE patient_bonuses
+        SET remaining_sessions = remaining_sessions - 1,
+            status = CASE WHEN remaining_sessions - 1 <= 0 THEN 'used' ELSE 'active' END
+        WHERE id = ?
+          AND user_id = ?
+          AND status = 'active'
+          AND remaining_sessions > 0
+    ");
+    $stmt->bind_param("ii", $patient_bonus_id, $user_id);
+    $stmt->execute();
+
+    if ($stmt->affected_rows <= 0) {
+        return null;
+    }
+
+    return [
+        'patient_bonus_id' => $patient_bonus_id,
+        'bonus_name' => $bonus['name'],
+        'remaining_before' => (int) $bonus['remaining_sessions'],
+        'remaining_after' => max(0, ((int) $bonus['remaining_sessions']) - 1)
+    ];
+}
+
+function restore_patient_bonus_session($mysqli, $patient_bonus_id)
+{
+    if (!$patient_bonus_id) {
+        return;
+    }
+
+    ensure_bonus_tables($mysqli);
+    $stmt = $mysqli->prepare("
+        UPDATE patient_bonuses
+        SET remaining_sessions = remaining_sessions + 1,
+            status = 'active'
+        WHERE id = ?
+    ");
+    $stmt->bind_param("i", $patient_bonus_id);
+    $stmt->execute();
 }
 
 function seed_default_appointment_services($mysqli)

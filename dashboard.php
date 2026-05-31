@@ -117,6 +117,8 @@ $profile_image_path = $branding['profile_image_path'];
             <select id="service-option" class="form-select"></select>
           </div>
 
+          <div id="booking-bonus-notice" class="alert alert-success py-2 d-none text-start small"></div>
+
           <button class="btn btn-primary px-4" id="btn-confirm-action">Confirmar</button>
           <?php if (!$is_admin): ?>
             <div id="payment-options" class="mt-3 d-none">
@@ -153,6 +155,10 @@ $profile_image_path = $branding['profile_image_path'];
               <li class="nav-item" role="presentation">
                 <button class="nav-link" id="services-settings-tab" data-bs-toggle="tab" data-bs-target="#services-settings-panel"
                   type="button" role="tab">Precios</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="bonuses-settings-tab" data-bs-toggle="tab" data-bs-target="#bonuses-settings-panel"
+                  type="button" role="tab">Bonos</button>
               </li>
               <li class="nav-item" role="presentation">
                 <button class="nav-link" id="booking-settings-tab" data-bs-toggle="tab" data-bs-target="#booking-settings-panel"
@@ -271,6 +277,7 @@ $profile_image_path = $branding['profile_image_path'];
 
                 </div>
 
+                <hr class="my-4">
                 <form id="add-closed-form" class="mb-4">
                   <div class="row g-2">
                     <div class="col-md-3">
@@ -317,6 +324,36 @@ $profile_image_path = $branding['profile_image_path'];
                 </div>
                 <div class="text-end mt-4">
                   <button type="button" class="btn btn-primary" id="btn-save-services-settings">Guardar precios</button>
+                </div>
+              </div>
+
+              <div class="tab-pane fade" id="bonuses-settings-panel" role="tabpanel" aria-labelledby="bonuses-settings-tab">
+                <div id="bonuses-settings-alert" class="alert d-none"></div>
+                <div class="form-check form-switch mb-4">
+                  <input class="form-check-input" type="checkbox" id="bonuses-enabled">
+                  <label class="form-check-label" for="bonuses-enabled">Habilitar compra de bonos</label>
+                </div>
+                <div id="bonuses-config-block">
+                  <div class="table-responsive services-table-wrap">
+                    <table class="table align-middle services-table">
+                      <thead>
+                        <tr>
+                          <th>Bono</th>
+                          <th>Sesiones</th>
+                          <th>Precio</th>
+                          <th class="text-center">Activo</th>
+                        </tr>
+                      </thead>
+                      <tbody id="bonuses-settings-body">
+                        <tr>
+                          <td colspan="4" class="text-muted text-center py-4">Cargando bonos...</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                <div class="text-end mt-4">
+                  <button type="button" class="btn btn-primary" id="btn-save-bonuses-settings">Guardar bonos</button>
                 </div>
               </div>
 

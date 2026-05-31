@@ -18,6 +18,8 @@ let PAYMENT_SETTINGS = {
 };
 let APPOINTMENT_SERVICES = [];
 let ACTIVE_SERVICE_OPTIONS = [];
+let APPOINTMENT_BONUSES = [];
+let PATIENT_BONUS_BALANCE = { bonuses_enabled: 0, total_remaining: 0, bonuses: [] };
 let isAppointmentRequestInProgress = false;
 
 function getMonday(d) {
@@ -272,6 +274,9 @@ function getPaymentBadge(app) {
     }
 
     if (app.payment_status === 'paid') {
+        if (app.payment_method === 'bonus') {
+            return ' <small class="payment-badge paid">Bono</small>';
+        }
         return ' <small class="payment-badge paid">Pagada</small>';
     }
 
@@ -330,6 +335,7 @@ function openModal(date, time, status, extraName = '', extraEmail = '', extraPho
     $('#consultationTypeSelect').addClass('d-none');
     $('#serviceTypeSelect').addClass('d-none');
     $('#serviceOptionSelect').addClass('d-none');
+    $('#booking-bonus-notice').addClass('d-none').text('');
     currentPaymentAppointmentId = null;
     $('#btn-confirm-action').removeClass('d-none').prop('disabled', false);
 
@@ -343,6 +349,7 @@ function openModal(date, time, status, extraName = '', extraEmail = '', extraPho
         }
         renderBookingServiceOptions();
         $('#serviceOptionSelect').removeClass('d-none');
+        refreshBookingBonusNotice();
         $('#btn-confirm-action').removeClass('btn-danger').addClass('btn-primary').text('Reservar');
     } else if (status === 'cancel_admin') {
         $('#modalTitle').text(`Cancelar cita: ${formatDisplayDate(date)} a las ${time}`);
@@ -431,6 +438,10 @@ $(document).ready(function () {
         }
     });
 
+    $('#patientSelect, #service-option').change(function () {
+        refreshBookingBonusNotice();
+    });
+
     $('#btn-open-settings').click(function () {
         loadClosedDays();
         loadPaymentSettings();
@@ -496,6 +507,10 @@ $(document).ready(function () {
         saveServicesSettings(this);
     });
 
+    $('#btn-save-bonuses-settings').click(function () {
+        saveBonusesSettings(this);
+    });
+
     $('#email-provider').change(function () {
         toggleEmailProviderSettings();
     });
@@ -511,6 +526,10 @@ $(document).ready(function () {
     $('#appointment-delivery-mode').change(function () {
         togglePriceRows();
         renderServicesSettings();
+    });
+
+    $('#bonuses-enabled').change(function () {
+        toggleBonusesSettings();
     });
 
     $('.available-session-type').change(function () {
@@ -615,6 +634,19 @@ function bookAppointment() {
             renderWeekInfo();
             setAppointmentActionLoading(false);
 
+            if (res.bonus_applied == 1) {
+                const remaining = parseInt(res.bonus_remaining || 0, 10);
+                $('#modalTitle').text('Cita reservada');
+                const ownerText = IS_ADMIN ? 'La cita ha quedado reservada correctamente e incluida con el bono del paciente.' : 'Tu cita ha quedado reservada correctamente e incluida con tu bono.';
+                $('#modalDesc').html(`${ownerText}<br><br>Quedan ${remaining} ${remaining === 1 ? 'sesiÃ³n' : 'sesiones'} disponibles.`);
+                $('#btn-confirm-action').addClass('d-none');
+                $('#payment-options').addClass('d-none');
+                setTimeout(function () {
+                    appointmentModal.hide();
+                }, 2500);
+                return;
+            }
+
             if (!IS_ADMIN && PAYMENT_SETTINGS.online_payment_enabled == 1 && res.appointment_id) {
                 currentPaymentAppointmentId = res.appointment_id;
                 $('#modalTitle').text('Cita reservada');
@@ -713,6 +745,49 @@ function renderBookingServiceOptions() {
     if (!visibleOptions.length) {
         $select.append('<option value="">No hay servicios activos</option>');
     }
+}
+
+function refreshBookingBonusNotice() {
+    const $notice = $('#booking-bonus-notice');
+    if (!$notice.length || $('#modalStatus').val() !== 'available') {
+        return;
+    }
+
+    $notice.addClass('d-none').removeClass('alert-success alert-info').text('');
+    const option = selectedServiceOption();
+    if (!option || option.service_key === 'couple') {
+        return;
+    }
+
+    const patientId = IS_ADMIN ? $('#patientSelect').val() : '';
+    if (IS_ADMIN && !patientId) {
+        return;
+    }
+
+    $.ajax({
+        url: 'api/appointments.php?action=get_bonus_balance',
+        method: 'GET',
+        dataType: 'json',
+        data: IS_ADMIN ? { user_id: patientId } : {},
+        success: function (res) {
+            if (!res.success || res.bonuses_enabled != 1) {
+                return;
+            }
+
+            PATIENT_BONUS_BALANCE = res;
+            const remaining = parseInt(res.total_remaining || 0, 10);
+            if (remaining <= 0) {
+                return;
+            }
+
+            const firstBonus = Array.isArray(res.bonuses) && res.bonuses.length ? res.bonuses[0] : null;
+            const bonusName = firstBonus && firstBonus.name ? ` (${escapeHtml(firstBonus.name)})` : '';
+            $notice
+                .removeClass('d-none')
+                .addClass('alert-success')
+                .html(`Incluida con bono${bonusName}: ${remaining} ${remaining === 1 ? 'sesiÃ³n restante' : 'sesiones restantes'}.`);
+        }
+    });
 }
 
 function setAvailableWeekdays(value) {
@@ -882,7 +957,7 @@ function showSettingsAlert(selector, type, message) {
 }
 
 function loadPaymentSettings() {
-    $('#payment-settings-alert, #email-settings-alert, #calendar-settings-alert, #booking-settings-alert, #general-settings-alert, #interface-settings-alert, #services-settings-alert').addClass('d-none');
+    $('#payment-settings-alert, #email-settings-alert, #calendar-settings-alert, #booking-settings-alert, #general-settings-alert, #interface-settings-alert, #services-settings-alert, #bonuses-settings-alert').addClass('d-none');
     $('#merchant-key').val('');
     $('#smtp-password').val('');
     $('#google-client-secret').val('');
@@ -902,6 +977,7 @@ function loadPaymentSettings() {
 
             let settings = res.settings || {};
             APPOINTMENT_SERVICES = Array.isArray(res.services) ? res.services : [];
+            APPOINTMENT_BONUSES = Array.isArray(res.bonuses) ? res.bonuses : [];
             $('#app-name').val(settings.app_name || 'PsicoLogic');
             const primaryColor = settings.primary_color || '#8f7fba';
             $('#primary-color').val(primaryColor);
@@ -912,6 +988,9 @@ function loadPaymentSettings() {
             document.title = `Dashboard - ${settings.app_name || 'PsicoLogic'}`;
             $('#show-profile-image-public').prop('checked', settings.show_profile_image_public == 1);
             $('#show-prices-public').prop('checked', settings.show_prices_public == 1);
+            $('#bonuses-enabled').prop('checked', settings.bonuses_enabled == 1);
+            toggleBonusesSettings();
+            renderBonusesSettings();
             setAvailableSessionDurations(settings.available_session_durations || '60');
             renderServicesSettings();
             if (settings.profile_image_path) {
@@ -1023,6 +1102,10 @@ function toggleCalendarSettings() {
     setFieldBlockEnabled('#calendar-config-fields', $('#google-calendar-enabled').is(':checked'));
 }
 
+function toggleBonusesSettings() {
+    setFieldBlockEnabled('#bonuses-config-block', $('#bonuses-enabled').is(':checked'));
+}
+
 function renderServicesSettings() {
     const $body = $('#services-settings-body');
     if (!$body.length) {
@@ -1072,6 +1155,82 @@ function renderServicesSettings() {
         });
     });
     $body.html(html || '<tr><td colspan="4" class="text-muted text-center py-4">No hay precios para la configuración seleccionada.</td></tr>');
+}
+
+function renderBonusesSettings() {
+    const $body = $('#bonuses-settings-body');
+    if (!$body.length) {
+        return;
+    }
+    if (!APPOINTMENT_BONUSES.length) {
+        $body.html('<tr><td colspan="4" class="text-muted text-center py-4">No hay bonos configurados.</td></tr>');
+        return;
+    }
+
+    let html = '';
+    APPOINTMENT_BONUSES.forEach(bonus => {
+        html += `
+            <tr class="bonus-row" data-bonus-id="${bonus.id}">
+                <td>
+                    <input type="text" class="form-control form-control-sm bonus-name-input" value="${escapeHtml(bonus.name || '')}">
+                </td>
+                <td>${bonus.session_count}</td>
+                <td>
+                    <div class="input-group input-group-sm">
+                        <input type="number" class="form-control bonus-price-input" min="0" step="0.01" value="${bonus.price}">
+                        <span class="input-group-text">€</span>
+                    </div>
+                </td>
+                <td class="text-center">
+                    <input class="form-check-input bonus-active-input" type="checkbox" ${bonus.is_active == 1 ? 'checked' : ''}>
+                </td>
+            </tr>
+        `;
+    });
+    $body.html(html);
+}
+
+function collectBonusesSettings() {
+    return APPOINTMENT_BONUSES.map(bonus => {
+        const $row = $(`.bonus-row[data-bonus-id="${bonus.id}"]`);
+        return {
+            id: bonus.id,
+            name: $row.find('.bonus-name-input').val().trim(),
+            session_count: parseInt(bonus.session_count, 10),
+            price: $row.find('.bonus-price-input').val(),
+            is_active: $row.find('.bonus-active-input').is(':checked') ? 1 : 0
+        };
+    });
+}
+
+function saveBonusesSettings(button = null) {
+    $('#bonuses-settings-alert').addClass('d-none');
+    setSettingsButtonLoading(button, true);
+
+    $.ajax({
+        url: 'api/admin.php?action=save_bonuses',
+        method: 'POST',
+        dataType: 'json',
+        data: {
+            bonuses_enabled: $('#bonuses-enabled').is(':checked') ? '1' : '0',
+            bonuses_json: JSON.stringify(collectBonusesSettings())
+        },
+        success: function (res) {
+            if (res.success) {
+                APPOINTMENT_BONUSES = Array.isArray(res.bonuses) ? res.bonuses : APPOINTMENT_BONUSES;
+                renderBonusesSettings();
+                showSettingsAlert('#bonuses-settings-alert', 'success', res.message || 'Bonos guardados correctamente.');
+            } else {
+                showSettingsAlert('#bonuses-settings-alert', 'danger', res.error || 'No se pudieron guardar los bonos.');
+            }
+        },
+        error: function () {
+            showSettingsAlert('#bonuses-settings-alert', 'danger', 'Error de conexión al guardar los bonos.');
+        },
+        complete: function () {
+            setSettingsButtonLoading(button, false);
+        }
+    });
 }
 
 function selectedSessionDurations() {
@@ -1187,7 +1346,7 @@ function setSettingsButtonLoading(button, loading) {
 }
 
 function savePaymentSettings(alertSelector = '#payment-settings-alert', onSuccess = null, button = null) {
-    $('#payment-settings-alert, #email-settings-alert, #calendar-settings-alert, #booking-settings-alert, #general-settings-alert, #interface-settings-alert, #services-settings-alert').addClass('d-none');
+    $('#payment-settings-alert, #email-settings-alert, #calendar-settings-alert, #booking-settings-alert, #general-settings-alert, #interface-settings-alert, #services-settings-alert, #bonuses-settings-alert').addClass('d-none');
     setSettingsButtonLoading(button, true);
 
     const reminderInput = document.getElementById('appointment-reminder-enabled');
