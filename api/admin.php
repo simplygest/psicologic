@@ -304,6 +304,161 @@ if ($action === 'generate_invite') {
 } elseif ($action === 'get_patients') {
     $res = $mysqli->query("SELECT id, name FROM users WHERE role = 'patient' ORDER BY name ASC");
     echo json_encode(['success' => true, 'patients' => $res->fetch_all(MYSQLI_ASSOC)]);
+} elseif ($action === 'send_invite_email') {
+    $email = trim($_POST['email'] ?? '');
+    $posted_link = trim($_POST['link'] ?? '');
+    $parts = parse_url($posted_link);
+    parse_str($parts['query'] ?? '', $query);
+    $token = $query['token'] ?? '';
+
+    if (!$email || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        echo json_encode(['success' => false, 'error' => 'Indica un email valido.']);
+        exit;
+    }
+    if (!preg_match('/^[a-f0-9]{64}$/', $token)) {
+        echo json_encode(['success' => false, 'error' => 'El enlace de invitacion no es valido.']);
+        exit;
+    }
+
+    $stmt = $mysqli->prepare("SELECT id FROM invitations WHERE token = ? AND used = 0");
+    $stmt->bind_param("s", $token);
+    $stmt->execute();
+    if (!$stmt->get_result()->fetch_assoc()) {
+        echo json_encode(['success' => false, 'error' => 'La invitacion no existe o ya fue usada.']);
+        exit;
+    }
+
+    $link = app_public_base_url() . 'register.php?token=' . urlencode($token);
+    $sent = send_app_email(
+        $email,
+        'Invitacion para crear tu cuenta',
+        '<p>Hola,</p>' .
+        '<p>Te han enviado una invitacion para crear tu cuenta y poder reservar tus citas.</p>' .
+        '<p><a href="' . htmlspecialchars($link) . '">Crear mi cuenta</a></p>' .
+        '<p>Si el boton no funciona, copia y pega este enlace en tu navegador:<br>' . htmlspecialchars($link) . '</p>',
+        null,
+        $mysqli
+    );
+
+    echo json_encode($sent
+        ? ['success' => true, 'message' => 'Invitacion enviada correctamente.']
+        : ['success' => false, 'error' => 'No se pudo enviar el email de invitacion.']);
+} elseif ($action === 'upcoming_appointments') {
+    ensure_appointment_payment_columns($mysqli);
+    ensure_appointment_services_tables($mysqli);
+    $res = $mysqli->query("
+        SELECT a.id, a.appointment_date, a.appointment_time, a.consultation_type, a.service_type,
+               COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
+               s.name AS service_name,
+               COALESCE(a.payment_status, 'pending') AS payment_status,
+               a.payment_method, a.patient_bonus_id,
+               u.name, u.email, u.phone
+        FROM appointments a
+        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
+        LEFT JOIN appointment_services s ON s.id = so.service_id
+        JOIN users u ON u.id = a.user_id
+        WHERE a.status = 'booked'
+          AND CONCAT(a.appointment_date, ' ', a.appointment_time) >= NOW()
+        ORDER BY a.appointment_date ASC, a.appointment_time ASC
+        LIMIT 10
+    ");
+
+    $appointments = [];
+    while ($row = $res->fetch_assoc()) {
+        $appointments[] = [
+            'id' => (int) $row['id'],
+            'appointment_date' => $row['appointment_date'],
+            'appointment_time' => substr($row['appointment_time'], 0, 5),
+            'patient_name' => $row['name'],
+            'patient_email' => $row['email'],
+            'patient_phone' => $row['phone'],
+            'consultation_type' => $row['consultation_type'] ?? 'presencial',
+            'service_label' => appointment_service_option_label($row),
+            'payment_status' => $row['payment_status'] ?? 'pending',
+            'payment_method' => $row['payment_method'],
+            'patient_bonus_id' => $row['patient_bonus_id']
+        ];
+    }
+
+    echo json_encode(['success' => true, 'appointments' => $appointments]);
+} elseif ($action === 'admin_stats') {
+    ensure_appointment_payment_columns($mysqli);
+    ensure_appointment_services_tables($mysqli);
+    ensure_bonus_tables($mysqli);
+    ensure_payment_attempts_table($mysqli);
+
+    $stats = [
+        'upcoming_count' => 0,
+        'today_count' => 0,
+        'month_count' => 0,
+        'online_revenue_month' => '0.00',
+        'active_bonus_count' => 0,
+        'active_bonus_sessions' => 0,
+        'top_patients' => []
+    ];
+
+    $res = $mysqli->query("SELECT COUNT(*) AS total FROM appointments WHERE status = 'booked' AND CONCAT(appointment_date, ' ', appointment_time) >= NOW()");
+    if ($row = $res->fetch_assoc()) {
+        $stats['upcoming_count'] = (int) $row['total'];
+    }
+
+    $res = $mysqli->query("SELECT COUNT(*) AS total FROM appointments WHERE status = 'booked' AND appointment_date = CURDATE()");
+    if ($row = $res->fetch_assoc()) {
+        $stats['today_count'] = (int) $row['total'];
+    }
+
+    $res = $mysqli->query("
+        SELECT COUNT(*) AS total
+        FROM appointments
+        WHERE status = 'booked'
+          AND appointment_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
+          AND appointment_date < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 1 MONTH)
+    ");
+    if ($row = $res->fetch_assoc()) {
+        $stats['month_count'] = (int) $row['total'];
+    }
+
+    $res = $mysqli->query("
+        SELECT COALESCE(SUM(amount_cents), 0) AS cents
+        FROM payment_attempts
+        WHERE status = 'OK'
+          AND created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
+          AND created_at < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 1 MONTH)
+    ");
+    if ($row = $res->fetch_assoc()) {
+        $stats['online_revenue_month'] = number_format(((int) $row['cents']) / 100, 2, '.', '');
+    }
+
+    $res = $mysqli->query("
+        SELECT COUNT(*) AS total, COALESCE(SUM(remaining_sessions), 0) AS sessions
+        FROM patient_bonuses
+        WHERE status = 'active'
+          AND remaining_sessions > 0
+          AND (expires_at IS NULL OR expires_at >= CURDATE())
+    ");
+    if ($row = $res->fetch_assoc()) {
+        $stats['active_bonus_count'] = (int) $row['total'];
+        $stats['active_bonus_sessions'] = (int) $row['sessions'];
+    }
+
+    $res = $mysqli->query("
+        SELECT u.name, u.email, COUNT(*) AS sessions
+        FROM appointments a
+        JOIN users u ON u.id = a.user_id
+        WHERE a.status = 'booked'
+        GROUP BY a.user_id, u.name, u.email
+        ORDER BY sessions DESC, u.name ASC
+        LIMIT 5
+    ");
+    while ($row = $res->fetch_assoc()) {
+        $stats['top_patients'][] = [
+            'name' => $row['name'],
+            'email' => $row['email'],
+            'sessions' => (int) $row['sessions']
+        ];
+    }
+
+    echo json_encode(['success' => true, 'stats' => $stats]);
 } elseif ($action === 'list_closed_days') {
     $res = $mysqli->query("SELECT * FROM closed_days WHERE closed_date >= CURDATE() ORDER BY closed_date ASC");
     echo json_encode(['success' => true, 'days' => $res->fetch_all(MYSQLI_ASSOC)]);

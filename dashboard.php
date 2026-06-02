@@ -52,25 +52,29 @@ $profile_image_path = $branding['profile_image_path'];
   </nav>
 
   <div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
       <h4 class="mb-0">Calendario de Citas</h4>
-      <div class="d-flex gap-2">
-        <button class="btn btn-light" id="btn-prev-week"><i class="bi bi-chevron-left"></i> Semana Anterior</button>
-        <button class="btn btn-light" id="btn-next-week">Semana Siguiente <i class="bi bi-chevron-right"></i></button>
+      <div class="d-flex gap-2 flex-wrap justify-content-end">
+        <button class="btn btn-light" id="btn-prev-week"><i class="bi bi-chevron-left"></i> <span id="calendar-prev-label">Semana Anterior</span></button>
+        <button class="btn btn-light" id="btn-next-week"><span id="calendar-next-label">Semana Siguiente</span> <i class="bi bi-chevron-right"></i></button>
       </div>
     </div>
 
     <?php if ($is_admin): ?>
-      <div class="mb-4 d-flex gap-2 flex-wrap">
+      <div class="mb-4 d-flex gap-2 flex-wrap align-items-center">
         <button class="btn btn-primary" id="btn-generate-invite"><i class="bi bi-link-45deg"></i> Generar
           Invitación</button>
+        <button class="btn btn-primary" id="btn-upcoming-appointments" type="button"><i class="bi bi-list-check"></i> Pr&oacute;ximas citas</button>
+        <button class="btn btn-primary" id="btn-admin-stats" type="button"><i class="bi bi-bar-chart"></i> Estad&iacute;sticas</button>
         <button class="btn btn-primary" id="btn-admin-bonuses" type="button"><i class="bi bi-card-list"></i> Consultar bonos</button>
         <span id="admin-actions-msg" class="align-self-center ms-2 text-success" style="display: none;"></span>
+        <button class="btn btn-primary ms-auto" id="btn-calendar-view-toggle" type="button"><i class="bi bi-calendar3"></i> Ver mes</button>
       </div>
     <?php else: ?>
-      <div class="mb-4 d-flex gap-2 flex-wrap" id="patient-bonus-actions" style="display: none !important;">
+      <div class="mb-4 d-flex gap-2 flex-wrap align-items-center" id="patient-bonus-actions" style="display: none !important;">
         <button class="btn btn-primary" id="btn-buy-bonus" type="button"><i class="bi bi-bag-check"></i> Comprar bono</button>
         <button class="btn btn-primary" id="btn-my-bonuses" type="button"><i class="bi bi-card-list"></i> Consultar bonos</button>
+        <button class="btn btn-primary ms-auto" id="btn-calendar-view-toggle" type="button"><i class="bi bi-calendar3"></i> Ver mes</button>
       </div>
     <?php endif; ?>
 
@@ -143,6 +147,86 @@ $profile_image_path = $branding['profile_image_path'];
       </div>
     </div>
   </div>
+
+  <?php if ($is_admin): ?>
+    <div class="modal fade" id="inviteModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-md modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Invitaci&oacute;n de registro</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div id="invite-modal-alert" class="alert d-none"></div>
+            <label class="form-label" for="invite-link">Enlace generado</label>
+            <div class="input-group mb-3">
+              <input type="text" class="form-control" id="invite-link" readonly>
+              <button class="btn btn-outline-primary" type="button" id="btn-copy-invite-link">
+                <i class="bi bi-clipboard"></i>
+              </button>
+            </div>
+            <div class="invite-qr-wrap mb-4">
+              <div id="invite-qr"></div>
+            </div>
+            <label class="form-label" for="invite-email">Enviar por email a...</label>
+            <div class="input-group">
+              <input type="email" class="form-control" id="invite-email" placeholder="email@ejemplo.com" autocomplete="off">
+              <button class="btn btn-primary" type="button" id="btn-send-invite-email">Enviar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="upcomingAppointmentsModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Pr&oacute;ximas citas</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div id="upcoming-appointments-alert" class="alert d-none"></div>
+            <div class="table-responsive">
+              <table class="table align-middle">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Paciente</th>
+                    <th>Servicio</th>
+                    <th>Modalidad</th>
+                    <th>Pago</th>
+                  </tr>
+                </thead>
+                <tbody id="upcoming-appointments-body">
+                  <tr>
+                    <td colspan="5" class="text-center text-muted py-4">Cargando...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="adminStatsModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Estad&iacute;sticas</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div id="admin-stats-alert" class="alert d-none"></div>
+            <div id="admin-stats-content">
+              <div class="text-center text-muted py-4">Cargando...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  <?php endif; ?>
 
   <div class="modal fade" id="bonusesModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
@@ -711,6 +795,7 @@ $profile_image_path = $branding['profile_image_path'];
   </script>
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="js/app.js?v=<?= filemtime(__DIR__ . '/js/app.js') ?>"></script>
 </body>
 

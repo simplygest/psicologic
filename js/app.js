@@ -1,4 +1,8 @@
 let currentStartDate = getMonday(new Date());
+let currentMonthDate = new Date();
+let currentCalendarView = 'week';
+let currentMonthData = null;
+let selectedMonthDay = null;
 let PAYMENT_SETTINGS = {
     online_payment_enabled: 0,
     appointment_price: '70.00',
@@ -23,8 +27,12 @@ let ACTIVE_SERVICE_OPTIONS = [];
 let APPOINTMENT_BONUSES = [];
 let PATIENT_BONUS_BALANCE = { bonuses_enabled: 0, total_remaining: 0, bonuses: [] };
 let isAppointmentRequestInProgress = false;
+let inviteModal = null;
+let upcomingAppointmentsModal = null;
+let adminStatsModal = null;
 let bonusesModal = null;
 let selectedBonusToBuy = null;
+let currentInviteLink = '';
 
 function getMonday(d) {
     d = new Date(d);
@@ -51,7 +59,23 @@ function formatDisplayDate(dateStr) {
 }
 
 function renderWeekInfo() {
+    updateCalendarNavigationLabels();
+    if (currentCalendarView === 'month') {
+        loadMonthCalendar(formatMonthStart(currentMonthDate));
+        return;
+    }
     loadCalendar(formatDate(currentStartDate));
+}
+
+function formatMonthStart(date) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
+function updateCalendarNavigationLabels() {
+    const monthMode = currentCalendarView === 'month';
+    $('#btn-calendar-view-toggle').html(monthMode ? '<i class="bi bi-calendar-week"></i> Ver semana' : '<i class="bi bi-calendar3"></i> Ver mes');
+    $('#calendar-prev-label').text(monthMode ? 'Mes anterior' : 'Semana Anterior');
+    $('#calendar-next-label').text(monthMode ? 'Mes siguiente' : 'Semana Siguiente');
 }
 
 function loadCalendar(startDateStr) {
@@ -70,6 +94,29 @@ function loadCalendar(startDateStr) {
                 }
                 togglePatientBonusActions();
                 drawCalendar(startDateStr, res.appointments, res.closed_days);
+            }
+        }
+    });
+}
+
+function loadMonthCalendar(monthStr) {
+    $('#calendar-container').html('<div class="text-center text-muted py-5"><div class="spinner-border text-secondary" role="status"></div><br>Cargando mes...</div>');
+
+    $.ajax({
+        url: 'api/appointments.php?action=get_month',
+        data: { month: monthStr },
+        method: 'GET',
+        dataType: 'json',
+        success: function (res) {
+            if (res.success) {
+                PAYMENT_SETTINGS = res.payment_settings || PAYMENT_SETTINGS;
+                if (Array.isArray(res.service_options)) {
+                    ACTIVE_SERVICE_OPTIONS = res.service_options;
+                }
+                togglePatientBonusActions();
+                currentMonthData = res;
+                selectedMonthDay = selectedMonthDay || firstAvailableMonthDay(res.month, res.appointments, res.closed_days);
+                drawMonthCalendar(res.month, res.appointments || {}, res.closed_days || {});
             }
         }
     });
@@ -118,6 +165,126 @@ function drawCalendar(startDateStr, appointmentsMap, closedDays) {
 
     html += '</div>';
     $('#calendar-container').html(html);
+}
+
+function drawMonthCalendar(monthStr, appointmentsMap, closedDays) {
+    const monthDate = new Date(`${monthStr}T00:00:00`);
+    const year = monthDate.getFullYear();
+    const month = monthDate.getMonth();
+    const monthName = monthDate.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+    const first = new Date(year, month, 1);
+    const firstGrid = new Date(first);
+    firstGrid.setDate(first.getDate() - ((first.getDay() + 6) % 7));
+
+    let html = `
+        <div class="month-calendar-layout">
+            <div class="month-calendar-panel">
+                <div class="month-calendar-title">${escapeHtml(monthName)}</div>
+                <div class="month-weekdays">
+                    <span>Lun</span><span>Mar</span><span>Mi&eacute;</span><span>Jue</span><span>Vie</span><span>S&aacute;b</span><span>Dom</span>
+                </div>
+                <div class="month-grid">
+    `;
+
+    for (let i = 0; i < 42; i++) {
+        const day = new Date(firstGrid);
+        day.setDate(firstGrid.getDate() + i);
+        const dateStr = formatDate(day);
+        const inMonth = day.getMonth() === month;
+        const status = monthDayStatus(dateStr, appointmentsMap, closedDays, inMonth);
+        const selected = selectedMonthDay === dateStr ? ' selected' : '';
+        const clickable = status.available ? `onclick="selectMonthDay('${dateStr}')"` : '';
+        const subtitle = status.available ? '' : status.label;
+        html += `
+            <button type="button" class="month-day ${status.className}${selected}" ${clickable}>
+                <span>${day.getDate()}</span>
+                <small>${subtitle}</small>
+            </button>
+        `;
+    }
+
+    html += `
+                </div>
+            </div>
+            <div class="month-day-panel" id="month-day-panel">
+                ${renderSelectedMonthDayPanel(appointmentsMap, closedDays)}
+            </div>
+        </div>
+    `;
+
+    $('#calendar-container').html(html);
+}
+
+function monthDayStatus(dateStr, appointmentsMap, closedDays, inMonth = true) {
+    if (!inMonth) {
+        return { available: false, freeSlots: 0, label: '', className: 'outside-month' };
+    }
+    const day = new Date(`${dateStr}T00:00:00`);
+    const jsDay = day.getDay();
+    const dayNumber = jsDay === 0 ? 7 : jsDay;
+    if (!getActiveWeekdays().includes(dayNumber)) {
+        return { available: false, freeSlots: 0, label: 'No disponible', className: 'disabled-day' };
+    }
+    if (closedDays[dateStr]) {
+        return { available: false, freeSlots: 0, label: closedDays[dateStr], className: 'closed-day' };
+    }
+    if (isOutsideAllowedBookingWindow(dateStr)) {
+        return { available: false, freeSlots: 0, label: 'No disponible', className: 'disabled-day' };
+    }
+
+    let freeSlots = 0;
+    getScheduleItems().forEach(item => {
+        if (item.type === 'break') return;
+        const app = appointmentsMap[dateStr] ? appointmentsMap[dateStr][item.time] : null;
+        const overlap = !app ? findOverlappingAppointment(appointmentsMap[dateStr], item.time) : null;
+        if (!app && !overlap && !isPastSlot(dateStr, item.time)) {
+            freeSlots++;
+        }
+    });
+
+    if (freeSlots <= 0) {
+        return { available: false, freeSlots: 0, label: 'Completo', className: 'full-day' };
+    }
+    return { available: true, freeSlots, label: 'Disponible', className: 'available-day' };
+}
+
+function firstAvailableMonthDay(monthStr, appointmentsMap, closedDays) {
+    const monthDate = new Date(`${monthStr}T00:00:00`);
+    const year = monthDate.getFullYear();
+    const month = monthDate.getMonth();
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    for (let day = 1; day <= lastDay; day++) {
+        const dateStr = formatDate(new Date(year, month, day));
+        if (monthDayStatus(dateStr, appointmentsMap || {}, closedDays || {}, true).available) {
+            return dateStr;
+        }
+    }
+    return null;
+}
+
+function selectMonthDay(dateStr) {
+    selectedMonthDay = dateStr;
+    if (!currentMonthData) return;
+    drawMonthCalendar(currentMonthData.month, currentMonthData.appointments || {}, currentMonthData.closed_days || {});
+}
+
+function renderSelectedMonthDayPanel(appointmentsMap, closedDays) {
+    if (!selectedMonthDay) {
+        return '<div class="text-muted text-center py-5">No hay d&iacute;as con huecos disponibles este mes.</div>';
+    }
+    const status = monthDayStatus(selectedMonthDay, appointmentsMap, closedDays, true);
+    let html = `<div class="month-day-panel-header"><h5>${formatDisplayDate(selectedMonthDay)}</h5><span>${status.freeSlots || 0} huecos libres</span></div>`;
+    if (closedDays[selectedMonthDay]) {
+        return html + `<div class="alert alert-danger">${escapeHtml(closedDays[selectedMonthDay])}</div>`;
+    }
+    getScheduleItems().forEach(item => {
+        if (item.type === 'break') {
+            html += '<div class="text-center text-muted month-break">Descanso</div>';
+            return;
+        }
+        html += renderSlot(selectedMonthDay, item.time, appointmentsMap[selectedMonthDay]);
+    });
+    return html;
 }
 
 function getActiveWeekdays() {
@@ -338,6 +505,9 @@ function canPayAppointment(app) {
 // Modal handling
 let appointmentModal = new bootstrap.Modal(document.getElementById('appointmentModal'));
 let settingsModal = document.getElementById('settingsModal') ? new bootstrap.Modal(document.getElementById('settingsModal')) : null;
+inviteModal = document.getElementById('inviteModal') ? new bootstrap.Modal(document.getElementById('inviteModal')) : null;
+upcomingAppointmentsModal = document.getElementById('upcomingAppointmentsModal') ? new bootstrap.Modal(document.getElementById('upcomingAppointmentsModal')) : null;
+adminStatsModal = document.getElementById('adminStatsModal') ? new bootstrap.Modal(document.getElementById('adminStatsModal')) : null;
 bonusesModal = document.getElementById('bonusesModal') ? new bootstrap.Modal(document.getElementById('bonusesModal')) : null;
 let currentPaymentAppointmentId = null;
 
@@ -439,12 +609,36 @@ $(document).ready(function () {
     }
 
     $('#btn-prev-week').click(function () {
-        currentStartDate.setDate(currentStartDate.getDate() - 7);
+        if (currentCalendarView === 'month') {
+            currentMonthDate.setMonth(currentMonthDate.getMonth() - 1);
+            selectedMonthDay = null;
+        } else {
+            currentStartDate.setDate(currentStartDate.getDate() - 7);
+        }
         renderWeekInfo();
     });
 
     $('#btn-next-week').click(function () {
-        currentStartDate.setDate(currentStartDate.getDate() + 7);
+        if (currentCalendarView === 'month') {
+            currentMonthDate.setMonth(currentMonthDate.getMonth() + 1);
+            selectedMonthDay = null;
+        } else {
+            currentStartDate.setDate(currentStartDate.getDate() + 7);
+        }
+        renderWeekInfo();
+    });
+
+    $('#btn-calendar-view-toggle').click(function () {
+        if (currentCalendarView === 'week') {
+            currentCalendarView = 'month';
+            currentMonthDate = new Date(currentStartDate);
+            selectedMonthDay = null;
+        } else {
+            currentCalendarView = 'week';
+            if (selectedMonthDay) {
+                currentStartDate = getMonday(new Date(`${selectedMonthDay}T00:00:00`));
+            }
+        }
         renderWeekInfo();
     });
 
@@ -473,6 +667,41 @@ $(document).ready(function () {
 
     $('#btn-admin-bonuses').click(function () {
         openAdminBonusesModal();
+    });
+
+    $('#btn-generate-invite').off('click').click(function () {
+        $.ajax({
+            url: 'api/admin.php?action=generate_invite',
+            dataType: 'json',
+            success: function (res) {
+                if (res.success) {
+                    openInviteModal(res.link);
+                    copyTextToClipboard(res.link, function () {
+                        $('#admin-actions-msg').text('Enlace copiado al portapapeles').fadeIn().delay(3000).fadeOut();
+                    });
+                } else {
+                    alert(res.error || 'No se pudo generar la invitacion');
+                }
+            }
+        });
+    });
+
+    $('#btn-copy-invite-link').click(function () {
+        copyTextToClipboard(currentInviteLink, function () {
+            showInviteAlert('success', 'Enlace copiado al portapapeles.');
+        });
+    });
+
+    $('#btn-send-invite-email').click(function () {
+        sendInviteEmail(this);
+    });
+
+    $('#btn-upcoming-appointments').click(function () {
+        openUpcomingAppointmentsModal();
+    });
+
+    $('#btn-admin-stats').click(function () {
+        openAdminStatsModal();
     });
 
     $('#btn-buy-bonus-card').click(function () {
@@ -951,7 +1180,7 @@ function togglePatientBonusActions() {
     const canBuyBonuses = PAYMENT_SETTINGS.bonuses_enabled == 1 && PAYMENT_SETTINGS.online_payment_enabled == 1;
     const canUseInternalVouchers = PAYMENT_SETTINGS.create_compensation_bonus_on_paid_cancel === undefined ? true : PAYMENT_SETTINGS.create_compensation_bonus_on_paid_cancel == 1;
     const showBonusArea = canBuyBonuses || canUseInternalVouchers;
-    $('#patient-bonus-actions').attr('style', showBonusArea ? '' : 'display: none !important;');
+    $('#patient-bonus-actions').attr('style', '');
     $('#btn-buy-bonus').toggle(canBuyBonuses);
     $('#btn-my-bonuses').toggle(showBonusArea);
 }
@@ -1142,6 +1371,212 @@ function formatDateTimeLabel(value) {
 
 function showBonusesModalAlert(type, message) {
     $('#bonuses-modal-alert')
+        .removeClass('d-none alert-success alert-danger')
+        .addClass(type === 'success' ? 'alert-success' : 'alert-danger')
+        .text(message);
+}
+
+function openInviteModal(link) {
+    if (!inviteModal) return;
+    currentInviteLink = link || '';
+    $('#invite-link').val(currentInviteLink);
+    $('#invite-email').val('');
+    $('#invite-modal-alert').addClass('d-none').text('');
+    $('#invite-qr').empty();
+
+    if (currentInviteLink && typeof QRCode !== 'undefined') {
+        new QRCode(document.getElementById('invite-qr'), {
+            text: currentInviteLink,
+            width: 180,
+            height: 180,
+            correctLevel: QRCode.CorrectLevel.M
+        });
+    } else {
+        $('#invite-qr').html('<div class="text-muted small">No se pudo generar el QR.</div>');
+    }
+
+    inviteModal.show();
+}
+
+function copyTextToClipboard(text, onSuccess) {
+    if (!text) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+            if (typeof onSuccess === 'function') onSuccess();
+        });
+        return;
+    }
+    const $temp = $('<input>');
+    $('body').append($temp);
+    $temp.val(text).select();
+    document.execCommand('copy');
+    $temp.remove();
+    if (typeof onSuccess === 'function') onSuccess();
+}
+
+function sendInviteEmail(button) {
+    const email = $('#invite-email').val().trim();
+    if (!email) {
+        showInviteAlert('danger', 'Indica el email del paciente.');
+        return;
+    }
+
+    const $button = $(button);
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Enviando');
+    $.ajax({
+        url: 'api/admin.php?action=send_invite_email',
+        method: 'POST',
+        dataType: 'json',
+        data: {
+            email,
+            link: currentInviteLink
+        },
+        success: function (res) {
+            if (res.success) {
+                $('#invite-email').val('');
+                showInviteAlert('success', res.message || 'Invitacion enviada correctamente.');
+            } else {
+                showInviteAlert('danger', res.error || 'No se pudo enviar la invitacion.');
+            }
+        },
+        error: function () {
+            showInviteAlert('danger', 'Error de conexion al enviar la invitacion.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function showInviteAlert(type, message) {
+    $('#invite-modal-alert')
+        .removeClass('d-none alert-success alert-danger')
+        .addClass(type === 'success' ? 'alert-success' : 'alert-danger')
+        .text(message);
+}
+
+function openUpcomingAppointmentsModal() {
+    if (!upcomingAppointmentsModal) return;
+    $('#upcoming-appointments-alert').addClass('d-none').text('');
+    $('#upcoming-appointments-body').html('<tr><td colspan="5" class="text-center text-muted py-4">Cargando...</td></tr>');
+    upcomingAppointmentsModal.show();
+
+    $.ajax({
+        url: 'api/admin.php?action=upcoming_appointments',
+        dataType: 'json',
+        success: function (res) {
+            if (!res.success) {
+                showUpcomingAppointmentsAlert('danger', res.error || 'No se pudieron cargar las citas.');
+                return;
+            }
+            renderUpcomingAppointments(res.appointments || []);
+        },
+        error: function () {
+            showUpcomingAppointmentsAlert('danger', 'Error de conexion al cargar las citas.');
+        }
+    });
+}
+
+function renderUpcomingAppointments(appointments) {
+    if (!appointments.length) {
+        $('#upcoming-appointments-body').html('<tr><td colspan="5" class="text-center text-muted py-4">No hay citas futuras.</td></tr>');
+        return;
+    }
+
+    let html = '';
+    appointments.forEach(app => {
+        html += `
+            <tr>
+                <td><strong>${formatDisplayDate(app.appointment_date)}</strong><br><small class="text-muted">${escapeHtml(app.appointment_time || '')}</small></td>
+                <td>${escapeHtml(app.patient_name || '')}<br><small class="text-muted">${escapeHtml(app.patient_email || app.patient_phone || '')}</small></td>
+                <td>${escapeHtml(app.service_label || '')}</td>
+                <td>${consultationTypeLabel(app.consultation_type)}</td>
+                <td>${adminPaymentLabel(app)}</td>
+            </tr>
+        `;
+    });
+    $('#upcoming-appointments-body').html(html);
+}
+
+function adminPaymentLabel(app) {
+    if (app.payment_status === 'paid') {
+        return app.payment_method === 'bonus'
+            ? '<span class="badge text-bg-success">Bono</span>'
+            : '<span class="badge text-bg-success">Pagada</span>';
+    }
+    if (app.payment_status === 'failed') {
+        return '<span class="badge text-bg-danger">Fallido</span>';
+    }
+    return '<span class="badge text-bg-warning">Pendiente</span>';
+}
+
+function showUpcomingAppointmentsAlert(type, message) {
+    $('#upcoming-appointments-alert')
+        .removeClass('d-none alert-success alert-danger')
+        .addClass(type === 'success' ? 'alert-success' : 'alert-danger')
+        .text(message);
+}
+
+function openAdminStatsModal() {
+    if (!adminStatsModal) return;
+    $('#admin-stats-alert').addClass('d-none').text('');
+    $('#admin-stats-content').html('<div class="text-center text-muted py-4">Cargando...</div>');
+    adminStatsModal.show();
+
+    $.ajax({
+        url: 'api/admin.php?action=admin_stats',
+        dataType: 'json',
+        success: function (res) {
+            if (!res.success) {
+                showAdminStatsAlert('danger', res.error || 'No se pudieron cargar las estadisticas.');
+                return;
+            }
+            renderAdminStats(res.stats || {});
+        },
+        error: function () {
+            showAdminStatsAlert('danger', 'Error de conexion al cargar las estadisticas.');
+        }
+    });
+}
+
+function renderAdminStats(stats) {
+    const topPatients = Array.isArray(stats.top_patients) ? stats.top_patients : [];
+    const maxSessions = topPatients.reduce((max, item) => Math.max(max, parseInt(item.sessions || 0, 10)), 0) || 1;
+    const bars = topPatients.length
+        ? topPatients.map(item => {
+            const sessions = parseInt(item.sessions || 0, 10);
+            const width = Math.max(8, Math.round((sessions / maxSessions) * 100));
+            return `
+                <div class="stats-bar-row">
+                    <div class="stats-bar-label">
+                        <strong>${escapeHtml(item.name || '')}</strong>
+                        <small>${escapeHtml(item.email || '')}</small>
+                    </div>
+                    <div class="stats-bar-track">
+                        <div class="stats-bar-fill" style="width: ${width}%"></div>
+                    </div>
+                    <div class="stats-bar-value">${sessions}</div>
+                </div>
+            `;
+        }).join('')
+        : '<div class="text-muted">Aun no hay citas suficientes para mostrar ranking.</div>';
+
+    $('#admin-stats-content').html(`
+        <div class="stats-summary-grid mb-4">
+            <div class="stats-summary-card"><span>Hoy</span><strong>${parseInt(stats.today_count || 0, 10)}</strong><small>citas</small></div>
+            <div class="stats-summary-card"><span>Pr&oacute;ximas</span><strong>${parseInt(stats.upcoming_count || 0, 10)}</strong><small>citas</small></div>
+            <div class="stats-summary-card"><span>Este mes</span><strong>${parseInt(stats.month_count || 0, 10)}</strong><small>citas</small></div>
+            <div class="stats-summary-card"><span>Ingresos online</span><strong>${formatPrice(stats.online_revenue_month || 0)} &euro;</strong><small>este mes</small></div>
+            <div class="stats-summary-card"><span>Bonos activos</span><strong>${parseInt(stats.active_bonus_count || 0, 10)}</strong><small>${parseInt(stats.active_bonus_sessions || 0, 10)} sesiones</small></div>
+        </div>
+        <h6 class="mb-3">Pacientes con m&aacute;s sesiones</h6>
+        <div class="stats-bars">${bars}</div>
+    `);
+}
+
+function showAdminStatsAlert(type, message) {
+    $('#admin-stats-alert')
         .removeClass('d-none alert-success alert-danger')
         .addClass(type === 'success' ? 'alert-success' : 'alert-danger')
         .text(message);

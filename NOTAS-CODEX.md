@@ -136,6 +136,9 @@ La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`.
 - El vale interno usa el bonus `internal_compensation_1_session`, no aparece en la pagina de precios ni se puede comprar, pero si aparece en los bonos del paciente y puede consumirse aunque la venta publica de bonos este desactivada.
 - El registro ahora exige email y deja el telefono como opcional; el login sigue aceptando email o telefono.
 - Se anadio recuperacion de contrasena con token temporal por email mediante `forgot_password.php` y `reset_password.php`.
+- Admin tiene modales para ver proximas citas y estadisticas sencillas, con barras 2D en CSS.
+- Al generar invitacion, se abre un modal con enlace, QR local en navegador y envio por email con el campo limpio en cada apertura.
+- El dashboard puede alternar entre vista semanal y mensual; la vista mensual selecciona automaticamente el primer dia con huecos y muestra sus slots.
 - Queda pendiente pulir la gestion manual de bonos por parte del admin si se necesita asignar/cancelar saldos sin pago online.
 
 ## Cambios de BD pendientes de aplicar manualmente si no se deja auto-migrar

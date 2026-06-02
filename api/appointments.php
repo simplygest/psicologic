@@ -109,7 +109,149 @@ function active_weekdays($settings)
     return $days ?: [1, 2, 3, 4, 5];
 }
 
-if ($action === 'get_week') {
+if ($action === 'get_month') {
+    $month = $_GET['month'] ?? date('Y-m-01');
+    if (!preg_match('/^\d{4}-\d{2}-01$/', $month)) {
+        $month = date('Y-m-01');
+    }
+    $start_date = date('Y-m-01', strtotime($month));
+    $end_date = date('Y-m-t', strtotime($month));
+
+    $stmt = $mysqli->prepare("
+        SELECT a.id, a.appointment_date, a.appointment_time, a.user_id,
+               COALESCE(a.payment_status, 'pending') AS payment_status,
+               a.payment_method, a.paid_at, a.patient_bonus_id, a.consultation_type, a.service_type,
+               COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
+               so.price AS service_price, s.name AS service_name, s.service_key,
+               u.name, u.email, u.phone
+        FROM appointments a
+        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
+        LEFT JOIN appointment_services s ON s.id = so.service_id
+        JOIN users u ON a.user_id = u.id
+        WHERE a.appointment_date BETWEEN ? AND ? AND a.status = 'booked'
+    ");
+    $stmt->bind_param("ss", $start_date, $end_date);
+    $stmt->execute();
+    $appointments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+    $stmt2 = $mysqli->prepare("SELECT closed_date, reason FROM closed_days WHERE closed_date BETWEEN ? AND ?");
+    $stmt2->bind_param("ss", $start_date, $end_date);
+    $stmt2->execute();
+    $closed_days_fetch = $stmt2->get_result()->fetch_all(MYSQLI_ASSOC);
+
+    $closed_days = [];
+    foreach ($closed_days_fetch as $row) {
+        $closed_days[$row['closed_date']] = $row['reason'];
+    }
+
+    $apps_map = [];
+    foreach ($appointments as $app) {
+        $date = $app['appointment_date'];
+        $time = date('H:i', strtotime($app['appointment_time']));
+        if (!isset($apps_map[$date])) {
+            $apps_map[$date] = [];
+        }
+        $apps_map[$date][$time] = [
+            'id' => $app['id'],
+            'user_id' => $app['user_id'],
+            'name' => $app['name'],
+            'email' => $app['email'] ?? 'Sin email',
+            'phone' => $app['phone'] ?? 'Sin tel',
+            'payment_status' => $app['payment_status'] ?? 'pending',
+            'payment_method' => $app['payment_method'] ?? null,
+            'paid_at' => $app['paid_at'] ?? null,
+            'patient_bonus_id' => $app['patient_bonus_id'] ?? null,
+            'consultation_type' => $app['consultation_type'] ?? 'presencial',
+            'service_type' => $app['service_type'] ?? 'individual',
+            'service_label' => appointment_service_option_label($app),
+            'service_name' => $app['service_name'] ?? null,
+            'duration_minutes' => (int) ($app['duration_minutes'] ?? 60),
+            'time' => $time,
+            'price' => isset($app['service_price']) ? number_format((float) $app['service_price'], 2, '.', '') : null,
+            'is_own' => ($app['user_id'] == $user_id)
+        ];
+    }
+
+    $payment_settings = [
+        'online_payment_enabled' => 0,
+        'appointment_price' => '70.00',
+        'online_appointment_price' => '70.00',
+        'couple_appointment_price' => '90.00',
+        'online_couple_appointment_price' => '90.00',
+        'available_session_types' => 'individual',
+        'min_booking_notice_days' => 2,
+        'max_booking_notice_days' => MAX_BOOKING_DAYS,
+        'appointment_start_time' => '10:00:00',
+        'appointment_end_time' => '19:00:00',
+        'break_start_time' => '15:00:00',
+        'break_end_time' => '16:00:00',
+        'available_weekdays' => '1,2,3,4,5',
+        'appointment_delivery_mode' => 'both',
+        'available_session_durations' => '60',
+        'bonuses_enabled' => 0,
+        'create_compensation_bonus_on_paid_cancel' => 1
+    ];
+    $settings_res = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
+    if ($settings_res->num_rows > 0) {
+        ensure_payment_settings_price_columns($mysqli);
+        $limit_columns = [
+            'min_booking_notice_days' => "ALTER TABLE payment_settings ADD min_booking_notice_days INT UNSIGNED NOT NULL DEFAULT 2",
+            'max_booking_notice_days' => "ALTER TABLE payment_settings ADD max_booking_notice_days INT UNSIGNED NOT NULL DEFAULT 40"
+        ];
+        foreach ($limit_columns as $column => $sql) {
+            $column_res = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE '$column'");
+            if ($column_res->num_rows === 0) {
+                $mysqli->query($sql);
+            }
+        }
+        ensure_schedule_setting_columns($mysqli);
+        ensure_delivery_setting_column($mysqli);
+        ensure_session_setting_column($mysqli);
+        ensure_bonus_tables($mysqli);
+        $settings_res = $mysqli->query("
+            SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, available_session_types, available_session_durations,
+                   min_booking_notice_days, max_booking_notice_days,
+                   appointment_start_time, appointment_end_time, break_start_time, break_end_time,
+                   available_weekdays, appointment_delivery_mode, bonuses_enabled, create_compensation_bonus_on_paid_cancel
+            FROM payment_settings
+            WHERE id = 1
+        ");
+        if ($settings_row = $settings_res->fetch_assoc()) {
+            $payment_settings = $settings_row;
+        }
+    }
+
+    $service_options = [];
+    $active_durations = active_session_durations($payment_settings);
+    $active_delivery_mode = $payment_settings['appointment_delivery_mode'] ?? 'both';
+    $active_service_types = explode(',', $payment_settings['available_session_types'] ?? 'individual');
+    foreach (fetch_appointment_services($mysqli, true) as $service) {
+        if ($service['service_key'] === 'couple' && !in_array('couple', $active_service_types, true)) {
+            continue;
+        }
+        foreach ($service['options'] as $option) {
+            if (!in_array((int) $option['duration_minutes'], $active_durations, true)) {
+                continue;
+            }
+            if ($active_delivery_mode !== 'both' && $option['consultation_type'] !== $active_delivery_mode) {
+                continue;
+            }
+            $option['service_name'] = $service['name'];
+            $option['service_key'] = $service['service_key'];
+            $service_options[] = $option;
+        }
+    }
+
+    echo json_encode([
+        'success' => true,
+        'month' => $start_date,
+        'appointments' => $apps_map,
+        'closed_days' => $closed_days,
+        'payment_settings' => $payment_settings,
+        'service_options' => $service_options
+    ]);
+
+} elseif ($action === 'get_week') {
     // start_date expected to be a Monday (YYYY-MM-DD)
     $start_date = $_GET['start_date'] ?? date('Y-m-d', strtotime('monday this week'));
     $end_date = date('Y-m-d', strtotime($start_date . ' +5 days')); // Saturday when enabled
