@@ -139,6 +139,9 @@ La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`.
 - Admin tiene modales para ver proximas citas y estadisticas sencillas, con barras 2D en CSS.
 - Al generar invitacion, se abre un modal con enlace, QR local en navegador y envio por email con el campo limpio en cada apertura.
 - El dashboard puede alternar entre vista semanal y mensual; la vista mensual selecciona automaticamente el primer dia con huecos y muestra sus slots.
+- Se preparo instalador inicial en `/install/index.php`: prueba conexion MySQL, crea tablas base, ejecuta migraciones ligeras, crea admin y genera `config.local.php`.
+- `config.php` ahora puede cargar `config.local.php` como override por instalacion; si no existe, mantiene los valores antiguos como fallback.
+- `db.php` lee puerto y SSL desde configuracion local, manteniendo SSL activo por defecto para Azure.
 - Queda pendiente pulir la gestion manual de bonos por parte del admin si se necesita asignar/cancelar saldos sin pago online.
 
 ## Cambios de BD pendientes de aplicar manualmente si no se deja auto-migrar
