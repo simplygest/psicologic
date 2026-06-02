@@ -61,11 +61,11 @@ if ($token) {
                                 <input type="text" class="form-control" name="name" required>
                             </div>
                             <div class="mb-3">
-                                <label class="form-label">Email (Opcional si usas teléfono)</label>
-                                <input type="email" class="form-control" name="email">
+                                <label class="form-label">Email</label>
+                                <input type="email" class="form-control" name="email" required>
                             </div>
                             <div class="mb-3">
-                                <label class="form-label">Teléfono (Opcional si usas email)</label>
+                                <label class="form-label">Tel&eacute;fono (opcional)</label>
                                 <input type="text" class="form-control" name="phone">
                             </div>
                             <div class="mb-3">
@@ -92,10 +92,8 @@ if ($token) {
                 $('#register-alert').addClass('d-none');
 
                 let email = $('input[name="email"]').val().trim();
-                let phone = $('input[name="phone"]').val().trim();
-
-                if (!email && !phone) {
-                    $('#register-alert').removeClass('d-none alert-success').addClass('alert-danger').text("Debes proporcionar un email o un teléfono.");
+                if (!email) {
+                    $('#register-alert').removeClass('d-none alert-success').addClass('alert-danger').text("Debes proporcionar un email.");
                     return;
                 }
 

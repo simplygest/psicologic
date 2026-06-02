@@ -64,7 +64,13 @@ $profile_image_path = $branding['profile_image_path'];
       <div class="mb-4 d-flex gap-2 flex-wrap">
         <button class="btn btn-primary" id="btn-generate-invite"><i class="bi bi-link-45deg"></i> Generar
           Invitación</button>
+        <button class="btn btn-primary" id="btn-admin-bonuses" type="button"><i class="bi bi-card-list"></i> Consultar bonos</button>
         <span id="admin-actions-msg" class="align-self-center ms-2 text-success" style="display: none;"></span>
+      </div>
+    <?php else: ?>
+      <div class="mb-4 d-flex gap-2 flex-wrap" id="patient-bonus-actions" style="display: none !important;">
+        <button class="btn btn-primary" id="btn-buy-bonus" type="button"><i class="bi bi-bag-check"></i> Comprar bono</button>
+        <button class="btn btn-primary" id="btn-my-bonuses" type="button"><i class="bi bi-card-list"></i> Consultar bonos</button>
       </div>
     <?php endif; ?>
 
@@ -133,6 +139,42 @@ $profile_image_path = $branding['profile_image_path'];
               </div>
             </div>
           <?php endif; ?>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="bonusesModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="bonusesModalTitle">Bonos</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div id="bonuses-modal-alert" class="alert d-none"></div>
+          <div id="bonus-catalog-panel" class="d-none">
+            <div class="row g-3" id="bonus-catalog-list"></div>
+          </div>
+          <div id="bonus-list-panel" class="d-none">
+            <div class="table-responsive">
+              <table class="table align-middle">
+                <thead id="bonus-list-head"></thead>
+                <tbody id="bonus-list-body"></tbody>
+              </table>
+            </div>
+          </div>
+          <div id="bonus-payment-options" class="d-none mt-3">
+            <div class="small text-muted mb-2" id="bonus-payment-text"></div>
+            <div class="d-flex gap-2 justify-content-center flex-wrap">
+              <button class="btn btn-success btn-sm" id="btn-buy-bonus-card" type="button">
+                <i class="bi bi-credit-card"></i> Pagar con tarjeta
+              </button>
+              <button class="btn btn-success btn-sm" id="btn-buy-bonus-bizum" type="button">
+                <i class="bi bi-phone"></i> Pagar con Bizum
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -332,6 +374,11 @@ $profile_image_path = $branding['profile_image_path'];
                 <div class="form-check form-switch mb-4">
                   <input class="form-check-input" type="checkbox" id="bonuses-enabled">
                   <label class="form-check-label" for="bonuses-enabled">Habilitar compra de bonos</label>
+                </div>
+                <div class="form-check form-switch mb-4">
+                  <input class="form-check-input" type="checkbox" id="create-compensation-bonus-on-paid-cancel" checked>
+                  <label class="form-check-label" for="create-compensation-bonus-on-paid-cancel">Crear un bono/vale al cancelar una cita que haya sido pagada</label>
+                  <div class="form-text">Si una cita pagada con tarjeta o Bizum se cancela, se generar&aacute; un vale interno de 1 sesi&oacute;n para el paciente.</div>
                 </div>
                 <div id="bonuses-config-block">
                   <div class="table-responsive services-table-wrap">

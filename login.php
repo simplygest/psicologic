@@ -53,6 +53,10 @@ $profile_image_path = $branding['show_profile_image_public'] ? $branding['profil
                     </form>
 
                     <div class="text-center mt-3">
+                        <a href="forgot_password.php" class="text-decoration-none" style="color: var(--primary-color);">He olvidado mi contrase&ntilde;a</a>
+                    </div>
+
+                    <div class="text-center mt-3">
                         <a href="index.php" class="text-decoration-none" style="color: var(--primary-color);">Volver a la pagina principal</a>
                     </div>
                 </div>

@@ -130,7 +130,13 @@ La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`.
 - Se preparo una primera fase de bonos: pestana `Bonos`, configuracion de bonos de 4 y 10 sesiones, y visualizacion publica en `precios.php` si estan activos.
 - Si los bonos estan activos y el paciente tiene saldo, el modal de reserva muestra "Incluida con bono" con sesiones restantes.
 - Las reservas individuales pueden consumir una sesion de bono, quedan marcadas como pagadas por `bonus` y al cancelar se devuelve la sesion al bono.
-- Queda pendiente implementar la compra/pago de bonos y una pantalla de administracion del saldo de cada paciente.
+- Los pacientes pueden comprar bonos activos desde el dashboard mediante Redsys/Bizum; el bono solo se activa si el pago vuelve como correcto.
+- Los pacientes pueden consultar sus bonos y el admin puede consultar una tabla con bonos comprados por paciente, importe, fecha y sesiones restantes.
+- En `Bonos` hay una opcion activada por defecto para crear un vale interno de 1 sesion cuando se cancela una cita pagada con tarjeta/Bizum.
+- El vale interno usa el bonus `internal_compensation_1_session`, no aparece en la pagina de precios ni se puede comprar, pero si aparece en los bonos del paciente y puede consumirse aunque la venta publica de bonos este desactivada.
+- El registro ahora exige email y deja el telefono como opcional; el login sigue aceptando email o telefono.
+- Se anadio recuperacion de contrasena con token temporal por email mediante `forgot_password.php` y `reset_password.php`.
+- Queda pendiente pulir la gestion manual de bonos por parte del admin si se necesita asignar/cancelar saldos sin pago online.
 
 ## Cambios de BD pendientes de aplicar manualmente si no se deja auto-migrar
 
@@ -152,8 +158,13 @@ La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`.
 - Nueva tabla `appointment_services`
 - Nueva tabla `appointment_service_options`
 - `payment_settings.bonuses_enabled TINYINT(1) NOT NULL DEFAULT 0`
+- `payment_settings.create_compensation_bonus_on_paid_cancel TINYINT(1) NOT NULL DEFAULT 1`
 - Nueva tabla `appointment_bonuses`
 - Nueva tabla `patient_bonuses`
+- `payment_attempts.appointment_id INT UNSIGNED DEFAULT NULL`
+- `payment_attempts.purchase_type ENUM('appointment', 'bonus') NOT NULL DEFAULT 'appointment'`
+- `payment_attempts.bonus_id INT UNSIGNED DEFAULT NULL`
+- Nueva tabla `password_resets`
 
 ## Avisos importantes
 

@@ -26,6 +26,7 @@ function ensure_payment_settings_table($mysqli)
             show_profile_image_public TINYINT(1) NOT NULL DEFAULT 0,
             show_prices_public TINYINT(1) NOT NULL DEFAULT 0,
             bonuses_enabled TINYINT(1) NOT NULL DEFAULT 0,
+            create_compensation_bonus_on_paid_cancel TINYINT(1) NOT NULL DEFAULT 1,
             online_payment_enabled TINYINT(1) NOT NULL DEFAULT 0,
             environment ENUM('sandbox', 'real') NOT NULL DEFAULT 'sandbox',
             merchant_code VARCHAR(32) DEFAULT NULL,
@@ -91,6 +92,7 @@ function ensure_payment_settings_table($mysqli)
         'show_profile_image_public' => "ALTER TABLE payment_settings ADD show_profile_image_public TINYINT(1) NOT NULL DEFAULT 0 AFTER profile_image_path",
         'show_prices_public' => "ALTER TABLE payment_settings ADD show_prices_public TINYINT(1) NOT NULL DEFAULT 0 AFTER show_profile_image_public",
         'bonuses_enabled' => "ALTER TABLE payment_settings ADD bonuses_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER show_prices_public",
+        'create_compensation_bonus_on_paid_cancel' => "ALTER TABLE payment_settings ADD create_compensation_bonus_on_paid_cancel TINYINT(1) NOT NULL DEFAULT 1 AFTER bonuses_enabled",
         'appointment_delivery_mode' => "ALTER TABLE payment_settings ADD appointment_delivery_mode ENUM('both', 'presencial', 'online') NOT NULL DEFAULT 'both' AFTER admin_notification_email",
         'available_session_types' => "ALTER TABLE payment_settings ADD available_session_types VARCHAR(32) NOT NULL DEFAULT 'individual' AFTER appointment_delivery_mode",
         'available_session_durations' => "ALTER TABLE payment_settings ADD available_session_durations VARCHAR(16) NOT NULL DEFAULT '60' AFTER available_session_types",
@@ -369,11 +371,25 @@ if ($action === 'generate_invite') {
     $stmt->bind_param("i", $id);
     $stmt->execute();
     echo json_encode(['success' => true]);
+} elseif ($action === 'delete_closed_range') {
+    $start_date = $_POST['start_date'] ?? '';
+    $end_date = $_POST['end_date'] ?? $start_date;
+    $reason = $_POST['reason'] ?? '';
+
+    if (!$start_date || !$end_date || $reason === '') {
+        echo json_encode(['success' => false, 'error' => 'Rango invalido']);
+        exit;
+    }
+
+    $stmt = $mysqli->prepare("DELETE FROM closed_days WHERE closed_date BETWEEN ? AND ? AND reason = ?");
+    $stmt->bind_param("sss", $start_date, $end_date, $reason);
+    $stmt->execute();
+    echo json_encode(['success' => true, 'deleted' => $stmt->affected_rows]);
 } elseif ($action === 'get_payment_settings') {
     ensure_payment_settings_table($mysqli);
 
     $res = $mysqli->query("
-        SELECT app_name, profile_image_path, landing_image_path, primary_color, show_profile_image_public, show_prices_public, bonuses_enabled, online_payment_enabled, environment, merchant_code, terminal,
+        SELECT app_name, profile_image_path, landing_image_path, primary_color, show_profile_image_public, show_prices_public, bonuses_enabled, create_compensation_bonus_on_paid_cancel, online_payment_enabled, environment, merchant_code, terminal,
                appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, admin_notification_email,
                appointment_delivery_mode, available_session_types, available_session_durations,
                appointment_reminder_enabled,
@@ -398,6 +414,7 @@ if ($action === 'generate_invite') {
     ensure_bonus_tables($mysqli);
 
     $bonuses_enabled = isset($_POST['bonuses_enabled']) && $_POST['bonuses_enabled'] === '1' ? 1 : 0;
+    $create_compensation_bonus = isset($_POST['create_compensation_bonus_on_paid_cancel']) && $_POST['create_compensation_bonus_on_paid_cancel'] === '1' ? 1 : 0;
     $bonuses_json = $_POST['bonuses_json'] ?? '';
     $bonuses = json_decode($bonuses_json, true);
     if (!is_array($bonuses)) {
@@ -434,8 +451,8 @@ if ($action === 'generate_invite') {
             $stmt->execute();
         }
 
-        $stmt = $mysqli->prepare("UPDATE payment_settings SET bonuses_enabled = ? WHERE id = 1");
-        $stmt->bind_param("i", $bonuses_enabled);
+        $stmt = $mysqli->prepare("UPDATE payment_settings SET bonuses_enabled = ?, create_compensation_bonus_on_paid_cancel = ? WHERE id = 1");
+        $stmt->bind_param("ii", $bonuses_enabled, $create_compensation_bonus);
         $stmt->execute();
 
         $mysqli->commit();

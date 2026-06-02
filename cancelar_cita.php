@@ -22,7 +22,7 @@ if ($token) {
                COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
                so.price AS service_price, s.name AS service_name,
                COALESCE(a.payment_status, 'pending') AS payment_status,
-               a.payment_method, u.name, u.email
+               a.payment_method, a.payment_attempt_id, a.patient_bonus_id, a.user_id, u.name, u.email
         FROM appointments a
         LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
         LEFT JOIN appointment_services s ON s.id = so.service_id
@@ -52,6 +52,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $message_type = $cancelled ? 'success' : 'danger';
         $message = $cancelled ? 'Tu cita ha sido cancelada correctamente.' : 'No se pudo cancelar la cita.';
         if ($cancelled) {
+            if (!empty($appointment['patient_bonus_id']) && ($appointment['payment_method'] ?? '') === 'bonus') {
+                restore_patient_bonus_session($mysqli, (int) $appointment['patient_bonus_id']);
+            }
+            if (compensation_bonus_on_paid_cancel_enabled($mysqli)
+                && ($appointment['payment_status'] ?? '') === 'paid'
+                && in_array(($appointment['payment_method'] ?? ''), ['card', 'bizum'], true)
+            ) {
+                try {
+                    create_compensation_bonus_for_user(
+                        $mysqli,
+                        (int) $appointment['user_id'],
+                        !empty($appointment['payment_attempt_id']) ? (int) $appointment['payment_attempt_id'] : null
+                    );
+                    $appointment['compensation_bonus_created'] = 1;
+                } catch (\Exception $e) {
+                    error_log('No se pudo crear vale por cancelacion: ' . $e->getMessage());
+                }
+            }
             notify_appointment_cancelled($mysqli, $appointment);
         }
     }

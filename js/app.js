@@ -14,13 +14,17 @@ let PAYMENT_SETTINGS = {
     break_end_time: '16:00:00',
     available_weekdays: '1,2,3,4,5',
     appointment_delivery_mode: 'both',
-    available_session_durations: '60'
+    available_session_durations: '60',
+    bonuses_enabled: 0,
+    create_compensation_bonus_on_paid_cancel: 1
 };
 let APPOINTMENT_SERVICES = [];
 let ACTIVE_SERVICE_OPTIONS = [];
 let APPOINTMENT_BONUSES = [];
 let PATIENT_BONUS_BALANCE = { bonuses_enabled: 0, total_remaining: 0, bonuses: [] };
 let isAppointmentRequestInProgress = false;
+let bonusesModal = null;
+let selectedBonusToBuy = null;
 
 function getMonday(d) {
     d = new Date(d);
@@ -64,6 +68,7 @@ function loadCalendar(startDateStr) {
                 if (Array.isArray(res.service_options)) {
                     ACTIVE_SERVICE_OPTIONS = res.service_options;
                 }
+                togglePatientBonusActions();
                 drawCalendar(startDateStr, res.appointments, res.closed_days);
             }
         }
@@ -186,11 +191,19 @@ function renderSlot(dateStr, timeStr, dayApps) {
     if (overlapApp) {
         cls = 'booked';
         text = `${timeStr} - Ocupado`;
-        onClick = `alert('Este horario no estÃ¡ disponible')`;
+        onClick = `alert('Este horario no esta disponible')`;
     } else if (app) {
         let paymentBadge = getPaymentBadge(app);
         let consultationBadge = getConsultationBadge(app.consultation_type);
         let serviceBadge = getServiceBadge(app);
+        let cancelPayloadArg = encodeURIComponent(JSON.stringify({
+            name: app.name || '',
+            email: app.email || '',
+            phone: app.phone || '',
+            payment_status: app.payment_status || '',
+            payment_method: app.payment_method || '',
+            patient_bonus_id: app.patient_bonus_id || null
+        }));
         let payPriceArg = escapeJsString(app.price || '');
         let payLabelArg = escapeJsString(app.service_label || '');
         let payButton = canPayAppointment(app)
@@ -205,7 +218,7 @@ function renderSlot(dateStr, timeStr, dayApps) {
                     </div>
                     <div class="slot-meta-row">
                         <span class="slot-badges">${serviceBadge}${consultationBadge}${paymentBadge}</span>
-                        <span class="slot-actions"><button class="btn btn-danger slot-action-btn" onclick="event.stopPropagation(); openModal('${dateStr}', '${timeStr}', 'cancel_admin', '${app.name}', '${app.email}', '${app.phone}');" title="Cancelar cita"><i class="bi bi-trash"></i></button></span>
+                        <span class="slot-actions"><button class="btn btn-danger slot-action-btn" onclick="event.stopPropagation(); openModal('${dateStr}', '${timeStr}', 'cancel_admin', '${cancelPayloadArg}');" title="Cancelar cita"><i class="bi bi-trash"></i></button></span>
                     </div>
                 </div>
             `;
@@ -220,7 +233,7 @@ function renderSlot(dateStr, timeStr, dayApps) {
                         </div>
                         <div class="slot-meta-row">
                             <span class="slot-badges">${serviceBadge}${consultationBadge}${paymentBadge}</span>
-                            <span class="slot-actions">${payButton}<button class="btn btn-danger slot-action-btn" onclick="event.stopPropagation(); openModal('${dateStr}', '${timeStr}', 'cancel_own');" title="Cancelar cita"><i class="bi bi-trash"></i></button></span>
+                            <span class="slot-actions">${payButton}<button class="btn btn-danger slot-action-btn" onclick="event.stopPropagation(); openModal('${dateStr}', '${timeStr}', 'cancel_own', '${cancelPayloadArg}');" title="Cancelar cita"><i class="bi bi-trash"></i></button></span>
                         </div>
                     </div>
                 `;
@@ -325,6 +338,7 @@ function canPayAppointment(app) {
 // Modal handling
 let appointmentModal = new bootstrap.Modal(document.getElementById('appointmentModal'));
 let settingsModal = document.getElementById('settingsModal') ? new bootstrap.Modal(document.getElementById('settingsModal')) : null;
+bonusesModal = document.getElementById('bonusesModal') ? new bootstrap.Modal(document.getElementById('bonusesModal')) : null;
 let currentPaymentAppointmentId = null;
 
 function openModal(date, time, status, extraName = '', extraEmail = '', extraPhone = '') {
@@ -371,7 +385,39 @@ function openModal(date, time, status, extraName = '', extraEmail = '', extraPho
         $('#payment-options').removeClass('d-none');
     }
 
+    applyCancelPaymentNotice(status, extraName);
     appointmentModal.show();
+}
+
+function parseCancelPayload(raw) {
+    if (!raw) {
+        return {};
+    }
+    try {
+        return JSON.parse(decodeURIComponent(raw));
+    } catch (e) {
+        return { name: raw };
+    }
+}
+
+function cancelBonusNotice(data) {
+    if (!data || data.payment_method !== 'bonus' || !data.patient_bonus_id) {
+        return '';
+    }
+    return '<div class="alert alert-success py-2 my-3 text-start small"><strong>Cita reservada con bono.</strong><br><span>Tras la cancelaci&oacute;n, volver&aacute;s a tener el bono disponible para otra reserva.</span></div>';
+}
+
+function applyCancelPaymentNotice(status, payload) {
+    if (!['cancel_admin', 'cancel_own'].includes(status)) {
+        return;
+    }
+    const data = parseCancelPayload(payload);
+    const notice = cancelBonusNotice(data);
+    if (status === 'cancel_admin') {
+        $('#modalDesc').html(`Paciente: <b>${escapeHtml(data.name || '')}</b><br><small>Email: ${escapeHtml(data.email || '')}<br>Tel: ${escapeHtml(data.phone || '')}</small>${notice}<br>&iquest;Confirmar cancelaci&oacute;n?`);
+        return;
+    }
+    $('#modalDesc').html(`${notice}<br>&iquest;Est&aacute;s seguro de que deseas cancelar tu cita?`);
 }
 
 $(document).ready(function () {
@@ -415,6 +461,26 @@ $(document).ready(function () {
                 }
             }
         });
+    });
+
+    $('#btn-buy-bonus').click(function () {
+        openBuyBonusModal();
+    });
+
+    $('#btn-my-bonuses').click(function () {
+        openMyBonusesModal();
+    });
+
+    $('#btn-admin-bonuses').click(function () {
+        openAdminBonusesModal();
+    });
+
+    $('#btn-buy-bonus-card').click(function () {
+        startBonusPayment('card');
+    });
+
+    $('#btn-buy-bonus-bizum').click(function () {
+        startBonusPayment('bizum');
     });
 
     $('#btn-confirm-action').click(function () {
@@ -638,7 +704,7 @@ function bookAppointment() {
                 const remaining = parseInt(res.bonus_remaining || 0, 10);
                 $('#modalTitle').text('Cita reservada');
                 const ownerText = IS_ADMIN ? 'La cita ha quedado reservada correctamente e incluida con el bono del paciente.' : 'Tu cita ha quedado reservada correctamente e incluida con tu bono.';
-                $('#modalDesc').html(`${ownerText}<br><br>Quedan ${remaining} ${remaining === 1 ? 'sesiÃ³n' : 'sesiones'} disponibles.`);
+                $('#modalDesc').html(`${ownerText}<br><br>Quedan ${remaining} ${remaining === 1 ? 'sesi&oacute;n' : 'sesiones'} disponibles.`);
                 $('#btn-confirm-action').addClass('d-none');
                 $('#payment-options').addClass('d-none');
                 setTimeout(function () {
@@ -770,7 +836,7 @@ function refreshBookingBonusNotice() {
         dataType: 'json',
         data: IS_ADMIN ? { user_id: patientId } : {},
         success: function (res) {
-            if (!res.success || res.bonuses_enabled != 1) {
+            if (!res.success) {
                 return;
             }
 
@@ -785,7 +851,7 @@ function refreshBookingBonusNotice() {
             $notice
                 .removeClass('d-none')
                 .addClass('alert-success')
-                .html(`Incluida con bono${bonusName}: ${remaining} ${remaining === 1 ? 'sesiÃ³n restante' : 'sesiones restantes'}.`);
+                .html(`Incluida con bono${bonusName}: ${remaining} ${remaining === 1 ? 'sesi&oacute;n restante' : 'sesiones restantes'}.`);
         }
     });
 }
@@ -878,6 +944,209 @@ function startRedsysPayment(appointmentId, paymentMethod) {
     });
 }
 
+function togglePatientBonusActions() {
+    if (IS_ADMIN) {
+        return;
+    }
+    const canBuyBonuses = PAYMENT_SETTINGS.bonuses_enabled == 1 && PAYMENT_SETTINGS.online_payment_enabled == 1;
+    const canUseInternalVouchers = PAYMENT_SETTINGS.create_compensation_bonus_on_paid_cancel === undefined ? true : PAYMENT_SETTINGS.create_compensation_bonus_on_paid_cancel == 1;
+    const showBonusArea = canBuyBonuses || canUseInternalVouchers;
+    $('#patient-bonus-actions').attr('style', showBonusArea ? '' : 'display: none !important;');
+    $('#btn-buy-bonus').toggle(canBuyBonuses);
+    $('#btn-my-bonuses').toggle(showBonusArea);
+}
+
+function openBuyBonusModal() {
+    if (!bonusesModal) return;
+    selectedBonusToBuy = null;
+    $('#bonusesModalTitle').text('Comprar bono');
+    $('#bonuses-modal-alert').addClass('d-none').text('');
+    $('#bonus-list-panel').addClass('d-none');
+    $('#bonus-payment-options').addClass('d-none');
+    $('#bonus-catalog-panel').removeClass('d-none');
+    $('#bonus-catalog-list').html('<div class="col-12 text-center text-muted py-4">Cargando bonos...</div>');
+    bonusesModal.show();
+
+    $.ajax({
+        url: 'api/bonuses.php?action=catalog',
+        dataType: 'json',
+        success: function (res) {
+            if (!res.success || res.bonuses_enabled != 1) {
+                showBonusesModalAlert('danger', res.error || 'La compra de bonos no esta activa.');
+                $('#bonus-catalog-list').empty();
+                return;
+            }
+            renderBonusCatalog(res.bonuses || []);
+        },
+        error: function () {
+            showBonusesModalAlert('danger', 'Error de conexion al cargar los bonos.');
+            $('#bonus-catalog-list').empty();
+        }
+    });
+}
+
+function renderBonusCatalog(bonuses) {
+    if (!bonuses.length) {
+        $('#bonus-catalog-list').html('<div class="col-12 text-center text-muted py-4">No hay bonos disponibles.</div>');
+        return;
+    }
+
+    let html = '';
+    bonuses.forEach(bonus => {
+        const regularTotal = bonus.regular_total ? formatPrice(bonus.regular_total) : '';
+        const savings = bonus.savings ? parseFloat(String(bonus.savings).replace(',', '.')) : 0;
+        const savingsHtml = savings > 0 ? `<small class="text-success">Ahorras ${formatPrice(bonus.savings)} €</small>` : '';
+        html += `
+            <div class="col-md-6">
+                <div class="bonus-card" data-buy-bonus-id="${bonus.id}">
+                    <h6>${escapeHtml(bonus.name)}</h6>
+                    <p class="text-muted mb-2">${bonus.session_count} sesiones individuales</p>
+                    ${regularTotal ? `<div class="bonus-regular-price">${regularTotal} €</div>` : ''}
+                    <div class="bonus-price">${formatPrice(bonus.price)} €</div>
+                    ${savingsHtml}
+                    <button class="btn btn-primary btn-sm mt-3" type="button" onclick="selectBonusToBuy(${bonus.id}, '${escapeJsString(bonus.name)}', '${escapeJsString(bonus.price)}')">
+                        Comprar
+                    </button>
+                </div>
+            </div>
+        `;
+    });
+    $('#bonus-catalog-list').html(html);
+}
+
+function selectBonusToBuy(id, name, price) {
+    selectedBonusToBuy = { id, name, price };
+    $('.bonus-card').removeClass('selected');
+    $(`.bonus-card[data-buy-bonus-id="${id}"]`).addClass('selected');
+    $('#bonus-payment-text').html(`Comprar <b>${escapeHtml(name)}</b> por ${formatPrice(price)} €.`);
+    $('#bonus-payment-options').removeClass('d-none');
+}
+
+function startBonusPayment(paymentMethod) {
+    if (!selectedBonusToBuy) {
+        showBonusesModalAlert('danger', 'Selecciona un bono.');
+        return;
+    }
+
+    $('#btn-buy-bonus-card, #btn-buy-bonus-bizum').prop('disabled', true);
+    $.ajax({
+        url: 'api/payments.php?action=create_bonus_redsys_form',
+        method: 'POST',
+        dataType: 'json',
+        data: {
+            bonus_id: selectedBonusToBuy.id,
+            payment_method: paymentMethod
+        },
+        success: function (res) {
+            if (!res.success) {
+                showBonusesModalAlert('danger', res.error || 'No se pudo iniciar el pago del bono.');
+                $('#btn-buy-bonus-card, #btn-buy-bonus-bizum').prop('disabled', false);
+                return;
+            }
+            $('#redsys-payment-form').remove();
+            $('body').append(res.form_html);
+            $('#redsys-payment-form').trigger('submit');
+        },
+        error: function () {
+            showBonusesModalAlert('danger', 'Error de conexion al iniciar el pago del bono.');
+            $('#btn-buy-bonus-card, #btn-buy-bonus-bizum').prop('disabled', false);
+        }
+    });
+}
+
+function openMyBonusesModal() {
+    openBonusListModal('Mis bonos', 'api/bonuses.php?action=my_bonuses', false);
+}
+
+function openAdminBonusesModal() {
+    openBonusListModal('Bonos de pacientes', 'api/bonuses.php?action=admin_list', true);
+}
+
+function openBonusListModal(title, url, adminView) {
+    if (!bonusesModal) return;
+    selectedBonusToBuy = null;
+    $('#bonusesModalTitle').text(title);
+    $('#bonuses-modal-alert').addClass('d-none').text('');
+    $('#bonus-catalog-panel').addClass('d-none');
+    $('#bonus-payment-options').addClass('d-none');
+    $('#bonus-list-panel').removeClass('d-none');
+    $('#bonus-list-head').html(adminView
+        ? '<tr><th>Paciente</th><th>Bono</th><th>Compradas</th><th>Restantes</th><th>Pagado</th><th>Comprado</th><th>Estado</th></tr>'
+        : '<tr><th>Bono</th><th>Compradas</th><th>Restantes</th><th>Pagado</th><th>Comprado</th><th>Estado</th></tr>');
+    $('#bonus-list-body').html('<tr><td colspan="7" class="text-center text-muted py-4">Cargando...</td></tr>');
+    bonusesModal.show();
+
+    $.ajax({
+        url,
+        dataType: 'json',
+        success: function (res) {
+            if (!res.success) {
+                showBonusesModalAlert('danger', res.error || 'No se pudieron cargar los bonos.');
+                $('#bonus-list-body').empty();
+                return;
+            }
+            renderBonusList(res.bonuses || [], adminView);
+        },
+        error: function () {
+            showBonusesModalAlert('danger', 'Error de conexion al cargar los bonos.');
+            $('#bonus-list-body').empty();
+        }
+    });
+}
+
+function renderBonusList(bonuses, adminView) {
+    const colspan = adminView ? 7 : 6;
+    if (!bonuses.length) {
+        $('#bonus-list-body').html(`<tr><td colspan="${colspan}" class="text-center text-muted py-4">No hay bonos comprados.</td></tr>`);
+        return;
+    }
+
+    let html = '';
+    bonuses.forEach(bonus => {
+        const paid = bonus.amount_paid !== null && bonus.amount_paid !== undefined ? `${formatPrice(bonus.amount_paid)} €` : '-';
+        const date = bonus.purchased_at ? formatDateTimeLabel(bonus.purchased_at) : '-';
+        const status = bonusStatusLabel(bonus.status);
+        html += '<tr>';
+        if (adminView) {
+            html += `<td>${escapeHtml(bonus.patient_name || '')}<br><small class="text-muted">${escapeHtml(bonus.patient_email || '')}</small></td>`;
+        }
+        html += `
+            <td>${escapeHtml(bonus.name || '')}</td>
+            <td>${bonus.total_sessions}</td>
+            <td><strong>${bonus.remaining_sessions}</strong></td>
+            <td>${paid}</td>
+            <td>${date}</td>
+            <td>${status}</td>
+        </tr>`;
+    });
+    $('#bonus-list-body').html(html);
+}
+
+function bonusStatusLabel(status) {
+    const labels = {
+        active: '<span class="badge text-bg-success">Activo</span>',
+        used: '<span class="badge text-bg-secondary">Usado</span>',
+        expired: '<span class="badge text-bg-warning">Caducado</span>',
+        cancelled: '<span class="badge text-bg-danger">Cancelado</span>'
+    };
+    return labels[status] || escapeHtml(status || '');
+}
+
+function formatDateTimeLabel(value) {
+    const date = new Date(String(value).replace(' ', 'T'));
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+    return date.toLocaleDateString('es-ES') + ' ' + date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+}
+
+function showBonusesModalAlert(type, message) {
+    $('#bonuses-modal-alert')
+        .removeClass('d-none alert-success alert-danger')
+        .addClass(type === 'success' ? 'alert-success' : 'alert-danger')
+        .text(message);
+}
+
 function setAppointmentActionLoading(isLoading, paymentMethod = null) {
     isAppointmentRequestInProgress = isLoading;
     $('#btn-confirm-action, #btn-pay-card, #btn-pay-bizum').prop('disabled', isLoading);
@@ -905,16 +1174,52 @@ function loadClosedDays() {
         success: function (res) {
             if (res.success) {
                 let html = '';
-                res.days.forEach(d => {
+                const ranges = groupClosedDays(res.days || []);
+                ranges.forEach(d => {
+                    const label = d.start_date === d.end_date
+                        ? formatDisplayDate(d.start_date)
+                        : `Del ${formatDisplayDate(d.start_date)} al ${formatDisplayDate(d.end_date)}`;
                     html += `<li class="list-group-item d-flex justify-content-between align-items-center">
-                                ${d.closed_date} - ${d.reason}
-                                <button class="btn btn-sm btn-danger" onclick="deleteClosedDay(${d.id})"><i class="bi bi-trash"></i></button>
+                                ${label} - ${escapeHtml(d.reason)}
+                                <button class="btn btn-sm btn-danger" onclick="deleteClosedRange('${escapeJsString(d.start_date)}', '${escapeJsString(d.end_date)}', '${escapeJsString(d.reason)}')"><i class="bi bi-trash"></i></button>
                              </li>`;
                 });
                 $('#closed-days-list').html(html);
             }
         }
     });
+}
+
+function groupClosedDays(days) {
+    const sorted = [...days].sort((a, b) => String(a.closed_date).localeCompare(String(b.closed_date)));
+    const ranges = [];
+
+    sorted.forEach(day => {
+        const currentDate = String(day.closed_date || '');
+        const currentReason = String(day.reason || '');
+        const last = ranges[ranges.length - 1];
+        if (last && last.reason === currentReason && isNextDate(last.end_date, currentDate)) {
+            last.end_date = currentDate;
+            return;
+        }
+        ranges.push({
+            start_date: currentDate,
+            end_date: currentDate,
+            reason: currentReason
+        });
+    });
+
+    return ranges;
+}
+
+function isNextDate(previousDate, currentDate) {
+    const previous = new Date(`${previousDate}T00:00:00`);
+    const current = new Date(`${currentDate}T00:00:00`);
+    if (Number.isNaN(previous.getTime()) || Number.isNaN(current.getTime())) {
+        return false;
+    }
+    previous.setDate(previous.getDate() + 1);
+    return formatDate(previous) === currentDate;
 }
 
 function deleteClosedDay(id) {
@@ -928,6 +1233,29 @@ function deleteClosedDay(id) {
             if (res.success) {
                 loadClosedDays();
                 renderWeekInfo();
+            }
+        }
+    });
+}
+
+function deleteClosedRange(startDate, endDate, reason) {
+    const label = startDate === endDate ? formatDisplayDate(startDate) : `del ${formatDisplayDate(startDate)} al ${formatDisplayDate(endDate)}`;
+    if (!confirm(`Eliminar este periodo de descanso ${label}?`)) return;
+    $.ajax({
+        url: 'api/admin.php?action=delete_closed_range',
+        method: 'POST',
+        data: {
+            start_date: startDate,
+            end_date: endDate,
+            reason
+        },
+        dataType: 'json',
+        success: function (res) {
+            if (res.success) {
+                loadClosedDays();
+                renderWeekInfo();
+            } else {
+                alert(res.error || 'No se pudo eliminar el periodo');
             }
         }
     });
@@ -989,6 +1317,7 @@ function loadPaymentSettings() {
             $('#show-profile-image-public').prop('checked', settings.show_profile_image_public == 1);
             $('#show-prices-public').prop('checked', settings.show_prices_public == 1);
             $('#bonuses-enabled').prop('checked', settings.bonuses_enabled == 1);
+            $('#create-compensation-bonus-on-paid-cancel').prop('checked', settings.create_compensation_bonus_on_paid_cancel === undefined ? true : settings.create_compensation_bonus_on_paid_cancel == 1);
             toggleBonusesSettings();
             renderBonusesSettings();
             setAvailableSessionDurations(settings.available_session_durations || '60');
@@ -1213,6 +1542,7 @@ function saveBonusesSettings(button = null) {
         dataType: 'json',
         data: {
             bonuses_enabled: $('#bonuses-enabled').is(':checked') ? '1' : '0',
+            create_compensation_bonus_on_paid_cancel: $('#create-compensation-bonus-on-paid-cancel').is(':checked') ? '1' : '0',
             bonuses_json: JSON.stringify(collectBonusesSettings())
         },
         success: function (res) {

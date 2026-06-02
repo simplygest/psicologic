@@ -5,7 +5,7 @@ require_once 'mail_helpers.php';
 require_once 'settings_helpers.php';
 
 $subject = 'Error en el proceso de pago';
-$message = 'Ha ocurrido un problema durante el proceso de pago, o bien no se completó satisfactoriamente.';
+$message = 'Ha ocurrido un problema durante el proceso de pago, o bien no se completo satisfactoriamente.';
 $detail = '';
 $branding = get_public_branding_settings($mysqli);
 
@@ -16,17 +16,21 @@ if ($token) {
     ensure_payment_attempts_table($mysqli);
     ensure_appointment_payment_columns($mysqli);
     ensure_appointment_services_tables($mysqli);
+    ensure_bonus_tables($mysqli);
 
     $stmt = $mysqli->prepare("
         SELECT pa.id, pa.appointment_id, pa.amount_cents, pa.payment_method,
+               COALESCE(pa.purchase_type, 'appointment') AS purchase_type, pa.bonus_id,
                a.appointment_date, a.appointment_time, a.consultation_type, a.service_type,
                COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
                s.name AS service_name,
+               b.name AS bonus_name, b.session_count AS bonus_sessions,
                u.name, u.email, u.phone
         FROM payment_attempts pa
-        JOIN appointments a ON a.id = pa.appointment_id
+        LEFT JOIN appointments a ON a.id = pa.appointment_id
         LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
         LEFT JOIN appointment_services s ON s.id = so.service_id
+        LEFT JOIN appointment_bonuses b ON b.id = pa.bonus_id
         JOIN users u ON u.id = pa.user_id
         WHERE pa.token = ?
     ");
@@ -42,49 +46,69 @@ if ($token) {
             $stmt->bind_param("i", $payment['id']);
             $stmt->execute();
 
-            $stmt = $mysqli->prepare("
-                UPDATE appointments
-                SET payment_status = 'failed', payment_attempt_id = ?
-                WHERE id = ? AND payment_status != 'paid'
-            ");
-            $stmt->bind_param("ii", $payment['id'], $payment['appointment_id']);
-            $stmt->execute();
+            if (($payment['purchase_type'] ?? 'appointment') === 'appointment') {
+                $stmt = $mysqli->prepare("
+                    UPDATE appointments
+                    SET payment_status = 'failed', payment_attempt_id = ?
+                    WHERE id = ? AND payment_status != 'paid'
+                ");
+                $stmt->bind_param("ii", $payment['id'], $payment['appointment_id']);
+                $stmt->execute();
+            }
 
             $mysqli->commit();
 
             $amount = format_payment_amount($payment['amount_cents']);
-            $date = date('d/m/Y', strtotime($payment['appointment_date']));
-            $time = date('H:i', strtotime($payment['appointment_time']));
-            $consultation_text = appointment_consultation_label($payment['consultation_type'] ?? 'presencial');
-            $service_text = appointment_service_option_label($payment);
-            $detail = "La cita " . strtolower($service_text) . " " . strtolower($consultation_text) . " del $date a las $time sigue reservada, pero el pago de $amount € no se ha completado.";
+            $method = $payment['payment_method'] === 'bizum' ? 'Bizum' : 'tarjeta';
 
-            notify_admin(
-                $mysqli,
-                'Pago no completado',
-                '<p>Un pago online no se ha completado correctamente.</p>' .
-                '<p><b>Paciente:</b> ' . htmlspecialchars($payment['name']) . '<br>' .
-                '<b>Cita:</b> ' . htmlspecialchars("$date a las $time") . '<br>' .
-                '<b>Servicio:</b> ' . htmlspecialchars($service_text) . '<br>' .
-                '<b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '<br>' .
-                '<b>Importe:</b> ' . htmlspecialchars($amount) . ' €<br>' .
-                '<b>Método:</b> ' . htmlspecialchars($payment['payment_method'] === 'bizum' ? 'Bizum' : 'tarjeta') . '</p>',
-                $payment['email'] ?? null
-            );
+            if (($payment['purchase_type'] ?? 'appointment') === 'bonus') {
+                $bonus_name = $payment['bonus_name'] ?: 'Bono';
+                $detail = "La compra del bono " . strtolower($bonus_name) . " por $amount EUR no se ha completado.";
 
-            if (!empty($payment['email'])) {
-                send_app_email(
-                    $payment['email'],
-                    'Pago de cita no completado',
-                    '<p>Hola ' . htmlspecialchars($payment['name']) . ',</p>' .
-                    '<p>El pago online de tu cita ' . htmlspecialchars(strtolower($service_text)) . ' ' . htmlspecialchars(strtolower($consultation_text)) . ' del ' . htmlspecialchars("$date a las $time") . ' no se ha completado correctamente.</p>' .
-                    '<p><b>Importe:</b> ' . htmlspecialchars($amount) . ' €<br>' .
-                    '<b>Servicio:</b> ' . htmlspecialchars($service_text) . '<br>' .
-                    '<b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '</p>' .
-                    '<p>La cita sigue reservada. Puedes contactar con la consulta si necesitas ayuda.</p>',
-                    null,
-                    $mysqli
+                notify_admin(
+                    $mysqli,
+                    'Compra de bono no completada',
+                    '<p>Una compra de bono online no se ha completado correctamente.</p>' .
+                    '<p><b>Paciente:</b> ' . htmlspecialchars($payment['name']) . '<br>' .
+                    '<b>Bono:</b> ' . htmlspecialchars($bonus_name) . '<br>' .
+                    '<b>Importe:</b> ' . htmlspecialchars($amount) . ' &euro;<br>' .
+                    '<b>Metodo:</b> ' . htmlspecialchars($method) . '</p>',
+                    $payment['email'] ?? null
                 );
+            } else {
+                $date = date('d/m/Y', strtotime($payment['appointment_date']));
+                $time = date('H:i', strtotime($payment['appointment_time']));
+                $consultation_text = appointment_consultation_label($payment['consultation_type'] ?? 'presencial');
+                $service_text = appointment_service_option_label($payment);
+                $detail = "La cita " . strtolower($service_text) . " " . strtolower($consultation_text) . " del $date a las $time sigue reservada, pero el pago de $amount EUR no se ha completado.";
+
+                notify_admin(
+                    $mysqli,
+                    'Pago no completado',
+                    '<p>Un pago online no se ha completado correctamente.</p>' .
+                    '<p><b>Paciente:</b> ' . htmlspecialchars($payment['name']) . '<br>' .
+                    '<b>Cita:</b> ' . htmlspecialchars("$date a las $time") . '<br>' .
+                    '<b>Servicio:</b> ' . htmlspecialchars($service_text) . '<br>' .
+                    '<b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '<br>' .
+                    '<b>Importe:</b> ' . htmlspecialchars($amount) . ' &euro;<br>' .
+                    '<b>Metodo:</b> ' . htmlspecialchars($method) . '</p>',
+                    $payment['email'] ?? null
+                );
+
+                if (!empty($payment['email'])) {
+                    send_app_email(
+                        $payment['email'],
+                        'Pago de cita no completado',
+                        '<p>Hola ' . htmlspecialchars($payment['name']) . ',</p>' .
+                        '<p>El pago online de tu cita ' . htmlspecialchars(strtolower($service_text)) . ' ' . htmlspecialchars(strtolower($consultation_text)) . ' del ' . htmlspecialchars("$date a las $time") . ' no se ha completado correctamente.</p>' .
+                        '<p><b>Importe:</b> ' . htmlspecialchars($amount) . ' &euro;<br>' .
+                        '<b>Servicio:</b> ' . htmlspecialchars($service_text) . '<br>' .
+                        '<b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '</p>' .
+                        '<p>La cita sigue reservada. Puedes contactar con la consulta si necesitas ayuda.</p>',
+                        null,
+                        $mysqli
+                    );
+                }
             }
         } catch (\Exception $e) {
             $mysqli->rollback();
@@ -99,7 +123,7 @@ if ($token) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
-    <title><?= htmlspecialchars($subject) ?> - Psicología Minimal</title>
+    <title><?= htmlspecialchars($subject) ?> - <?= htmlspecialchars($branding['app_name']) ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">

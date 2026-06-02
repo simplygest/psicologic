@@ -243,6 +243,15 @@ function appointment_payment_label($payment_status)
     return 'No pagada online';
 }
 
+function appointment_cancel_payment_label($appointment)
+{
+    if (($appointment['payment_method'] ?? '') === 'bonus' && !empty($appointment['patient_bonus_id'])) {
+        return 'Pagada con bono';
+    }
+
+    return appointment_payment_label($appointment['payment_status'] ?? 'pending');
+}
+
 function notify_appointment_cancelled($mysqli, $appointment)
 {
     if (!$appointment) {
@@ -257,10 +266,23 @@ function notify_appointment_cancelled($mysqli, $appointment)
         ? appointment_service_option_label($appointment)
         : appointment_service_label($appointment['service_type'] ?? 'individual');
     $payment_status = $appointment['payment_status'] ?? 'pending';
-    $payment_text = appointment_payment_label($payment_status);
+    $is_bonus_payment = ($appointment['payment_method'] ?? '') === 'bonus' && !empty($appointment['patient_bonus_id']);
+    $compensation_bonus_created = !empty($appointment['compensation_bonus_created']);
+    $payment_text = appointment_cancel_payment_label($appointment);
     $paid_warning = $payment_status === 'paid'
         ? '<p><b>Atención:</b> esta cita constaba como pagada. Revisa si corresponde hacer devolución o contactar con el paciente.</p>'
         : '';
+    if ($is_bonus_payment) {
+        $paid_warning = '<p>Esta cita fue reservada con bono. El paciente volver&aacute; a tener una cita disponible en su bono.</p>';
+    } elseif ($compensation_bonus_created) {
+        $paid_warning = '<p>Se ha creado un vale de 1 sesi&oacute;n para el paciente. Podr&aacute; usarlo para reservar otra cita desde la web.</p>';
+    }
+    $patient_payment_note = $is_bonus_payment
+        ? '<p><b>Estado del pago:</b> pagada con bono</p>'
+        : '';
+    if ($compensation_bonus_created) {
+        $patient_payment_note = '<p><b>Compensaci&oacute;n:</b> hemos generado un vale de 1 sesi&oacute;n para que puedas reservar otra cita desde la web.</p>';
+    }
 
     notify_admin(
         $mysqli,
@@ -282,7 +304,8 @@ function notify_appointment_cancelled($mysqli, $appointment)
             '<p>Hola ' . htmlspecialchars($patient_name) . ',</p>' .
             '<p>Tu cita ' . htmlspecialchars(strtolower($service_text)) . ' ' . htmlspecialchars(strtolower($consultation_text)) . ' para el ' . htmlspecialchars($appointment_text) . ' ha sido cancelada correctamente.</p>' .
             '<p><b>Servicio:</b> ' . htmlspecialchars($service_text) . '</p>' .
-            '<p><b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '</p>',
+            '<p><b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '</p>' .
+            $patient_payment_note,
             null,
             $mysqli
         );

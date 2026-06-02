@@ -11,117 +11,181 @@ $is_admin = (($_SESSION['role'] ?? '') === 'admin');
 
 function app_base_url()
 {
-    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? 'https://' : 'http://';
-    $domain = $_SERVER['HTTP_HOST'];
-    $path = dirname(dirname($_SERVER['REQUEST_URI']));
+    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || ($_SERVER['SERVER_PORT'] ?? null) == 443) ? 'https://' : 'http://';
+    $domain = $_SERVER['HTTP_HOST'] ?? '';
+    $path = dirname(dirname($_SERVER['REQUEST_URI'] ?? ''));
     $path = rtrim($path, '/');
     return $protocol . $domain . $path . '/';
 }
 
-if ($action !== 'create_redsys_form') {
-    echo json_encode(['success' => false, 'error' => 'Acción inválida']);
+if (!in_array($action, ['create_redsys_form', 'create_bonus_redsys_form'], true)) {
+    echo json_encode(['success' => false, 'error' => 'Accion invalida']);
     exit;
 }
 
-$appointment_id = (int) ($_POST['appointment_id'] ?? 0);
-$cancel_token = $_POST['token'] ?? '';
-$cancel_token = preg_match('/^[a-f0-9]{64}$/', $cancel_token) ? $cancel_token : '';
 $payment_method = $_POST['payment_method'] ?? 'card';
-
-if ((!$appointment_id && !$cancel_token) || !in_array($payment_method, ['card', 'bizum'], true)) {
-    echo json_encode(['success' => false, 'error' => 'Datos de pago inválidos']);
+if (!in_array($payment_method, ['card', 'bizum'], true)) {
+    echo json_encode(['success' => false, 'error' => 'Datos de pago invalidos']);
     exit;
 }
 
-if (!$user_id && !$cancel_token) {
+if (!$user_id && $action === 'create_bonus_redsys_form') {
     echo json_encode(['success' => false, 'error' => 'No autenticado']);
+    exit;
+}
+
+if ($action === 'create_bonus_redsys_form' && $is_admin) {
+    echo json_encode(['success' => false, 'error' => 'Los bonos solo pueden comprarse desde una cuenta de paciente']);
     exit;
 }
 
 ensure_payment_attempts_table($mysqli);
 ensure_appointment_payment_columns($mysqli);
 ensure_appointment_services_tables($mysqli);
-
-$lookup_where = $cancel_token ? 'a.cancel_token = ?' : 'a.id = ?';
-$stmt = $mysqli->prepare("
-    SELECT a.id, a.user_id, a.appointment_date, a.appointment_time, a.consultation_type, a.service_type,
-           COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
-           so.price AS service_price, s.name AS service_name,
-           COALESCE(a.payment_status, 'pending') AS payment_status,
-           u.name
-    FROM appointments a
-    LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
-    LEFT JOIN appointment_services s ON s.id = so.service_id
-    JOIN users u ON a.user_id = u.id
-    WHERE $lookup_where AND a.status = 'booked'
-");
-if ($cancel_token) {
-    $stmt->bind_param("s", $cancel_token);
-} else {
-    $stmt->bind_param("i", $appointment_id);
-}
-$stmt->execute();
-$appointment = $stmt->get_result()->fetch_assoc();
-
-if (!$appointment || (!$cancel_token && !$is_admin && (int) $appointment['user_id'] !== (int) $user_id)) {
-    echo json_encode(['success' => false, 'error' => 'Cita no disponible para pago']);
-    exit;
-}
-
-if ($appointment['payment_status'] === 'paid') {
-    echo json_encode(['success' => false, 'error' => 'Esta cita ya está pagada']);
-    exit;
-}
-
-$appointment_id = (int) $appointment['id'];
+ensure_bonus_tables($mysqli);
 
 $settings_table = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
 if ($settings_table->num_rows === 0) {
-    echo json_encode(['success' => false, 'error' => 'El pago online no está activo']);
+    echo json_encode(['success' => false, 'error' => 'El pago online no esta activo']);
     exit;
 }
 
 ensure_payment_settings_price_columns($mysqli);
 
 $settings_res = $mysqli->query("
-    SELECT online_payment_enabled, environment, merchant_code, merchant_key, terminal, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price
+    SELECT online_payment_enabled, environment, merchant_code, merchant_key, terminal,
+           appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price,
+           app_name
     FROM payment_settings
     WHERE id = 1
 ");
 $settings = $settings_res->fetch_assoc();
 
 if (!$settings || (int) $settings['online_payment_enabled'] !== 1) {
-    echo json_encode(['success' => false, 'error' => 'El pago online no está activo']);
+    echo json_encode(['success' => false, 'error' => 'El pago online no esta activo']);
     exit;
 }
 
-$appointment_price = appointment_price_for_row($settings, $appointment);
-
-if (!$settings['merchant_code'] || !$settings['merchant_key'] || !$settings['terminal'] || (float) $appointment_price <= 0) {
-    echo json_encode(['success' => false, 'error' => 'La configuración de Redsys está incompleta']);
+if (!$settings['merchant_code'] || !$settings['merchant_key'] || !$settings['terminal']) {
+    echo json_encode(['success' => false, 'error' => 'La configuracion de Redsys esta incompleta']);
     exit;
 }
 
-$amount = number_format((float) $appointment_price, 2, '.', '');
+$purchase_type = 'appointment';
+$appointment = null;
+$bonus = null;
+$appointment_id = null;
+$bonus_id = null;
+$attempt_user_id = null;
+$amount_value = 0;
+$description = '';
+
+if ($action === 'create_redsys_form') {
+    $appointment_id = (int) ($_POST['appointment_id'] ?? 0);
+    $cancel_token = $_POST['token'] ?? '';
+    $cancel_token = preg_match('/^[a-f0-9]{64}$/', $cancel_token) ? $cancel_token : '';
+
+    if (!$appointment_id && !$cancel_token) {
+        echo json_encode(['success' => false, 'error' => 'Datos de pago invalidos']);
+        exit;
+    }
+
+    if (!$user_id && !$cancel_token) {
+        echo json_encode(['success' => false, 'error' => 'No autenticado']);
+        exit;
+    }
+
+    $lookup_where = $cancel_token ? 'a.cancel_token = ?' : 'a.id = ?';
+    $stmt = $mysqli->prepare("
+        SELECT a.id, a.user_id, a.appointment_date, a.appointment_time, a.consultation_type, a.service_type,
+               COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
+               so.price AS service_price, s.name AS service_name,
+               COALESCE(a.payment_status, 'pending') AS payment_status,
+               u.name
+        FROM appointments a
+        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
+        LEFT JOIN appointment_services s ON s.id = so.service_id
+        JOIN users u ON a.user_id = u.id
+        WHERE $lookup_where AND a.status = 'booked'
+    ");
+    if ($cancel_token) {
+        $stmt->bind_param("s", $cancel_token);
+    } else {
+        $stmt->bind_param("i", $appointment_id);
+    }
+    $stmt->execute();
+    $appointment = $stmt->get_result()->fetch_assoc();
+
+    if (!$appointment || (!$cancel_token && !$is_admin && (int) $appointment['user_id'] !== (int) $user_id)) {
+        echo json_encode(['success' => false, 'error' => 'Cita no disponible para pago']);
+        exit;
+    }
+
+    if ($appointment['payment_status'] === 'paid') {
+        echo json_encode(['success' => false, 'error' => 'Esta cita ya esta pagada']);
+        exit;
+    }
+
+    $appointment_id = (int) $appointment['id'];
+    $attempt_user_id = (int) $appointment['user_id'];
+    $amount_value = appointment_price_for_row($settings, $appointment);
+    $description = 'Cita ' . appointment_service_option_label($appointment) . ' ' . (($appointment['consultation_type'] ?? 'presencial') === 'online' ? 'online' : 'presencial') . ' ' . date('d/m/Y', strtotime($appointment['appointment_date'])) . ' ' . date('H:i', strtotime($appointment['appointment_time']));
+} else {
+    if (!bonuses_are_enabled($mysqli)) {
+        echo json_encode(['success' => false, 'error' => 'La compra de bonos no esta activa']);
+        exit;
+    }
+
+    $bonus_id = (int) ($_POST['bonus_id'] ?? 0);
+    $stmt = $mysqli->prepare("
+        SELECT id, name, session_count, price
+        FROM appointment_bonuses
+        WHERE id = ? AND is_active = 1
+        LIMIT 1
+    ");
+    $stmt->bind_param("i", $bonus_id);
+    $stmt->execute();
+    $bonus = $stmt->get_result()->fetch_assoc();
+
+    if (!$bonus) {
+        echo json_encode(['success' => false, 'error' => 'Bono no disponible']);
+        exit;
+    }
+
+    $purchase_type = 'bonus';
+    $attempt_user_id = (int) $user_id;
+    $amount_value = (float) $bonus['price'];
+    $description = $bonus['name'] . ' (' . (int) $bonus['session_count'] . ' sesiones)';
+}
+
+if ((float) $amount_value <= 0) {
+    echo json_encode(['success' => false, 'error' => 'El importe no es valido']);
+    exit;
+}
+
+$amount = number_format((float) $amount_value, 2, '.', '');
 $amount_cents = (int) str_replace('.', '', $amount);
-$order = sprintf('%04d%06d', $appointment_id % 10000, random_int(0, 999999));
-$token = hash('sha256', $appointment_id . '|' . $user_id . '|' . $order . '|' . $amount_cents);
+$order_seed = $appointment_id ?: ((int) $bonus_id + 7000);
+$order = sprintf('%04d%06d', $order_seed % 10000, random_int(0, 999999));
+$token = hash('sha256', $purchase_type . '|' . ($appointment_id ?: 0) . '|' . ($bonus_id ?: 0) . '|' . $attempt_user_id . '|' . $order . '|' . $amount_cents);
 
 $stmt = $mysqli->prepare("
-    INSERT INTO payment_attempts (appointment_id, user_id, token, redsys_order, amount_cents, payment_method, status)
-    VALUES (?, ?, ?, ?, ?, ?, 'Iniciado')
+    INSERT INTO payment_attempts (appointment_id, user_id, token, redsys_order, amount_cents, payment_method, purchase_type, bonus_id, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Iniciado')
 ");
-$stmt->bind_param("iissis", $appointment_id, $appointment['user_id'], $token, $order, $amount_cents, $payment_method);
+$stmt->bind_param("iississi", $appointment_id, $attempt_user_id, $token, $order, $amount_cents, $payment_method, $purchase_type, $bonus_id);
 $stmt->execute();
 $payment_attempt_id = $mysqli->insert_id;
 
-$stmt = $mysqli->prepare("
-    UPDATE appointments
-    SET payment_status = 'pending', payment_method = ?, payment_attempt_id = ?
-    WHERE id = ?
-");
-$stmt->bind_param("sii", $payment_method, $payment_attempt_id, $appointment_id);
-$stmt->execute();
+if ($purchase_type === 'appointment') {
+    $stmt = $mysqli->prepare("
+        UPDATE appointments
+        SET payment_status = 'pending', payment_method = ?, payment_attempt_id = ?
+        WHERE id = ?
+    ");
+    $stmt->bind_param("sii", $payment_method, $payment_attempt_id, $appointment_id);
+    $stmt->execute();
+}
 
 $base_url = app_base_url();
 $url_pago = $settings['environment'] === 'sandbox'
@@ -130,7 +194,6 @@ $url_pago = $settings['environment'] === 'sandbox'
 
 $url_ok = $base_url . 'respuestaredsysok.php?t=' . urlencode($token);
 $url_ko = $base_url . 'respuestaredsysko.php?t=' . urlencode($token);
-$description = 'Cita ' . appointment_service_option_label($appointment) . ' ' . (($appointment['consultation_type'] ?? 'presencial') === 'online' ? 'online' : 'presencial') . ' ' . date('d/m/Y', strtotime($appointment['appointment_date'])) . ' ' . date('H:i', strtotime($appointment['appointment_time']));
 
 $redsys = new RedsysAPI();
 $redsys->setParameter('DS_MERCHANT_AMOUNT', (string) $amount_cents);
@@ -142,7 +205,9 @@ $redsys->setParameter('DS_MERCHANT_TERMINAL', $settings['terminal']);
 $redsys->setParameter('DS_MERCHANT_URLOK', $url_ok);
 $redsys->setParameter('DS_MERCHANT_URLKO', $url_ko);
 $redsys->setParameter('Ds_Merchant_ProductDescription', $description);
-$redsys->setParameter('Ds_Merchant_MerchantName', 'PsicoLogic');
+$merchant_name = trim($settings['app_name'] ?? '') ?: 'PsicoLogic';
+$merchant_name = function_exists('mb_substr') ? mb_substr($merchant_name, 0, 25, 'UTF-8') : substr($merchant_name, 0, 25);
+$redsys->setParameter('Ds_Merchant_MerchantName', $merchant_name);
 $redsys->setParameter('Ds_Merchant_MerchantData', $token);
 
 if ($payment_method === 'bizum') {

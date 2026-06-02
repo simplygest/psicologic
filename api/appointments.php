@@ -188,7 +188,9 @@ if ($action === 'get_week') {
         'break_end_time' => '16:00:00',
         'available_weekdays' => '1,2,3,4,5',
         'appointment_delivery_mode' => 'both',
-        'available_session_durations' => '60'
+        'available_session_durations' => '60',
+        'bonuses_enabled' => 0,
+        'create_compensation_bonus_on_paid_cancel' => 1
     ];
     $settings_res = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
     if ($settings_res->num_rows > 0) {
@@ -206,11 +208,12 @@ if ($action === 'get_week') {
         ensure_schedule_setting_columns($mysqli);
         ensure_delivery_setting_column($mysqli);
         ensure_session_setting_column($mysqli);
+        ensure_bonus_tables($mysqli);
         $settings_res = $mysqli->query("
             SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, available_session_types, available_session_durations,
                    min_booking_notice_days, max_booking_notice_days,
                    appointment_start_time, appointment_end_time, break_start_time, break_end_time,
-                   available_weekdays, appointment_delivery_mode
+                   available_weekdays, appointment_delivery_mode, bonuses_enabled, create_compensation_bonus_on_paid_cancel
             FROM payment_settings
             WHERE id = 1
         ");
@@ -498,7 +501,7 @@ if ($action === 'get_week') {
     }
 
     $enabled = bonuses_are_enabled($mysqli);
-    $balance = $enabled ? fetch_patient_bonus_balance($mysqli, $target_user_id) : ['total_remaining' => 0, 'bonuses' => []];
+    $balance = fetch_patient_bonus_balance($mysqli, $target_user_id);
     echo json_encode([
         'success' => true,
         'bonuses_enabled' => $enabled ? 1 : 0,
@@ -515,7 +518,8 @@ if ($action === 'get_week') {
                COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
                s.name AS service_name,
                COALESCE(a.payment_status, 'pending') AS payment_status,
-               a.payment_method, a.patient_bonus_id,
+               a.payment_method, a.payment_attempt_id, a.patient_bonus_id,
+               a.user_id,
                u.name, u.email
         FROM appointments a
         LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
@@ -556,6 +560,21 @@ if ($action === 'get_week') {
     if ($stmt->affected_rows > 0) {
         if (!empty($appointment_to_cancel['patient_bonus_id']) && ($appointment_to_cancel['payment_method'] ?? '') === 'bonus') {
             restore_patient_bonus_session($mysqli, (int) $appointment_to_cancel['patient_bonus_id']);
+        }
+        if (compensation_bonus_on_paid_cancel_enabled($mysqli)
+            && ($appointment_to_cancel['payment_status'] ?? '') === 'paid'
+            && in_array(($appointment_to_cancel['payment_method'] ?? ''), ['card', 'bizum'], true)
+        ) {
+            try {
+                create_compensation_bonus_for_user(
+                    $mysqli,
+                    (int) $appointment_to_cancel['user_id'],
+                    !empty($appointment_to_cancel['payment_attempt_id']) ? (int) $appointment_to_cancel['payment_attempt_id'] : null
+                );
+                $appointment_to_cancel['compensation_bonus_created'] = 1;
+            } catch (\Exception $e) {
+                error_log('No se pudo crear vale por cancelacion: ' . $e->getMessage());
+            }
         }
         notify_appointment_cancelled($mysqli, $appointment_to_cancel);
         echo json_encode(['success' => true]);

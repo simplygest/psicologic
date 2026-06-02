@@ -66,6 +66,10 @@ function ensure_bonus_tables($mysqli)
         if ($column_res && $column_res->num_rows === 0) {
             $mysqli->query("ALTER TABLE payment_settings ADD bonuses_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER show_prices_public");
         }
+        $column_res = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'create_compensation_bonus_on_paid_cancel'");
+        if ($column_res && $column_res->num_rows === 0) {
+            $mysqli->query("ALTER TABLE payment_settings ADD create_compensation_bonus_on_paid_cancel TINYINT(1) NOT NULL DEFAULT 1 AFTER bonuses_enabled");
+        }
     }
 
     $mysqli->query("
@@ -123,10 +127,17 @@ function seed_default_bonuses($mysqli)
     }
 }
 
-function fetch_appointment_bonuses($mysqli, $only_active = false)
+function fetch_appointment_bonuses($mysqli, $only_active = false, $include_internal = false)
 {
     ensure_bonus_tables($mysqli);
-    $where = $only_active ? "WHERE is_active = 1" : "";
+    $conditions = [];
+    if ($only_active) {
+        $conditions[] = "is_active = 1";
+    }
+    if (!$include_internal) {
+        $conditions[] = "bonus_key NOT LIKE 'internal_%'";
+    }
+    $where = $conditions ? "WHERE " . implode(" AND ", $conditions) : "";
     $res = $mysqli->query("
         SELECT id, bonus_key, name, session_count, price, is_active, sort_order
         FROM appointment_bonuses
@@ -154,6 +165,22 @@ function bonuses_are_enabled($mysqli)
         return false;
     }
     return (int) ($row['bonuses_enabled'] ?? 0) === 1;
+}
+
+function compensation_bonus_on_paid_cancel_enabled($mysqli)
+{
+    ensure_bonus_tables($mysqli);
+    $settings_table = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
+    if (!$settings_table || $settings_table->num_rows === 0) {
+        return true;
+    }
+
+    $res = $mysqli->query("SELECT create_compensation_bonus_on_paid_cancel FROM payment_settings WHERE id = 1");
+    if (!$res || !($row = $res->fetch_assoc())) {
+        return true;
+    }
+
+    return (int) ($row['create_compensation_bonus_on_paid_cancel'] ?? 1) === 1;
 }
 
 function fetch_patient_bonus_balance($mysqli, $user_id)
@@ -195,10 +222,6 @@ function fetch_patient_bonus_balance($mysqli, $user_id)
 
 function claim_patient_bonus_session($mysqli, $user_id)
 {
-    if (!bonuses_are_enabled($mysqli)) {
-        return null;
-    }
-
     $balance = fetch_patient_bonus_balance($mysqli, $user_id);
     if (empty($balance['bonuses'])) {
         return null;
@@ -228,6 +251,51 @@ function claim_patient_bonus_session($mysqli, $user_id)
         'remaining_before' => (int) $bonus['remaining_sessions'],
         'remaining_after' => max(0, ((int) $bonus['remaining_sessions']) - 1)
     ];
+}
+
+function compensation_bonus_id($mysqli)
+{
+    ensure_bonus_tables($mysqli);
+    $key = 'internal_compensation_1_session';
+    $name = 'Vale por cancelacion';
+    $sessions = 1;
+    $price = 0.00;
+    $sort = 999;
+
+    $stmt = $mysqli->prepare("
+        INSERT INTO appointment_bonuses (bonus_key, name, session_count, price, is_active, sort_order)
+        VALUES (?, ?, ?, ?, 1, ?)
+        ON DUPLICATE KEY UPDATE name = VALUES(name), session_count = VALUES(session_count), is_active = 1
+    ");
+    $stmt->bind_param("ssidi", $key, $name, $sessions, $price, $sort);
+    $stmt->execute();
+
+    $stmt = $mysqli->prepare("SELECT id FROM appointment_bonuses WHERE bonus_key = ? LIMIT 1");
+    $stmt->bind_param("s", $key);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+
+    return $row ? (int) $row['id'] : null;
+}
+
+function create_compensation_bonus_for_user($mysqli, $user_id, $payment_attempt_id = null)
+{
+    $bonus_id = compensation_bonus_id($mysqli);
+    if (!$bonus_id) {
+        throw new \Exception('No se pudo preparar el bono de compensacion.');
+    }
+
+    $total_sessions = 1;
+    $remaining_sessions = 1;
+    $status = 'active';
+    $stmt = $mysqli->prepare("
+        INSERT INTO patient_bonuses (user_id, bonus_id, total_sessions, remaining_sessions, status, purchased_at, payment_attempt_id)
+        VALUES (?, ?, ?, ?, ?, NOW(), ?)
+    ");
+    $stmt->bind_param("iiiisi", $user_id, $bonus_id, $total_sessions, $remaining_sessions, $status, $payment_attempt_id);
+    $stmt->execute();
+
+    return $mysqli->insert_id;
 }
 
 function restore_patient_bonus_session($mysqli, $patient_bonus_id)
@@ -453,19 +521,36 @@ function ensure_payment_attempts_table($mysqli)
     $mysqli->query("
         CREATE TABLE IF NOT EXISTS payment_attempts (
             id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-            appointment_id INT UNSIGNED NOT NULL,
+            appointment_id INT UNSIGNED DEFAULT NULL,
             user_id INT UNSIGNED NOT NULL,
             token VARCHAR(64) NOT NULL UNIQUE,
             redsys_order VARCHAR(12) NOT NULL,
             amount_cents INT UNSIGNED NOT NULL,
             payment_method ENUM('card', 'bizum') NOT NULL DEFAULT 'card',
+            purchase_type ENUM('appointment', 'bonus') NOT NULL DEFAULT 'appointment',
+            bonus_id INT UNSIGNED DEFAULT NULL,
             status VARCHAR(32) NOT NULL DEFAULT 'Iniciado',
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             INDEX idx_payment_attempts_appointment (appointment_id),
-            INDEX idx_payment_attempts_user (user_id)
+            INDEX idx_payment_attempts_user (user_id),
+            INDEX idx_payment_attempts_bonus (bonus_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     ");
+
+    $columns = [
+        'purchase_type' => "ALTER TABLE payment_attempts ADD purchase_type ENUM('appointment', 'bonus') NOT NULL DEFAULT 'appointment' AFTER payment_method",
+        'bonus_id' => "ALTER TABLE payment_attempts ADD bonus_id INT UNSIGNED DEFAULT NULL AFTER purchase_type"
+    ];
+
+    foreach ($columns as $column => $sql) {
+        $res = $mysqli->query("SHOW COLUMNS FROM payment_attempts LIKE '$column'");
+        if ($res && $res->num_rows === 0) {
+            $mysqli->query($sql);
+        }
+    }
+
+    $mysqli->query("ALTER TABLE payment_attempts MODIFY appointment_id INT UNSIGNED DEFAULT NULL");
 }
 
 function ensure_payment_settings_price_columns($mysqli)
