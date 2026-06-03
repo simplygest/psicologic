@@ -8,6 +8,9 @@ $profile_image_path = $branding['show_profile_image_public'] ? $branding['profil
 $landing_image_path = $branding['landing_image_path'] ?: '';
 $show_prices_public = (int) ($branding['show_prices_public'] ?? 0) === 1;
 $is_logged_in = isset($_SESSION['user_id']);
+$is_admin = ($_SESSION['role'] ?? '') === 'admin';
+$online_booking_enabled = (int) ($branding['online_booking_enabled'] ?? 1) === 1;
+$show_patient_area = $online_booking_enabled || $is_admin;
 $appointment_delivery_mode = 'both';
 $settings_table = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
 if ($settings_table && $settings_table->num_rows > 0) {
@@ -68,9 +71,11 @@ function public_delivery_text($mode)
                     <a class="nav-link" href="#experiencia">Experiencia</a>
                     <a class="nav-link" href="#formacion">Formación</a>
                     <a class="nav-link" href="#consulta">Consulta</a>
-                    <a class="btn btn-primary btn-sm ms-lg-2" href="<?= $is_logged_in ? 'dashboard.php' : 'login.php' ?>">
-                        <?= $is_logged_in ? 'Ir a mis citas' : 'Área pacientes' ?>
-                    </a>
+                    <?php if ($show_patient_area): ?>
+                        <a class="btn btn-primary btn-sm ms-lg-2" href="<?= $is_logged_in ? 'dashboard.php' : 'login.php' ?>">
+                            <?= $is_admin ? 'Panel admin' : ($is_logged_in ? 'Ir a mis citas' : '&Aacute;rea pacientes') ?>
+                        </a>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -85,9 +90,11 @@ function public_delivery_text($mode)
                         <h1>Stephanie Luis Báez</h1>
                         <p class="landing-lead">Acompañamiento psicológico basado en evidencia, con <?= htmlspecialchars(public_delivery_text($appointment_delivery_mode)) ?> para adultos, infancia y adolescencia.</p>
                         <div class="landing-actions">
-                            <a href="<?= $is_logged_in ? 'dashboard.php' : 'login.php' ?>" class="btn btn-primary btn-lg">
-                                <?= $is_logged_in ? 'Gestionar mis citas' : 'Pedir cita' ?>
-                            </a>
+                            <?php if ($show_patient_area): ?>
+                                <a href="<?= $is_logged_in ? 'dashboard.php' : 'login.php' ?>" class="btn btn-primary btn-lg">
+                                    <?= $is_admin ? 'Abrir panel admin' : ($is_logged_in ? 'Gestionar mis citas' : 'Pedir cita') ?>
+                                </a>
+                            <?php endif; ?>
                             <a href="#servicios" class="btn btn-outline-secondary btn-lg">Ver servicios</a>
                         </div>
                     </div>
@@ -196,12 +203,18 @@ function public_delivery_text($mode)
                             <span>Consulta</span>
                             <h2>Gestiona tu cita online</h2>
                         </div>
-                        <p class="section-copy mb-0">Si ya tienes cuenta, puedes acceder al área de pacientes para consultar disponibilidad, reservar o cancelar una cita <?= htmlspecialchars(public_delivery_text($appointment_delivery_mode)) ?>.</p>
+                        <?php if ($online_booking_enabled): ?>
+                            <p class="section-copy mb-0">Si ya tienes cuenta, puedes acceder al &aacute;rea de pacientes para consultar disponibilidad, reservar o cancelar una cita <?= htmlspecialchars(public_delivery_text($appointment_delivery_mode)) ?>.</p>
+                        <?php else: ?>
+                            <p class="section-copy mb-0">La gesti&oacute;n de citas online no est&aacute; disponible en este momento. La consulta gestiona las reservas directamente.</p>
+                        <?php endif; ?>
                     </div>
                     <div class="col-lg-5 text-lg-end">
-                        <a href="<?= $is_logged_in ? 'dashboard.php' : 'login.php' ?>" class="btn btn-primary btn-lg">
-                            <?= $is_logged_in ? 'Abrir calendario' : 'Acceder al área de pacientes' ?>
-                        </a>
+                        <?php if ($show_patient_area): ?>
+                            <a href="<?= $is_logged_in ? 'dashboard.php' : 'login.php' ?>" class="btn btn-primary btn-lg">
+                                <?= $is_admin ? 'Abrir panel admin' : ($is_logged_in ? 'Abrir calendario' : 'Acceder al &aacute;rea de pacientes') ?>
+                            </a>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>

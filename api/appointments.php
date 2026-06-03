@@ -1,9 +1,11 @@
 <?php
 session_start();
 require_once '../db.php';
+require_once '../settings_helpers.php';
 require_once '../payment_helpers.php';
 require_once '../mail_helpers.php';
 require_once '../google_helpers.php';
+require_once '../caldav_helpers.php';
 header('Content-Type: application/json');
 
 if (!isset($_SESSION['user_id'])) {
@@ -14,6 +16,11 @@ if (!isset($_SESSION['user_id'])) {
 $action = $_GET['action'] ?? '';
 $user_id = $_SESSION['user_id'];
 $is_admin = ($_SESSION['role'] === 'admin');
+
+if (!$is_admin && !online_booking_enabled($mysqli)) {
+    echo json_encode(['success' => false, 'error' => 'El área de pacientes no está disponible en este momento.']);
+    exit;
+}
 
 ensure_appointment_payment_columns($mysqli);
 ensure_appointment_services_tables($mysqli);
@@ -564,11 +571,17 @@ if ($action === 'get_month') {
         $service_text = $service_option ? $service_option['service_name'] . ' (' . $duration_minutes . ' min)' : appointment_service_label($service_type);
         $price_settings = null;
         $appointment_price_text = null;
+        $send_patient_calendar_link = 1;
         $settings_res = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
         if ($settings_res->num_rows > 0) {
             ensure_payment_settings_price_columns($mysqli);
-            $settings_res = $mysqli->query("SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price FROM payment_settings WHERE id = 1");
+            $calendar_link_column = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'send_patient_calendar_link'");
+            if ($calendar_link_column && $calendar_link_column->num_rows === 0) {
+                $mysqli->query("ALTER TABLE payment_settings ADD send_patient_calendar_link TINYINT(1) NOT NULL DEFAULT 1");
+            }
+            $settings_res = $mysqli->query("SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, send_patient_calendar_link FROM payment_settings WHERE id = 1");
             $price_settings = $settings_res->fetch_assoc();
+            $send_patient_calendar_link = (int) ($price_settings['send_patient_calendar_link'] ?? 1);
             if ($bonus_claim) {
                 $appointment_price_text = null;
             } elseif ($price_settings) {
@@ -580,6 +593,12 @@ if ($action === 'get_month') {
             google_create_calendar_event($mysqli, $appointment_id);
         } catch (\Exception $e) {
             error_log('No se pudo crear evento en Google Calendar: ' . $e->getMessage());
+        }
+
+        try {
+            icloud_create_calendar_event($mysqli, $appointment_id);
+        } catch (\Exception $e) {
+            error_log('No se pudo crear evento en iCloud Calendar: ' . $e->getMessage());
         }
 
         notify_admin(
@@ -615,7 +634,8 @@ if ($action === 'get_month') {
                 ($appointment_price_text !== null ? '<p><b>Importe:</b> ' . htmlspecialchars($appointment_price_text) . ' &euro;</p>' : '') .
                 $payment_note .
                 '<p>Por favor, si no puedes asistir te rogamos gestionar tu cita directamente en la web.</p>' .
-                '<p><a href="' . htmlspecialchars(app_public_base_url() . 'cancelar_cita.php?t=' . $cancel_token) . '">Gestionar reserva</a></p>',
+                '<p><a href="' . htmlspecialchars(app_public_base_url() . 'cancelar_cita.php?t=' . $cancel_token) . '">Gestionar reserva</a></p>' .
+                ($send_patient_calendar_link ? '<p>A&ntilde;ade esta cita a tu calendario <a href="' . htmlspecialchars(app_public_base_url() . 'appointment_ics.php?t=' . $cancel_token) . '">aqu&iacute;</a>.</p>' : ''),
                 null,
                 $mysqli
             );
@@ -686,6 +706,11 @@ if ($action === 'get_month') {
             google_delete_calendar_event($mysqli, (int) $appointment_to_cancel['id']);
         } catch (\Exception $e) {
             error_log('No se pudo eliminar evento en Google Calendar: ' . $e->getMessage());
+        }
+        try {
+            icloud_delete_calendar_event($mysqli, (int) $appointment_to_cancel['id']);
+        } catch (\Exception $e) {
+            error_log('No se pudo eliminar evento en iCloud Calendar: ' . $e->getMessage());
         }
     }
 

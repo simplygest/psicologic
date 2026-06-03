@@ -2,6 +2,19 @@
 // config.php
 $local_config_file = __DIR__ . '/config.local.php';
 $local_config = file_exists($local_config_file) ? require $local_config_file : [];
+$is_installed = file_exists($local_config_file);
+$script_name = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '');
+$is_install_path = strpos($script_name, '/install/') !== false || basename($script_name) === 'install';
+
+if (!$is_installed && PHP_SAPI !== 'cli' && !$is_install_path) {
+    $install_url = rtrim(dirname($script_name), '/\\');
+    if (basename($install_url) === 'api') {
+        $install_url = rtrim(dirname($install_url), '/\\');
+    }
+    $install_url = ($install_url ? $install_url : '') . '/install/';
+    header('Location: ' . $install_url);
+    exit;
+}
 
 function psicologic_config_value($key, $fallback = null)
 {

@@ -1,14 +1,19 @@
 <?php
 session_start();
+require_once 'db.php';
+require_once 'settings_helpers.php';
 if (isset($_SESSION['user_id'])) {
+    if (($_SESSION['role'] ?? '') !== 'admin' && !online_booking_enabled($mysqli)) {
+        header('Location: index.php');
+        exit;
+    }
     header('Location: dashboard.php');
     exit;
 }
-require_once 'db.php';
-require_once 'settings_helpers.php';
 $branding = get_public_branding_settings($mysqli);
 $app_name = $branding['app_name'];
 $profile_image_path = $branding['show_profile_image_public'] ? $branding['profile_image_path'] : '';
+$is_admin_login = isset($_GET['admin']);
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -35,7 +40,7 @@ $profile_image_path = $branding['show_profile_image_public'] ? $branding['profil
                             <img src="<?= htmlspecialchars($profile_image_path) ?>" alt="" class="auth-brand-image mb-3">
                         <?php endif; ?>
                         <h2 style="color: var(--primary-color);"><?= htmlspecialchars($app_name) ?></h2>
-                        <p class="text-muted">Inicia sesion para gestionar tus citas.</p>
+                        <p class="text-muted"><?= $is_admin_login ? 'Acceso privado de administración.' : 'Inicia sesion para gestionar tus citas.' ?></p>
                     </div>
 
                     <div id="login-alert" class="alert d-none"></div>

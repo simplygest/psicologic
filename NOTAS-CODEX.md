@@ -1,6 +1,6 @@
 # Notas Codex - PsicoLogic
 
-Ultima revision: 2026-05-26
+Ultima revision: 2026-06-03
 
 Este archivo sirve como historial compartido entre PCs para retomar el trabajo con Codex sin depender del chat local.
 
@@ -38,6 +38,17 @@ La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`.
 - Emails transaccionales:
   - Aviso al admin por nuevo registro, nueva cita, cancelacion, pago recibido o pago fallido.
   - Confirmacion al paciente por registro, reserva, cancelacion y pago.
+- Calendario online configurable desde el modal de configuracion:
+  - Selector de proveedor: no sincronizar, Google Calendar o iCloud Calendar.
+  - Google conserva el flujo OAuth y `google_calendar_enabled` como compatibilidad interna.
+  - iCloud deja preparados Apple ID/email y contrasena especifica de app; usa `https://caldav.icloud.com` como URL CalDAV por defecto.
+  - Se creo `caldav_helpers.php` con descubrimiento del calendario por defecto y creacion de eventos `.ics`.
+  - `testcaldav.php` permite al admin probar conexion/creacion de evento iCloud sin guardar credenciales.
+  - La integracion real iCloud crea eventos al reservar si `calendar_provider = icloud`, guarda `appointments.icloud_calendar_event_url` y borra el evento CalDAV al cancelar.
+  - `testcaldav.php` permite marcar una prueba de borrado inmediato para verificar el `DELETE` CalDAV.
+  - Se creo `appointment_ics.php` para descargar un archivo `.ics` desde el token de gestion de reserva.
+  - El email de confirmacion de cita del paciente incluye un enlace "Anadir a mi calendario", compatible con iCloud/Apple Calendar, Google Calendar y Outlook.
+  - La pestaña Calendario online incluye el ajuste `send_patient_calendar_link`, activo por defecto, para enviar u ocultar ese enlace `.ics` en los emails de reserva.
   - Envio por PHPMailer/SMTP o Gmail API.
 - Integracion Google:
   - OAuth con `google_oauth_start.php` y `google_oauth_callback.php`.
@@ -142,6 +153,11 @@ La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`.
 - Se preparo instalador inicial en `/install/index.php`: prueba conexion MySQL, crea tablas base, ejecuta migraciones ligeras, crea admin y genera `config.local.php`.
 - `config.php` ahora puede cargar `config.local.php` como override por instalacion; si no existe, mantiene los valores antiguos como fallback.
 - `db.php` lee puerto y SSL desde configuracion local, manteniendo SSL activo por defecto para Azure.
+- Se anadio ayuda online para administradores en `/ayuda/`, con guia de calendario, reservas, invitaciones, bonos, pagos, configuracion, emails y problemas frecuentes.
+- Si la app aun no esta instalada, `/ayuda/` se puede abrir igualmente con marca generica y enlace al instalador; cuando ya hay `config.local.php`, vuelve a exigir sesion de admin.
+- La ayuda online ya incluye capturas en `ayuda/assets`; el QR/token de invitacion se oculta en la imagen de ejemplo y los campos sensibles de configuracion se dejaron vacios.
+- La ayuda incluye una seccion de Calendario online con Google Calendar, iCloud Calendar, contrasena de aplicacion de Apple y enlace `.ics` para pacientes.
+- Se anadio el ajuste `online_booking_enabled` para permitir o desactivar las reservas online de pacientes. Si se desactiva, la landing y precios ocultan el area de pacientes, los pacientes no pueden entrar al dashboard ni usar APIs de calendario/bonos, y el admin puede acceder por `/admin/`.
 - Queda pendiente pulir la gestion manual de bonos por parte del admin si se necesita asignar/cancelar saldos sin pago online.
 
 ## Cambios de BD pendientes de aplicar manualmente si no se deja auto-migrar

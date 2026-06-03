@@ -25,6 +25,7 @@ function ensure_payment_settings_table($mysqli)
             primary_color VARCHAR(7) NOT NULL DEFAULT '#8f7fba',
             show_profile_image_public TINYINT(1) NOT NULL DEFAULT 0,
             show_prices_public TINYINT(1) NOT NULL DEFAULT 0,
+            online_booking_enabled TINYINT(1) NOT NULL DEFAULT 1,
             bonuses_enabled TINYINT(1) NOT NULL DEFAULT 0,
             create_compensation_bonus_on_paid_cancel TINYINT(1) NOT NULL DEFAULT 1,
             online_payment_enabled TINYINT(1) NOT NULL DEFAULT 0,
@@ -61,8 +62,13 @@ function ensure_payment_settings_table($mysqli)
             google_refresh_token TEXT DEFAULT NULL,
             google_connected_email VARCHAR(255) DEFAULT NULL,
             google_redirect_uri VARCHAR(512) DEFAULT NULL,
+            calendar_provider VARCHAR(16) NOT NULL DEFAULT 'none',
             google_calendar_enabled TINYINT(1) NOT NULL DEFAULT 0,
             google_calendar_id VARCHAR(255) DEFAULT 'primary',
+            icloud_calendar_email VARCHAR(255) DEFAULT NULL,
+            icloud_calendar_app_password VARCHAR(255) DEFAULT NULL,
+            icloud_calendar_url VARCHAR(512) DEFAULT 'https://caldav.icloud.com',
+            send_patient_calendar_link TINYINT(1) NOT NULL DEFAULT 1,
             fastcron_api_key VARCHAR(255) DEFAULT NULL,
             fastcron_reminder_cron_id VARCHAR(64) DEFAULT NULL,
             updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -91,6 +97,7 @@ function ensure_payment_settings_table($mysqli)
         'primary_color' => "ALTER TABLE payment_settings ADD primary_color VARCHAR(7) NOT NULL DEFAULT '#8f7fba' AFTER landing_image_path",
         'show_profile_image_public' => "ALTER TABLE payment_settings ADD show_profile_image_public TINYINT(1) NOT NULL DEFAULT 0 AFTER profile_image_path",
         'show_prices_public' => "ALTER TABLE payment_settings ADD show_prices_public TINYINT(1) NOT NULL DEFAULT 0 AFTER show_profile_image_public",
+        'online_booking_enabled' => "ALTER TABLE payment_settings ADD online_booking_enabled TINYINT(1) NOT NULL DEFAULT 1 AFTER show_prices_public",
         'bonuses_enabled' => "ALTER TABLE payment_settings ADD bonuses_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER show_prices_public",
         'create_compensation_bonus_on_paid_cancel' => "ALTER TABLE payment_settings ADD create_compensation_bonus_on_paid_cancel TINYINT(1) NOT NULL DEFAULT 1 AFTER bonuses_enabled",
         'appointment_delivery_mode' => "ALTER TABLE payment_settings ADD appointment_delivery_mode ENUM('both', 'presencial', 'online') NOT NULL DEFAULT 'both' AFTER admin_notification_email",
@@ -116,8 +123,13 @@ function ensure_payment_settings_table($mysqli)
         'google_refresh_token' => "ALTER TABLE payment_settings ADD google_refresh_token TEXT DEFAULT NULL AFTER google_client_secret",
         'google_connected_email' => "ALTER TABLE payment_settings ADD google_connected_email VARCHAR(255) DEFAULT NULL AFTER google_refresh_token",
         'google_redirect_uri' => "ALTER TABLE payment_settings ADD google_redirect_uri VARCHAR(512) DEFAULT NULL AFTER google_connected_email",
+        'calendar_provider' => "ALTER TABLE payment_settings ADD calendar_provider VARCHAR(16) NOT NULL DEFAULT 'none' AFTER google_redirect_uri",
         'google_calendar_enabled' => "ALTER TABLE payment_settings ADD google_calendar_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER google_redirect_uri",
         'google_calendar_id' => "ALTER TABLE payment_settings ADD google_calendar_id VARCHAR(255) DEFAULT 'primary' AFTER google_calendar_enabled",
+        'icloud_calendar_email' => "ALTER TABLE payment_settings ADD icloud_calendar_email VARCHAR(255) DEFAULT NULL AFTER google_calendar_id",
+        'icloud_calendar_app_password' => "ALTER TABLE payment_settings ADD icloud_calendar_app_password VARCHAR(255) DEFAULT NULL AFTER icloud_calendar_email",
+        'icloud_calendar_url' => "ALTER TABLE payment_settings ADD icloud_calendar_url VARCHAR(512) DEFAULT 'https://caldav.icloud.com' AFTER icloud_calendar_app_password",
+        'send_patient_calendar_link' => "ALTER TABLE payment_settings ADD send_patient_calendar_link TINYINT(1) NOT NULL DEFAULT 1 AFTER icloud_calendar_url",
         'fastcron_api_key' => "ALTER TABLE payment_settings ADD fastcron_api_key VARCHAR(255) DEFAULT NULL AFTER google_calendar_id",
         'fastcron_reminder_cron_id' => "ALTER TABLE payment_settings ADD fastcron_reminder_cron_id VARCHAR(64) DEFAULT NULL AFTER fastcron_api_key"
     ];
@@ -133,6 +145,13 @@ function ensure_payment_settings_table($mysqli)
     $mysqli->query("ALTER TABLE payment_settings ALTER appointment_start_time SET DEFAULT '10:00:00'");
     $mysqli->query("ALTER TABLE payment_settings ALTER appointment_end_time SET DEFAULT '19:00:00'");
     $mysqli->query("ALTER TABLE payment_settings ALTER break_start_time SET DEFAULT '15:00:00'");
+    $mysqli->query("
+        UPDATE payment_settings
+        SET calendar_provider = 'google'
+        WHERE id = 1
+          AND google_calendar_enabled = 1
+          AND (calendar_provider IS NULL OR calendar_provider = '' OR calendar_provider = 'none')
+    ");
     $mysqli->query("
         UPDATE payment_settings
         SET appointment_start_time = '10:00:00',
@@ -544,19 +563,21 @@ if ($action === 'generate_invite') {
     ensure_payment_settings_table($mysqli);
 
     $res = $mysqli->query("
-        SELECT app_name, profile_image_path, landing_image_path, primary_color, show_profile_image_public, show_prices_public, bonuses_enabled, create_compensation_bonus_on_paid_cancel, online_payment_enabled, environment, merchant_code, terminal,
+        SELECT app_name, profile_image_path, landing_image_path, primary_color, show_profile_image_public, show_prices_public, online_booking_enabled, bonuses_enabled, create_compensation_bonus_on_paid_cancel, online_payment_enabled, environment, merchant_code, terminal,
                appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, admin_notification_email,
                appointment_delivery_mode, available_session_types, available_session_durations,
                appointment_reminder_enabled,
                min_booking_notice_days, max_booking_notice_days, appointment_start_time, appointment_end_time, break_start_time, break_end_time,
                available_weekdays,
                email_provider, smtp_host, smtp_port, smtp_username, smtp_secure, smtp_from_email, smtp_from_name,
-               google_client_id, google_connected_email, google_redirect_uri, google_calendar_enabled, google_calendar_id,
+               google_client_id, google_connected_email, google_redirect_uri, calendar_provider, google_calendar_enabled, google_calendar_id,
+               icloud_calendar_email, icloud_calendar_url, send_patient_calendar_link,
                fastcron_reminder_cron_id,
                merchant_key IS NOT NULL AND merchant_key != '' AS has_merchant_key,
                smtp_password IS NOT NULL AND smtp_password != '' AS has_smtp_password,
                google_client_secret IS NOT NULL AND google_client_secret != '' AS has_google_client_secret,
                google_refresh_token IS NOT NULL AND google_refresh_token != '' AS has_google_refresh_token,
+               icloud_calendar_app_password IS NOT NULL AND icloud_calendar_app_password != '' AS has_icloud_calendar_app_password,
                fastcron_api_key IS NOT NULL AND fastcron_api_key != '' AS has_fastcron_api_key
         FROM payment_settings
         WHERE id = 1
@@ -740,10 +761,22 @@ if ($action === 'generate_invite') {
     $google_refresh_token = trim($_POST['google_refresh_token'] ?? '');
     $google_connected_email = trim($_POST['google_connected_email'] ?? '');
     $google_redirect_uri = trim($_POST['google_redirect_uri'] ?? '');
-    $google_calendar_enabled = isset($_POST['google_calendar_enabled']) && $_POST['google_calendar_enabled'] === '1' ? 1 : 0;
+    $calendar_provider = $_POST['calendar_provider'] ?? 'none';
+    if (!in_array($calendar_provider, ['none', 'google', 'icloud'], true)) {
+        $calendar_provider = 'none';
+    }
+    $google_calendar_enabled = $calendar_provider === 'google' ? 1 : 0;
     $google_calendar_id = trim($_POST['google_calendar_id'] ?? 'primary');
+    $icloud_calendar_email = trim($_POST['icloud_calendar_email'] ?? '');
+    $icloud_calendar_app_password = trim($_POST['icloud_calendar_app_password'] ?? '');
+    $icloud_calendar_url = trim($_POST['icloud_calendar_url'] ?? '');
+    if ($icloud_calendar_url === '') {
+        $icloud_calendar_url = 'https://caldav.icloud.com';
+    }
+    $send_patient_calendar_link = isset($_POST['send_patient_calendar_link']) && $_POST['send_patient_calendar_link'] === '1' ? 1 : 0;
     $show_profile_image_public = isset($_POST['show_profile_image_public']) && $_POST['show_profile_image_public'] === '1' ? 1 : 0;
     $show_prices_public = isset($_POST['show_prices_public']) && $_POST['show_prices_public'] === '1' ? 1 : 0;
+    $online_booking_enabled = isset($_POST['online_booking_enabled']) && $_POST['online_booking_enabled'] === '1' ? 1 : 0;
     $uploaded_profile_image_path = null;
     $uploaded_landing_image_path = null;
 
@@ -856,11 +889,22 @@ if ($action === 'generate_invite') {
         exit;
     }
 
+    if ($icloud_calendar_email && !filter_var($icloud_calendar_email, FILTER_VALIDATE_EMAIL)) {
+        echo json_encode(['success' => false, 'error' => 'Email de iCloud invalido']);
+        exit;
+    }
+
+    if ($icloud_calendar_url && !filter_var($icloud_calendar_url, FILTER_VALIDATE_URL)) {
+        echo json_encode(['success' => false, 'error' => 'URL de calendario iCloud invalida']);
+        exit;
+    }
+
     $res = $mysqli->query("
         SELECT merchant_key IS NOT NULL AND merchant_key != '' AS has_merchant_key,
                smtp_password IS NOT NULL AND smtp_password != '' AS has_smtp_password,
                google_client_secret IS NOT NULL AND google_client_secret != '' AS has_google_client_secret,
                google_refresh_token IS NOT NULL AND google_refresh_token != '' AS has_google_refresh_token,
+               icloud_calendar_app_password IS NOT NULL AND icloud_calendar_app_password != '' AS has_icloud_calendar_app_password,
                fastcron_api_key,
                fastcron_reminder_cron_id
         FROM payment_settings
@@ -871,6 +915,7 @@ if ($action === 'generate_invite') {
     $has_smtp_password = $current_settings && (int) $current_settings['has_smtp_password'] === 1;
     $has_google_client_secret = $current_settings && (int) $current_settings['has_google_client_secret'] === 1;
     $has_google_refresh_token = $current_settings && (int) $current_settings['has_google_refresh_token'] === 1;
+    $has_icloud_calendar_app_password = $current_settings && (int) $current_settings['has_icloud_calendar_app_password'] === 1;
     $appointment_reminder_enabled = $posted_appointment_reminder_enabled !== null
         ? $posted_appointment_reminder_enabled
         : (int) ($current_settings['appointment_reminder_enabled'] ?? 0);
@@ -895,6 +940,11 @@ if ($action === 'generate_invite') {
 
     if ($google_calendar_enabled && (!$google_client_id || ($google_client_secret === '' && !$has_google_client_secret) || !$google_calendar_id)) {
         echo json_encode(['success' => false, 'error' => 'Para sincronizar Calendario debes configurar credenciales Google y un Calendar ID.']);
+        exit;
+    }
+
+    if ($calendar_provider === 'icloud' && (!$icloud_calendar_email || ($icloud_calendar_app_password === '' && !$has_icloud_calendar_app_password) || !$icloud_calendar_url)) {
+        echo json_encode(['success' => false, 'error' => 'Para sincronizar iCloud Calendar debes configurar Apple ID, contrasena especifica de app y URL del calendario.']);
         exit;
     }
 
@@ -967,6 +1017,10 @@ if ($action === 'generate_invite') {
 
     $stmt->execute();
 
+    $stmt = $mysqli->prepare("UPDATE payment_settings SET calendar_provider = ?, google_calendar_enabled = ?, google_calendar_id = ?, icloud_calendar_email = ?, icloud_calendar_url = ?, send_patient_calendar_link = ? WHERE id = 1");
+    $stmt->bind_param("sisssi", $calendar_provider, $google_calendar_enabled, $google_calendar_id, $icloud_calendar_email, $icloud_calendar_url, $send_patient_calendar_link);
+    $stmt->execute();
+
     $stmt = $mysqli->prepare("UPDATE payment_settings SET primary_color = ? WHERE id = 1");
     $stmt->bind_param("s", $primary_color);
     $stmt->execute();
@@ -995,12 +1049,12 @@ if ($action === 'generate_invite') {
     $stmt->execute();
 
     if ($uploaded_profile_image_path !== null) {
-        $stmt = $mysqli->prepare("UPDATE payment_settings SET profile_image_path = ?, show_profile_image_public = ?, show_prices_public = ? WHERE id = 1");
-        $stmt->bind_param("sii", $uploaded_profile_image_path, $show_profile_image_public, $show_prices_public);
+        $stmt = $mysqli->prepare("UPDATE payment_settings SET profile_image_path = ?, show_profile_image_public = ?, show_prices_public = ?, online_booking_enabled = ? WHERE id = 1");
+        $stmt->bind_param("siii", $uploaded_profile_image_path, $show_profile_image_public, $show_prices_public, $online_booking_enabled);
         $stmt->execute();
     } else {
-        $stmt = $mysqli->prepare("UPDATE payment_settings SET show_profile_image_public = ?, show_prices_public = ? WHERE id = 1");
-        $stmt->bind_param("ii", $show_profile_image_public, $show_prices_public);
+        $stmt = $mysqli->prepare("UPDATE payment_settings SET show_profile_image_public = ?, show_prices_public = ?, online_booking_enabled = ? WHERE id = 1");
+        $stmt->bind_param("iii", $show_profile_image_public, $show_prices_public, $online_booking_enabled);
         $stmt->execute();
     }
 
@@ -1025,6 +1079,12 @@ if ($action === 'generate_invite') {
     if ($google_refresh_token !== '') {
         $stmt = $mysqli->prepare("UPDATE payment_settings SET google_refresh_token = ? WHERE id = 1");
         $stmt->bind_param("s", $google_refresh_token);
+        $stmt->execute();
+    }
+
+    if ($icloud_calendar_app_password !== '') {
+        $stmt = $mysqli->prepare("UPDATE payment_settings SET icloud_calendar_app_password = ? WHERE id = 1");
+        $stmt->bind_param("s", $icloud_calendar_app_password);
         $stmt->execute();
     }
 

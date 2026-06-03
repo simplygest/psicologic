@@ -19,6 +19,7 @@ let PAYMENT_SETTINGS = {
     available_weekdays: '1,2,3,4,5',
     appointment_delivery_mode: 'both',
     available_session_durations: '60',
+    online_booking_enabled: 1,
     bonuses_enabled: 0,
     create_compensation_bonus_on_paid_cancel: 1
 };
@@ -814,7 +815,7 @@ $(document).ready(function () {
         togglePaymentSettings();
     });
 
-    $('#google-calendar-enabled').change(function () {
+    $('#calendar-provider').change(function () {
         toggleCalendarSettings();
     });
 
@@ -1739,6 +1740,7 @@ function loadPaymentSettings() {
             }
 
             let settings = res.settings || {};
+            PAYMENT_SETTINGS = Object.assign({}, PAYMENT_SETTINGS, settings);
             APPOINTMENT_SERVICES = Array.isArray(res.services) ? res.services : [];
             APPOINTMENT_BONUSES = Array.isArray(res.bonuses) ? res.bonuses : [];
             $('#app-name').val(settings.app_name || 'PsicoLogic');
@@ -1751,6 +1753,7 @@ function loadPaymentSettings() {
             document.title = `Dashboard - ${settings.app_name || 'PsicoLogic'}`;
             $('#show-profile-image-public').prop('checked', settings.show_profile_image_public == 1);
             $('#show-prices-public').prop('checked', settings.show_prices_public == 1);
+            $('#online-booking-enabled').prop('checked', settings.online_booking_enabled === undefined ? true : settings.online_booking_enabled == 1);
             $('#bonuses-enabled').prop('checked', settings.bonuses_enabled == 1);
             $('#create-compensation-bonus-on-paid-cancel').prop('checked', settings.create_compensation_bonus_on_paid_cancel === undefined ? true : settings.create_compensation_bonus_on_paid_cancel == 1);
             toggleBonusesSettings();
@@ -1808,9 +1811,16 @@ function loadPaymentSettings() {
             $('#google-client-id').val(settings.google_client_id || '');
             $('#google-connected-email').val(settings.google_connected_email || '');
             $('#google-redirect-uri').val(settings.google_redirect_uri || currentGoogleRedirectUri());
-            $('#google-calendar-enabled').prop('checked', settings.google_calendar_enabled == 1);
-            toggleCalendarSettings();
+            $('#calendar-provider').val(settings.calendar_provider || (settings.google_calendar_enabled == 1 ? 'google' : 'none'));
             $('#google-calendar-id').val(settings.google_calendar_id || 'primary');
+            $('#icloud-calendar-email').val(settings.icloud_calendar_email || '');
+            $('#icloud-calendar-url').val(settings.icloud_calendar_url || 'https://caldav.icloud.com');
+            $('#icloud-calendar-app-password').val('');
+            $('#icloud-calendar-app-password-status').text(settings.has_icloud_calendar_app_password == 1
+                ? 'Ya hay una contraseña específica de app guardada. Escribe una nueva solo si quieres cambiarla.'
+                : 'Todavía no hay contraseña específica de app guardada.');
+            $('#send-patient-calendar-link').prop('checked', settings.send_patient_calendar_link === undefined ? true : settings.send_patient_calendar_link == 1);
+            toggleCalendarSettings();
             toggleEmailProviderSettings();
             $('#google-connected-status').text(settings.google_connected_email
                 ? `Gmail conectado: ${settings.google_connected_email}`
@@ -1840,6 +1850,7 @@ function toggleEmailProviderSettings() {
     let provider = $('#email-provider').val();
     $('#smtp-settings-block').toggle(provider === 'phpmailer');
     $('#google-email-settings-block').toggle(provider === 'google');
+    togglePatientCalendarLinkSettings();
 }
 
 function setFieldBlockEnabled(selector, enabled) {
@@ -1863,7 +1874,30 @@ function togglePriceRows() {
 }
 
 function toggleCalendarSettings() {
-    setFieldBlockEnabled('#calendar-config-fields', $('#google-calendar-enabled').is(':checked'));
+    const provider = $('#calendar-provider').val() || 'none';
+    $('#calendar-provider-none-fields').toggle(provider === 'none');
+    $('#google-calendar-config-fields').toggle(provider === 'google');
+    $('#icloud-calendar-config-fields').toggle(provider === 'icloud');
+    setFieldBlockEnabled('#google-calendar-config-fields', provider === 'google');
+    setFieldBlockEnabled('#icloud-calendar-config-fields', provider === 'icloud');
+    togglePatientCalendarLinkSettings();
+}
+
+function patientCalendarEmailSettingsReady() {
+    const provider = $('#email-provider').val() || PAYMENT_SETTINGS.email_provider || 'phpmailer';
+    if (provider === 'google') {
+        return Boolean(($('#google-connected-email').val() || '').trim() && PAYMENT_SETTINGS.has_google_refresh_token == 1);
+    }
+
+    return true;
+}
+
+function togglePatientCalendarLinkSettings() {
+    const ready = patientCalendarEmailSettingsReady();
+    $('#send-patient-calendar-link').prop('disabled', !ready);
+    $('#send-patient-calendar-link-status').text(ready
+        ? 'El paciente recibirá un enlace .ics compatible con Apple Calendar, iCloud, Google Calendar y Outlook.'
+        : 'Conecta primero la cuenta de email para poder enviar este enlace a los pacientes.');
 }
 
 function toggleBonusesSettings() {
@@ -2131,6 +2165,7 @@ function savePaymentSettings(alertSelector = '#payment-settings-alert', onSucces
     });
     formData.append('show_profile_image_public', $('#show-profile-image-public').is(':checked') ? '1' : '0');
     formData.append('show_prices_public', $('#show-prices-public').is(':checked') ? '1' : '0');
+    formData.append('online_booking_enabled', $('#online-booking-enabled').is(':checked') ? '1' : '0');
     if ($('#profile-image')[0] && $('#profile-image')[0].files[0]) {
         formData.append('profile_image', $('#profile-image')[0].files[0]);
     }
@@ -2169,8 +2204,12 @@ function savePaymentSettings(alertSelector = '#payment-settings-alert', onSucces
     formData.append('google_refresh_token', $('#google-refresh-token').val().trim());
     formData.append('google_connected_email', $('#google-connected-email').val().trim());
     formData.append('google_redirect_uri', currentGoogleRedirectUri());
-    formData.append('google_calendar_enabled', $('#google-calendar-enabled').is(':checked') ? '1' : '0');
+    formData.append('calendar_provider', $('#calendar-provider').val() || 'none');
     formData.append('google_calendar_id', $('#google-calendar-id').val().trim());
+    formData.append('icloud_calendar_email', $('#icloud-calendar-email').val().trim());
+    formData.append('icloud_calendar_app_password', $('#icloud-calendar-app-password').val().trim());
+    formData.append('icloud_calendar_url', $('#icloud-calendar-url').val().trim());
+    formData.append('send_patient_calendar_link', $('#send-patient-calendar-link').is(':checked') ? '1' : '0');
 
     $.ajax({
         url: 'api/admin.php?action=save_payment_settings',
@@ -2185,6 +2224,7 @@ function savePaymentSettings(alertSelector = '#payment-settings-alert', onSucces
                 $('#smtp-password').val('');
                 $('#google-client-secret').val('');
                 $('#google-refresh-token').val('');
+                $('#icloud-calendar-app-password').val('');
                 loadPaymentSettings();
                 renderWeekInfo();
                 showSettingsAlert(alertSelector, 'success', res.message || 'Configuración guardada correctamente.');

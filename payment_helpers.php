@@ -8,6 +8,7 @@ function ensure_appointment_payment_columns($mysqli)
         'paid_at' => "ALTER TABLE appointments ADD paid_at DATETIME DEFAULT NULL",
         'payment_attempt_id' => "ALTER TABLE appointments ADD payment_attempt_id INT UNSIGNED DEFAULT NULL",
         'google_calendar_event_id' => "ALTER TABLE appointments ADD google_calendar_event_id VARCHAR(255) DEFAULT NULL",
+        'icloud_calendar_event_url' => "ALTER TABLE appointments ADD icloud_calendar_event_url VARCHAR(512) DEFAULT NULL",
         'cancel_token' => "ALTER TABLE appointments ADD cancel_token VARCHAR(64) DEFAULT NULL",
         'reminder_sent_at' => "ALTER TABLE appointments ADD reminder_sent_at DATETIME DEFAULT NULL",
         'consultation_type' => "ALTER TABLE appointments ADD consultation_type VARCHAR(16) NOT NULL DEFAULT 'presencial'",

@@ -3,6 +3,7 @@ session_start();
 require_once '../db.php';
 require_once '../mail_helpers.php';
 require_once '../payment_helpers.php';
+require_once '../settings_helpers.php';
 header('Content-Type: application/json');
 
 $action = $_GET['action'] ?? '';
@@ -39,6 +40,10 @@ if ($action === 'login') {
     $user = $res->fetch_assoc();
 
     if ($user && password_verify($password, $user['password_hash'])) {
+        if (($user['role'] ?? '') !== 'admin' && !online_booking_enabled($mysqli)) {
+            echo json_encode(['success' => false, 'error' => 'El área de pacientes no está disponible en este momento.']);
+            exit;
+        }
         $_SESSION['user_id'] = $user['id'];
         $_SESSION['role'] = $user['role'];
         $_SESSION['name'] = $user['name'];

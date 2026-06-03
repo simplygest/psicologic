@@ -8,6 +8,10 @@ require_once 'db.php';
 require_once 'settings_helpers.php';
 $is_admin = ($_SESSION['role'] === 'admin');
 $branding = get_public_branding_settings($mysqli);
+if (!$is_admin && (int) ($branding['online_booking_enabled'] ?? 1) !== 1) {
+  header('Location: index.php');
+  exit;
+}
 $app_name = $branding['app_name'];
 $profile_image_path = $branding['profile_image_path'];
 ?>
@@ -42,6 +46,9 @@ $profile_image_path = $branding['profile_image_path'];
         <span class="me-3 d-none d-md-inline" style="color: var(--text-color);">Hola,
           <?= htmlspecialchars($_SESSION['name']) ?></span>
         <?php if ($is_admin): ?>
+          <a class="btn btn-light btn-sm me-2" href="ayuda/">
+            <i class="bi bi-question-circle"></i> Ayuda
+          </a>
           <button class="btn btn-light btn-sm me-2" id="btn-open-settings" type="button">
             <i class="bi bi-gear"></i> Configuración
           </button>
@@ -300,7 +307,7 @@ $profile_image_path = $branding['profile_image_path'];
               </li>
               <li class="nav-item" role="presentation">
                 <button class="nav-link" id="calendar-settings-tab" data-bs-toggle="tab" data-bs-target="#calendar-settings-panel"
-                  type="button" role="tab">Sincronizar con Calendario</button>
+                  type="button" role="tab">Calendario online</button>
               </li>
               <li class="nav-item" role="presentation">
                 <button class="nav-link" id="sms-settings-tab" data-bs-toggle="tab" data-bs-target="#sms-settings-panel"
@@ -315,6 +322,13 @@ $profile_image_path = $branding['profile_image_path'];
             <div class="tab-content">
               <div class="tab-pane fade show active" id="closed-days-panel" role="tabpanel" aria-labelledby="closed-days-tab">
                 <div id="general-settings-alert" class="alert d-none"></div>
+                <div class="form-check form-switch mb-4">
+                  <input class="form-check-input" type="checkbox" id="online-booking-enabled" checked>
+                  <label class="form-check-label" for="online-booking-enabled">Permitir reservas online (dashboard público)</label>
+                  <div class="form-text">Si se desactiva, solo el administrador podrá usar el calendario de citas.</div>
+                </div>
+
+                <hr class="my-4">
                 <div class="mb-4">
                   <label class="form-label" for="appointment-delivery-mode">Modalidades de cita disponibles</label>
                   <select class="form-select" id="appointment-delivery-mode">
@@ -755,11 +769,18 @@ $profile_image_path = $branding['profile_image_path'];
 
               <div class="tab-pane fade" id="calendar-settings-panel" role="tabpanel" aria-labelledby="calendar-settings-tab">
                 <div id="calendar-settings-alert" class="alert d-none"></div>
-                <div class="form-check form-switch mb-3">
-                  <input class="form-check-input" type="checkbox" id="google-calendar-enabled">
-                  <label class="form-check-label" for="google-calendar-enabled">Sincronizar citas con Google Calendar</label>
+                <div class="mb-3">
+                  <label class="form-label" for="calendar-provider">Sincronización de citas</label>
+                  <select class="form-select" id="calendar-provider">
+                    <option value="none">No sincronizar</option>
+                    <option value="google">Google Calendar</option>
+                    <option value="icloud">iCloud Calendar</option>
+                  </select>
                 </div>
-                <div id="calendar-config-fields">
+                <div id="calendar-provider-none-fields" class="text-muted mb-3">
+                  No se crearán eventos automáticos en calendarios externos.
+                </div>
+                <div id="google-calendar-config-fields">
                   <div class="mb-3">
                     <label class="form-label" for="google-calendar-id">Calendar ID</label>
                     <input type="text" class="form-control" id="google-calendar-id" placeholder="primary">
@@ -773,6 +794,27 @@ $profile_image_path = $branding['profile_image_path'];
                     </button>
                   </div>
                 </div>
+                <div id="icloud-calendar-config-fields">
+                  <div class="mb-3">
+                    <label class="form-label" for="icloud-calendar-email">Email / Apple ID</label>
+                    <input type="email" class="form-control" id="icloud-calendar-email" placeholder="usuario@icloud.com">
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label" for="icloud-calendar-app-password">Contraseña específica de app</label>
+                    <input type="password" class="form-control" id="icloud-calendar-app-password" placeholder="Déjalo en blanco para conservar la actual">
+                    <div class="form-text" id="icloud-calendar-app-password-status"></div>
+                  </div>
+                  <input type="hidden" id="icloud-calendar-url" value="https://caldav.icloud.com">
+                  <div class="text-muted mb-3">
+                    Se usará el calendario por defecto de iCloud mediante CalDAV. iCloud requiere una contraseña específica de app.
+                  </div>
+                </div>
+                <hr class="my-4">
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input" type="checkbox" id="send-patient-calendar-link" checked>
+                  <label class="form-check-label" for="send-patient-calendar-link">Enviar link para crear la cita en el calendario a los pacientes cuando hagan una reserva</label>
+                </div>
+                <div class="form-text mb-3" id="send-patient-calendar-link-status"></div>
                 <div class="text-end">
                   <button type="button" class="btn btn-primary" id="btn-save-calendar-settings">Guardar configuración</button>
                 </div>

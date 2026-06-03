@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once '../db.php';
+require_once '../settings_helpers.php';
 require_once '../payment_helpers.php';
 header('Content-Type: application/json');
 
@@ -12,6 +13,11 @@ if (!isset($_SESSION['user_id'])) {
 $action = $_GET['action'] ?? '';
 $user_id = (int) $_SESSION['user_id'];
 $is_admin = (($_SESSION['role'] ?? '') === 'admin');
+
+if (!$is_admin && !online_booking_enabled($mysqli)) {
+    echo json_encode(['success' => false, 'error' => 'El área de pacientes no está disponible en este momento.']);
+    exit;
+}
 
 ensure_bonus_tables($mysqli);
 ensure_payment_attempts_table($mysqli);
