@@ -82,7 +82,7 @@ if ($action === 'login') {
     $user = $res->fetch_assoc();
 
     if ($user && !empty($user['password_hash']) && password_verify($password, $user['password_hash'])) {
-        if (($user['role'] ?? '') !== 'admin' && !online_booking_enabled($mysqli)) {
+        if (!in_array(($user['role'] ?? ''), ['admin', 'superadmin'], true) && !online_booking_enabled($mysqli)) {
             echo json_encode(['success' => false, 'error' => 'El área de pacientes no está disponible en este momento.']);
             exit;
         }
@@ -292,6 +292,34 @@ if ($action === 'login') {
         $mysqli->rollback();
         echo json_encode(['success' => false, 'error' => 'No se pudo actualizar la contraseña.']);
     }
+} elseif ($action === 'change_password') {
+    if (!isset($_SESSION['user_id'])) {
+        echo json_encode(['success' => false, 'error' => 'No autenticado.']);
+        exit;
+    }
+
+    $current_password = $_POST['current_password'] ?? '';
+    $new_password = $_POST['new_password'] ?? '';
+    if ($current_password === '' || strlen($new_password) < 6) {
+        echo json_encode(['success' => false, 'error' => 'Indica la contraseña actual y una nueva contraseña de al menos 6 caracteres.']);
+        exit;
+    }
+
+    $user_id = (int) $_SESSION['user_id'];
+    $stmt = $mysqli->prepare("SELECT password_hash FROM users WHERE id = ? LIMIT 1");
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $user = $stmt->get_result()->fetch_assoc();
+    if (!$user || empty($user['password_hash']) || !password_verify($current_password, $user['password_hash'])) {
+        echo json_encode(['success' => false, 'error' => 'La contraseña actual no es correcta.']);
+        exit;
+    }
+
+    $hash = password_hash($new_password, PASSWORD_DEFAULT);
+    $stmt = $mysqli->prepare("UPDATE users SET password_hash = ? WHERE id = ?");
+    $stmt->bind_param("si", $hash, $user_id);
+    $stmt->execute();
+    echo json_encode(['success' => true, 'message' => 'Contraseña actualizada correctamente.']);
 } else {
     echo json_encode(['success' => false, 'error' => 'Acción inválida.']);
 }

@@ -507,6 +507,10 @@ function canPayAppointment(app) {
 // Modal handling
 let appointmentModal = new bootstrap.Modal(document.getElementById('appointmentModal'));
 let settingsModal = document.getElementById('settingsModal') ? new bootstrap.Modal(document.getElementById('settingsModal')) : null;
+let closedDayModal = document.getElementById('closedDayModal') ? new bootstrap.Modal(document.getElementById('closedDayModal')) : null;
+let professionalEditorModal = document.getElementById('professionalEditorModal') ? new bootstrap.Modal(document.getElementById('professionalEditorModal')) : null;
+let professionalTransferModal = document.getElementById('professionalTransferModal') ? new bootstrap.Modal(document.getElementById('professionalTransferModal')) : null;
+let changePasswordModal = document.getElementById('changePasswordModal') ? new bootstrap.Modal(document.getElementById('changePasswordModal')) : null;
 inviteModal = document.getElementById('inviteModal') ? new bootstrap.Modal(document.getElementById('inviteModal')) : null;
 upcomingAppointmentsModal = document.getElementById('upcomingAppointmentsModal') ? new bootstrap.Modal(document.getElementById('upcomingAppointmentsModal')) : null;
 adminStatsModal = document.getElementById('adminStatsModal') ? new bootstrap.Modal(document.getElementById('adminStatsModal')) : null;
@@ -518,6 +522,8 @@ let ADMIN_PATIENTS = [];
 let adminPatientsAlertTimer = null;
 let inviteAlertTimer = null;
 let CURRENT_BONUS_LIST = [];
+let CABINET_PROFESSIONALS = [];
+let PROFESSIONAL_PHOTO_FILE = null;
 let CURRENT_BONUS_ADMIN_VIEW = false;
 let CURRENT_UPCOMING_APPOINTMENTS = [];
 
@@ -791,6 +797,47 @@ $(document).ready(function () {
         settingsModal.show();
     });
 
+    $('#btn-change-password').click(function () {
+        $('#change-password-form')[0].reset();
+        $('#change-password-alert').addClass('d-none').text('');
+        if (changePasswordModal) {
+            changePasswordModal.show();
+        }
+    });
+
+    $('#change-password-form').submit(function (e) {
+        e.preventDefault();
+        changeOwnPassword(this.querySelector('button[type="submit"]'));
+    });
+
+    $('#btn-open-closed-modal').click(function () {
+        $('#closed-start-date').val('');
+        $('#closed-end-date').val('');
+        $('#closed-reason').val('');
+        $('#closed-is-global').prop('checked', false);
+        if (closedDayModal) {
+            closedDayModal.show();
+        }
+    });
+
+    $('#closedDayModal').on('hidden.bs.modal', function () {
+        if ($('#settingsModal').hasClass('show')) {
+            document.body.classList.add('modal-open');
+        }
+    });
+
+    $('#professionalEditorModal').on('hidden.bs.modal', function () {
+        if ($('#settingsModal').hasClass('show')) {
+            document.body.classList.add('modal-open');
+        }
+    });
+
+    $('#professionalTransferModal').on('hidden.bs.modal', function () {
+        if ($('#settingsModal').hasClass('show')) {
+            document.body.classList.add('modal-open');
+        }
+    });
+
     $('#add-closed-form').submit(function (e) {
         e.preventDefault();
         $.ajax({
@@ -799,7 +846,8 @@ $(document).ready(function () {
             data: {
                 start_date: $('#closed-start-date').val(),
                 end_date: $('#closed-end-date').val(),
-                reason: $('#closed-reason').val()
+                reason: $('#closed-reason').val(),
+                is_global: $('#closed-is-global').is(':checked') ? '1' : '0'
             },
             dataType: 'json',
             success: function (res) {
@@ -807,8 +855,12 @@ $(document).ready(function () {
                     $('#closed-start-date').val('');
                     $('#closed-end-date').val('');
                     $('#closed-reason').val('');
+                    $('#closed-is-global').prop('checked', false);
                     loadClosedDays();
                     renderWeekInfo(); // Refresh bg
+                    if (closedDayModal) {
+                        closedDayModal.hide();
+                    }
                     let msg = `${res.inserted || 0} día(s) añadidos`;
                     if (res.skipped) {
                         msg += `, ${res.skipped} ya existían`;
@@ -852,6 +904,41 @@ $(document).ready(function () {
 
     $('#btn-save-bonuses-settings').click(function () {
         saveBonusesSettings(this);
+    });
+
+    $('#btn-save-cabinet-settings').click(function () {
+        saveCabinetSettings(this);
+    });
+
+    $('#btn-new-professional').click(function () {
+        openProfessionalEditor(-1);
+    });
+
+    $('#professional-editor-form').submit(function (e) {
+        e.preventDefault();
+        saveProfessionalEditor(this.querySelector('button[type="submit"]'));
+    });
+
+    $('#professional-editor-photo').on('change', function () {
+        PROFESSIONAL_PHOTO_FILE = this.files && this.files[0] ? this.files[0] : null;
+        if (PROFESSIONAL_PHOTO_FILE) {
+            $('#professional-editor-photo-preview').attr('src', URL.createObjectURL(PROFESSIONAL_PHOTO_FILE)).removeClass('d-none');
+            $('#professional-editor-photo-status').text(PROFESSIONAL_PHOTO_FILE.name);
+        }
+    });
+
+    $(document).on('click', '.btn-edit-professional', function () {
+        openProfessionalEditor(parseInt($(this).data('index'), 10));
+    });
+
+    $(document).on('click', '.btn-delete-professional', function () {
+        deleteProfessional(parseInt($(this).data('index'), 10));
+    });
+
+    $('#btn-confirm-transfer-delete').click(function () {
+        const professionalId = parseInt($('#transfer-delete-professional-id').val() || '0', 10);
+        const targetId = parseInt($('#transfer-delete-target').val() || '0', 10);
+        performProfessionalDelete(professionalId, targetId, this);
     });
 
     $('#email-provider').change(function () {
@@ -2011,9 +2098,10 @@ function loadClosedDays() {
                     const label = d.start_date === d.end_date
                         ? formatDisplayDate(d.start_date)
                         : `Del ${formatDisplayDate(d.start_date)} al ${formatDisplayDate(d.end_date)}`;
+                    const globalBadge = d.is_global == 1 ? ' <span class="badge text-bg-primary">Global</span>' : '';
                     html += `<li class="list-group-item d-flex justify-content-between align-items-center">
-                                ${label} - ${escapeHtml(d.reason)}
-                                <button class="btn btn-sm btn-danger" onclick="deleteClosedRange('${escapeJsString(d.start_date)}', '${escapeJsString(d.end_date)}', '${escapeJsString(d.reason)}')"><i class="bi bi-trash"></i></button>
+                                <span>${label} - ${escapeHtml(d.reason)}${globalBadge}</span>
+                                <button class="btn btn-sm btn-danger" onclick="deleteClosedRange('${escapeJsString(d.start_date)}', '${escapeJsString(d.end_date)}', '${escapeJsString(d.reason)}', ${d.is_global == 1 ? 1 : 0})"><i class="bi bi-trash"></i></button>
                              </li>`;
                 });
                 $('#closed-days-list').html(html);
@@ -2029,15 +2117,17 @@ function groupClosedDays(days) {
     sorted.forEach(day => {
         const currentDate = String(day.closed_date || '');
         const currentReason = String(day.reason || '');
+        const currentGlobal = day.is_global == 1 ? 1 : 0;
         const last = ranges[ranges.length - 1];
-        if (last && last.reason === currentReason && isNextDate(last.end_date, currentDate)) {
+        if (last && last.reason === currentReason && last.is_global === currentGlobal && isNextDate(last.end_date, currentDate)) {
             last.end_date = currentDate;
             return;
         }
         ranges.push({
             start_date: currentDate,
             end_date: currentDate,
-            reason: currentReason
+            reason: currentReason,
+            is_global: currentGlobal
         });
     });
 
@@ -2070,7 +2160,7 @@ function deleteClosedDay(id) {
     });
 }
 
-function deleteClosedRange(startDate, endDate, reason) {
+function deleteClosedRange(startDate, endDate, reason, isGlobal = 0) {
     const label = startDate === endDate ? formatDisplayDate(startDate) : `del ${formatDisplayDate(startDate)} al ${formatDisplayDate(endDate)}`;
     if (!confirm(`Eliminar este periodo de descanso ${label}?`)) return;
     $.ajax({
@@ -2079,7 +2169,8 @@ function deleteClosedRange(startDate, endDate, reason) {
         data: {
             start_date: startDate,
             end_date: endDate,
-            reason
+            reason,
+            is_global: isGlobal ? '1' : '0'
         },
         dataType: 'json',
         success: function (res) {
@@ -2117,7 +2208,7 @@ function showSettingsAlert(selector, type, message) {
 }
 
 function loadPaymentSettings() {
-    $('#payment-settings-alert, #email-settings-alert, #calendar-settings-alert, #booking-settings-alert, #general-settings-alert, #interface-settings-alert, #services-settings-alert, #bonuses-settings-alert').addClass('d-none');
+    $('#payment-settings-alert, #email-settings-alert, #calendar-settings-alert, #booking-settings-alert, #general-settings-alert, #interface-settings-alert, #services-settings-alert, #bonuses-settings-alert, #cabinet-settings-alert').addClass('d-none');
     $('#merchant-key').val('');
     $('#smtp-password').val('');
     $('#google-client-secret').val('');
@@ -2231,10 +2322,11 @@ function loadPaymentSettings() {
             $('#smtp-password-status').text(settings.has_smtp_password == 1
                 ? 'Ya hay una contraseña SMTP guardada. Escribe una nueva solo si quieres cambiarla.'
                 : 'Todavía no hay contraseña SMTP guardada.');
-            $('#google-client-secret-status').text(settings.has_google_client_secret == 1
-                ? 'Ya hay un Client Secret guardado. Escribe uno nuevo solo si quieres cambiarlo.'
-                : 'Todavía no hay Client Secret guardado.');
+            $('#google-client-secret-status').text('');
             togglePriceRows();
+            if (typeof IS_SUPERADMIN !== 'undefined' && IS_SUPERADMIN) {
+                loadCabinetSettings();
+            }
         },
         error: function () {
             showPaymentSettingsAlert('danger', 'Error de conexión al cargar la configuración.');
@@ -2494,6 +2586,375 @@ function saveServicesSettings(button = null) {
         },
         error: function () {
             showSettingsAlert('#services-settings-alert', 'danger', 'Error de conexión al guardar los precios.');
+        },
+        complete: function () {
+            setSettingsButtonLoading(button, false);
+        }
+    });
+}
+
+function loadCabinetSettings() {
+    const $body = $('#professionals-settings-body');
+    if (!$body.length) return;
+    $body.html('<tr><td colspan="6" class="text-center text-muted py-4">Cargando...</td></tr>');
+
+    $.ajax({
+        url: 'api/admin.php?action=get_cabinet_settings',
+        dataType: 'json',
+        success: function (res) {
+            if (!res.success) {
+                showSettingsAlert('#cabinet-settings-alert', 'danger', res.error || 'No se pudo cargar el modo gabinete.');
+                return;
+            }
+            $('#show-team-public').prop('checked', res.settings && res.settings.show_team_public == 1);
+            $('#allow-patient-transfer').prop('checked', res.settings && res.settings.allow_patient_transfer == 1);
+            CABINET_PROFESSIONALS = (res.professionals || []).map(normalizeProfessional);
+            renderProfessionalsSettings();
+        },
+        error: function () {
+            showSettingsAlert('#cabinet-settings-alert', 'danger', 'Error de conexion al cargar el modo gabinete.');
+        }
+    });
+}
+
+function normalizeProfessional(professional = {}) {
+    return {
+        id: parseInt(professional.id || 0, 10),
+        user_id: parseInt(professional.user_id || 0, 10),
+        display_name: professional.display_name || '',
+        professional_title: professional.professional_title || '',
+        professional_specialty: professional.professional_specialty || '',
+        public_photo_path: professional.public_photo_path || '',
+        display_photo_path: professional.display_photo_path || professional.public_photo_path || '',
+        email: professional.email || '',
+        role: professional.role === 'superadmin' ? 'superadmin' : 'admin',
+        is_active: professional.is_active == 0 ? 0 : 1,
+        is_current_user: professional.is_current_user == 1 ? 1 : 0
+    };
+}
+
+function renderProfessionalsSettings() {
+    const $body = $('#professionals-settings-body');
+    if (!$body.length) return;
+    if (!CABINET_PROFESSIONALS.length) {
+        $body.html('<tr><td colspan="6" class="text-center text-muted py-4">No hay profesionales configurados.</td></tr>');
+        return;
+    }
+
+    $body.html(CABINET_PROFESSIONALS.map(professionalSettingsRowHtml).join(''));
+}
+
+function professionalSettingsRowHtml(professional = {}, index = 0) {
+    const role = professional.role === 'superadmin' ? 'superadmin' : 'admin';
+    const isCurrentSuperadmin = role === 'superadmin'
+        && (professional.is_current_user == 1 || (typeof CURRENT_USER_ID !== 'undefined' && parseInt(professional.user_id || 0, 10) === parseInt(CURRENT_USER_ID || 0, 10)));
+    const roleCell = role === 'superadmin'
+        ? '<span class="badge bg-primary">Superadmin</span>'
+        : '<span class="badge bg-secondary">Admin</span>';
+    const activeCell = isCurrentSuperadmin
+        ? '<span class="badge bg-success">Activo</span>'
+        : `<input type="checkbox" class="form-check-input professional-active" data-index="${index}" ${professional.is_active == 0 ? '' : 'checked'}>`;
+    const actionsCell = `<button class="btn btn-outline-primary btn-sm btn-edit-professional me-1" type="button" data-index="${index}" title="Editar profesional">
+                <i class="bi bi-pencil"></i>
+            </button>` + (isCurrentSuperadmin ? '' : `
+            <button class="btn btn-outline-danger btn-sm btn-delete-professional" type="button" data-index="${index}" title="Borrar profesional">
+                <i class="bi bi-trash"></i>
+            </button>`);
+    const titleText = professional.professional_title ? `<div>${escapeHtml(professional.professional_title)}</div>` : '';
+    const specialtyText = professional.professional_specialty ? `<small class="text-muted">${escapeHtml(professional.professional_specialty)}</small>` : '';
+    const photo = professional.display_photo_path || professional.public_photo_path || '';
+    const avatar = photo
+        ? `<img src="${escapeHtml(photo)}" alt="" style="width: 38px; height: 38px; border-radius: 50%; object-fit: cover;">`
+        : '<span class="d-inline-flex align-items-center justify-content-center bg-light text-muted border" style="width: 38px; height: 38px; border-radius: 50%;"><i class="bi bi-person"></i></span>';
+    return `
+        <tr class="professional-settings-row" data-index="${index}">
+            <td>
+                <div class="d-flex align-items-center gap-2">
+                    ${avatar}
+                    <strong>${escapeHtml(professional.display_name || 'Sin nombre')}</strong>
+                </div>
+            </td>
+            <td>
+                ${escapeHtml(professional.email || 'Sin email')}
+            </td>
+            <td>
+                ${titleText}
+                ${specialtyText}
+            </td>
+            <td>
+                ${roleCell}
+            </td>
+            <td class="text-center">
+                ${activeCell}
+            </td>
+            <td class="text-end">
+                ${actionsCell}
+            </td>
+        </tr>
+    `;
+}
+
+function openProfessionalEditor(index = -1) {
+    if (!professionalEditorModal) return;
+    const professional = index >= 0 ? CABINET_PROFESSIONALS[index] : normalizeProfessional({ is_active: 1, role: 'admin' });
+    if (!professional) return;
+    const isCurrentSuperadmin = professional.role === 'superadmin'
+        && (professional.is_current_user == 1 || (typeof CURRENT_USER_ID !== 'undefined' && parseInt(professional.user_id || 0, 10) === parseInt(CURRENT_USER_ID || 0, 10)));
+
+    $('#professional-editor-title').text(index >= 0 ? 'Editar profesional' : 'Nuevo profesional');
+    $('#professional-editor-index').val(index);
+    $('#professional-editor-id').val(professional.id || 0);
+    $('#professional-editor-user-id').val(professional.user_id || 0);
+    $('#professional-editor-name').val(professional.display_name || '');
+    $('#professional-editor-email').val(professional.email || '');
+    $('#professional-editor-title-field').val(professional.professional_title || '');
+    $('#professional-editor-specialty').val(professional.professional_specialty || '');
+    $('#professional-editor-photo').val('');
+    PROFESSIONAL_PHOTO_FILE = null;
+    const photo = professional.public_photo_path || professional.display_photo_path || '';
+    if (photo) {
+        $('#professional-editor-photo-preview').attr('src', photo).removeClass('d-none');
+        $('#professional-editor-photo-status').text('Foto actual. Sube una nueva solo si quieres cambiarla.');
+    } else {
+        $('#professional-editor-photo-preview').attr('src', '').addClass('d-none');
+        $('#professional-editor-photo-status').text('Formatos permitidos: JPG, PNG, WEBP o GIF. Máximo 2 MB.');
+    }
+    $('#professional-editor-role').val(professional.role || 'admin');
+    $('#professional-editor-active').prop('checked', professional.is_active != 0);
+
+    $('.professional-editor-permission-wrap, .professional-editor-status-wrap').toggleClass('d-none', isCurrentSuperadmin);
+    professionalEditorModal.show();
+}
+
+function saveProfessionalEditor(button = null) {
+    const index = parseInt($('#professional-editor-index').val() || '-1', 10);
+    const existing = index >= 0 ? CABINET_PROFESSIONALS[index] : {};
+    const isCurrentSuperadmin = existing && existing.role === 'superadmin'
+        && (existing.is_current_user == 1 || (typeof CURRENT_USER_ID !== 'undefined' && parseInt(existing.user_id || 0, 10) === parseInt(CURRENT_USER_ID || 0, 10)));
+    const professional = normalizeProfessional({
+        id: $('#professional-editor-id').val(),
+        user_id: $('#professional-editor-user-id').val(),
+        display_name: $('#professional-editor-name').val().trim(),
+        email: $('#professional-editor-email').val().trim(),
+        professional_title: $('#professional-editor-title-field').val().trim(),
+        professional_specialty: $('#professional-editor-specialty').val().trim(),
+        public_photo_path: existing.public_photo_path || '',
+        display_photo_path: existing.display_photo_path || existing.public_photo_path || '',
+        role: isCurrentSuperadmin ? 'superadmin' : $('#professional-editor-role').val(),
+        is_active: isCurrentSuperadmin ? 1 : ($('#professional-editor-active').is(':checked') ? 1 : 0),
+        is_current_user: existing.is_current_user || 0
+    });
+
+    if (!professional.display_name || !professional.email) {
+        showSettingsAlert('#cabinet-settings-alert', 'danger', 'Indica nombre y email del profesional.');
+        return;
+    }
+    if (index >= 0) {
+        CABINET_PROFESSIONALS[index] = professional;
+    } else {
+        CABINET_PROFESSIONALS.push(professional);
+    }
+    const fileInput = document.getElementById('professional-editor-photo');
+    const selectedPhotoFile = fileInput && fileInput.files && fileInput.files[0]
+        ? fileInput.files[0]
+        : PROFESSIONAL_PHOTO_FILE;
+
+    saveCabinetSettings(button, {
+        closeProfessionalModal: true,
+        photoFile: selectedPhotoFile,
+        photoIndex: index >= 0 ? index : CABINET_PROFESSIONALS.length - 1
+    });
+}
+
+function changeOwnPassword(button = null) {
+    const currentPassword = $('#current-password').val();
+    const newPassword = $('#new-password').val();
+    const confirmPassword = $('#new-password-confirm').val();
+    const $alert = $('#change-password-alert');
+    $alert.addClass('d-none').removeClass('alert-success alert-danger').text('');
+
+    if (newPassword.length < 6) {
+        $alert.removeClass('d-none').addClass('alert-danger').text('La nueva contraseña debe tener al menos 6 caracteres.');
+        return;
+    }
+    if (newPassword !== confirmPassword) {
+        $alert.removeClass('d-none').addClass('alert-danger').text('Las contraseñas no coinciden.');
+        return;
+    }
+
+    setSettingsButtonLoading(button, true);
+    $.ajax({
+        url: 'api/auth.php?action=change_password',
+        method: 'POST',
+        dataType: 'json',
+        data: {
+            current_password: currentPassword,
+            new_password: newPassword
+        },
+        success: function (res) {
+            if (res.success) {
+                $alert.removeClass('d-none alert-danger').addClass('alert-success').text(res.message || 'Contraseña actualizada correctamente.');
+                $('#change-password-form')[0].reset();
+                setTimeout(function () {
+                    if (changePasswordModal) {
+                        changePasswordModal.hide();
+                    }
+                }, 1200);
+            } else {
+                $alert.removeClass('d-none alert-success').addClass('alert-danger').text(res.error || 'No se pudo cambiar la contraseña.');
+            }
+        },
+        error: function () {
+            $alert.removeClass('d-none alert-success').addClass('alert-danger').text('Error de conexión al cambiar la contraseña.');
+        },
+        complete: function () {
+            setSettingsButtonLoading(button, false);
+        }
+    });
+}
+
+function syncProfessionalStatusFromTable() {
+    $('#professionals-settings-body .professional-active').each(function () {
+        const index = parseInt($(this).data('index'), 10);
+        if (!Number.isNaN(index) && CABINET_PROFESSIONALS[index]) {
+            CABINET_PROFESSIONALS[index].is_active = $(this).is(':checked') ? 1 : 0;
+        }
+    });
+}
+
+function collectProfessionalsSettings() {
+    syncProfessionalStatusFromTable();
+    return CABINET_PROFESSIONALS;
+}
+
+function deleteProfessional(index) {
+    const professional = CABINET_PROFESSIONALS[index];
+    if (!professional || professional.is_current_user == 1) return;
+
+    if (!professional.id) {
+        if (!confirm(`¿Borrar a ${professional.display_name || 'este profesional'} del gabinete?`)) return;
+        CABINET_PROFESSIONALS.splice(index, 1);
+        renderProfessionalsSettings();
+        return;
+    }
+
+    $.ajax({
+        url: 'api/admin.php?action=check_professional_delete',
+        method: 'POST',
+        dataType: 'json',
+        data: { professional_id: professional.id },
+        success: function (res) {
+            if (!res.success) {
+                showSettingsAlert('#cabinet-settings-alert', 'danger', res.error || 'No se pudo comprobar el profesional.');
+                return;
+            }
+            const usage = res.usage || {};
+            if (usage.requires_transfer == 1) {
+                openProfessionalTransferDelete(res);
+                return;
+            }
+            if (confirm(`¿Borrar a ${professional.display_name || 'este profesional'} del gabinete?`)) {
+                performProfessionalDelete(professional.id, 0);
+            }
+        },
+        error: function () {
+            showSettingsAlert('#cabinet-settings-alert', 'danger', 'Error de conexión al comprobar el profesional.');
+        }
+    });
+}
+
+function openProfessionalTransferDelete(data) {
+    if (!professionalTransferModal) return;
+    const professional = data.professional || {};
+    const usage = data.usage || {};
+    const targets = data.targets || [];
+    $('#transfer-delete-professional-id').val(professional.id || 0);
+    const extraRecords = Math.max(0, parseInt(usage.linked_records || 0, 10) - parseInt(usage.pending_appointments || 0, 10) - parseInt(usage.assigned_patients || 0, 10));
+    const historyText = extraRecords > 0 ? `<br><small class="text-muted">También hay ${extraRecords} registros históricos o de configuración vinculados.</small>` : '';
+    $('#transfer-delete-summary').html(
+        `<strong>${escapeHtml(professional.display_name || 'Este profesional')}</strong> tiene ` +
+        `<strong>${usage.pending_appointments || 0}</strong> citas próximas y ` +
+        `<strong>${usage.assigned_patients || 0}</strong> pacientes asignados.` +
+        historyText
+    );
+
+    if (!targets.length) {
+        $('#transfer-delete-target').html('<option value="">No hay otro profesional activo disponible</option>').prop('disabled', true);
+        $('#btn-confirm-transfer-delete').prop('disabled', true);
+    } else {
+        $('#transfer-delete-target')
+            .html(targets.map(target => `<option value="${target.id}">${escapeHtml(target.display_name || 'Profesional')}</option>`).join(''))
+            .prop('disabled', false);
+        $('#btn-confirm-transfer-delete').prop('disabled', false);
+    }
+    professionalTransferModal.show();
+}
+
+function performProfessionalDelete(professionalId, targetProfessionalId = 0, button = null) {
+    if (!professionalId) return;
+    setSettingsButtonLoading(button, true);
+    $.ajax({
+        url: 'api/admin.php?action=delete_professional',
+        method: 'POST',
+        dataType: 'json',
+        data: {
+            professional_id: professionalId,
+            target_professional_id: targetProfessionalId || 0
+        },
+        success: function (res) {
+            if (res.success) {
+                showSettingsAlert('#cabinet-settings-alert', 'success', res.message || 'Profesional borrado correctamente.');
+                if (professionalTransferModal) {
+                    professionalTransferModal.hide();
+                }
+                loadCabinetSettings();
+            } else {
+                showSettingsAlert('#cabinet-settings-alert', 'danger', res.error || 'No se pudo borrar el profesional.');
+            }
+        },
+        error: function () {
+            showSettingsAlert('#cabinet-settings-alert', 'danger', 'Error de conexión al borrar el profesional.');
+        },
+        complete: function () {
+            setSettingsButtonLoading(button, false);
+        }
+    });
+}
+
+function saveCabinetSettings(button = null, options = {}) {
+    $('#cabinet-settings-alert').addClass('d-none');
+    setSettingsButtonLoading(button, true);
+    const professionals = collectProfessionalsSettings();
+    const formData = new FormData();
+    formData.append('show_team_public', $('#show-team-public').is(':checked') ? '1' : '0');
+    formData.append('allow_patient_transfer', $('#allow-patient-transfer').is(':checked') ? '1' : '0');
+    formData.append('professionals_json', JSON.stringify(professionals));
+    if (options.photoFile && options.photoIndex >= 0) {
+        formData.append('professional_photo', options.photoFile);
+        formData.append('professional_photo_index', String(options.photoIndex));
+    }
+
+    $.ajax({
+        url: 'api/admin.php?action=save_cabinet_settings',
+        method: 'POST',
+        dataType: 'json',
+        data: formData,
+        processData: false,
+        contentType: false,
+        success: function (res) {
+            if (res.success) {
+                showSettingsAlert('#cabinet-settings-alert', 'success', res.message || 'Modo gabinete guardado correctamente.');
+                if (options.closeProfessionalModal && professionalEditorModal) {
+                    professionalEditorModal.hide();
+                }
+                PROFESSIONAL_PHOTO_FILE = null;
+                loadCabinetSettings();
+            } else {
+                showSettingsAlert('#cabinet-settings-alert', 'danger', res.error || 'No se pudo guardar el modo gabinete.');
+            }
+        },
+        error: function () {
+            showSettingsAlert('#cabinet-settings-alert', 'danger', 'Error de conexion al guardar el modo gabinete.');
         },
         complete: function () {
             setSettingsButtonLoading(button, false);

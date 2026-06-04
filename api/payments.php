@@ -7,7 +7,7 @@ header('Content-Type: application/json');
 
 $action = $_GET['action'] ?? '';
 $user_id = $_SESSION['user_id'] ?? null;
-$is_admin = (($_SESSION['role'] ?? '') === 'admin');
+$is_admin = in_array(($_SESSION['role'] ?? ''), ['admin', 'superadmin'], true);
 
 function app_base_url()
 {

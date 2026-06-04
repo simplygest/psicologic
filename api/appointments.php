@@ -16,7 +16,7 @@ if (!isset($_SESSION['user_id'])) {
 
 $action = $_GET['action'] ?? '';
 $user_id = $_SESSION['user_id'];
-$is_admin = ($_SESSION['role'] === 'admin');
+$is_admin = in_array(($_SESSION['role'] ?? ''), ['admin', 'superadmin'], true);
 
 if (!$is_admin && !online_booking_enabled($mysqli)) {
     echo json_encode(['success' => false, 'error' => 'El área de pacientes no está disponible en este momento.']);

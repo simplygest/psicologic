@@ -3,6 +3,7 @@ session_start();
 
 $rootDir = dirname(__DIR__);
 require_once $rootDir . '/config.php';
+require_once $rootDir . '/cabinet_helpers.php';
 
 $configPath = $rootDir . '/config.local.php';
 $installed = file_exists($configPath);
@@ -64,7 +65,7 @@ function install_base_tables($mysqli)
         email VARCHAR(150) UNIQUE NULL,
         phone VARCHAR(30) UNIQUE NULL,
         password_hash VARCHAR(255) NULL,
-        role ENUM('admin','patient') NOT NULL DEFAULT 'patient',
+        role ENUM('superadmin','admin','patient') NOT NULL DEFAULT 'patient',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
@@ -108,6 +109,7 @@ function install_base_tables($mysqli)
         id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         closed_date DATE NOT NULL UNIQUE,
         reason VARCHAR(255) NULL,
+        is_global TINYINT(1) NOT NULL DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
@@ -115,6 +117,8 @@ function install_base_tables($mysqli)
         id INT PRIMARY KEY DEFAULT 1,
         app_name VARCHAR(150) NOT NULL DEFAULT 'PsicoLogic',
         admin_notification_email VARCHAR(150) NULL,
+        show_team_public TINYINT(1) NOT NULL DEFAULT 0,
+        allow_patient_transfer TINYINT(1) NOT NULL DEFAULT 0,
         online_booking_enabled TINYINT(1) NOT NULL DEFAULT 1,
         online_payment_enabled TINYINT(1) NOT NULL DEFAULT 0,
         environment ENUM('sandbox','production') NOT NULL DEFAULT 'sandbox',
@@ -127,14 +131,20 @@ function install_base_tables($mysqli)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     $mysqli->query("INSERT IGNORE INTO payment_settings (id, app_name, appointment_price) VALUES (1, 'PsicoLogic', 70.00)");
+
+    ensure_cabinet_schema($mysqli);
 }
 
 function install_ensure_payment_settings_columns($mysqli)
 {
     $mysqli->query("ALTER TABLE users MODIFY password_hash VARCHAR(255) NULL");
+    $mysqli->query("ALTER TABLE users MODIFY role ENUM('superadmin','admin','patient') NOT NULL DEFAULT 'patient'");
     install_add_column_if_missing($mysqli, 'invitations', 'user_id', 'INT UNSIGNED DEFAULT NULL AFTER token');
     install_add_column_if_missing($mysqli, 'patient_profiles', 'document_path', 'VARCHAR(255) DEFAULT NULL AFTER notes');
     install_add_column_if_missing($mysqli, 'patient_profiles', 'document_name', 'VARCHAR(255) DEFAULT NULL AFTER document_path');
+    install_add_column_if_missing($mysqli, 'closed_days', 'is_global', 'TINYINT(1) NOT NULL DEFAULT 0 AFTER reason');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'show_team_public', 'TINYINT(1) NOT NULL DEFAULT 0');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'allow_patient_transfer', 'TINYINT(1) NOT NULL DEFAULT 0');
 
     install_add_column_if_missing($mysqli, 'payment_settings', 'min_booking_notice_days', 'INT NOT NULL DEFAULT 2');
     install_add_column_if_missing($mysqli, 'payment_settings', 'max_booking_notice_days', 'INT NOT NULL DEFAULT 40');
@@ -268,13 +278,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->close();
 
             $passwordHash = password_hash($adminPassword, PASSWORD_DEFAULT);
-            $role = 'admin';
+            $role = 'superadmin';
             $stmt = $test->prepare("INSERT INTO users (name, email, phone, password_hash, role)
                 VALUES (?, ?, NULL, ?, ?)
-                ON DUPLICATE KEY UPDATE name = VALUES(name), password_hash = VALUES(password_hash), role = 'admin'");
+                ON DUPLICATE KEY UPDATE name = VALUES(name), password_hash = VALUES(password_hash), role = 'superadmin'");
             $stmt->bind_param('ssss', $adminName, $adminEmail, $passwordHash, $role);
             $stmt->execute();
             $stmt->close();
+
+            ensure_cabinet_schema($test);
 
             $test->close();
 

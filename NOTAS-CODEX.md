@@ -192,6 +192,18 @@ La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`.
 - Nueva tabla `patient_profiles`
 - `patient_profiles.document_path VARCHAR(255) DEFAULT NULL`
 - `patient_profiles.document_name VARCHAR(255) DEFAULT NULL`
+- `users.role ENUM('superadmin','admin','patient') NOT NULL DEFAULT 'patient'`
+- Nueva tabla `professionals`
+- Nueva tabla `patient_professionals`
+- `appointments.professional_id INT UNSIGNED DEFAULT NULL`
+- `closed_days.professional_id INT UNSIGNED DEFAULT NULL`
+- `invitations.professional_id INT UNSIGNED DEFAULT NULL`
+- `patient_profiles.professional_id INT UNSIGNED DEFAULT NULL`
+- `patient_bonuses.professional_id INT UNSIGNED DEFAULT NULL`
+- `payment_attempts.professional_id INT UNSIGNED DEFAULT NULL`
+- `appointment_services.professional_id INT UNSIGNED DEFAULT NULL`
+- `appointment_service_options.professional_id INT UNSIGNED DEFAULT NULL`
+- `appointment_bonuses.professional_id INT UNSIGNED DEFAULT NULL`
 
 ## Avisos importantes
 
@@ -220,6 +232,23 @@ git config --global --add safe.directory C:/Sete/psicologic
   - Se pueden crear pacientes internos sin contrasena, editar datos internos, tipo, fecha de alta, notas y adjuntar un archivo PDF/XLS/XLSX.
   - Las invitaciones pueden vincularse a un paciente existente mediante `invitations.user_id`; al registrarse, el paciente completa su acceso sin duplicar ficha.
   - `patient_profiles` guarda la informacion interna adicional y el documento asociado.
+- Preparacion modo gabinete:
+  - `cabinet_helpers.php` prepara la BD para varios profesionales sin cambiar todavia la UI ni el comportamiento actual.
+  - Se amplia `users.role` para admitir `superadmin`, manteniendo `admin` como profesional actual y `patient` como paciente.
+  - Nueva tabla `professionals` para fichas de profesionales vinculables a usuarios admin.
+  - Nueva tabla `patient_professionals` para asignar o transferir pacientes entre profesionales en pasos futuros.
+  - Se anade `professional_id` nullable a citas, cierres, invitaciones, perfiles de pacientes, bonos, intentos de pago, servicios y opciones de servicios.
+  - El instalador crea el primer usuario como `superadmin`, no como `admin`.
+  - En Configuracion, solo el `superadmin` ve la nueva pestana `Modo Gabinete`.
+  - `Modo Gabinete` permite activar `show_team_public`, `allow_patient_transfer` y gestionar profesionales basicos vinculados a usuarios admin/superadmin.
+  - En profesionales, `professional_title` queda como cargo y `professional_specialty` como especialidad/texto amplio para futura seccion Equipo.
+  - La UI protege al superadmin conectado: no puede cambiarse su propio permiso, desactivarse ni eliminar su fila desde la tabla.
+  - La tabla de profesionales en `Modo Gabinete` queda como listado de solo lectura; alta/edicion se hace en modal secundario y el borrado usa `api/admin.php?action=delete_professional`.
+  - Antes de borrar un profesional, `check_professional_delete` revisa citas/pacientes/registros vinculados; si existen, la UI pide elegir otro profesional y `delete_professional` traspasa los datos antes de borrar.
+  - Al crear un profesional nuevo no se define contrasena manualmente: se crea el usuario sin password y se envia email con enlace para crearla usando `password_resets`.
+  - Admin/superadmin/profesionales pueden cambiar su propia contrasena desde el dashboard con `api/auth.php?action=change_password`.
+  - Cada profesional puede tener foto propia (`professionals.public_photo_path`), subida desde el modal de profesional y mostrada como avatar en el listado. Si el superadmin no tiene foto propia, se usa como fallback la imagen del dashboard.
+  - `closed_days.is_global` permite marcar cierres globales del gabinete desde General, preparados para bloquear todas las agendas en la evolucion multi-profesional.
 
 ## Pendientes sugeridos
 

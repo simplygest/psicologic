@@ -6,7 +6,8 @@ if (!isset($_SESSION['user_id'])) {
 }
 require_once 'db.php';
 require_once 'settings_helpers.php';
-$is_admin = ($_SESSION['role'] === 'admin');
+$is_superadmin = ($_SESSION['role'] === 'superadmin');
+$is_admin = in_array($_SESSION['role'], ['admin', 'superadmin'], true);
 $branding = get_public_branding_settings($mysqli);
 if (!$is_admin && (int) ($branding['online_booking_enabled'] ?? 1) !== 1) {
   header('Location: index.php');
@@ -49,6 +50,9 @@ $profile_image_path = $branding['profile_image_path'];
           <a class="btn btn-light btn-sm me-2" href="ayuda/">
             <i class="bi bi-question-circle"></i> Ayuda
           </a>
+          <button class="btn btn-light btn-sm me-2" id="btn-change-password" type="button">
+            <i class="bi bi-key"></i> Contraseña
+          </button>
           <button class="btn btn-light btn-sm me-2" id="btn-open-settings" type="button">
             <i class="bi bi-gear"></i> Configuración
           </button>
@@ -447,6 +451,12 @@ $profile_image_path = $branding['profile_image_path'];
                 <button class="nav-link" id="interface-settings-tab" data-bs-toggle="tab" data-bs-target="#interface-settings-panel"
                   type="button" role="tab">Interfaz</button>
               </li>
+              <?php if ($is_superadmin): ?>
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link" id="cabinet-settings-tab" data-bs-toggle="tab" data-bs-target="#cabinet-settings-panel"
+                    type="button" role="tab">Modo Gabinete</button>
+                </li>
+              <?php endif; ?>
             </ul>
 
             <div class="tab-content">
@@ -455,7 +465,7 @@ $profile_image_path = $branding['profile_image_path'];
                 <div class="form-check form-switch mb-4">
                   <input class="form-check-input" type="checkbox" id="online-booking-enabled" checked>
                   <label class="form-check-label" for="online-booking-enabled">Permitir reservas online (dashboard público)</label>
-                  <div class="form-text">Si se desactiva, solo el administrador podrá usar el calendario de citas.</div>
+                  <div class="form-text">Si se desactiva, los pacientes no tendrán acceso a la reserva de citas, y será de uso interno por los profesionales.</div>
                 </div>
 
                 <hr class="my-4">
@@ -548,25 +558,12 @@ $profile_image_path = $branding['profile_image_path'];
                 </div>
 
                 <hr class="my-4">
-                <form id="add-closed-form" class="mb-4">
-                  <div class="row g-2">
-                    <div class="col-md-3">
-                      <label class="form-label" for="closed-start-date">Desde</label>
-                      <input type="date" class="form-control" id="closed-start-date" required>
-                    </div>
-                    <div class="col-md-3">
-                      <label class="form-label" for="closed-end-date">Hasta</label>
-                      <input type="date" class="form-control" id="closed-end-date">
-                    </div>
-                    <div class="col-md-4">
-                      <label class="form-label" for="closed-reason">Motivo</label>
-                      <input type="text" class="form-control" id="closed-reason" placeholder="Motivo (ej. Vacaciones)" required>
-                    </div>
-                    <div class="col-md-2 d-grid align-items-end">
-                      <button class="btn btn-primary" type="submit">Añadir</button>
-                    </div>
-                  </div>
-                </form>
+                <div class="d-flex justify-content-between align-items-center gap-2 mb-3 flex-wrap">
+                  <h6 class="mb-0">Vacaciones y cierres</h6>
+                  <button type="button" class="btn btn-primary btn-sm" id="btn-open-closed-modal">
+                    <i class="bi bi-plus-lg"></i> Añadir
+                  </button>
+                </div>
                 <ul class="list-group" id="closed-days-list"></ul>
                 <div class="text-end mt-4">
                   <button type="button" class="btn btn-primary" id="btn-save-general-settings">Guardar configuración</button>
@@ -955,6 +952,50 @@ $profile_image_path = $branding['profile_image_path'];
                   La configuración de SMS se añadirá aquí cuando elijas la plataforma de envío.
                 </div>
               </div>
+              <?php if ($is_superadmin): ?>
+                <div class="tab-pane fade" id="cabinet-settings-panel" role="tabpanel" aria-labelledby="cabinet-settings-tab">
+                  <div id="cabinet-settings-alert" class="alert d-none"></div>
+                  <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="show-team-public">
+                    <label class="form-check-label" for="show-team-public">Mostrar men&uacute; "Equipo" en la web</label>
+                  </div>
+                  <div class="form-check form-switch mb-4">
+                    <input class="form-check-input" type="checkbox" id="allow-patient-transfer">
+                    <label class="form-check-label" for="allow-patient-transfer">Permitir traspaso de pacientes</label>
+                    <div class="form-text">Solo el usuario Administrador puede realizar los traspasos.</div>
+                  </div>
+                  <hr class="my-4">
+                  <div class="d-flex justify-content-between align-items-center gap-2 mb-3 flex-wrap">
+                    <div>
+                      <h6 class="mb-1">Profesionales</h6>
+                      <div class="text-muted small">Alta y permisos b&aacute;sicos de los profesionales del gabinete.</div>
+                    </div>
+                    <button class="btn btn-primary btn-sm" type="button" id="btn-new-professional">
+                      <i class="bi bi-person-plus"></i> Nuevo profesional
+                    </button>
+                  </div>
+                  <div class="table-responsive admin-patients-table-wrap">
+                    <table class="table align-middle">
+                      <thead>
+                        <tr>
+                          <th>Profesional</th>
+                          <th>Email</th>
+                          <th>Cargo / especialidad</th>
+                          <th>Permiso</th>
+                          <th>Estado</th>
+                          <th class="text-end">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody id="professionals-settings-body">
+                        <tr><td colspan="6" class="text-center text-muted py-4">Cargando...</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="text-end mt-4">
+                    <button type="button" class="btn btn-primary" id="btn-save-cabinet-settings">Guardar modo gabinete</button>
+                  </div>
+                </div>
+              <?php endif; ?>
             </div>
           </div>
         </div>
@@ -962,8 +1003,172 @@ $profile_image_path = $branding['profile_image_path'];
     </div>
   <?php endif; ?>
 
+  <?php if ($is_admin): ?>
+    <div class="modal fade" id="closedDayModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-md modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Añadir cierre</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <form id="add-closed-form">
+            <div class="modal-body">
+              <div class="row g-3">
+                <div class="col-sm-6">
+                  <label class="form-label" for="closed-start-date">Desde</label>
+                  <input type="date" class="form-control" id="closed-start-date" required>
+                </div>
+                <div class="col-sm-6">
+                  <label class="form-label" for="closed-end-date">Hasta</label>
+                  <input type="date" class="form-control" id="closed-end-date">
+                </div>
+                <div class="col-12">
+                  <label class="form-label" for="closed-reason">Motivo</label>
+                  <input type="text" class="form-control" id="closed-reason" placeholder="Motivo (ej. Vacaciones)" required>
+                </div>
+                <?php if ($is_superadmin): ?>
+                  <div class="col-12">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="closed-is-global">
+                      <label class="form-check-label" for="closed-is-global">Cierre global del gabinete</label>
+                      <div class="form-text">Bloquear estos días para todo el equipo.</div>
+                    </div>
+                  </div>
+                <?php endif; ?>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button class="btn btn-primary" type="submit">Añadir cierre</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  <?php endif; ?>
+
+  <?php if ($is_superadmin): ?>
+    <div class="modal fade" id="professionalEditorModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="professional-editor-title">Profesional</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <form id="professional-editor-form">
+            <div class="modal-body">
+              <input type="hidden" id="professional-editor-index" value="-1">
+              <input type="hidden" id="professional-editor-id" value="0">
+              <input type="hidden" id="professional-editor-user-id" value="0">
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label class="form-label" for="professional-editor-name">Nombre</label>
+                  <input type="text" class="form-control" id="professional-editor-name" required>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" for="professional-editor-email">Email de acceso</label>
+                  <input type="email" class="form-control" id="professional-editor-email" required>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" for="professional-editor-title-field">Cargo</label>
+                  <input type="text" class="form-control" id="professional-editor-title-field" placeholder="Psicóloga sanitaria, Psicólogo clínico...">
+                </div>
+                <div class="col-md-6 professional-editor-permission-wrap">
+                  <label class="form-label" for="professional-editor-role">Permiso</label>
+                  <select class="form-select" id="professional-editor-role">
+                    <option value="admin">Admin</option>
+                    <option value="superadmin">Superadmin</option>
+                  </select>
+                </div>
+                <div class="col-12">
+                  <label class="form-label" for="professional-editor-specialty">Especialidad</label>
+                  <textarea class="form-control" id="professional-editor-specialty" rows="3" placeholder="Ansiedad, terapia infantil, adultos, pareja..."></textarea>
+                </div>
+                <div class="col-12">
+                  <label class="form-label" for="professional-editor-photo">Foto del profesional</label>
+                  <input type="file" class="form-control" id="professional-editor-photo" accept="image/jpeg,image/png,image/webp,image/gif">
+                  <div class="d-flex align-items-center gap-3 mt-2">
+                    <img src="" alt="" id="professional-editor-photo-preview" class="d-none" style="width: 56px; height: 56px; border-radius: 50%; object-fit: cover;">
+                    <div class="form-text" id="professional-editor-photo-status">Formatos permitidos: JPG, PNG, WEBP o GIF. Máximo 2 MB.</div>
+                  </div>
+                </div>
+                <div class="col-12 professional-editor-status-wrap">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="professional-editor-active" checked>
+                    <label class="form-check-label" for="professional-editor-active">Profesional activo</label>
+                  </div>
+                  <div class="form-text">Si está desactivado, no aparecerá como profesional disponible del gabinete.</div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button class="btn btn-primary" type="submit" id="btn-save-professional-editor">Guardar profesional</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="professionalTransferModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-md modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Traspasar antes de borrar</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <input type="hidden" id="transfer-delete-professional-id" value="0">
+            <p id="transfer-delete-summary" class="mb-3"></p>
+            <label class="form-label" for="transfer-delete-target">Traspasar citas y pacientes a</label>
+            <select class="form-select" id="transfer-delete-target"></select>
+            <div class="form-text">El profesional se borrará después de completar el traspaso.</div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-danger" id="btn-confirm-transfer-delete">Traspasar y borrar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  <?php endif; ?>
+
+  <div class="modal fade" id="changePasswordModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-md modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Cambiar contraseña</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <form id="change-password-form">
+          <div class="modal-body">
+            <div id="change-password-alert" class="alert d-none"></div>
+            <div class="mb-3">
+              <label class="form-label" for="current-password">Contraseña actual</label>
+              <input type="password" class="form-control" id="current-password" name="current_password" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="new-password">Nueva contraseña</label>
+              <input type="password" class="form-control" id="new-password" name="new_password" required minlength="6">
+            </div>
+            <div>
+              <label class="form-label" for="new-password-confirm">Repetir nueva contraseña</label>
+              <input type="password" class="form-control" id="new-password-confirm" required minlength="6">
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button class="btn btn-primary" type="submit">Guardar contraseña</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <script>
     const IS_ADMIN = <?= $is_admin ? 'true' : 'false' ?>;
+    const IS_SUPERADMIN = <?= $is_superadmin ? 'true' : 'false' ?>;
+    const CURRENT_USER_ID = <?= (int) $_SESSION['user_id'] ?>;
   </script>
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>

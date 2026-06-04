@@ -6,16 +6,71 @@ require_once '../settings_helpers.php';
 require_once '../payment_helpers.php';
 require_once '../fastcron_helpers.php';
 require_once '../urlme_helpers.php';
+require_once '../cabinet_helpers.php';
 header('Content-Type: application/json');
 
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
+$is_superadmin = ($_SESSION['role'] ?? '') === 'superadmin';
+if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['admin', 'superadmin'], true)) {
     echo json_encode(['success' => false, 'error' => 'No autorizado']);
     exit;
 }
 
 ensure_patient_management_tables($mysqli);
+ensure_appointment_payment_columns($mysqli);
+ensure_appointment_services_tables($mysqli);
+ensure_bonus_tables($mysqli);
+ensure_payment_attempts_table($mysqli);
+ensure_cabinet_schema($mysqli);
 
 $action = $_GET['action'] ?? '';
+
+function admin_ensure_password_reset_table($mysqli)
+{
+    $mysqli->query("
+        CREATE TABLE IF NOT EXISTS password_resets (
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            user_id INT UNSIGNED NOT NULL,
+            token_hash CHAR(64) NOT NULL UNIQUE,
+            expires_at DATETIME NOT NULL,
+            used_at DATETIME DEFAULT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_password_resets_user (user_id),
+            INDEX idx_password_resets_expires (expires_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+}
+
+function send_professional_password_setup_email($mysqli, $user_id, $name, $email)
+{
+    $token = bin2hex(random_bytes(32));
+    $token_hash = hash('sha256', $token);
+
+    $stmt = $mysqli->prepare("UPDATE password_resets SET used_at = NOW() WHERE user_id = ? AND used_at IS NULL");
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+
+    $stmt = $mysqli->prepare("INSERT INTO password_resets (user_id, token_hash, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR))");
+    $stmt->bind_param("is", $user_id, $token_hash);
+    $stmt->execute();
+
+    $reset_link = urlme_shorten_url(
+        app_public_base_url() . 'reset_password.php?t=' . urlencode($token),
+        'Crear contrasena profesional PsicoLogic',
+        date('Y-m-d H:i:s', strtotime('+24 hours'))
+    );
+
+    return send_app_email(
+        $email,
+        'Crea tu contraseña de acceso',
+        '<p>Hola ' . htmlspecialchars($name) . ',</p>' .
+        '<p>Se ha creado tu acceso profesional en ' . htmlspecialchars(get_app_name($mysqli)) . '.</p>' .
+        '<p>Para entrar en la web, crea tu contraseña desde este enlace:</p>' .
+        '<p><a href="' . htmlspecialchars($reset_link) . '">Crear contraseña de acceso</a></p>' .
+        '<p>Este enlace caduca en 24 horas.</p>',
+        null,
+        $mysqli
+    );
+}
 
 function ensure_payment_settings_table($mysqli)
 {
@@ -389,6 +444,43 @@ function save_uploaded_settings_image($file, $prefix)
     return 'uploads/settings/' . $filename;
 }
 
+function save_uploaded_professional_photo($file, $professional_id)
+{
+    if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+        return null;
+    }
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        throw new \Exception('No se pudo subir la foto del profesional.');
+    }
+    if (($file['size'] ?? 0) > 2 * 1024 * 1024) {
+        throw new \Exception('La foto del profesional no puede superar 2 MB.');
+    }
+
+    $image_info = @getimagesize($file['tmp_name']);
+    if (!$image_info || !in_array($image_info['mime'], ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], true)) {
+        throw new \Exception('Formato de foto no valido. Usa JPG, PNG, WEBP o GIF.');
+    }
+
+    $extensions = [
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+        'image/gif' => 'gif'
+    ];
+    $upload_dir = dirname(__DIR__) . '/uploads/professionals';
+    if (!is_dir($upload_dir) && !mkdir($upload_dir, 0755, true)) {
+        throw new \Exception('No se pudo crear la carpeta de fotos de profesionales.');
+    }
+
+    $filename = 'professional_' . (int) $professional_id . '_' . bin2hex(random_bytes(8)) . '.' . $extensions[$image_info['mime']];
+    $destination = $upload_dir . '/' . $filename;
+    if (!move_uploaded_file($file['tmp_name'], $destination)) {
+        throw new \Exception('No se pudo guardar la foto del profesional.');
+    }
+
+    return 'uploads/professionals/' . $filename;
+}
+
 if ($action === 'generate_invite') {
     $token = bin2hex(random_bytes(32));
     $invite_user_id = (int) ($_POST['user_id'] ?? $_GET['user_id'] ?? 0);
@@ -497,7 +589,9 @@ if ($action === 'generate_invite') {
         }
     }
 
+    $password_setup_users = [];
     $mysqli->begin_transaction();
+    $password_setup_users = [];
     try {
         if ($patient_id > 0) {
             $stmt = $mysqli->prepare("UPDATE users SET name = ?, email = ?, phone = ? WHERE id = ? AND role = 'patient'");
@@ -757,6 +851,7 @@ if ($action === 'generate_invite') {
     $date = $_POST['date'] ?? ($_POST['start_date'] ?? '');
     $end_date = $_POST['end_date'] ?? $date;
     $reason = $_POST['reason'] ?? 'Descanso';
+    $is_global = ($is_superadmin && isset($_POST['is_global']) && $_POST['is_global'] === '1') ? 1 : 0;
     if (!$date) {
         echo json_encode(['success' => false, 'error' => 'Fecha inválida']);
         exit;
@@ -787,12 +882,12 @@ if ($action === 'generate_invite') {
     try {
         $inserted = 0;
         $skipped = 0;
-        $stmt = $mysqli->prepare("INSERT IGNORE INTO closed_days (closed_date, reason) VALUES (?, ?)");
+        $stmt = $mysqli->prepare("INSERT IGNORE INTO closed_days (closed_date, reason, is_global) VALUES (?, ?, ?)");
         $current = clone $start;
 
         while ($current <= $end) {
             $current_date = $current->format('Y-m-d');
-            $stmt->bind_param("ss", $current_date, $reason);
+            $stmt->bind_param("ssi", $current_date, $reason, $is_global);
             $stmt->execute();
 
             if ($stmt->affected_rows > 0) {
@@ -821,16 +916,381 @@ if ($action === 'generate_invite') {
     $start_date = $_POST['start_date'] ?? '';
     $end_date = $_POST['end_date'] ?? $start_date;
     $reason = $_POST['reason'] ?? '';
+    $is_global = isset($_POST['is_global']) && $_POST['is_global'] === '1' ? 1 : 0;
 
     if (!$start_date || !$end_date || $reason === '') {
         echo json_encode(['success' => false, 'error' => 'Rango invalido']);
         exit;
     }
 
-    $stmt = $mysqli->prepare("DELETE FROM closed_days WHERE closed_date BETWEEN ? AND ? AND reason = ?");
-    $stmt->bind_param("sss", $start_date, $end_date, $reason);
+    $stmt = $mysqli->prepare("DELETE FROM closed_days WHERE closed_date BETWEEN ? AND ? AND reason = ? AND is_global = ?");
+    $stmt->bind_param("sssi", $start_date, $end_date, $reason, $is_global);
     $stmt->execute();
     echo json_encode(['success' => true, 'deleted' => $stmt->affected_rows]);
+} elseif ($action === 'get_cabinet_settings') {
+    if (!$is_superadmin) {
+        echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede gestionar el modo gabinete.']);
+        exit;
+    }
+    ensure_payment_settings_table($mysqli);
+    ensure_cabinet_schema($mysqli);
+
+    $settings_res = $mysqli->query("SELECT show_team_public, allow_patient_transfer, profile_image_path FROM payment_settings WHERE id = 1");
+    $settings = $settings_res ? $settings_res->fetch_assoc() : ['show_team_public' => 0, 'allow_patient_transfer' => 0];
+    $dashboard_photo_path = $settings['profile_image_path'] ?? '';
+    $res = $mysqli->query("
+        SELECT p.id, p.user_id, p.display_name, p.professional_title, p.professional_specialty, p.public_photo_path, p.public_email, p.public_phone,
+               p.is_active, u.email AS login_email, u.role
+        FROM professionals p
+        LEFT JOIN users u ON u.id = p.user_id
+        ORDER BY p.sort_order ASC, p.display_name ASC
+    ");
+    $professionals = [];
+    while ($row = $res->fetch_assoc()) {
+        $is_current_user = (int) ($row['user_id'] ?? 0) === (int) ($_SESSION['user_id'] ?? 0) ? 1 : 0;
+        $photo_path = $row['public_photo_path'] ?? '';
+        $display_photo_path = $photo_path ?: ($is_current_user && ($row['role'] ?? '') === 'superadmin' ? $dashboard_photo_path : '');
+        $professionals[] = [
+            'id' => (int) $row['id'],
+            'user_id' => (int) ($row['user_id'] ?? 0),
+            'display_name' => $row['display_name'] ?? '',
+            'professional_title' => $row['professional_title'] ?? '',
+            'professional_specialty' => $row['professional_specialty'] ?? '',
+            'public_photo_path' => $photo_path,
+            'display_photo_path' => $display_photo_path,
+            'email' => $row['login_email'] ?: ($row['public_email'] ?? ''),
+            'role' => in_array($row['role'] ?? 'admin', ['superadmin', 'admin'], true) ? $row['role'] : 'admin',
+            'is_active' => (int) ($row['is_active'] ?? 1),
+            'is_current_user' => $is_current_user
+        ];
+    }
+
+    echo json_encode(['success' => true, 'settings' => $settings, 'professionals' => $professionals]);
+} elseif ($action === 'check_professional_delete') {
+    if (!$is_superadmin) {
+        echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede gestionar el modo gabinete.']);
+        exit;
+    }
+    ensure_cabinet_schema($mysqli);
+
+    $professional_id = (int) ($_POST['professional_id'] ?? 0);
+    if ($professional_id <= 0) {
+        echo json_encode(['success' => false, 'error' => 'Profesional invalido.']);
+        exit;
+    }
+
+    $stmt = $mysqli->prepare("SELECT id, user_id, display_name FROM professionals WHERE id = ? LIMIT 1");
+    $stmt->bind_param("i", $professional_id);
+    $stmt->execute();
+    $professional = $stmt->get_result()->fetch_assoc();
+    if (!$professional) {
+        echo json_encode(['success' => false, 'error' => 'No se encontro el profesional.']);
+        exit;
+    }
+    if ((int) ($professional['user_id'] ?? 0) === (int) ($_SESSION['user_id'] ?? 0)) {
+        echo json_encode(['success' => false, 'error' => 'No puedes borrar tu propio usuario administrador.']);
+        exit;
+    }
+
+    $stmt = $mysqli->prepare("SELECT COUNT(*) AS total FROM appointments WHERE professional_id = ? AND status <> 'cancelled' AND appointment_date >= CURDATE()");
+    $stmt->bind_param("i", $professional_id);
+    $stmt->execute();
+    $pending_appointments = (int) ($stmt->get_result()->fetch_assoc()['total'] ?? 0);
+
+    $stmt = $mysqli->prepare("
+        SELECT COUNT(*) AS total FROM (
+            SELECT user_id AS patient_id FROM patient_profiles WHERE professional_id = ?
+            UNION
+            SELECT patient_id FROM patient_professionals WHERE professional_id = ?
+        ) assigned_patients
+    ");
+    $stmt->bind_param("ii", $professional_id, $professional_id);
+    $stmt->execute();
+    $assigned_patients = (int) ($stmt->get_result()->fetch_assoc()['total'] ?? 0);
+
+    $linked_records = 0;
+    $tables_to_check = [
+        'appointments',
+        'closed_days',
+        'invitations',
+        'patient_profiles',
+        'patient_bonuses',
+        'payment_attempts',
+        'appointment_services',
+        'appointment_service_options',
+        'appointment_bonuses'
+    ];
+    foreach ($tables_to_check as $table) {
+        $exists = $mysqli->query("SHOW TABLES LIKE '" . $mysqli->real_escape_string($table) . "'");
+        if (!$exists || $exists->num_rows === 0) {
+            continue;
+        }
+        $stmt = $mysqli->prepare("SELECT COUNT(*) AS total FROM `$table` WHERE professional_id = ?");
+        $stmt->bind_param("i", $professional_id);
+        $stmt->execute();
+        $linked_records += (int) ($stmt->get_result()->fetch_assoc()['total'] ?? 0);
+    }
+    $stmt = $mysqli->prepare("SELECT COUNT(*) AS total FROM patient_professionals WHERE professional_id = ?");
+    $stmt->bind_param("i", $professional_id);
+    $stmt->execute();
+    $linked_records += (int) ($stmt->get_result()->fetch_assoc()['total'] ?? 0);
+
+    $targets = [];
+    $stmt = $mysqli->prepare("
+        SELECT id, display_name
+        FROM professionals
+        WHERE id <> ? AND is_active = 1
+        ORDER BY sort_order ASC, display_name ASC
+    ");
+    $stmt->bind_param("i", $professional_id);
+    $stmt->execute();
+    $target_res = $stmt->get_result();
+    while ($row = $target_res->fetch_assoc()) {
+        $targets[] = ['id' => (int) $row['id'], 'display_name' => $row['display_name']];
+    }
+
+    echo json_encode([
+        'success' => true,
+        'professional' => [
+            'id' => (int) $professional['id'],
+            'display_name' => $professional['display_name']
+        ],
+        'usage' => [
+            'pending_appointments' => $pending_appointments,
+            'assigned_patients' => $assigned_patients,
+            'linked_records' => $linked_records,
+            'requires_transfer' => $linked_records > 0 ? 1 : 0
+        ],
+        'targets' => $targets
+    ]);
+} elseif ($action === 'delete_professional') {
+    if (!$is_superadmin) {
+        echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede gestionar el modo gabinete.']);
+        exit;
+    }
+    ensure_cabinet_schema($mysqli);
+
+    $professional_id = (int) ($_POST['professional_id'] ?? 0);
+    if ($professional_id <= 0) {
+        echo json_encode(['success' => false, 'error' => 'Profesional invalido.']);
+        exit;
+    }
+
+    $stmt = $mysqli->prepare("SELECT user_id, display_name FROM professionals WHERE id = ? LIMIT 1");
+    $stmt->bind_param("i", $professional_id);
+    $stmt->execute();
+    $professional = $stmt->get_result()->fetch_assoc();
+    if (!$professional) {
+        echo json_encode(['success' => false, 'error' => 'No se encontro el profesional.']);
+        exit;
+    }
+    if ((int) ($professional['user_id'] ?? 0) === (int) ($_SESSION['user_id'] ?? 0)) {
+        echo json_encode(['success' => false, 'error' => 'No puedes borrar tu propio usuario administrador.']);
+        exit;
+    }
+
+    $target_professional_id = (int) ($_POST['target_professional_id'] ?? 0);
+    $tables_to_transfer = [
+        'appointments',
+        'closed_days',
+        'invitations',
+        'patient_profiles',
+        'patient_bonuses',
+        'payment_attempts',
+        'appointment_services',
+        'appointment_service_options',
+        'appointment_bonuses'
+    ];
+
+    $usage_total = 0;
+    foreach ($tables_to_transfer as $table) {
+        $exists = $mysqli->query("SHOW TABLES LIKE '" . $mysqli->real_escape_string($table) . "'");
+        if (!$exists || $exists->num_rows === 0) {
+            continue;
+        }
+        $stmt = $mysqli->prepare("SELECT COUNT(*) AS total FROM `$table` WHERE professional_id = ?");
+        $stmt->bind_param("i", $professional_id);
+        $stmt->execute();
+        $usage_total += (int) ($stmt->get_result()->fetch_assoc()['total'] ?? 0);
+    }
+
+    $stmt = $mysqli->prepare("SELECT COUNT(*) AS total FROM patient_professionals WHERE professional_id = ?");
+    $stmt->bind_param("i", $professional_id);
+    $stmt->execute();
+    $usage_total += (int) ($stmt->get_result()->fetch_assoc()['total'] ?? 0);
+
+    if ($usage_total > 0) {
+        if ($target_professional_id <= 0 || $target_professional_id === $professional_id) {
+            echo json_encode(['success' => false, 'error' => 'Elige otro profesional para traspasar citas y pacientes antes de borrar.']);
+            exit;
+        }
+        $stmt = $mysqli->prepare("SELECT id FROM professionals WHERE id = ? AND is_active = 1 LIMIT 1");
+        $stmt->bind_param("i", $target_professional_id);
+        $stmt->execute();
+        if (!$stmt->get_result()->fetch_assoc()) {
+            echo json_encode(['success' => false, 'error' => 'El profesional de destino no es valido.']);
+            exit;
+        }
+    }
+
+    $password_setup_users = [];
+    $photo_index = (int) ($_POST['professional_photo_index'] ?? -1);
+    $mysqli->begin_transaction();
+    try {
+        if ($usage_total > 0) {
+            foreach ($tables_to_transfer as $table) {
+                $exists = $mysqli->query("SHOW TABLES LIKE '" . $mysqli->real_escape_string($table) . "'");
+                if (!$exists || $exists->num_rows === 0) {
+                    continue;
+                }
+                $stmt = $mysqli->prepare("UPDATE `$table` SET professional_id = ? WHERE professional_id = ?");
+                $stmt->bind_param("ii", $target_professional_id, $professional_id);
+                $stmt->execute();
+            }
+
+            $stmt = $mysqli->prepare("
+                INSERT IGNORE INTO patient_professionals (patient_id, professional_id, is_primary, assigned_at, transferred_at, notes)
+                SELECT patient_id, ?, is_primary, assigned_at, NOW(), notes
+                FROM patient_professionals
+                WHERE professional_id = ?
+            ");
+            $stmt->bind_param("ii", $target_professional_id, $professional_id);
+            $stmt->execute();
+
+            $stmt = $mysqli->prepare("DELETE FROM patient_professionals WHERE professional_id = ?");
+            $stmt->bind_param("i", $professional_id);
+            $stmt->execute();
+        }
+
+        $stmt = $mysqli->prepare("DELETE FROM professionals WHERE id = ?");
+        $stmt->bind_param("i", $professional_id);
+        $stmt->execute();
+        $mysqli->commit();
+        echo json_encode(['success' => true, 'message' => $usage_total > 0 ? 'Traspaso realizado y profesional borrado correctamente.' : 'Profesional borrado correctamente.']);
+    } catch (\Exception $e) {
+        $mysqli->rollback();
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
+} elseif ($action === 'save_cabinet_settings') {
+    if (!$is_superadmin) {
+        echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede gestionar el modo gabinete.']);
+        exit;
+    }
+    ensure_payment_settings_table($mysqli);
+    ensure_cabinet_schema($mysqli);
+    admin_ensure_password_reset_table($mysqli);
+
+    $show_team_public = isset($_POST['show_team_public']) && $_POST['show_team_public'] === '1' ? 1 : 0;
+    $allow_patient_transfer = isset($_POST['allow_patient_transfer']) && $_POST['allow_patient_transfer'] === '1' ? 1 : 0;
+    $professionals = json_decode($_POST['professionals_json'] ?? '[]', true);
+    if (!is_array($professionals)) {
+        echo json_encode(['success' => false, 'error' => 'Listado de profesionales invalido.']);
+        exit;
+    }
+
+    $photo_index = (int) ($_POST['professional_photo_index'] ?? -1);
+    $password_setup_users = [];
+    $mysqli->begin_transaction();
+    try {
+        $stmt = $mysqli->prepare("UPDATE payment_settings SET show_team_public = ?, allow_patient_transfer = ? WHERE id = 1");
+        $stmt->bind_param("ii", $show_team_public, $allow_patient_transfer);
+        $stmt->execute();
+
+        foreach ($professionals as $index => $professional) {
+            $professional_id = (int) ($professional['id'] ?? 0);
+            $user_id = (int) ($professional['user_id'] ?? 0);
+            $display_name = trim((string) ($professional['display_name'] ?? ''));
+            $title = trim((string) ($professional['professional_title'] ?? ''));
+            $specialty = trim((string) ($professional['professional_specialty'] ?? ''));
+            $current_photo_path = trim((string) ($professional['public_photo_path'] ?? ''));
+            $email = trim((string) ($professional['email'] ?? ''));
+            $role = ($professional['role'] ?? 'admin') === 'superadmin' ? 'superadmin' : 'admin';
+            $is_active = !empty($professional['is_active']) ? 1 : 0;
+
+            if ($display_name === '') {
+                throw new \Exception('Hay un profesional sin nombre.');
+            }
+            if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                throw new \Exception('Hay un profesional sin email valido.');
+            }
+
+            if ($user_id <= 0) {
+                $stmt = $mysqli->prepare("SELECT id, password_hash FROM users WHERE email = ? LIMIT 1");
+                $stmt->bind_param("s", $email);
+                $stmt->execute();
+                $existing_user = $stmt->get_result()->fetch_assoc();
+                if ($existing_user) {
+                    $user_id = (int) $existing_user['id'];
+                    if (empty($existing_user['password_hash'])) {
+                        $password_setup_users[$user_id] = ['name' => $display_name, 'email' => $email];
+                    }
+                } else {
+                    $stmt = $mysqli->prepare("INSERT INTO users (name, email, phone, password_hash, role) VALUES (?, ?, NULL, NULL, ?)");
+                    $stmt->bind_param("sss", $display_name, $email, $role);
+                    $stmt->execute();
+                    $user_id = $mysqli->insert_id;
+                    $password_setup_users[$user_id] = ['name' => $display_name, 'email' => $email];
+                }
+            }
+
+            if ($user_id === (int) $_SESSION['user_id']) {
+                $role = 'superadmin';
+                $is_active = 1;
+            }
+
+            $stmt = $mysqli->prepare("UPDATE users SET name = ?, email = ?, role = ? WHERE id = ?");
+            $stmt->bind_param("sssi", $display_name, $email, $role, $user_id);
+            $stmt->execute();
+
+            $slug = cabinet_slugify($display_name . '-' . $user_id);
+            $sort_order = ($index + 1) * 10;
+            if ($professional_id > 0) {
+                $stmt = $mysqli->prepare("
+                    UPDATE professionals
+                    SET user_id = ?, display_name = ?, public_slug = ?, professional_title = ?, professional_specialty = ?, public_photo_path = ?, public_email = ?, is_active = ?, sort_order = ?
+                    WHERE id = ?
+                ");
+                $stmt->bind_param("issssssiii", $user_id, $display_name, $slug, $title, $specialty, $current_photo_path, $email, $is_active, $sort_order, $professional_id);
+            } else {
+                $stmt = $mysqli->prepare("
+                    INSERT INTO professionals (user_id, display_name, public_slug, professional_title, professional_specialty, public_photo_path, public_email, is_active, sort_order)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE display_name = VALUES(display_name), professional_title = VALUES(professional_title), professional_specialty = VALUES(professional_specialty), public_photo_path = VALUES(public_photo_path), public_email = VALUES(public_email), is_active = VALUES(is_active), sort_order = VALUES(sort_order)
+                ");
+                $stmt->bind_param("issssssii", $user_id, $display_name, $slug, $title, $specialty, $current_photo_path, $email, $is_active, $sort_order);
+            }
+            $stmt->execute();
+            $saved_professional_id = $professional_id > 0 ? $professional_id : (int) $mysqli->insert_id;
+            if ($saved_professional_id <= 0) {
+                $stmt = $mysqli->prepare("SELECT id FROM professionals WHERE user_id = ? LIMIT 1");
+                $stmt->bind_param("i", $user_id);
+                $stmt->execute();
+                $saved_row = $stmt->get_result()->fetch_assoc();
+                $saved_professional_id = $saved_row ? (int) $saved_row['id'] : 0;
+            }
+
+            if ($photo_index === $index && isset($_FILES['professional_photo']) && ($_FILES['professional_photo']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+                if ($saved_professional_id <= 0) {
+                    throw new \Exception('No se pudo localizar el profesional para guardar la foto.');
+                }
+                $uploaded_photo_path = save_uploaded_professional_photo($_FILES['professional_photo'], $saved_professional_id);
+                $stmt = $mysqli->prepare("UPDATE professionals SET public_photo_path = ? WHERE id = ?");
+                $stmt->bind_param("si", $uploaded_photo_path, $saved_professional_id);
+                $stmt->execute();
+            }
+        }
+
+        foreach ($password_setup_users as $setup_user_id => $setup_user) {
+            if (!send_professional_password_setup_email($mysqli, (int) $setup_user_id, $setup_user['name'], $setup_user['email'])) {
+                throw new \Exception('No se pudo enviar el email para crear la contraseña del profesional. Revisa la configuración de email.');
+            }
+        }
+        $mysqli->commit();
+        echo json_encode(['success' => true, 'message' => 'Modo gabinete guardado correctamente.']);
+    } catch (\Exception $e) {
+        $mysqli->rollback();
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
 } elseif ($action === 'get_payment_settings') {
     ensure_payment_settings_table($mysqli);
 

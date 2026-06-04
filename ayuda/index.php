@@ -17,7 +17,7 @@ if ($isInstalled) {
         exit;
     }
 
-    if (($_SESSION['role'] ?? '') !== 'admin') {
+    if (!in_array(($_SESSION['role'] ?? ''), ['admin', 'superadmin'], true)) {
         header('Location: ../dashboard.php');
         exit;
     }
