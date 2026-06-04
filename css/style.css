@@ -663,12 +663,15 @@ body {
     border-radius: 8px;
     overflow: hidden;
     background: #f9fafc;
+    text-align: center;
 }
 
 .help-figure img {
     display: block;
-    width: 100%;
+    width: auto;
+    max-width: 100%;
     height: auto;
+    margin: 0 auto;
 }
 
 .help-figure figcaption {
@@ -991,6 +994,22 @@ body {
     color: #263238;
     font-weight: 700;
     text-align: right;
+}
+
+.admin-patients-table-wrap,
+.admin-bonuses-table-wrap,
+.upcoming-appointments-table-wrap {
+    max-height: 56vh;
+    overflow: auto;
+}
+
+.admin-patients-table-wrap thead th,
+.admin-bonuses-table-wrap thead th,
+.upcoming-appointments-table-wrap thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #fff;
 }
 
 @media (max-width: 768px) {

@@ -39,5 +39,8 @@ define('CRON_WEBHOOK_TOKEN', psicologic_config_value('cron_webhook_token', 'f663
 // Fastcron API token used to create/delete reminder cronjobs.
 define('FASTCRON_API_KEY', psicologic_config_value('fastcron_api_key', 'CHCQEM5VYRPWZUYYI7J1X9BR4083EO9F'));
 
+// URLME API token used to shorten patient-facing links. Leave empty to keep full URLs.
+define('URLME_API_KEY', psicologic_config_value('urlme_api_key', '367939f724112f6a4bc067301fd4a8d4cc4e3d618ca6390c857df610b81c2c8a'));
+
 // Set timezone
 date_default_timezone_set(psicologic_config_value('timezone', 'Atlantic/Canary'));

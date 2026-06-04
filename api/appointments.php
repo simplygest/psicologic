@@ -6,6 +6,7 @@ require_once '../payment_helpers.php';
 require_once '../mail_helpers.php';
 require_once '../google_helpers.php';
 require_once '../caldav_helpers.php';
+require_once '../urlme_helpers.php';
 header('Content-Type: application/json');
 
 if (!isset($_SESSION['user_id'])) {
@@ -617,6 +618,8 @@ if ($action === 'get_month') {
         );
 
         if (!empty($patient['email'])) {
+            $manage_link = urlme_shorten_url(app_public_base_url() . 'cancelar_cita.php?t=' . $cancel_token, 'Gestionar reserva PsicoLogic');
+            $calendar_link = urlme_shorten_url(app_public_base_url() . 'appointment_ics.php?t=' . $cancel_token, 'Anadir cita al calendario PsicoLogic');
             $payment_note = '<p>Recuerda que puedes pagar directamente en la consulta.</p>';
             if ($bonus_claim) {
                 $payment_note = '<p><b>Bono:</b> esta cita queda incluida en tu bono. Te quedan ' . (int) $bonus_claim['remaining_after'] . ' sesiones.</p>';
@@ -634,8 +637,8 @@ if ($action === 'get_month') {
                 ($appointment_price_text !== null ? '<p><b>Importe:</b> ' . htmlspecialchars($appointment_price_text) . ' &euro;</p>' : '') .
                 $payment_note .
                 '<p>Por favor, si no puedes asistir te rogamos gestionar tu cita directamente en la web.</p>' .
-                '<p><a href="' . htmlspecialchars(app_public_base_url() . 'cancelar_cita.php?t=' . $cancel_token) . '">Gestionar reserva</a></p>' .
-                ($send_patient_calendar_link ? '<p>A&ntilde;ade esta cita a tu calendario <a href="' . htmlspecialchars(app_public_base_url() . 'appointment_ics.php?t=' . $cancel_token) . '">aqu&iacute;</a>.</p>' : ''),
+                '<p><a href="' . htmlspecialchars($manage_link) . '">Gestionar reserva</a></p>' .
+                ($send_patient_calendar_link ? '<p>A&ntilde;ade esta cita a tu calendario <a href="' . htmlspecialchars($calendar_link) . '">aqu&iacute;</a>.</p>' : ''),
                 null,
                 $mysqli
             );

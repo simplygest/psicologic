@@ -77,6 +77,7 @@ $app_name = $branding['app_name'] ?: 'PsicoLogic';
                 <a href="#calendario">Calendario</a>
                 <a href="#calendario-online">Calendario online</a>
                 <a href="#reservas">Reservas y cancelaciones</a>
+                <a href="#pacientes">Pacientes</a>
                 <a href="#invitaciones">Invitaciones</a>
                 <a href="#bonos">Bonos</a>
                 <a href="#pagos">Pagos online</a>
@@ -207,6 +208,26 @@ $app_name = $branding['app_name'] ?: 'PsicoLogic';
                 </ul>
             </article>
 
+            <article class="help-section" id="pacientes">
+                <h2>Pacientes</h2>
+                <p>
+                    El bot&oacute;n <strong>Mis pacientes</strong> permite usar PsicoLogic como registro interno de pacientes,
+                    incluso cuando un paciente todav&iacute;a no tiene acceso a la web.
+                </p>
+                <ul>
+                    <li>Desde <strong>Nuevo paciente</strong> puedes crear una ficha con nombre, email, tel&eacute;fono, tipo, fecha de alta y notas internas.</li>
+                    <li>Las notas internas solo las ve el administrador y sirven para guardar informaci&oacute;n de seguimiento o contexto.</li>
+                    <li>Cada ficha puede tener un documento PDF o Excel asociado, por ejemplo una evoluci&oacute;n, informe o documento de trabajo.</li>
+                    <li>El listado permite buscar pacientes, ordenarlos por nombre o fecha de alta y ver si tienen acceso web o est&aacute;n pendientes de registro.</li>
+                    <li>Si el paciente no tiene acceso, el bot&oacute;n de invitaci&oacute;n abre el modal con enlace, QR y env&iacute;o por email, pero vinculado a su ficha.</li>
+                    <li>Cuando el paciente usa esa invitaci&oacute;n, completa su cuenta sin duplicar la ficha creada por el profesional.</li>
+                </ul>
+                <div class="help-note">
+                    En invitaciones vinculadas, si el paciente ya tiene email en su ficha, el campo de env&iacute;o se rellena autom&aacute;ticamente.
+                    En invitaciones generales se mantiene vac&iacute;o para evitar reutilizar una direcci&oacute;n anterior por error.
+                </div>
+            </article>
+
             <article class="help-section" id="invitaciones">
                 <h2>Invitaciones</h2>
                 <p>
@@ -218,7 +239,8 @@ $app_name = $branding['app_name'] ?: 'PsicoLogic';
                     <figcaption>Modal de invitación con enlace, QR y envío por email. El token aparece oculto en esta ayuda.</figcaption>
                 </figure>
                 <div class="help-note">
-                    El campo de email de la invitación se abre siempre vacío para evitar enviar enlaces a direcciones usadas anteriormente.
+                    En invitaciones generales, el campo de email se abre vac&iacute;o para evitar enviar enlaces a direcciones usadas anteriormente.
+                    Si la invitaci&oacute;n se genera desde una ficha de paciente, queda vinculada a esa ficha y puede rellenar su email autom&aacute;ticamente.
                 </div>
             </article>
 
@@ -322,9 +344,6 @@ $app_name = $branding['app_name'] ?: 'PsicoLogic';
                     <img src="assets/modal-configuracion-interfaz.png" alt="Pestaña Interfaz de configuración">
                     <figcaption>Interfaz: título de la web, imágenes del dashboard y de la landing, y color principal.</figcaption>
                 </figure>
-                <div class="help-note">
-                    Mientras la web no deba aparecer en buscadores, se mantiene la etiqueta <strong>noindex</strong> y el bloqueo de robots.
-                </div>
             </article>
 
             <article class="help-section" id="problemas">

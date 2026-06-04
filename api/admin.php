@@ -5,12 +5,15 @@ require_once '../mail_helpers.php';
 require_once '../settings_helpers.php';
 require_once '../payment_helpers.php';
 require_once '../fastcron_helpers.php';
+require_once '../urlme_helpers.php';
 header('Content-Type: application/json');
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     echo json_encode(['success' => false, 'error' => 'No autorizado']);
     exit;
 }
+
+ensure_patient_management_tables($mysqli);
 
 $action = $_GET['action'] ?? '';
 
@@ -176,6 +179,91 @@ function bind_params_dynamic($stmt, $types, $values)
     call_user_func_array([$stmt, 'bind_param'], $refs);
 }
 
+function ensure_patient_management_tables($mysqli)
+{
+    $res = $mysqli->query("SHOW COLUMNS FROM users LIKE 'password_hash'");
+    if ($res && $res->num_rows > 0) {
+        $mysqli->query("ALTER TABLE users MODIFY password_hash VARCHAR(255) NULL");
+    }
+
+    $res = $mysqli->query("SHOW COLUMNS FROM invitations LIKE 'user_id'");
+    if ($res && $res->num_rows === 0) {
+        $mysqli->query("ALTER TABLE invitations ADD user_id INT UNSIGNED DEFAULT NULL AFTER token");
+        $mysqli->query("ALTER TABLE invitations ADD INDEX idx_invitations_user_id (user_id)");
+    }
+
+    $mysqli->query("
+        CREATE TABLE IF NOT EXISTS patient_profiles (
+            user_id INT UNSIGNED NOT NULL PRIMARY KEY,
+            patient_type VARCHAR(80) DEFAULT NULL,
+            admission_date DATE DEFAULT NULL,
+            notes LONGTEXT DEFAULT NULL,
+            document_path VARCHAR(255) DEFAULT NULL,
+            document_name VARCHAR(255) DEFAULT NULL,
+            created_by_admin TINYINT(1) NOT NULL DEFAULT 0,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_patient_profiles_type (patient_type),
+            INDEX idx_patient_profiles_admission (admission_date)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+
+    $columns = [
+        'document_path' => "ALTER TABLE patient_profiles ADD document_path VARCHAR(255) DEFAULT NULL AFTER notes",
+        'document_name' => "ALTER TABLE patient_profiles ADD document_name VARCHAR(255) DEFAULT NULL AFTER document_path"
+    ];
+    foreach ($columns as $column => $sql) {
+        $res = $mysqli->query("SHOW COLUMNS FROM patient_profiles LIKE '$column'");
+        if ($res && $res->num_rows === 0) {
+            $mysqli->query($sql);
+        }
+    }
+}
+
+function patient_has_portal_access($row)
+{
+    return !empty($row['email']) && !empty($row['password_hash']);
+}
+
+function save_patient_document_upload($file, $patient_id)
+{
+    if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+        return null;
+    }
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        throw new \Exception('No se pudo subir el archivo.');
+    }
+    if (($file['size'] ?? 0) > 12 * 1024 * 1024) {
+        throw new \Exception('El archivo no puede superar 12 MB.');
+    }
+
+    $extension = strtolower(pathinfo($file['name'] ?? '', PATHINFO_EXTENSION));
+    $allowed = [
+        'pdf' => 'pdf',
+        'xls' => 'xls',
+        'xlsx' => 'xlsx'
+    ];
+    if (!isset($allowed[$extension])) {
+        throw new \Exception('Formato no valido. Usa PDF, XLS o XLSX.');
+    }
+
+    $upload_dir = dirname(__DIR__) . '/uploads/patients';
+    if (!is_dir($upload_dir) && !mkdir($upload_dir, 0755, true)) {
+        throw new \Exception('No se pudo crear la carpeta de documentos.');
+    }
+
+    $filename = 'patient_' . (int) $patient_id . '_' . bin2hex(random_bytes(8)) . '.' . $allowed[$extension];
+    $destination = $upload_dir . '/' . $filename;
+    if (!move_uploaded_file($file['tmp_name'], $destination)) {
+        throw new \Exception('No se pudo guardar el documento.');
+    }
+
+    return [
+        'path' => 'uploads/patients/' . $filename,
+        'name' => basename($file['name'])
+    ];
+}
+
 function normalize_time_field($value, $default = '')
 {
     $value = trim((string) $value);
@@ -303,9 +391,21 @@ function save_uploaded_settings_image($file, $prefix)
 
 if ($action === 'generate_invite') {
     $token = bin2hex(random_bytes(32));
+    $invite_user_id = (int) ($_POST['user_id'] ?? $_GET['user_id'] ?? 0);
+    if ($invite_user_id > 0) {
+        $stmt = $mysqli->prepare("SELECT id FROM users WHERE id = ? AND role = 'patient'");
+        $stmt->bind_param("i", $invite_user_id);
+        $stmt->execute();
+        if (!$stmt->get_result()->fetch_assoc()) {
+            echo json_encode(['success' => false, 'error' => 'Paciente no encontrado.']);
+            exit;
+        }
+    } else {
+        $invite_user_id = null;
+    }
 
-    $stmt = $mysqli->prepare("INSERT INTO invitations (token) VALUES (?)");
-    $stmt->bind_param("s", $token);
+    $stmt = $mysqli->prepare("INSERT INTO invitations (token, user_id) VALUES (?, ?)");
+    $stmt->bind_param("si", $token, $invite_user_id);
     if ($stmt->execute()) {
         // Obtenemos el protocolo y el dominio actual para crear el enlace completo
         $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
@@ -316,19 +416,171 @@ if ($action === 'generate_invite') {
         $path = rtrim($path, '/');
 
         $link = $protocol . $domainName . $path . '/register.php?token=' . $token;
-        echo json_encode(['success' => true, 'link' => $link]);
+        $link = urlme_shorten_url($link, 'Invitacion registro PsicoLogic');
+        echo json_encode(['success' => true, 'link' => $link, 'token' => $token]);
     } else {
         echo json_encode(['success' => false, 'error' => 'Error generando invitación']);
     }
 } elseif ($action === 'get_patients') {
     $res = $mysqli->query("SELECT id, name FROM users WHERE role = 'patient' ORDER BY name ASC");
     echo json_encode(['success' => true, 'patients' => $res->fetch_all(MYSQLI_ASSOC)]);
+} elseif ($action === 'list_patients') {
+    $res = $mysqli->query("
+        SELECT u.id, u.name, u.email, u.phone, u.created_at, u.password_hash,
+               pp.patient_type, pp.admission_date, pp.notes, pp.document_path, pp.document_name, pp.created_by_admin
+        FROM users u
+        LEFT JOIN patient_profiles pp ON pp.user_id = u.id
+        WHERE u.role = 'patient'
+        ORDER BY u.name ASC
+    ");
+    $patients = [];
+    while ($row = $res->fetch_assoc()) {
+        $patients[] = [
+            'id' => (int) $row['id'],
+            'name' => $row['name'],
+            'email' => $row['email'] ?? '',
+            'phone' => $row['phone'] ?? '',
+            'patient_type' => $row['patient_type'] ?? '',
+            'admission_date' => $row['admission_date'] ?? substr((string) $row['created_at'], 0, 10),
+            'notes' => $row['notes'] ?? '',
+            'document_path' => $row['document_path'] ?? '',
+            'document_name' => $row['document_name'] ?? '',
+            'created_by_admin' => (int) ($row['created_by_admin'] ?? 0),
+            'has_portal_access' => patient_has_portal_access($row) ? 1 : 0
+        ];
+    }
+    echo json_encode(['success' => true, 'patients' => $patients]);
+} elseif ($action === 'save_patient') {
+    $patient_id = (int) ($_POST['patient_id'] ?? 0);
+    $name = trim($_POST['name'] ?? '');
+    $email = trim($_POST['email'] ?? '');
+    $phone = trim($_POST['phone'] ?? '');
+    $patient_type = trim($_POST['patient_type'] ?? '');
+    $admission_date = trim($_POST['admission_date'] ?? '');
+    $notes = trim($_POST['notes'] ?? '');
+
+    $email = $email !== '' ? $email : null;
+    $phone = $phone !== '' ? $phone : null;
+    $patient_type = $patient_type !== '' ? $patient_type : null;
+    $admission_date = $admission_date !== '' ? $admission_date : date('Y-m-d');
+
+    if ($name === '') {
+        echo json_encode(['success' => false, 'error' => 'Indica el nombre del paciente.']);
+        exit;
+    }
+    if ($email !== null && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        echo json_encode(['success' => false, 'error' => 'Email no valido.']);
+        exit;
+    }
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $admission_date)) {
+        echo json_encode(['success' => false, 'error' => 'Fecha de alta no valida.']);
+        exit;
+    }
+
+    if ($email !== null) {
+        $stmt = $mysqli->prepare("SELECT id FROM users WHERE email = ? AND id <> ?");
+        $stmt->bind_param("si", $email, $patient_id);
+        $stmt->execute();
+        if ($stmt->get_result()->fetch_assoc()) {
+            echo json_encode(['success' => false, 'error' => 'Ya existe otro paciente con ese email.']);
+            exit;
+        }
+    }
+
+    if ($phone !== null) {
+        $stmt = $mysqli->prepare("SELECT id FROM users WHERE phone = ? AND id <> ?");
+        $stmt->bind_param("si", $phone, $patient_id);
+        $stmt->execute();
+        if ($stmt->get_result()->fetch_assoc()) {
+            echo json_encode(['success' => false, 'error' => 'Ya existe otro paciente con ese telefono.']);
+            exit;
+        }
+    }
+
+    $mysqli->begin_transaction();
+    try {
+        if ($patient_id > 0) {
+            $stmt = $mysqli->prepare("UPDATE users SET name = ?, email = ?, phone = ? WHERE id = ? AND role = 'patient'");
+            $stmt->bind_param("sssi", $name, $email, $phone, $patient_id);
+            $stmt->execute();
+            if ($stmt->affected_rows < 0) {
+                throw new \Exception('No se pudo actualizar el paciente.');
+            }
+        } else {
+            $stmt = $mysqli->prepare("INSERT INTO users (name, email, phone, password_hash, role) VALUES (?, ?, ?, NULL, 'patient')");
+            $stmt->bind_param("sss", $name, $email, $phone);
+            $stmt->execute();
+            $patient_id = $mysqli->insert_id;
+        }
+
+        $uploaded_document = save_patient_document_upload($_FILES['patient_document'] ?? null, $patient_id);
+
+        $stmt = $mysqli->prepare("
+            INSERT INTO patient_profiles (user_id, patient_type, admission_date, notes, created_by_admin)
+            VALUES (?, ?, ?, ?, 1)
+            ON DUPLICATE KEY UPDATE patient_type = VALUES(patient_type), admission_date = VALUES(admission_date), notes = VALUES(notes)
+        ");
+        $stmt->bind_param("isss", $patient_id, $patient_type, $admission_date, $notes);
+        $stmt->execute();
+
+        if ($uploaded_document !== null) {
+            $stmt = $mysqli->prepare("UPDATE patient_profiles SET document_path = ?, document_name = ? WHERE user_id = ?");
+            $stmt->bind_param("ssi", $uploaded_document['path'], $uploaded_document['name'], $patient_id);
+            $stmt->execute();
+        }
+
+        $mysqli->commit();
+        echo json_encode(['success' => true, 'message' => 'Paciente guardado correctamente.', 'patient_id' => $patient_id]);
+    } catch (\Exception $e) {
+        $mysqli->rollback();
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
+} elseif ($action === 'send_patient_invite') {
+    $patient_id = (int) ($_POST['patient_id'] ?? 0);
+    $stmt = $mysqli->prepare("SELECT id, name, email, password_hash FROM users WHERE id = ? AND role = 'patient'");
+    $stmt->bind_param("i", $patient_id);
+    $stmt->execute();
+    $patient = $stmt->get_result()->fetch_assoc();
+    if (!$patient) {
+        echo json_encode(['success' => false, 'error' => 'Paciente no encontrado.']);
+        exit;
+    }
+    if (patient_has_portal_access($patient)) {
+        echo json_encode(['success' => false, 'error' => 'Este paciente ya tiene acceso web.']);
+        exit;
+    }
+    if (empty($patient['email']) || !filter_var($patient['email'], FILTER_VALIDATE_EMAIL)) {
+        echo json_encode(['success' => false, 'error' => 'El paciente necesita un email para enviar la invitacion.']);
+        exit;
+    }
+
+    $token = bin2hex(random_bytes(32));
+    $stmt = $mysqli->prepare("INSERT INTO invitations (token, user_id) VALUES (?, ?)");
+    $stmt->bind_param("si", $token, $patient_id);
+    $stmt->execute();
+    $link = urlme_shorten_url(app_public_base_url() . 'register.php?token=' . urlencode($token), 'Invitacion registro PsicoLogic');
+
+    $sent = send_app_email(
+        $patient['email'],
+        'Invitacion para crear tu cuenta',
+        '<p>Hola ' . htmlspecialchars($patient['name']) . ',</p>' .
+        '<p>Te enviamos la invitaci&oacute;n para crear tu cuenta y poder acceder a la web para gestionar tus citas.</p>' .
+        '<p><a href="' . htmlspecialchars($link) . '">Crear mi cuenta</a></p>' .
+        '<p>Si el boton no funciona, copia y pega este enlace en tu navegador:<br>' . htmlspecialchars($link) . '</p>',
+        null,
+        $mysqli
+    );
+
+    echo json_encode($sent
+        ? ['success' => true, 'message' => 'Invitacion enviada correctamente.', 'link' => $link]
+        : ['success' => false, 'error' => 'No se pudo enviar el email de invitacion.']);
 } elseif ($action === 'send_invite_email') {
     $email = trim($_POST['email'] ?? '');
     $posted_link = trim($_POST['link'] ?? '');
+    $posted_token = trim($_POST['token'] ?? '');
     $parts = parse_url($posted_link);
     parse_str($parts['query'] ?? '', $query);
-    $token = $query['token'] ?? '';
+    $token = $posted_token ?: ($query['token'] ?? '');
 
     if (!$email || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         echo json_encode(['success' => false, 'error' => 'Indica un email valido.']);
@@ -347,12 +599,12 @@ if ($action === 'generate_invite') {
         exit;
     }
 
-    $link = app_public_base_url() . 'register.php?token=' . urlencode($token);
+    $link = urlme_shorten_url(app_public_base_url() . 'register.php?token=' . urlencode($token), 'Invitacion registro PsicoLogic');
     $sent = send_app_email(
         $email,
         'Invitacion para crear tu cuenta',
         '<p>Hola,</p>' .
-        '<p>Te han enviado una invitacion para crear tu cuenta y poder reservar tus citas.</p>' .
+        '<p>Te enviamos la invitaci&oacute;n para crear tu cuenta y poder acceder a la web para gestionar tus citas.</p>' .
         '<p><a href="' . htmlspecialchars($link) . '">Crear mi cuenta</a></p>' .
         '<p>Si el boton no funciona, copia y pega este enlace en tu navegador:<br>' . htmlspecialchars($link) . '</p>',
         null,
@@ -365,6 +617,19 @@ if ($action === 'generate_invite') {
 } elseif ($action === 'upcoming_appointments') {
     ensure_appointment_payment_columns($mysqli);
     ensure_appointment_services_tables($mysqli);
+    $scope = $_GET['scope'] ?? 'limit10';
+    $where_extra = '';
+    $limit_sql = 'LIMIT 10';
+    if ($scope === '3days') {
+        $where_extra = " AND a.appointment_date < DATE_ADD(CURDATE(), INTERVAL 3 DAY)";
+        $limit_sql = '';
+    } elseif ($scope === '7days') {
+        $where_extra = " AND a.appointment_date < DATE_ADD(CURDATE(), INTERVAL 7 DAY)";
+        $limit_sql = '';
+    } elseif ($scope === 'all') {
+        $limit_sql = '';
+    }
+
     $res = $mysqli->query("
         SELECT a.id, a.appointment_date, a.appointment_time, a.consultation_type, a.service_type,
                COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
@@ -378,8 +643,9 @@ if ($action === 'generate_invite') {
         JOIN users u ON u.id = a.user_id
         WHERE a.status = 'booked'
           AND CONCAT(a.appointment_date, ' ', a.appointment_time) >= NOW()
+          $where_extra
         ORDER BY a.appointment_date ASC, a.appointment_time ASC
-        LIMIT 10
+        $limit_sql
     ");
 
     $appointments = [];
@@ -410,6 +676,7 @@ if ($action === 'generate_invite') {
         'upcoming_count' => 0,
         'today_count' => 0,
         'month_count' => 0,
+        'patient_count' => 0,
         'online_revenue_month' => '0.00',
         'active_bonus_count' => 0,
         'active_bonus_sessions' => 0,
@@ -435,6 +702,11 @@ if ($action === 'generate_invite') {
     ");
     if ($row = $res->fetch_assoc()) {
         $stats['month_count'] = (int) $row['total'];
+    }
+
+    $res = $mysqli->query("SELECT COUNT(*) AS total FROM users WHERE role = 'patient'");
+    if ($row = $res->fetch_assoc()) {
+        $stats['patient_count'] = (int) $row['total'];
     }
 
     $res = $mysqli->query("

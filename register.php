@@ -3,17 +3,24 @@ require_once 'db.php';
 require_once 'settings_helpers.php';
 $token = $_GET['token'] ?? '';
 $valid = false;
+$invite_patient = null;
 $branding = get_public_branding_settings($mysqli);
 $app_name = $branding['app_name'];
 $profile_image_path = $branding['show_profile_image_public'] ? $branding['profile_image_path'] : '';
 
 if ($token) {
-    $stmt = $mysqli->prepare("SELECT id FROM invitations WHERE token = ? AND used = 0");
+    $stmt = $mysqli->prepare("
+        SELECT i.id, i.user_id, u.name, u.email, u.phone
+        FROM invitations i
+        LEFT JOIN users u ON u.id = i.user_id
+        WHERE i.token = ? AND i.used = 0
+    ");
     $stmt->bind_param("s", $token);
     $stmt->execute();
     $res = $stmt->get_result();
-    if ($res->fetch_assoc()) {
+    if ($invite = $res->fetch_assoc()) {
         $valid = true;
+        $invite_patient = $invite;
     }
 }
 ?>
@@ -58,15 +65,15 @@ if ($token) {
                             <input type="hidden" name="token" value="<?= htmlspecialchars($token) ?>">
                             <div class="mb-3">
                                 <label class="form-label">Nombre Completo</label>
-                                <input type="text" class="form-control" name="name" required>
+                                <input type="text" class="form-control" name="name" value="<?= htmlspecialchars($invite_patient['name'] ?? '') ?>" required>
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Email</label>
-                                <input type="email" class="form-control" name="email" required>
+                                <input type="email" class="form-control" name="email" value="<?= htmlspecialchars($invite_patient['email'] ?? '') ?>" required>
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Tel&eacute;fono (opcional)</label>
-                                <input type="text" class="form-control" name="phone">
+                                <input type="text" class="form-control" name="phone" value="<?= htmlspecialchars($invite_patient['phone'] ?? '') ?>">
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Contraseña</label>

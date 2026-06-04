@@ -63,7 +63,7 @@ function install_base_tables($mysqli)
         name VARCHAR(100) NOT NULL,
         email VARCHAR(150) UNIQUE NULL,
         phone VARCHAR(30) UNIQUE NULL,
-        password_hash VARCHAR(255) NOT NULL,
+        password_hash VARCHAR(255) NULL,
         role ENUM('admin','patient') NOT NULL DEFAULT 'patient',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
@@ -71,9 +71,25 @@ function install_base_tables($mysqli)
     $mysqli->query("CREATE TABLE IF NOT EXISTS invitations (
         id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         token VARCHAR(64) NOT NULL UNIQUE,
+        user_id INT UNSIGNED DEFAULT NULL,
         used TINYINT(1) NOT NULL DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        used_at DATETIME NULL
+        used_at DATETIME NULL,
+        INDEX idx_invitations_user_id (user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $mysqli->query("CREATE TABLE IF NOT EXISTS patient_profiles (
+        user_id INT UNSIGNED NOT NULL PRIMARY KEY,
+        patient_type VARCHAR(80) DEFAULT NULL,
+        admission_date DATE DEFAULT NULL,
+        notes LONGTEXT DEFAULT NULL,
+        document_path VARCHAR(255) DEFAULT NULL,
+        document_name VARCHAR(255) DEFAULT NULL,
+        created_by_admin TINYINT(1) NOT NULL DEFAULT 0,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_patient_profiles_type (patient_type),
+        INDEX idx_patient_profiles_admission (admission_date)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     $mysqli->query("CREATE TABLE IF NOT EXISTS appointments (
@@ -115,6 +131,11 @@ function install_base_tables($mysqli)
 
 function install_ensure_payment_settings_columns($mysqli)
 {
+    $mysqli->query("ALTER TABLE users MODIFY password_hash VARCHAR(255) NULL");
+    install_add_column_if_missing($mysqli, 'invitations', 'user_id', 'INT UNSIGNED DEFAULT NULL AFTER token');
+    install_add_column_if_missing($mysqli, 'patient_profiles', 'document_path', 'VARCHAR(255) DEFAULT NULL AFTER notes');
+    install_add_column_if_missing($mysqli, 'patient_profiles', 'document_name', 'VARCHAR(255) DEFAULT NULL AFTER document_path');
+
     install_add_column_if_missing($mysqli, 'payment_settings', 'min_booking_notice_days', 'INT NOT NULL DEFAULT 2');
     install_add_column_if_missing($mysqli, 'payment_settings', 'max_booking_notice_days', 'INT NOT NULL DEFAULT 40');
     install_add_column_if_missing($mysqli, 'payment_settings', 'appointment_start_time', 'TIME NOT NULL DEFAULT "10:00:00"');

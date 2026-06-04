@@ -74,6 +74,7 @@ $profile_image_path = $branding['profile_image_path'];
         <button class="btn btn-primary" id="btn-upcoming-appointments" type="button"><i class="bi bi-list-check"></i> Pr&oacute;ximas citas</button>
         <button class="btn btn-primary" id="btn-admin-stats" type="button"><i class="bi bi-bar-chart"></i> Estad&iacute;sticas</button>
         <button class="btn btn-primary" id="btn-admin-bonuses" type="button"><i class="bi bi-card-list"></i> Consultar bonos</button>
+        <button class="btn btn-primary" id="btn-admin-patients" type="button"><i class="bi bi-people"></i> Mis pacientes</button>
         <span id="admin-actions-msg" class="align-self-center ms-2 text-success" style="display: none;"></span>
         <button class="btn btn-primary ms-auto" id="btn-calendar-view-toggle" type="button"><i class="bi bi-calendar3"></i> Ver mes</button>
       </div>
@@ -185,8 +186,109 @@ $profile_image_path = $branding['profile_image_path'];
       </div>
     </div>
 
-    <div class="modal fade" id="upcomingAppointmentsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal fade" id="adminPatientsModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Mis pacientes</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div id="admin-patients-alert" class="alert d-none"></div>
+            <div class="d-flex justify-content-between align-items-center gap-2 mb-3 flex-wrap">
+              <div class="text-muted small">Pacientes registrados y pacientes sin acceso web.</div>
+              <button class="btn btn-primary btn-sm" type="button" id="btn-new-patient"><i class="bi bi-person-plus"></i> Nuevo paciente</button>
+            </div>
+            <div class="row g-2 mb-3">
+              <div class="col-md-8">
+                <input type="search" class="form-control" id="admin-patients-search" placeholder="Buscar por nombre, email, telefono o tipo">
+              </div>
+              <div class="col-md-4">
+                <select class="form-select" id="admin-patients-sort">
+                  <option value="name_asc">Ordenar por nombre A-Z</option>
+                  <option value="name_desc">Ordenar por nombre Z-A</option>
+                  <option value="admission_desc">Alta mas reciente</option>
+                  <option value="admission_asc">Alta mas antigua</option>
+                </select>
+              </div>
+            </div>
+            <div class="table-responsive admin-patients-table-wrap">
+              <table class="table align-middle">
+                <thead>
+                  <tr>
+                    <th>Paciente</th>
+                    <th>Contacto</th>
+                    <th>Tipo</th>
+                    <th>Alta</th>
+                    <th>Acceso</th>
+                    <th>Documento</th>
+                    <th class="text-end">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-patients-body">
+                  <tr><td colspan="7" class="text-center text-muted py-4">Cargando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="text-end text-muted small mt-2" id="admin-patients-count"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="patientEditorModal" tabindex="-1" aria-hidden="true">
       <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="patient-editor-title">Paciente</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div id="patient-editor-alert" class="alert d-none"></div>
+            <form id="patient-editor-form">
+              <input type="hidden" id="patient-editor-id" name="patient_id">
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label class="form-label" for="patient-editor-name">Nombre</label>
+                  <input type="text" class="form-control" id="patient-editor-name" name="name" required>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" for="patient-editor-type">Tipo</label>
+                  <input type="text" class="form-control" id="patient-editor-type" name="patient_type" placeholder="Adulto, pareja, derivado...">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" for="patient-editor-email">Email</label>
+                  <input type="email" class="form-control" id="patient-editor-email" name="email">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" for="patient-editor-phone">Tel&eacute;fono</label>
+                  <input type="text" class="form-control" id="patient-editor-phone" name="phone">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" for="patient-editor-admission-date">Fecha de alta</label>
+                  <input type="date" class="form-control" id="patient-editor-admission-date" name="admission_date">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" for="patient-editor-document">Archivo PDF/Excel</label>
+                  <input type="file" class="form-control" id="patient-editor-document" name="patient_document" accept=".pdf,.xls,.xlsx">
+                  <div class="form-text" id="patient-editor-document-status"></div>
+                </div>
+                <div class="col-12">
+                  <label class="form-label" for="patient-editor-notes">Notas internas</label>
+                  <textarea class="form-control" id="patient-editor-notes" name="notes" rows="6"></textarea>
+                </div>
+              </div>
+              <div class="text-end mt-4">
+                <button class="btn btn-primary" type="submit" id="btn-save-patient">Guardar paciente</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="upcomingAppointmentsModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header">
             <h5 class="modal-title">Pr&oacute;ximas citas</h5>
@@ -194,7 +296,20 @@ $profile_image_path = $branding['profile_image_path'];
           </div>
           <div class="modal-body">
             <div id="upcoming-appointments-alert" class="alert d-none"></div>
-            <div class="table-responsive">
+            <div class="row g-2 mb-3">
+              <div class="col-md-7">
+                <input type="search" class="form-control" id="upcoming-appointments-search" placeholder="Buscar por paciente, email, servicio o pago">
+              </div>
+              <div class="col-md-5">
+                <select class="form-select" id="upcoming-appointments-scope">
+                  <option value="limit10">Pr&oacute;ximas 10 citas</option>
+                  <option value="3days">Pr&oacute;ximos 3 d&iacute;as</option>
+                  <option value="7days">Pr&oacute;ximos 7 d&iacute;as</option>
+                  <option value="all">Todas las citas futuras</option>
+                </select>
+              </div>
+            </div>
+            <div class="table-responsive upcoming-appointments-table-wrap">
               <table class="table align-middle">
                 <thead>
                   <tr>
@@ -212,6 +327,7 @@ $profile_image_path = $branding['profile_image_path'];
                 </tbody>
               </table>
             </div>
+            <div class="text-end text-muted small mt-2" id="upcoming-appointments-count"></div>
           </div>
         </div>
       </div>
@@ -236,7 +352,7 @@ $profile_image_path = $branding['profile_image_path'];
   <?php endif; ?>
 
   <div class="modal fade" id="bonusesModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title" id="bonusesModalTitle">Bonos</h5>
@@ -248,7 +364,21 @@ $profile_image_path = $branding['profile_image_path'];
             <div class="row g-3" id="bonus-catalog-list"></div>
           </div>
           <div id="bonus-list-panel" class="d-none">
-            <div class="table-responsive">
+            <div class="row g-2 mb-3 d-none" id="bonus-list-tools">
+              <div class="col-md-8">
+                <input type="search" class="form-control" id="bonus-list-search" placeholder="Buscar por paciente, email, bono o estado">
+              </div>
+              <div class="col-md-4">
+                <select class="form-select" id="bonus-list-sort">
+                  <option value="date_desc">Compra mas reciente</option>
+                  <option value="date_asc">Compra mas antigua</option>
+                  <option value="patient_asc">Paciente A-Z</option>
+                  <option value="remaining_desc">Mas sesiones restantes</option>
+                  <option value="remaining_asc">Menos sesiones restantes</option>
+                </select>
+              </div>
+            </div>
+            <div class="table-responsive admin-bonuses-table-wrap">
               <table class="table align-middle">
                 <thead id="bonus-list-head"></thead>
                 <tbody id="bonus-list-body"></tbody>

@@ -187,6 +187,11 @@ La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`.
 - `payment_attempts.purchase_type ENUM('appointment', 'bonus') NOT NULL DEFAULT 'appointment'`
 - `payment_attempts.bonus_id INT UNSIGNED DEFAULT NULL`
 - Nueva tabla `password_resets`
+- `users.password_hash VARCHAR(255) NULL`
+- `invitations.user_id INT UNSIGNED DEFAULT NULL`
+- Nueva tabla `patient_profiles`
+- `patient_profiles.document_path VARCHAR(255) DEFAULT NULL`
+- `patient_profiles.document_name VARCHAR(255) DEFAULT NULL`
 
 ## Avisos importantes
 
@@ -206,6 +211,15 @@ git config --global --add safe.directory C:/Sete/psicologic
 - La respuesta OK/KO de Redsys se basa en el token de retorno propio, no en una validacion server-to-server completa de parametros firmados de Redsys.
 - La app hace migraciones de esquema en runtime con `ALTER TABLE`. Es practico para evolucionar rapido, pero a medio plazo conviene consolidarlo en migraciones SQL versionadas.
 - PHPMailer esta incluido en el repo como carpeta local, no via Composer.
+- Integracion URLME:
+  - `urlme_helpers.php` acorta enlaces con `https://urlme.es/api/links` usando `URLME_API_KEY`.
+  - Si no hay API key o la API falla, se conserva la URL larga para no romper emails ni flujos.
+  - Se acortan invitaciones, recuperacion de contrasena, gestion de reserva, enlace `.ics` del paciente y recordatorios.
+- Gestion de pacientes internos:
+  - El admin tiene boton `Mis pacientes` en el dashboard para listar pacientes con o sin acceso web.
+  - Se pueden crear pacientes internos sin contrasena, editar datos internos, tipo, fecha de alta, notas y adjuntar un archivo PDF/XLS/XLSX.
+  - Las invitaciones pueden vincularse a un paciente existente mediante `invitations.user_id`; al registrarse, el paciente completa su acceso sin duplicar ficha.
+  - `patient_profiles` guarda la informacion interna adicional y el documento asociado.
 
 ## Pendientes sugeridos
 

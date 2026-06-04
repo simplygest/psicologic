@@ -3,6 +3,7 @@ session_start();
 require_once '../db.php';
 require_once '../mail_helpers.php';
 require_once '../payment_helpers.php';
+require_once '../urlme_helpers.php';
 require_once '../settings_helpers.php';
 header('Content-Type: application/json');
 
@@ -24,6 +25,47 @@ function ensure_password_reset_table($mysqli)
     ");
 }
 
+function ensure_patient_registration_schema($mysqli)
+{
+    $res = $mysqli->query("SHOW COLUMNS FROM users LIKE 'password_hash'");
+    if ($res && $res->num_rows > 0) {
+        $mysqli->query("ALTER TABLE users MODIFY password_hash VARCHAR(255) NULL");
+    }
+
+    $res = $mysqli->query("SHOW COLUMNS FROM invitations LIKE 'user_id'");
+    if ($res && $res->num_rows === 0) {
+        $mysqli->query("ALTER TABLE invitations ADD user_id INT UNSIGNED DEFAULT NULL AFTER token");
+        $mysqli->query("ALTER TABLE invitations ADD INDEX idx_invitations_user_id (user_id)");
+    }
+
+    $mysqli->query("
+        CREATE TABLE IF NOT EXISTS patient_profiles (
+            user_id INT UNSIGNED NOT NULL PRIMARY KEY,
+            patient_type VARCHAR(80) DEFAULT NULL,
+            admission_date DATE DEFAULT NULL,
+            notes LONGTEXT DEFAULT NULL,
+            document_path VARCHAR(255) DEFAULT NULL,
+            document_name VARCHAR(255) DEFAULT NULL,
+            created_by_admin TINYINT(1) NOT NULL DEFAULT 0,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+
+    $columns = [
+        'document_path' => "ALTER TABLE patient_profiles ADD document_path VARCHAR(255) DEFAULT NULL AFTER notes",
+        'document_name' => "ALTER TABLE patient_profiles ADD document_name VARCHAR(255) DEFAULT NULL AFTER document_path"
+    ];
+    foreach ($columns as $column => $sql) {
+        $res = $mysqli->query("SHOW COLUMNS FROM patient_profiles LIKE '$column'");
+        if ($res && $res->num_rows === 0) {
+            $mysqli->query($sql);
+        }
+    }
+}
+
+ensure_patient_registration_schema($mysqli);
+
 if ($action === 'login') {
     $login_id = trim($_POST['login_id'] ?? '');
     $password = $_POST['password'] ?? '';
@@ -39,7 +81,7 @@ if ($action === 'login') {
     $res = $stmt->get_result();
     $user = $res->fetch_assoc();
 
-    if ($user && password_verify($password, $user['password_hash'])) {
+    if ($user && !empty($user['password_hash']) && password_verify($password, $user['password_hash'])) {
         if (($user['role'] ?? '') !== 'admin' && !online_booking_enabled($mysqli)) {
             echo json_encode(['success' => false, 'error' => 'El área de pacientes no está disponible en este momento.']);
             exit;
@@ -59,7 +101,7 @@ if ($action === 'login') {
     $phone = $phone !== '' ? $phone : null;
     $password = $_POST['password'] ?? '';
 
-    $stmt = $mysqli->prepare("SELECT id FROM invitations WHERE token = ? AND used = 0");
+    $stmt = $mysqli->prepare("SELECT id, user_id FROM invitations WHERE token = ? AND used = 0");
     $stmt->bind_param("s", $token);
     $stmt->execute();
     $res = $stmt->get_result();
@@ -75,22 +117,39 @@ if ($action === 'login') {
         exit;
     }
 
-    $stmt = $mysqli->prepare("SELECT id FROM users WHERE email = ?");
-    $stmt->bind_param("s", $email);
+    $invite_user_id = !empty($invite['user_id']) ? (int) $invite['user_id'] : 0;
+
+    $stmt = $mysqli->prepare("SELECT id FROM users WHERE email = ? AND id <> ?");
+    $stmt->bind_param("si", $email, $invite_user_id);
     $stmt->execute();
     $res = $stmt->get_result();
     if ($res->fetch_assoc()) {
-        echo json_encode(['success' => false, 'error' => 'El correo ya está registrado.']);
+        echo json_encode(['success' => false, 'error' => 'El correo ya esta registrado.']);
         exit;
     }
 
     if ($phone) {
-        $stmt = $mysqli->prepare("SELECT id FROM users WHERE phone = ?");
-        $stmt->bind_param("s", $phone);
+        $stmt = $mysqli->prepare("SELECT id FROM users WHERE phone = ? AND id <> ?");
+        $stmt->bind_param("si", $phone, $invite_user_id);
         $stmt->execute();
         $res = $stmt->get_result();
         if ($res->fetch_assoc()) {
-            echo json_encode(['success' => false, 'error' => 'El teléfono ya está registrado.']);
+            echo json_encode(['success' => false, 'error' => 'El telefono ya esta registrado.']);
+            exit;
+        }
+    }
+
+    if ($invite_user_id > 0) {
+        $stmt = $mysqli->prepare("SELECT id, password_hash FROM users WHERE id = ? AND role = 'patient'");
+        $stmt->bind_param("i", $invite_user_id);
+        $stmt->execute();
+        $target_user = $stmt->get_result()->fetch_assoc();
+        if (!$target_user) {
+            echo json_encode(['success' => false, 'error' => 'La invitacion no esta asociada a un paciente valido.']);
+            exit;
+        }
+        if (!empty($target_user['password_hash'])) {
+            echo json_encode(['success' => false, 'error' => 'Este paciente ya tiene acceso web.']);
             exit;
         }
     }
@@ -99,12 +158,28 @@ if ($action === 'login') {
 
     $mysqli->begin_transaction();
     try {
-        $stmt = $mysqli->prepare("INSERT INTO users (name, email, phone, password_hash, role) VALUES (?, ?, ?, ?, 'patient')");
-        $stmt->bind_param("ssss", $name, $email, $phone, $hash);
-        $stmt->execute();
-        $new_user_id = $mysqli->insert_id;
+        if ($invite_user_id > 0) {
+            $stmt = $mysqli->prepare("UPDATE users SET name = ?, email = ?, phone = ?, password_hash = ? WHERE id = ? AND role = 'patient'");
+            $stmt->bind_param("ssssi", $name, $email, $phone, $hash, $invite_user_id);
+            $stmt->execute();
+            $new_user_id = $invite_user_id;
+        } else {
+            $stmt = $mysqli->prepare("INSERT INTO users (name, email, phone, password_hash, role) VALUES (?, ?, ?, ?, 'patient')");
+            $stmt->bind_param("ssss", $name, $email, $phone, $hash);
+            $stmt->execute();
+            $new_user_id = $mysqli->insert_id;
+        }
 
-        $stmt = $mysqli->prepare("UPDATE invitations SET used = 1 WHERE id = ?");
+        $stmt = $mysqli->prepare("
+            INSERT INTO patient_profiles (user_id, admission_date, created_by_admin)
+            VALUES (?, CURDATE(), ?)
+            ON DUPLICATE KEY UPDATE user_id = user_id
+        ");
+        $created_by_admin = $invite_user_id > 0 ? 1 : 0;
+        $stmt->bind_param("ii", $new_user_id, $created_by_admin);
+        $stmt->execute();
+
+        $stmt = $mysqli->prepare("UPDATE invitations SET used = 1, used_at = NOW() WHERE id = ?");
         $stmt->bind_param("i", $invite['id']);
         $stmt->execute();
 
@@ -116,7 +191,7 @@ if ($action === 'login') {
             '<p>Se ha registrado un nuevo paciente.</p>' .
             '<p><b>Nombre:</b> ' . htmlspecialchars($name) . '<br>' .
             '<b>Email:</b> ' . htmlspecialchars($email) . '<br>' .
-            '<b>Teléfono:</b> ' . htmlspecialchars($phone ?? 'Sin teléfono') . '<br>' .
+            '<b>Telefono:</b> ' . htmlspecialchars($phone ?? 'Sin telefono') . '<br>' .
             '<b>ID:</b> ' . (int) $new_user_id . '</p>',
             $email
         );
@@ -125,7 +200,7 @@ if ($action === 'login') {
             $email,
             'Tu cuenta se ha creado correctamente',
             '<p>Hola ' . htmlspecialchars($name) . ',</p>' .
-            '<p>Tu cuenta en ' . htmlspecialchars(get_app_name($mysqli)) . ' se ha creado correctamente. Ya puedes iniciar sesión y reservar tus citas.</p>',
+            '<p>Tu cuenta en ' . htmlspecialchars(get_app_name($mysqli)) . ' se ha creado correctamente. Ya puedes iniciar sesi&oacute;n y reservar tus citas.</p>',
             null,
             $mysqli
         );
@@ -160,7 +235,7 @@ if ($action === 'login') {
         $stmt->bind_param("is", $user['id'], $token_hash);
         $stmt->execute();
 
-        $reset_link = app_public_base_url() . 'reset_password.php?t=' . urlencode($token);
+        $reset_link = urlme_shorten_url(app_public_base_url() . 'reset_password.php?t=' . urlencode($token), 'Restablecer contrasena PsicoLogic', date('Y-m-d H:i:s', strtotime('+1 hour')));
         send_app_email(
             $user['email'],
             'Restablecer contraseña',

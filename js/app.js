@@ -34,6 +34,7 @@ let adminStatsModal = null;
 let bonusesModal = null;
 let selectedBonusToBuy = null;
 let currentInviteLink = '';
+let currentInviteToken = '';
 
 function getMonday(d) {
     d = new Date(d);
@@ -510,7 +511,15 @@ inviteModal = document.getElementById('inviteModal') ? new bootstrap.Modal(docum
 upcomingAppointmentsModal = document.getElementById('upcomingAppointmentsModal') ? new bootstrap.Modal(document.getElementById('upcomingAppointmentsModal')) : null;
 adminStatsModal = document.getElementById('adminStatsModal') ? new bootstrap.Modal(document.getElementById('adminStatsModal')) : null;
 bonusesModal = document.getElementById('bonusesModal') ? new bootstrap.Modal(document.getElementById('bonusesModal')) : null;
+let adminPatientsModal = document.getElementById('adminPatientsModal') ? new bootstrap.Modal(document.getElementById('adminPatientsModal')) : null;
+let patientEditorModal = document.getElementById('patientEditorModal') ? new bootstrap.Modal(document.getElementById('patientEditorModal')) : null;
 let currentPaymentAppointmentId = null;
+let ADMIN_PATIENTS = [];
+let adminPatientsAlertTimer = null;
+let inviteAlertTimer = null;
+let CURRENT_BONUS_LIST = [];
+let CURRENT_BONUS_ADMIN_VIEW = false;
+let CURRENT_UPCOMING_APPOINTMENTS = [];
 
 function openModal(date, time, status, extraName = '', extraEmail = '', extraPhone = '') {
     $('#modalDate').val(date);
@@ -676,7 +685,7 @@ $(document).ready(function () {
             dataType: 'json',
             success: function (res) {
                 if (res.success) {
-                    openInviteModal(res.link);
+                    openInviteModal(res.link, res.token || '');
                     copyTextToClipboard(res.link, function () {
                         $('#admin-actions-msg').text('Enlace copiado al portapapeles').fadeIn().delay(3000).fadeOut();
                     });
@@ -701,8 +710,46 @@ $(document).ready(function () {
         openUpcomingAppointmentsModal();
     });
 
+    $('#upcoming-appointments-search').on('input', function () {
+        renderUpcomingAppointments(CURRENT_UPCOMING_APPOINTMENTS);
+    });
+
+    $('#upcoming-appointments-scope').on('change', function () {
+        loadUpcomingAppointments();
+    });
+
     $('#btn-admin-stats').click(function () {
         openAdminStatsModal();
+    });
+
+    $('#btn-admin-patients').click(function () {
+        openAdminPatientsModal();
+    });
+
+    $('#btn-new-patient').click(function () {
+        openPatientEditorModal();
+    });
+
+    $('#admin-patients-body').on('click', '.btn-edit-patient', function () {
+        const patient = ADMIN_PATIENTS.find(item => String(item.id) === String($(this).data('patient-id')));
+        openPatientEditorModal(patient || null);
+    });
+
+    $('#admin-patients-body').on('click', '.btn-send-patient-invite', function () {
+        openPatientInviteModal($(this).data('patient-id'), this);
+    });
+
+    $('#admin-patients-search, #admin-patients-sort').on('input change', function () {
+        renderAdminPatients(ADMIN_PATIENTS);
+    });
+
+    $('#patient-editor-form').submit(function (e) {
+        e.preventDefault();
+        savePatient(this);
+    });
+
+    $('#bonus-list-search, #bonus-list-sort').on('input change', function () {
+        renderBonusList(CURRENT_BONUS_LIST, CURRENT_BONUS_ADMIN_VIEW);
     });
 
     $('#btn-buy-bonus-card').click(function () {
@@ -1192,6 +1239,7 @@ function openBuyBonusModal() {
     $('#bonusesModalTitle').text('Comprar bono');
     $('#bonuses-modal-alert').addClass('d-none').text('');
     $('#bonus-list-panel').addClass('d-none');
+    $('#bonus-list-tools').addClass('d-none');
     $('#bonus-payment-options').addClass('d-none');
     $('#bonus-catalog-panel').removeClass('d-none');
     $('#bonus-catalog-list').html('<div class="col-12 text-center text-muted py-4">Cargando bonos...</div>');
@@ -1300,6 +1348,9 @@ function openBonusListModal(title, url, adminView) {
     $('#bonus-catalog-panel').addClass('d-none');
     $('#bonus-payment-options').addClass('d-none');
     $('#bonus-list-panel').removeClass('d-none');
+    $('#bonus-list-tools').toggleClass('d-none', !adminView);
+    $('#bonus-list-search').val('');
+    $('#bonus-list-sort').val('date_desc');
     $('#bonus-list-head').html(adminView
         ? '<tr><th>Paciente</th><th>Bono</th><th>Compradas</th><th>Restantes</th><th>Pagado</th><th>Comprado</th><th>Estado</th></tr>'
         : '<tr><th>Bono</th><th>Compradas</th><th>Restantes</th><th>Pagado</th><th>Comprado</th><th>Estado</th></tr>');
@@ -1315,7 +1366,9 @@ function openBonusListModal(title, url, adminView) {
                 $('#bonus-list-body').empty();
                 return;
             }
-            renderBonusList(res.bonuses || [], adminView);
+            CURRENT_BONUS_LIST = Array.isArray(res.bonuses) ? res.bonuses : [];
+            CURRENT_BONUS_ADMIN_VIEW = adminView;
+            renderBonusList(CURRENT_BONUS_LIST, CURRENT_BONUS_ADMIN_VIEW);
         },
         error: function () {
             showBonusesModalAlert('danger', 'Error de conexion al cargar los bonos.');
@@ -1326,13 +1379,18 @@ function openBonusListModal(title, url, adminView) {
 
 function renderBonusList(bonuses, adminView) {
     const colspan = adminView ? 7 : 6;
+    const rows = filterAndSortBonusList(bonuses, adminView);
     if (!bonuses.length) {
         $('#bonus-list-body').html(`<tr><td colspan="${colspan}" class="text-center text-muted py-4">No hay bonos comprados.</td></tr>`);
         return;
     }
+    if (!rows.length) {
+        $('#bonus-list-body').html(`<tr><td colspan="${colspan}" class="text-center text-muted py-4">No hay bonos que coincidan con la busqueda.</td></tr>`);
+        return;
+    }
 
     let html = '';
-    bonuses.forEach(bonus => {
+    rows.forEach(bonus => {
         const paid = bonus.amount_paid !== null && bonus.amount_paid !== undefined ? `${formatPrice(bonus.amount_paid)} €` : '-';
         const date = bonus.purchased_at ? formatDateTimeLabel(bonus.purchased_at) : '-';
         const status = bonusStatusLabel(bonus.status);
@@ -1350,6 +1408,41 @@ function renderBonusList(bonuses, adminView) {
         </tr>`;
     });
     $('#bonus-list-body').html(html);
+}
+
+function filterAndSortBonusList(bonuses, adminView) {
+    const search = ($('#bonus-list-search').val() || '').trim().toLowerCase();
+    const sort = $('#bonus-list-sort').val() || 'date_desc';
+    let rows = Array.isArray(bonuses) ? [...bonuses] : [];
+
+    if (adminView && search) {
+        rows = rows.filter(bonus => {
+            const haystack = [
+                bonus.patient_name,
+                bonus.patient_email,
+                bonus.name,
+                bonus.status,
+                bonus.purchased_at
+            ].join(' ').toLowerCase();
+            return haystack.includes(search);
+        });
+    }
+
+    rows.sort((a, b) => {
+        if (sort === 'patient_asc') {
+            return String(a.patient_name || '').localeCompare(String(b.patient_name || ''), 'es');
+        }
+        if (sort === 'remaining_desc' || sort === 'remaining_asc') {
+            const aRemaining = parseInt(a.remaining_sessions || 0, 10);
+            const bRemaining = parseInt(b.remaining_sessions || 0, 10);
+            return sort === 'remaining_desc' ? bRemaining - aRemaining : aRemaining - bRemaining;
+        }
+        const aDate = String(a.purchased_at || '');
+        const bDate = String(b.purchased_at || '');
+        return sort === 'date_asc' ? aDate.localeCompare(bDate) : bDate.localeCompare(aDate);
+    });
+
+    return rows;
 }
 
 function bonusStatusLabel(status) {
@@ -1377,11 +1470,12 @@ function showBonusesModalAlert(type, message) {
         .text(message);
 }
 
-function openInviteModal(link) {
+function openInviteModal(link, token = '', prefillEmail = '') {
     if (!inviteModal) return;
     currentInviteLink = link || '';
+    currentInviteToken = token || '';
     $('#invite-link').val(currentInviteLink);
-    $('#invite-email').val('');
+    $('#invite-email').val(prefillEmail || '');
     $('#invite-modal-alert').addClass('d-none').text('');
     $('#invite-qr').empty();
 
@@ -1431,7 +1525,8 @@ function sendInviteEmail(button) {
         dataType: 'json',
         data: {
             email,
-            link: currentInviteLink
+            link: currentInviteLink,
+            token: currentInviteToken
         },
         success: function (res) {
             if (res.success) {
@@ -1451,7 +1546,261 @@ function sendInviteEmail(button) {
 }
 
 function showInviteAlert(type, message) {
+    if (inviteAlertTimer) {
+        clearTimeout(inviteAlertTimer);
+        inviteAlertTimer = null;
+    }
     $('#invite-modal-alert')
+        .removeClass('d-none alert-success alert-danger')
+        .addClass(type === 'success' ? 'alert-success' : 'alert-danger')
+        .text(message);
+    if (type === 'success') {
+        inviteAlertTimer = setTimeout(function () {
+            $('#invite-modal-alert').addClass('d-none').text('');
+        }, 3000);
+    }
+}
+
+function openAdminPatientsModal() {
+    if (!adminPatientsModal) return;
+    if (adminPatientsAlertTimer) {
+        clearTimeout(adminPatientsAlertTimer);
+        adminPatientsAlertTimer = null;
+    }
+    $('#admin-patients-alert').addClass('d-none').text('');
+    $('#admin-patients-search').val('');
+    $('#admin-patients-sort').val('name_asc');
+    $('#admin-patients-body').html('<tr><td colspan="7" class="text-center text-muted py-4">Cargando...</td></tr>');
+    $('#admin-patients-count').text('');
+    adminPatientsModal.show();
+    loadAdminPatients();
+}
+
+function loadAdminPatients() {
+    $.ajax({
+        url: 'api/admin.php?action=list_patients',
+        dataType: 'json',
+        success: function (res) {
+            if (!res.success) {
+                showAdminPatientsAlert('danger', res.error || 'No se pudieron cargar los pacientes.');
+                return;
+            }
+            ADMIN_PATIENTS = Array.isArray(res.patients) ? res.patients : [];
+            renderAdminPatients(ADMIN_PATIENTS);
+            refreshPatientSelectOptions();
+        },
+        error: function () {
+            showAdminPatientsAlert('danger', 'Error de conexion al cargar los pacientes.');
+        }
+    });
+}
+
+function renderAdminPatients(patients) {
+    const filteredPatients = filterAndSortAdminPatients(patients);
+    if (!patients.length) {
+        $('#admin-patients-body').html('<tr><td colspan="7" class="text-center text-muted py-4">Todavia no hay pacientes.</td></tr>');
+        $('#admin-patients-count').text('');
+        return;
+    }
+    if (!filteredPatients.length) {
+        $('#admin-patients-body').html('<tr><td colspan="7" class="text-center text-muted py-4">No hay pacientes que coincidan con la busqueda.</td></tr>');
+        $('#admin-patients-count').text('');
+        return;
+    }
+
+    const html = filteredPatients.map(patient => {
+        const contact = [
+            patient.email ? `<div>${escapeHtml(patient.email)}</div>` : '',
+            patient.phone ? `<small class="text-muted">${escapeHtml(patient.phone)}</small>` : ''
+        ].join('') || '<span class="text-muted">Sin contacto</span>';
+        const accessBadge = parseInt(patient.has_portal_access || 0, 10) === 1
+            ? '<span class="badge text-bg-success">Con acceso</span>'
+            : '<span class="badge text-bg-secondary">Sin acceso</span>';
+        const inviteButton = parseInt(patient.has_portal_access || 0, 10) === 1
+            ? ''
+            : `<button class="btn btn-outline-primary btn-sm btn-send-patient-invite" type="button" data-patient-id="${patient.id}" title="Enviar invitacion de registro"><i class="bi bi-envelope"></i></button>`;
+        const documentLink = patient.document_path
+            ? `<a href="${escapeHtml(patient.document_path)}" target="_blank" rel="noopener">${escapeHtml(patient.document_name || 'Documento')}</a>`
+            : '<span class="text-muted">Sin archivo</span>';
+
+        return `
+            <tr>
+                <td><strong>${escapeHtml(patient.name || '')}</strong></td>
+                <td>${contact}</td>
+                <td>${patient.patient_type ? escapeHtml(patient.patient_type) : '<span class="text-muted">-</span>'}</td>
+                <td>${patient.admission_date ? formatDisplayDate(patient.admission_date) : '<span class="text-muted">-</span>'}</td>
+                <td>${accessBadge}</td>
+                <td>${documentLink}</td>
+                <td class="text-end">
+                    <div class="d-inline-flex gap-1">
+                        ${inviteButton}
+                        <button class="btn btn-outline-secondary btn-sm btn-edit-patient" type="button" data-patient-id="${patient.id}" title="Datos del paciente">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    $('#admin-patients-body').html(html);
+    $('#admin-patients-count').text(`${filteredPatients.length} ${filteredPatients.length === 1 ? 'paciente' : 'pacientes'}`);
+}
+
+function filterAndSortAdminPatients(patients) {
+    const search = ($('#admin-patients-search').val() || '').trim().toLowerCase();
+    const sort = $('#admin-patients-sort').val() || 'name_asc';
+    let rows = Array.isArray(patients) ? [...patients] : [];
+
+    if (search) {
+        rows = rows.filter(patient => {
+            const haystack = [
+                patient.name,
+                patient.email,
+                patient.phone,
+                patient.patient_type,
+                patient.admission_date
+            ].join(' ').toLowerCase();
+            return haystack.includes(search);
+        });
+    }
+
+    rows.sort((a, b) => {
+        if (sort === 'admission_desc' || sort === 'admission_asc') {
+            const aDate = a.admission_date || '';
+            const bDate = b.admission_date || '';
+            return sort === 'admission_desc'
+                ? bDate.localeCompare(aDate)
+                : aDate.localeCompare(bDate);
+        }
+        const aName = a.name || '';
+        const bName = b.name || '';
+        return sort === 'name_desc'
+            ? bName.localeCompare(aName, 'es')
+            : aName.localeCompare(bName, 'es');
+    });
+
+    return rows;
+}
+
+function openPatientEditorModal(patient = null) {
+    if (!patientEditorModal) return;
+    $('#patient-editor-alert').addClass('d-none').text('');
+    $('#patient-editor-form')[0].reset();
+    $('#patient-editor-title').text(patient ? 'Editar paciente' : 'Nuevo paciente');
+    $('#patient-editor-id').val(patient ? patient.id : '');
+    $('#patient-editor-name').val(patient ? patient.name || '' : '');
+    $('#patient-editor-type').val(patient ? patient.patient_type || '' : '');
+    $('#patient-editor-email').val(patient ? patient.email || '' : '');
+    $('#patient-editor-phone').val(patient ? patient.phone || '' : '');
+    $('#patient-editor-admission-date').val(patient ? patient.admission_date || formatDate(new Date()) : formatDate(new Date()));
+    $('#patient-editor-notes').val(patient ? patient.notes || '' : '');
+    if (patient && patient.document_path) {
+        $('#patient-editor-document-status').html(`Archivo actual: <a href="${escapeHtml(patient.document_path)}" target="_blank" rel="noopener">${escapeHtml(patient.document_name || 'Documento')}</a>`);
+    } else {
+        $('#patient-editor-document-status').text('Puedes adjuntar un PDF, XLS o XLSX de hasta 12 MB.');
+    }
+    patientEditorModal.show();
+}
+
+function savePatient(form) {
+    const $button = $('#btn-save-patient');
+    const original = $button.html();
+    const formData = new FormData(form);
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Guardando');
+    $('#patient-editor-alert').addClass('d-none').text('');
+
+    $.ajax({
+        url: 'api/admin.php?action=save_patient',
+        method: 'POST',
+        data: formData,
+        dataType: 'json',
+        processData: false,
+        contentType: false,
+        success: function (res) {
+            if (!res.success) {
+                showPatientEditorAlert('danger', res.error || 'No se pudo guardar el paciente.');
+                return;
+            }
+            showAdminPatientsAlert('success', res.message || 'Paciente guardado correctamente.');
+            patientEditorModal.hide();
+            loadAdminPatients();
+        },
+        error: function () {
+            showPatientEditorAlert('danger', 'Error de conexion al guardar el paciente.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function openPatientInviteModal(patientId, button) {
+    const patient = ADMIN_PATIENTS.find(item => String(item.id) === String(patientId));
+    const $button = $(button);
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+
+    $.ajax({
+        url: 'api/admin.php?action=generate_invite',
+        method: 'GET',
+        dataType: 'json',
+        data: { user_id: patientId },
+        success: function (res) {
+            if (res.success) {
+                if (adminPatientsModal) {
+                    adminPatientsModal.hide();
+                }
+                openInviteModal(res.link, res.token || '', patient ? patient.email || '' : '');
+                showInviteAlert('success', patient && patient.name
+                    ? `Enviar invitacion a ${patient.name}.`
+                    : 'Enviar invitacion al paciente.');
+            } else {
+                showAdminPatientsAlert('danger', res.error || 'No se pudo generar la invitacion.');
+            }
+        },
+        error: function () {
+            showAdminPatientsAlert('danger', 'Error de conexion al generar la invitacion.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function refreshPatientSelectOptions() {
+    const $select = $('#patientSelect');
+    if (!$select.length || !ADMIN_PATIENTS.length) {
+        return;
+    }
+    const selected = $select.val();
+    $select.html('<option value="">Selecciona un paciente...</option>');
+    ADMIN_PATIENTS.forEach(patient => {
+        $select.append(`<option value="${patient.id}">${escapeHtml(patient.name || '')}</option>`);
+    });
+    if (selected) {
+        $select.val(selected);
+    }
+}
+
+function showAdminPatientsAlert(type, message) {
+    if (adminPatientsAlertTimer) {
+        clearTimeout(adminPatientsAlertTimer);
+        adminPatientsAlertTimer = null;
+    }
+    $('#admin-patients-alert')
+        .removeClass('d-none alert-success alert-danger')
+        .addClass(type === 'success' ? 'alert-success' : 'alert-danger')
+        .text(message);
+    if (type === 'success') {
+        adminPatientsAlertTimer = setTimeout(function () {
+            $('#admin-patients-alert').addClass('d-none').text('');
+        }, 4000);
+    }
+}
+
+function showPatientEditorAlert(type, message) {
+    $('#patient-editor-alert')
         .removeClass('d-none alert-success alert-danger')
         .addClass(type === 'success' ? 'alert-success' : 'alert-danger')
         .text(message);
@@ -1460,18 +1809,29 @@ function showInviteAlert(type, message) {
 function openUpcomingAppointmentsModal() {
     if (!upcomingAppointmentsModal) return;
     $('#upcoming-appointments-alert').addClass('d-none').text('');
+    $('#upcoming-appointments-search').val('');
+    $('#upcoming-appointments-scope').val('limit10');
     $('#upcoming-appointments-body').html('<tr><td colspan="5" class="text-center text-muted py-4">Cargando...</td></tr>');
+    $('#upcoming-appointments-count').text('');
     upcomingAppointmentsModal.show();
+    loadUpcomingAppointments();
+}
 
+function loadUpcomingAppointments() {
+    $('#upcoming-appointments-alert').addClass('d-none').text('');
+    $('#upcoming-appointments-body').html('<tr><td colspan="5" class="text-center text-muted py-4">Cargando...</td></tr>');
+    $('#upcoming-appointments-count').text('');
     $.ajax({
         url: 'api/admin.php?action=upcoming_appointments',
+        data: { scope: $('#upcoming-appointments-scope').val() || 'limit10' },
         dataType: 'json',
         success: function (res) {
             if (!res.success) {
                 showUpcomingAppointmentsAlert('danger', res.error || 'No se pudieron cargar las citas.');
                 return;
             }
-            renderUpcomingAppointments(res.appointments || []);
+            CURRENT_UPCOMING_APPOINTMENTS = Array.isArray(res.appointments) ? res.appointments : [];
+            renderUpcomingAppointments(CURRENT_UPCOMING_APPOINTMENTS);
         },
         error: function () {
             showUpcomingAppointmentsAlert('danger', 'Error de conexion al cargar las citas.');
@@ -1480,13 +1840,20 @@ function openUpcomingAppointmentsModal() {
 }
 
 function renderUpcomingAppointments(appointments) {
+    const rows = filterUpcomingAppointments(appointments);
     if (!appointments.length) {
-        $('#upcoming-appointments-body').html('<tr><td colspan="5" class="text-center text-muted py-4">No hay citas futuras.</td></tr>');
+        $('#upcoming-appointments-body').html('<tr><td colspan="5" class="text-center text-muted py-4">No hay citas pr&oacute;ximas.</td></tr>');
+        $('#upcoming-appointments-count').text('');
+        return;
+    }
+    if (!rows.length) {
+        $('#upcoming-appointments-body').html('<tr><td colspan="5" class="text-center text-muted py-4">No hay citas que coincidan con la busqueda.</td></tr>');
+        $('#upcoming-appointments-count').text('');
         return;
     }
 
     let html = '';
-    appointments.forEach(app => {
+    rows.forEach(app => {
         html += `
             <tr>
                 <td><strong>${formatDisplayDate(app.appointment_date)}</strong><br><small class="text-muted">${escapeHtml(app.appointment_time || '')}</small></td>
@@ -1498,6 +1865,34 @@ function renderUpcomingAppointments(appointments) {
         `;
     });
     $('#upcoming-appointments-body').html(html);
+    $('#upcoming-appointments-count').text(`${rows.length} ${rows.length === 1 ? 'cita' : 'citas'}`);
+}
+
+function filterUpcomingAppointments(appointments) {
+    const search = ($('#upcoming-appointments-search').val() || '').trim().toLowerCase();
+    let rows = Array.isArray(appointments) ? [...appointments] : [];
+    if (search) {
+        rows = rows.filter(app => {
+            const haystack = [
+                app.appointment_date,
+                app.appointment_time,
+                app.patient_name,
+                app.patient_email,
+                app.patient_phone,
+                app.service_label,
+                consultationTypeLabel(app.consultation_type),
+                app.payment_status,
+                app.payment_method
+            ].join(' ').toLowerCase();
+            return haystack.includes(search);
+        });
+    }
+    rows.sort((a, b) => {
+        const aKey = `${a.appointment_date || ''} ${a.appointment_time || ''}`;
+        const bKey = `${b.appointment_date || ''} ${b.appointment_time || ''}`;
+        return aKey.localeCompare(bKey);
+    });
+    return rows;
 }
 
 function adminPaymentLabel(app) {
@@ -1568,6 +1963,7 @@ function renderAdminStats(stats) {
             <div class="stats-summary-card"><span>Hoy</span><strong>${parseInt(stats.today_count || 0, 10)}</strong><small>citas</small></div>
             <div class="stats-summary-card"><span>Pr&oacute;ximas</span><strong>${parseInt(stats.upcoming_count || 0, 10)}</strong><small>citas</small></div>
             <div class="stats-summary-card"><span>Este mes</span><strong>${parseInt(stats.month_count || 0, 10)}</strong><small>citas</small></div>
+            <div class="stats-summary-card"><span>Pacientes</span><strong>${parseInt(stats.patient_count || 0, 10)}</strong><small>fichas</small></div>
             <div class="stats-summary-card"><span>Ingresos online</span><strong>${formatPrice(stats.online_revenue_month || 0)} &euro;</strong><small>este mes</small></div>
             <div class="stats-summary-card"><span>Bonos activos</span><strong>${parseInt(stats.active_bonus_count || 0, 10)}</strong><small>${parseInt(stats.active_bonus_sessions || 0, 10)} sesiones</small></div>
         </div>

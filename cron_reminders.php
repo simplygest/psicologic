@@ -13,6 +13,7 @@ if (!defined('CRON_WEBHOOK_TOKEN') || !hash_equals(CRON_WEBHOOK_TOKEN, (string) 
 require_once 'db.php';
 require_once 'payment_helpers.php';
 require_once 'mail_helpers.php';
+require_once 'urlme_helpers.php';
 
 ensure_appointment_payment_columns($mysqli);
 ensure_appointment_services_tables($mysqli);
@@ -75,7 +76,7 @@ foreach ($appointments as $appointment) {
         $update_token->execute();
     }
 
-    $manage_link = $base_url . 'cancelar_cita.php?t=' . urlencode($cancel_token);
+    $manage_link = urlme_shorten_url($base_url . 'cancelar_cita.php?t=' . urlencode($cancel_token), 'Recordatorio cita PsicoLogic');
     $date = date('d/m/Y', strtotime($appointment['appointment_date']));
     $time = date('H:i', strtotime($appointment['appointment_time']));
     $consultation_text = appointment_consultation_label($appointment['consultation_type'] ?? 'presencial');
