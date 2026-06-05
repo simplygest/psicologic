@@ -2,13 +2,17 @@
 session_start();
 require_once 'db.php';
 require_once 'settings_helpers.php';
+require_once 'cabinet_helpers.php';
 $branding = get_public_branding_settings($mysqli);
 $app_name = $branding['app_name'];
+$site_tagline = trim($branding['site_tagline'] ?? '') ?: 'Psicología sanitaria y neuropsicología en Santa Cruz de Tenerife';
+$site_phone = trim($branding['site_phone'] ?? '');
 $profile_image_path = $branding['show_profile_image_public'] ? $branding['profile_image_path'] : '';
 $landing_image_path = $branding['landing_image_path'] ?: '';
 $show_prices_public = (int) ($branding['show_prices_public'] ?? 0) === 1;
+$show_team_public = cabinet_public_team_enabled($mysqli);
 $is_logged_in = isset($_SESSION['user_id']);
-$is_admin = ($_SESSION['role'] ?? '') === 'admin';
+$is_admin = in_array($_SESSION['role'] ?? '', ['admin', 'superadmin'], true);
 $online_booking_enabled = (int) ($branding['online_booking_enabled'] ?? 1) === 1;
 $show_patient_area = $online_booking_enabled || $is_admin;
 $appointment_delivery_mode = 'both';
@@ -42,8 +46,8 @@ function public_delivery_text($mode)
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow, noarchive">
-    <title>Stephanie Luis Báez - Psicóloga sanitaria y neuropsicóloga</title>
-    <meta name="description" content="Consulta de psicología sanitaria y neuropsicología en Santa Cruz de Tenerife. Atención a adultos, infancia y adolescencia.">
+    <title><?= htmlspecialchars($app_name) ?> - Psicología sanitaria</title>
+    <meta name="description" content="<?= htmlspecialchars($site_tagline) ?>">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css?v=<?= filemtime(__DIR__ . '/css/style.css') ?>">
@@ -57,7 +61,7 @@ function public_delivery_text($mode)
                 <?php if ($profile_image_path): ?>
                     <img src="<?= htmlspecialchars($profile_image_path) ?>" alt="" class="brand-avatar">
                 <?php endif; ?>
-                <span>Stephanie Luis Báez</span>
+                <span><?= htmlspecialchars($app_name) ?></span>
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#publicNav" aria-controls="publicNav" aria-expanded="false" aria-label="Abrir menú">
                 <span class="navbar-toggler-icon"></span>
@@ -67,6 +71,9 @@ function public_delivery_text($mode)
                     <a class="nav-link" href="#servicios">Servicios</a>
                     <?php if ($show_prices_public): ?>
                         <a class="nav-link" href="precios.php">Precios</a>
+                    <?php endif; ?>
+                    <?php if ($show_team_public): ?>
+                        <a class="nav-link" href="equipo.php">Equipo</a>
                     <?php endif; ?>
                     <a class="nav-link" href="#experiencia">Experiencia</a>
                     <a class="nav-link" href="#formacion">Formación</a>
@@ -86,8 +93,8 @@ function public_delivery_text($mode)
             <div class="container">
                 <div class="row align-items-center g-5">
                     <div class="col-lg-7">
-                        <p class="landing-kicker">Psicología sanitaria y neuropsicología en Santa Cruz de Tenerife</p>
-                        <h1>Stephanie Luis Báez</h1>
+                        <p class="landing-kicker"><?= htmlspecialchars($site_tagline) ?></p>
+                        <h1><?= htmlspecialchars($app_name) ?></h1>
                         <p class="landing-lead">Acompañamiento psicológico basado en evidencia, con <?= htmlspecialchars(public_delivery_text($appointment_delivery_mode)) ?> para adultos, infancia y adolescencia.</p>
                         <div class="landing-actions">
                             <?php if ($show_patient_area): ?>
@@ -97,11 +104,17 @@ function public_delivery_text($mode)
                             <?php endif; ?>
                             <a href="#servicios" class="btn btn-outline-secondary btn-lg">Ver servicios</a>
                         </div>
+                        <?php if ($site_phone !== ''): ?>
+                            <div class="landing-contact">
+                                <span>Teléfono de contacto</span>
+                                <a href="tel:<?= htmlspecialchars(preg_replace('/[^\d+]/', '', $site_phone)) ?>"><?= htmlspecialchars($site_phone) ?></a>
+                            </div>
+                        <?php endif; ?>
                     </div>
                     <div class="col-lg-5">
                         <div class="landing-portrait">
                             <?php if ($landing_image_path): ?>
-                                <img src="<?= htmlspecialchars($landing_image_path) ?>" alt="Stephanie Luis Báez">
+                                <img src="<?= htmlspecialchars($landing_image_path) ?>" alt="<?= htmlspecialchars($app_name) ?>">
                             <?php else: ?>
                                 <div class="landing-portrait-placeholder">
                                     <span>SLB</span>
@@ -213,6 +226,11 @@ function public_delivery_text($mode)
                         <?php if ($show_patient_area): ?>
                             <a href="<?= $is_logged_in ? 'dashboard.php' : 'login.php' ?>" class="btn btn-primary btn-lg">
                                 <?= $is_admin ? 'Abrir panel admin' : ($is_logged_in ? 'Abrir calendario' : 'Acceder al &aacute;rea de pacientes') ?>
+                            </a>
+                        <?php endif; ?>
+                        <?php if ($site_phone !== ''): ?>
+                            <a href="tel:<?= htmlspecialchars(preg_replace('/[^\d+]/', '', $site_phone)) ?>" class="btn btn-outline-secondary btn-lg ms-lg-2 mt-2 mt-lg-0">
+                                Llamar
                             </a>
                         <?php endif; ?>
                     </div>

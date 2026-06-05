@@ -27,6 +27,13 @@ body {
     color: var(--primary-color) !important;
 }
 
+.dashboard-user-greeting {
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .brand-avatar {
     width: 34px;
     height: 34px;
@@ -326,6 +333,18 @@ body {
     color: #8f3b3b;
 }
 
+.month-day.disabled-day,
+.month-day.full-day,
+.month-day.closed-day {
+    cursor: pointer;
+}
+
+.month-day.disabled-day.selected,
+.month-day.full-day.selected,
+.month-day.closed-day.selected {
+    box-shadow: inset 0 0 0 2px var(--primary-color);
+}
+
 .month-day-panel {
     overflow-y: auto;
 }
@@ -459,6 +478,138 @@ body {
 
 .prices-page-section {
     min-height: calc(100vh - 170px);
+}
+
+.team-page-section {
+    padding-top: 58px;
+}
+
+.team-page-header {
+    align-items: end;
+    display: grid;
+    gap: 28px;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 0.65fr);
+    margin-bottom: 34px;
+}
+
+.team-grid {
+    display: grid;
+    gap: 22px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.team-card {
+    background: #ffffff;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    display: grid;
+    grid-template-columns: 180px minmax(0, 1fr);
+    min-height: 240px;
+    overflow: hidden;
+}
+
+.team-card-photo {
+    background: #eef4f0;
+    min-height: 240px;
+}
+
+.team-card-photo img,
+.team-card-placeholder {
+    height: 100%;
+    width: 100%;
+}
+
+.team-card-photo img {
+    display: block;
+    object-fit: cover;
+}
+
+.team-card-placeholder {
+    align-items: center;
+    color: var(--primary-color);
+    display: flex;
+    font-size: 2.4rem;
+    font-weight: 700;
+    justify-content: center;
+}
+
+.team-card-body {
+    padding: 24px;
+}
+
+.team-card-body h2 {
+    color: #263238;
+    font-size: 1.35rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.team-title {
+    color: var(--primary-color);
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.team-license {
+    color: #66737d;
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-bottom: 12px;
+}
+
+.team-specialty {
+    color: #44515c;
+    line-height: 1.6;
+    margin-bottom: 14px;
+}
+
+.team-specialty-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.team-specialty-pills span {
+    background: color-mix(in srgb, var(--primary-color) 14%, #fff);
+    border: 1px solid color-mix(in srgb, var(--primary-color) 24%, #fff);
+    border-radius: 999px;
+    color: #44515c;
+    font-size: 0.86rem;
+    font-weight: 600;
+    line-height: 1.2;
+    padding: 6px 10px;
+}
+
+.team-bio {
+    color: #66737d;
+    font-size: 0.95rem;
+    line-height: 1.65;
+    margin-bottom: 0;
+}
+
+.team-cta {
+    align-items: center;
+    background: #eef4f0;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    display: flex;
+    gap: 20px;
+    justify-content: space-between;
+    margin-top: 34px;
+    padding: 24px;
+}
+
+.team-cta h2 {
+    color: #263238;
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.team-cta p {
+    color: #66737d;
+    margin-bottom: 0;
 }
 
 .bonus-card {
@@ -772,6 +923,29 @@ body {
     gap: 12px;
 }
 
+.landing-contact {
+    align-items: baseline;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    margin-top: 18px;
+}
+
+.landing-contact span {
+    color: #6b7280;
+    font-size: 0.95rem;
+}
+
+.landing-contact a {
+    color: var(--primary-color);
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.landing-contact a:hover {
+    text-decoration: underline;
+}
+
 .landing-portrait {
     background: #ffffff;
     border: 1px solid var(--border-color);
@@ -996,20 +1170,119 @@ body {
     text-align: right;
 }
 
+.stats-professional-grid {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.stats-professional-card {
+    align-items: center;
+    background: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    padding: 12px;
+}
+
+.stats-professional-numbers {
+    color: #66737d;
+    display: grid;
+    gap: 2px;
+    font-size: 0.82rem;
+    text-align: right;
+}
+
+.stats-professional-numbers strong {
+    color: #263238;
+}
+
 .admin-patients-table-wrap,
 .admin-bonuses-table-wrap,
-.upcoming-appointments-table-wrap {
+.upcoming-appointments-table-wrap,
+.patient-history-table-wrap {
     max-height: 56vh;
     overflow: auto;
 }
 
 .admin-patients-table-wrap thead th,
 .admin-bonuses-table-wrap thead th,
-.upcoming-appointments-table-wrap thead th {
+.upcoming-appointments-table-wrap thead th,
+.patient-history-table-wrap thead th {
     position: sticky;
     top: 0;
     z-index: 1;
     background: #fff;
+}
+
+.professional-actions {
+    display: inline-flex;
+    gap: 6px;
+    justify-content: flex-end;
+    min-width: 78px;
+}
+
+.professional-actions .btn {
+    align-items: center;
+    display: inline-flex;
+    height: 32px;
+    justify-content: center;
+    padding: 0;
+    width: 32px;
+}
+
+.upcoming-professional-cell {
+    align-items: center;
+    display: inline-flex;
+    gap: 8px;
+    min-width: 130px;
+}
+
+.upcoming-professional-avatar {
+    border-radius: 50%;
+    flex: 0 0 auto;
+    height: 30px;
+    object-fit: cover;
+    width: 30px;
+}
+
+.upcoming-professional-avatar-empty {
+    align-items: center;
+    background: #f4f6f7;
+    border: 1px solid var(--border-color);
+    color: #66737d;
+    display: inline-flex;
+    justify-content: center;
+}
+
+.closed-day-row-main {
+    display: grid;
+    gap: 6px;
+}
+
+.closed-day-professional .upcoming-professional-cell {
+    color: #66737d;
+    font-size: 0.86rem;
+    min-width: 0;
+}
+
+.closed-day-professional .upcoming-professional-avatar {
+    height: 24px;
+    width: 24px;
+}
+
+body.settings-secondary-modal-open #settingsModal .settings-modal-content {
+    filter: grayscale(0.2);
+    opacity: 0.42;
+    transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
+body.patients-secondary-modal-open #adminPatientsModal .modal-content {
+    filter: grayscale(0.2);
+    opacity: 0.42;
+    transition: opacity 0.15s ease, filter 0.15s ease;
 }
 
 @media (max-width: 768px) {
@@ -1035,8 +1308,21 @@ body {
     }
 
     .service-grid,
-    .education-grid {
+    .education-grid,
+    .team-page-header,
+    .team-grid,
+    .team-card {
         grid-template-columns: 1fr;
+    }
+
+    .team-card-photo {
+        aspect-ratio: 16 / 10;
+        min-height: 0;
+    }
+
+    .team-cta {
+        align-items: flex-start;
+        flex-direction: column;
     }
 
     .landing-actions .btn {

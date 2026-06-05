@@ -9,6 +9,8 @@ function ensure_branding_columns($mysqli)
 
     $columns = [
         'app_name' => "ALTER TABLE payment_settings ADD app_name VARCHAR(255) DEFAULT 'PsicoLogic' AFTER id",
+        'site_tagline' => "ALTER TABLE payment_settings ADD site_tagline VARCHAR(255) DEFAULT NULL AFTER app_name",
+        'site_phone' => "ALTER TABLE payment_settings ADD site_phone VARCHAR(40) DEFAULT NULL AFTER site_tagline",
         'profile_image_path' => "ALTER TABLE payment_settings ADD profile_image_path VARCHAR(255) DEFAULT NULL AFTER app_name",
         'landing_image_path' => "ALTER TABLE payment_settings ADD landing_image_path VARCHAR(255) DEFAULT NULL AFTER profile_image_path",
         'primary_color' => "ALTER TABLE payment_settings ADD primary_color VARCHAR(7) NOT NULL DEFAULT '#8f7fba' AFTER landing_image_path",
@@ -29,6 +31,8 @@ function get_public_branding_settings($mysqli)
 {
     $settings = [
         'app_name' => 'PsicoLogic',
+        'site_tagline' => 'Psicología sanitaria y neuropsicología en Santa Cruz de Tenerife',
+        'site_phone' => '',
         'profile_image_path' => '',
         'landing_image_path' => '',
         'primary_color' => '#8f7fba',
@@ -45,13 +49,15 @@ function get_public_branding_settings($mysqli)
     ensure_branding_columns($mysqli);
 
     $res = $mysqli->query("
-        SELECT app_name, profile_image_path, landing_image_path, primary_color, show_profile_image_public, show_prices_public, online_booking_enabled
+        SELECT app_name, site_tagline, site_phone, profile_image_path, landing_image_path, primary_color, show_profile_image_public, show_prices_public, online_booking_enabled
         FROM payment_settings
         WHERE id = 1
     ");
 
     if ($row = $res->fetch_assoc()) {
         $settings['app_name'] = trim($row['app_name'] ?? '') ?: 'PsicoLogic';
+        $settings['site_tagline'] = trim($row['site_tagline'] ?? '') ?: 'Psicología sanitaria y neuropsicología en Santa Cruz de Tenerife';
+        $settings['site_phone'] = trim($row['site_phone'] ?? '');
         $settings['profile_image_path'] = $row['profile_image_path'] ?? '';
         $settings['landing_image_path'] = $row['landing_image_path'] ?? '';
         $settings['primary_color'] = preg_match('/^#[0-9a-fA-F]{6}$/', $row['primary_color'] ?? '') ? strtolower($row['primary_color']) : '#8f7fba';

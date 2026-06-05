@@ -3,6 +3,7 @@ session_start();
 require_once 'db.php';
 require_once 'settings_helpers.php';
 require_once 'payment_helpers.php';
+require_once 'cabinet_helpers.php';
 
 $branding = get_public_branding_settings($mysqli);
 if ((int) ($branding['show_prices_public'] ?? 0) !== 1) {
@@ -17,6 +18,7 @@ $is_logged_in = isset($_SESSION['user_id']);
 $is_admin = ($_SESSION['role'] ?? '') === 'admin';
 $online_booking_enabled = (int) ($branding['online_booking_enabled'] ?? 1) === 1;
 $show_patient_area = $online_booking_enabled || $is_admin;
+$show_team_public = cabinet_public_team_enabled($mysqli);
 $services = fetch_appointment_services($mysqli, true);
 $bonuses = [];
 $public_delivery_mode = 'both';
@@ -79,6 +81,9 @@ function public_consultation_label($type)
             </a>
             <div class="navbar-nav ms-auto align-items-lg-center gap-lg-2">
                 <a class="nav-link" href="index.php">Inicio</a>
+                <?php if ($show_team_public): ?>
+                    <a class="nav-link" href="equipo.php">Equipo</a>
+                <?php endif; ?>
                 <?php if ($show_patient_area): ?>
                     <a class="btn btn-primary btn-sm ms-lg-2" href="<?= $is_logged_in ? 'dashboard.php' : 'login.php' ?>">
                         <?= $is_admin ? 'Panel admin' : ($is_logged_in ? 'Ir a mis citas' : '&Aacute;rea pacientes') ?>

@@ -7,6 +7,7 @@ require_once '../mail_helpers.php';
 require_once '../google_helpers.php';
 require_once '../caldav_helpers.php';
 require_once '../urlme_helpers.php';
+require_once '../cabinet_helpers.php';
 header('Content-Type: application/json');
 
 if (!isset($_SESSION['user_id'])) {
@@ -26,6 +27,7 @@ if (!$is_admin && !online_booking_enabled($mysqli)) {
 ensure_appointment_payment_columns($mysqli);
 ensure_appointment_services_tables($mysqli);
 ensure_bonus_tables($mysqli);
+ensure_cabinet_schema($mysqli);
 
 function ensure_schedule_setting_columns($mysqli)
 {
@@ -117,13 +119,175 @@ function active_weekdays($settings)
     return $days ?: [1, 2, 3, 4, 5];
 }
 
-if ($action === 'get_month') {
+function appointment_context_professional_id($mysqli, $session_user_id, $is_admin)
+{
+    return cabinet_resolve_professional_id($mysqli, (int) $session_user_id, (int) $session_user_id, $is_admin);
+}
+
+function apply_effective_professional_settings($mysqli, $payment_settings, $session_user_id, $is_admin)
+{
+    $professional_id = appointment_context_professional_id($mysqli, $session_user_id, $is_admin);
+    if ($professional_id > 0) {
+        $payment_settings = array_merge($payment_settings, cabinet_get_effective_professional_settings($mysqli, $professional_id));
+        $payment_settings['current_professional_id'] = $professional_id;
+    }
+    return $payment_settings;
+}
+
+function default_booking_payment_settings()
+{
+    return [
+        'online_payment_enabled' => 0,
+        'appointment_price' => '70.00',
+        'online_appointment_price' => '70.00',
+        'couple_appointment_price' => '90.00',
+        'online_couple_appointment_price' => '90.00',
+        'available_session_types' => 'individual',
+        'min_booking_notice_days' => 2,
+        'max_booking_notice_days' => MAX_BOOKING_DAYS,
+        'appointment_start_time' => '10:00:00',
+        'appointment_end_time' => '19:00:00',
+        'break_start_time' => '15:00:00',
+        'break_end_time' => '16:00:00',
+        'available_weekdays' => '1,2,3,4,5',
+        'appointment_delivery_mode' => 'both',
+        'available_session_durations' => '60',
+        'bonuses_enabled' => 0,
+        'create_compensation_bonus_on_paid_cancel' => 1
+    ];
+}
+
+function load_booking_payment_settings($mysqli)
+{
+    $payment_settings = default_booking_payment_settings();
+    $settings_res = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
+    if ($settings_res && $settings_res->num_rows > 0) {
+        ensure_payment_settings_price_columns($mysqli);
+        $limit_columns = [
+            'min_booking_notice_days' => "ALTER TABLE payment_settings ADD min_booking_notice_days INT UNSIGNED NOT NULL DEFAULT 2",
+            'max_booking_notice_days' => "ALTER TABLE payment_settings ADD max_booking_notice_days INT UNSIGNED NOT NULL DEFAULT 40"
+        ];
+        foreach ($limit_columns as $column => $sql) {
+            $column_res = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE '$column'");
+            if ($column_res && $column_res->num_rows === 0) {
+                $mysqli->query($sql);
+            }
+        }
+        ensure_schedule_setting_columns($mysqli);
+        ensure_delivery_setting_column($mysqli);
+        ensure_session_setting_column($mysqli);
+        ensure_bonus_tables($mysqli);
+        $settings_res = $mysqli->query("
+            SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, available_session_types, available_session_durations,
+                   min_booking_notice_days, max_booking_notice_days,
+                   appointment_start_time, appointment_end_time, break_start_time, break_end_time,
+                   available_weekdays, appointment_delivery_mode, bonuses_enabled, create_compensation_bonus_on_paid_cancel
+            FROM payment_settings
+            WHERE id = 1
+        ");
+        if ($settings_res && ($settings_row = $settings_res->fetch_assoc())) {
+            $payment_settings = array_merge($payment_settings, $settings_row);
+        }
+    }
+    return $payment_settings;
+}
+
+function service_options_for_settings($mysqli, $payment_settings)
+{
+    $service_options = [];
+    $active_durations = active_session_durations($payment_settings);
+    $active_delivery_mode = $payment_settings['appointment_delivery_mode'] ?? 'both';
+    $active_service_types = explode(',', $payment_settings['available_session_types'] ?? 'individual');
+    foreach (fetch_appointment_services($mysqli, true) as $service) {
+        if ($service['service_key'] === 'couple' && !in_array('couple', $active_service_types, true)) {
+            continue;
+        }
+        foreach ($service['options'] as $option) {
+            if (!in_array((int) $option['duration_minutes'], $active_durations, true)) {
+                continue;
+            }
+            if ($active_delivery_mode !== 'both' && $option['consultation_type'] !== $active_delivery_mode) {
+                continue;
+            }
+            $option['service_name'] = $service['name'];
+            $option['service_key'] = $service['service_key'];
+            $service_options[] = $option;
+        }
+    }
+    return $service_options;
+}
+
+function active_professional_exists($mysqli, $professional_id)
+{
+    if ((int) $professional_id <= 0) {
+        return false;
+    }
+    $stmt = $mysqli->prepare("SELECT id FROM professionals WHERE id = ? AND is_active = 1 LIMIT 1");
+    $stmt->bind_param("i", $professional_id);
+    $stmt->execute();
+    return (bool) $stmt->get_result()->fetch_assoc();
+}
+
+function resolve_booking_professional_id($mysqli, $session_user_id, $target_user_id, $is_admin, $requested_professional_id)
+{
+    $is_superadmin = ($_SESSION['role'] ?? '') === 'superadmin';
+    if ($is_superadmin && (int) $requested_professional_id > 0 && active_professional_exists($mysqli, (int) $requested_professional_id)) {
+        return (int) $requested_professional_id;
+    }
+    return cabinet_resolve_professional_id($mysqli, (int) $session_user_id, (int) $target_user_id, $is_admin);
+}
+
+function admin_can_book_patient_for_professional($mysqli, $patient_user_id, $professional_id)
+{
+    if (($_SESSION['role'] ?? '') === 'superadmin') {
+        return true;
+    }
+    $patient_user_id = (int) $patient_user_id;
+    $professional_id = (int) $professional_id;
+    if ($patient_user_id <= 0 || $professional_id <= 0) {
+        return false;
+    }
+    $stmt = $mysqli->prepare("
+        SELECT u.id
+        FROM users u
+        LEFT JOIN patient_profiles pp ON pp.user_id = u.id
+        LEFT JOIN patient_professionals ppf ON ppf.patient_id = u.id AND ppf.is_primary = 1
+        WHERE u.id = ?
+          AND u.role = 'patient'
+          AND COALESCE(ppf.professional_id, pp.professional_id) = ?
+        LIMIT 1
+    ");
+    $stmt->bind_param("ii", $patient_user_id, $professional_id);
+    $stmt->execute();
+    return (bool) $stmt->get_result()->fetch_assoc();
+}
+
+if ($action === 'booking_context') {
+    if (!$is_admin) {
+        echo json_encode(['success' => false, 'error' => 'No autorizado']);
+        exit;
+    }
+    $requested_professional_id = (int) ($_GET['professional_id'] ?? 0);
+    $context_professional_id = resolve_booking_professional_id($mysqli, (int) $user_id, (int) $user_id, $is_admin, $requested_professional_id);
+    $payment_settings = load_booking_payment_settings($mysqli);
+    if ($context_professional_id > 0) {
+        $payment_settings = array_merge($payment_settings, cabinet_get_effective_professional_settings($mysqli, $context_professional_id));
+        $payment_settings['current_professional_id'] = $context_professional_id;
+    }
+    echo json_encode([
+        'success' => true,
+        'professional_id' => $context_professional_id,
+        'payment_settings' => $payment_settings,
+        'service_options' => service_options_for_settings($mysqli, $payment_settings)
+    ]);
+} elseif ($action === 'get_month') {
     $month = $_GET['month'] ?? date('Y-m-01');
     if (!preg_match('/^\d{4}-\d{2}-01$/', $month)) {
         $month = date('Y-m-01');
     }
     $start_date = date('Y-m-01', strtotime($month));
     $end_date = date('Y-m-t', strtotime($month));
+    $context_professional_id = appointment_context_professional_id($mysqli, $user_id, $is_admin);
 
     $stmt = $mysqli->prepare("
         SELECT a.id, a.appointment_date, a.appointment_time, a.user_id,
@@ -137,13 +301,14 @@ if ($action === 'get_month') {
         LEFT JOIN appointment_services s ON s.id = so.service_id
         JOIN users u ON a.user_id = u.id
         WHERE a.appointment_date BETWEEN ? AND ? AND a.status = 'booked'
+          AND (a.professional_id = ? OR a.professional_id IS NULL)
     ");
-    $stmt->bind_param("ss", $start_date, $end_date);
+    $stmt->bind_param("ssi", $start_date, $end_date, $context_professional_id);
     $stmt->execute();
     $appointments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
-    $stmt2 = $mysqli->prepare("SELECT closed_date, reason FROM closed_days WHERE closed_date BETWEEN ? AND ?");
-    $stmt2->bind_param("ss", $start_date, $end_date);
+    $stmt2 = $mysqli->prepare("SELECT closed_date, reason FROM closed_days WHERE closed_date BETWEEN ? AND ? AND (is_global = 1 OR professional_id = ? OR professional_id IS NULL)");
+    $stmt2->bind_param("ssi", $start_date, $end_date, $context_professional_id);
     $stmt2->execute();
     $closed_days_fetch = $stmt2->get_result()->fetch_all(MYSQLI_ASSOC);
 
@@ -228,6 +393,7 @@ if ($action === 'get_month') {
             $payment_settings = $settings_row;
         }
     }
+    $payment_settings = apply_effective_professional_settings($mysqli, $payment_settings, $user_id, $is_admin);
 
     $service_options = [];
     $active_durations = active_session_durations($payment_settings);
@@ -263,6 +429,7 @@ if ($action === 'get_month') {
     // start_date expected to be a Monday (YYYY-MM-DD)
     $start_date = $_GET['start_date'] ?? date('Y-m-d', strtotime('monday this week'));
     $end_date = date('Y-m-d', strtotime($start_date . ' +5 days')); // Saturday when enabled
+    $context_professional_id = appointment_context_professional_id($mysqli, $user_id, $is_admin);
 
     // Get appointments in range
     $stmt = $mysqli->prepare("
@@ -277,15 +444,16 @@ if ($action === 'get_month') {
         LEFT JOIN appointment_services s ON s.id = so.service_id
         JOIN users u ON a.user_id = u.id
         WHERE a.appointment_date BETWEEN ? AND ? AND a.status = 'booked'
+          AND (a.professional_id = ? OR a.professional_id IS NULL)
     ");
-    $stmt->bind_param("ss", $start_date, $end_date);
+    $stmt->bind_param("ssi", $start_date, $end_date, $context_professional_id);
     $stmt->execute();
     $res = $stmt->get_result();
     $appointments = $res->fetch_all(MYSQLI_ASSOC);
 
     // Get closed days
-    $stmt2 = $mysqli->prepare("SELECT closed_date, reason FROM closed_days WHERE closed_date BETWEEN ? AND ?");
-    $stmt2->bind_param("ss", $start_date, $end_date);
+    $stmt2 = $mysqli->prepare("SELECT closed_date, reason FROM closed_days WHERE closed_date BETWEEN ? AND ? AND (is_global = 1 OR professional_id = ? OR professional_id IS NULL)");
+    $stmt2->bind_param("ssi", $start_date, $end_date, $context_professional_id);
     $stmt2->execute();
     $res2 = $stmt2->get_result();
     $closed_days_fetch = $res2->fetch_all(MYSQLI_ASSOC);
@@ -371,6 +539,7 @@ if ($action === 'get_month') {
             $payment_settings = $settings_row;
         }
     }
+    $payment_settings = apply_effective_professional_settings($mysqli, $payment_settings, $user_id, $is_admin);
 
     $service_options = [];
     $active_durations = active_session_durations($payment_settings);
@@ -413,38 +582,24 @@ if ($action === 'get_month') {
         exit;
     }
 
-    $min_booking_notice_days = 2;
-    $max_booking_notice_days = MAX_BOOKING_DAYS;
-    $appointment_delivery_mode = 'both';
-    $settings = [];
-    $settings_res = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
-    if ($settings_res->num_rows > 0) {
-        $limit_columns = [
-            'min_booking_notice_days' => "ALTER TABLE payment_settings ADD min_booking_notice_days INT UNSIGNED NOT NULL DEFAULT 2",
-            'max_booking_notice_days' => "ALTER TABLE payment_settings ADD max_booking_notice_days INT UNSIGNED NOT NULL DEFAULT 40"
-        ];
-        foreach ($limit_columns as $column => $sql) {
-            $column_res = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE '$column'");
-            if ($column_res->num_rows === 0) {
-                $mysqli->query($sql);
-            }
-        }
-        ensure_schedule_setting_columns($mysqli);
-        ensure_delivery_setting_column($mysqli);
-        ensure_session_setting_column($mysqli);
-        $settings_res = $mysqli->query("
-            SELECT min_booking_notice_days, max_booking_notice_days,
-                   appointment_start_time, appointment_end_time, break_start_time, break_end_time,
-                   available_weekdays, appointment_delivery_mode, available_session_types, available_session_durations
-            FROM payment_settings
-            WHERE id = 1
-        ");
-        if ($settings = $settings_res->fetch_assoc()) {
-            $min_booking_notice_days = (int) $settings['min_booking_notice_days'];
-            $max_booking_notice_days = (int) $settings['max_booking_notice_days'];
-            $appointment_delivery_mode = $settings['appointment_delivery_mode'] ?? 'both';
-        }
+    $target_user_id = (int) $target_user_id;
+    $requested_professional_id = (int) ($_POST['professional_id'] ?? 0);
+    $booking_professional_id = resolve_booking_professional_id($mysqli, (int) $user_id, $target_user_id, $is_admin, $requested_professional_id);
+    if ($booking_professional_id <= 0) {
+        echo json_encode(['success' => false, 'error' => 'No se pudo asignar un profesional a la cita.']);
+        exit;
     }
+    if ($is_admin && !admin_can_book_patient_for_professional($mysqli, $target_user_id, $booking_professional_id)) {
+        echo json_encode(['success' => false, 'error' => 'No tienes permiso para reservar citas de este paciente.']);
+        exit;
+    }
+
+    $settings = load_booking_payment_settings($mysqli);
+    $settings = array_merge($settings, cabinet_get_effective_professional_settings($mysqli, $booking_professional_id));
+    $settings['current_professional_id'] = $booking_professional_id;
+    $min_booking_notice_days = (int) ($settings['min_booking_notice_days'] ?? 2);
+    $max_booking_notice_days = (int) ($settings['max_booking_notice_days'] ?? MAX_BOOKING_DAYS);
+    $appointment_delivery_mode = $settings['appointment_delivery_mode'] ?? 'both';
 
     $service_option = $service_option_id > 0 ? fetch_service_option($mysqli, $service_option_id) : null;
     if (!$service_option || (int) $service_option['is_active'] !== 1 || (int) $service_option['service_active'] !== 1) {
@@ -508,8 +663,8 @@ if ($action === 'get_month') {
     }
 
     // Check closed days
-    $stmt = $mysqli->prepare("SELECT id FROM closed_days WHERE closed_date = ?");
-    $stmt->bind_param("s", $date);
+    $stmt = $mysqli->prepare("SELECT id FROM closed_days WHERE closed_date = ? AND (is_global = 1 OR professional_id = ? OR professional_id IS NULL)");
+    $stmt->bind_param("si", $date, $booking_professional_id);
     $stmt->execute();
     $res = $stmt->get_result();
     if ($res->fetch_assoc()) {
@@ -524,12 +679,26 @@ if ($action === 'get_month') {
 
     $new_start = minutes_from_time($time);
     $new_end = $new_start + $duration_minutes;
+    $day_end = minutes_from_time($settings['appointment_end_time'] ?? '19:00:00') + 60;
+    if ($new_end > $day_end) {
+        echo json_encode(['success' => false, 'error' => 'La duración seleccionada no cabe en el horario disponible.']);
+        exit;
+    }
+    if (!empty($settings['break_start_time']) && !empty($settings['break_end_time'])) {
+        $break_start = minutes_from_time($settings['break_start_time']);
+        $break_end = minutes_from_time($settings['break_end_time']);
+        if ($new_start < $break_end && $new_end > $break_start) {
+            echo json_encode(['success' => false, 'error' => 'La duración seleccionada se solapa con el descanso.']);
+            exit;
+        }
+    }
     $stmt = $mysqli->prepare("
         SELECT appointment_time, COALESCE(duration_minutes, 60) AS duration_minutes
         FROM appointments
         WHERE appointment_date = ? AND status = 'booked'
+          AND (professional_id = ? OR professional_id IS NULL)
     ");
-    $stmt->bind_param("s", $date);
+    $stmt->bind_param("si", $date, $booking_professional_id);
     $stmt->execute();
     $existing_res = $stmt->get_result();
     while ($existing = $existing_res->fetch_assoc()) {
@@ -542,9 +711,11 @@ if ($action === 'get_month') {
     }
 
     try {
-        $stmt = $mysqli->prepare("INSERT INTO appointments (user_id, appointment_date, appointment_time, consultation_type, service_type, service_option_id, duration_minutes, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'booked')");
+        $professional_id = $booking_professional_id;
+        $professional = cabinet_fetch_professional($mysqli, $professional_id);
+        $stmt = $mysqli->prepare("INSERT INTO appointments (user_id, professional_id, appointment_date, appointment_time, consultation_type, service_type, service_option_id, duration_minutes, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'booked')");
         $nullable_service_option_id = $service_option ? $service_option_id : null;
-        $stmt->bind_param("issssii", $target_user_id, $date, $time, $consultation_type, $service_type, $nullable_service_option_id, $duration_minutes);
+        $stmt->bind_param("iissssii", $target_user_id, $professional_id, $date, $time, $consultation_type, $service_type, $nullable_service_option_id, $duration_minutes);
         $stmt->execute();
         $appointment_id = $mysqli->insert_id;
         $cancel_token = bin2hex(random_bytes(32));
@@ -602,11 +773,20 @@ if ($action === 'get_month') {
             error_log('No se pudo crear evento en iCloud Calendar: ' . $e->getMessage());
         }
 
-        notify_admin(
+        $appointment_for_notification = [
+            'professional_id' => $professional_id
+        ];
+        $professional_line = $professional
+            ? '<b>Profesional:</b> ' . htmlspecialchars($professional['display_name']) . '<br>'
+            : '';
+
+        notify_appointment_professional(
             $mysqli,
+            $appointment_for_notification,
             'Nueva cita reservada',
             '<p>Se ha reservado una nueva cita.</p>' .
             '<p><b>Paciente:</b> ' . htmlspecialchars($patient['name'] ?? '') . '<br>' .
+            $professional_line .
             '<b>Fecha:</b> ' . htmlspecialchars($appointment_text) . '<br>' .
             '<b>Servicio:</b> ' . htmlspecialchars($service_text) . '<br>' .
             '<b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '<br>' .
@@ -631,6 +811,7 @@ if ($action === 'get_month') {
                 $patient['email'],
                 'Cita reservada',
                 '<p>Hola ' . htmlspecialchars($patient['name']) . ',</p>' .
+                ($professional ? '<p><b>Tu cita con ' . htmlspecialchars($professional['display_name']) . '</b></p>' : '') .
                 '<p>Tu cita ' . htmlspecialchars(strtolower($service_text)) . ' ' . htmlspecialchars(strtolower($consultation_text)) . ' para el ' . htmlspecialchars($appointment_text) . ' ha quedado reservada correctamente.</p>' .
                 '<p><b>Servicio:</b> ' . htmlspecialchars($service_text) . '</p>' .
                 '<p><b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '</p>' .
@@ -684,7 +865,7 @@ if ($action === 'get_month') {
                s.name AS service_name,
                COALESCE(a.payment_status, 'pending') AS payment_status,
                a.payment_method, a.payment_attempt_id, a.patient_bonus_id,
-               a.user_id,
+               a.user_id, a.professional_id,
                u.name, u.email
         FROM appointments a
         LEFT JOIN appointment_service_options so ON so.id = a.service_option_id

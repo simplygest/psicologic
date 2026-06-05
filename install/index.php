@@ -107,15 +107,18 @@ function install_base_tables($mysqli)
 
     $mysqli->query("CREATE TABLE IF NOT EXISTS closed_days (
         id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-        closed_date DATE NOT NULL UNIQUE,
+        closed_date DATE NOT NULL,
         reason VARCHAR(255) NULL,
         is_global TINYINT(1) NOT NULL DEFAULT 0,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_closed_date (closed_date)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     $mysqli->query("CREATE TABLE IF NOT EXISTS payment_settings (
         id INT PRIMARY KEY DEFAULT 1,
         app_name VARCHAR(150) NOT NULL DEFAULT 'PsicoLogic',
+        site_tagline VARCHAR(255) NULL,
+        site_phone VARCHAR(40) NULL,
         admin_notification_email VARCHAR(150) NULL,
         show_team_public TINYINT(1) NOT NULL DEFAULT 0,
         allow_patient_transfer TINYINT(1) NOT NULL DEFAULT 0,
@@ -130,7 +133,7 @@ function install_base_tables($mysqli)
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
-    $mysqli->query("INSERT IGNORE INTO payment_settings (id, app_name, appointment_price) VALUES (1, 'PsicoLogic', 70.00)");
+    $mysqli->query("INSERT IGNORE INTO payment_settings (id, app_name, site_tagline, appointment_price) VALUES (1, 'PsicoLogic', 'Psicología sanitaria y neuropsicología en Santa Cruz de Tenerife', 70.00)");
 
     ensure_cabinet_schema($mysqli);
 }
@@ -145,6 +148,8 @@ function install_ensure_payment_settings_columns($mysqli)
     install_add_column_if_missing($mysqli, 'closed_days', 'is_global', 'TINYINT(1) NOT NULL DEFAULT 0 AFTER reason');
     install_add_column_if_missing($mysqli, 'payment_settings', 'show_team_public', 'TINYINT(1) NOT NULL DEFAULT 0');
     install_add_column_if_missing($mysqli, 'payment_settings', 'allow_patient_transfer', 'TINYINT(1) NOT NULL DEFAULT 0');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'site_tagline', 'VARCHAR(255) NULL AFTER app_name');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'site_phone', 'VARCHAR(40) NULL AFTER site_tagline');
 
     install_add_column_if_missing($mysqli, 'payment_settings', 'min_booking_notice_days', 'INT NOT NULL DEFAULT 2');
     install_add_column_if_missing($mysqli, 'payment_settings', 'max_booking_notice_days', 'INT NOT NULL DEFAULT 40');
@@ -272,8 +277,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ensure_payment_settings_price_columns($test);
             install_ensure_payment_settings_columns($test);
 
-            $stmt = $test->prepare("UPDATE payment_settings SET app_name = ?, admin_notification_email = ? WHERE id = 1");
-            $stmt->bind_param('ss', $appName, $adminEmail);
+            $defaultTagline = 'Psicología sanitaria y neuropsicología en Santa Cruz de Tenerife';
+            $stmt = $test->prepare("UPDATE payment_settings SET app_name = ?, site_tagline = COALESCE(NULLIF(site_tagline, ''), ?), admin_notification_email = ? WHERE id = 1");
+            $stmt->bind_param('sss', $appName, $defaultTagline, $adminEmail);
             $stmt->execute();
             $stmt->close();
 

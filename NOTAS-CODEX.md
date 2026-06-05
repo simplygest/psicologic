@@ -195,6 +195,7 @@ La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`.
 - `users.role ENUM('superadmin','admin','patient') NOT NULL DEFAULT 'patient'`
 - Nueva tabla `professionals`
 - Nueva tabla `patient_professionals`
+- Nueva tabla `professional_settings`
 - `appointments.professional_id INT UNSIGNED DEFAULT NULL`
 - `closed_days.professional_id INT UNSIGNED DEFAULT NULL`
 - `invitations.professional_id INT UNSIGNED DEFAULT NULL`
@@ -249,6 +250,34 @@ git config --global --add safe.directory C:/Sete/psicologic
   - Admin/superadmin/profesionales pueden cambiar su propia contrasena desde el dashboard con `api/auth.php?action=change_password`.
   - Cada profesional puede tener foto propia (`professionals.public_photo_path`), subida desde el modal de profesional y mostrada como avatar en el listado. Si el superadmin no tiene foto propia, se usa como fallback la imagen del dashboard.
   - `closed_days.is_global` permite marcar cierres globales del gabinete desde General, preparados para bloquear todas las agendas en la evolucion multi-profesional.
+  - `professional_settings` queda preparada para horarios, modalidades, servicios y duraciones por profesional, usando la configuracion global como fallback hasta activar la UI especifica.
+  - Las nuevas citas ya guardan `appointments.professional_id`: si reserva un profesional, se asigna a si mismo; si reserva un paciente, se usa su profesional principal o el primer profesional activo.
+  - Las notificaciones internas de cita nueva/cancelada se envian al profesional asignado; si no hay email valido, se usa el email global de administracion.
+  - En emails al paciente, cuando hay profesional asignado, se muestra un texto tipo "Tu cita con [profesional]".
+  - En modo superadmin, `Proximas citas`, `Pacientes` y `Bonos de pacientes` incorporan filtro por profesional y muestran nombre/foto del profesional asignado.
+  - Estadisticas incluye un resumen por profesional con numero de pacientes y citas proximas cuando hay equipo profesional configurado.
+  - El menu superior del dashboard se compacta en un desplegable de opciones; pacientes solo ven contrasena y cierre de sesion.
+  - Al generar invitacion, el boton muestra estado de carga mientras se crea el enlace corto/QR.
+  - El listado de vacaciones/cierres muestra "Cargando..." mientras consulta la BD.
+  - Nueva pagina publica `equipo.php`, visible solo si `show_team_public` esta activo y hay profesionales activos ademas del superadmin; el superadmin se muestra siempre primero.
+  - En listados de profesionales/pacientes/bonos/estadisticas, si el superadmin no tiene foto propia en su ficha profesional, se usa como fallback la foto del dashboard.
+  - En Vacaciones/Cierres, el superadmin ve los cierres de todo el equipo con nombre/foto del profesional; el resto ve sus cierres propios y los globales que le afectan.
+  - El modal de paciente ahora tiene pestanas: `Datos del paciente` e `Historial de citas`. El historial se carga desde `api/admin.php?action=patient_appointments&patient_id=...`, queda reutilizable para abrirlo desde otros puntos de la app y muestra fecha, profesional con foto, servicio/duracion, modalidad, pago y estado.
+  - En Interfaz se anaden `site_tagline` y `site_phone` para la web comercial. El subtitulo sustituye el texto fijo del hero de `index.php`; el telefono se muestra solo si esta configurado.
+  - Al borrar un profesional se usa un modal propio de confirmacion; si tiene datos vinculados pide traspaso y al completar borra tambien su usuario `admin` en `users`.
+  - Los profesionales incorporan `license_number` (`Nº de colegiado`), visible en el modal de miembro y en las fichas publicas de `equipo.php`. Las especialidades separadas por comas se muestran como pills en la pagina Equipo.
+
+  - Al crear un profesional nuevo, se crea automaticamente su fila en `professional_settings` heredando la configuracion privada del superadmin. Si el superadmin aun no tiene fila propia, se heredan los valores globales actuales de `payment_settings`.
+  - Al cargar el esquema de gabinete, los profesionales existentes que no tengan fila propia en `professional_settings` tambien reciben ese backfill inicial, sin sobrescribir filas existentes.
+  - `professional_settings` ya contempla tambien antelacion minima/maxima de reserva y opciones de bonos, para preparar que esas opciones pasen a ser privadas por profesional.
+  - Nuevo helper `cabinet_get_effective_professional_settings()` para obtener configuracion efectiva por profesional mezclando defaults/globales con sus valores propios.
+  - Primer corte de permisos de configuracion por rol:
+    - El superadmin conserva acceso a configuracion global.
+    - Los admins normales solo ven General y Reservas en el modal de configuracion.
+    - Los admins normales guardan modalidades, servicios permitidos, duraciones, horarios, dias disponibles y limites de antelacion en `professional_settings`.
+    - El backend rechaza guardados de secciones globales si no es superadmin.
+    - El calendario semanal/mensual y la reserva usan la configuracion efectiva del profesional actual y filtran citas/cierres por `professional_id`, manteniendo compatibilidad con registros antiguos sin profesional.
+  - Precios y Bonos quedan ocultos para admins normales hasta completar el subcorte de tablas privadas por profesional, porque las tablas actuales aun tienen indices globales para `service_key`, opciones y `bonus_key`.
 
 ## Pendientes sugeridos
 

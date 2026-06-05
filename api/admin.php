@@ -24,6 +24,105 @@ ensure_cabinet_schema($mysqli);
 
 $action = $_GET['action'] ?? '';
 
+function current_professional_id_for_user($mysqli, $user_id)
+{
+    ensure_cabinet_schema($mysqli);
+    $user_id = (int) $user_id;
+    if ($user_id <= 0) {
+        return 0;
+    }
+    $stmt = $mysqli->prepare("SELECT id FROM professionals WHERE user_id = ? LIMIT 1");
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    return $row ? (int) $row['id'] : 0;
+}
+
+function admin_requested_professional_filter($mysqli)
+{
+    global $is_superadmin;
+    $current_professional_id = current_professional_id_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0));
+    if (!$is_superadmin) {
+        return $current_professional_id > 0 ? $current_professional_id : -1;
+    }
+
+    $raw = $_GET['professional_id'] ?? $_POST['professional_id'] ?? '';
+    if ($raw === 'all') {
+        return 0;
+    }
+    if ($raw === '' || $raw === null) {
+        return $current_professional_id;
+    }
+    return max(0, (int) $raw);
+}
+
+function active_professionals_payload($mysqli)
+{
+    ensure_cabinet_schema($mysqli);
+    $branding = get_public_branding_settings($mysqli);
+    $dashboard_photo = $branding['profile_image_path'] ?? '';
+    $rows = [];
+    $res = $mysqli->query("
+        SELECT p.id, p.display_name, p.public_photo_path, u.role AS user_role
+        FROM professionals p
+        LEFT JOIN users u ON u.id = p.user_id
+        WHERE p.is_active = 1
+        ORDER BY CASE WHEN u.role = 'superadmin' THEN 0 ELSE 1 END ASC,
+                 p.sort_order ASC,
+                 p.display_name ASC
+    ");
+    while ($row = $res->fetch_assoc()) {
+        $display_photo_path = professional_photo_with_dashboard_fallback($row, $dashboard_photo);
+        $rows[] = [
+            'id' => (int) $row['id'],
+            'display_name' => $row['display_name'],
+            'public_photo_path' => $row['public_photo_path'] ?? '',
+            'display_photo_path' => $display_photo_path
+        ];
+    }
+    return $rows;
+}
+
+function admin_can_access_patient($mysqli, $patient_id)
+{
+    global $is_superadmin;
+    $patient_id = (int) $patient_id;
+    if ($patient_id <= 0) {
+        return false;
+    }
+    if ($is_superadmin) {
+        return true;
+    }
+
+    $professional_id = current_professional_id_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0));
+    if ($professional_id <= 0) {
+        return false;
+    }
+
+    $stmt = $mysqli->prepare("
+        SELECT u.id
+        FROM users u
+        LEFT JOIN patient_professionals ppf ON ppf.patient_id = u.id AND ppf.is_primary = 1
+        LEFT JOIN patient_profiles pp ON pp.user_id = u.id
+        WHERE u.id = ?
+          AND u.role = 'patient'
+          AND COALESCE(ppf.professional_id, pp.professional_id) = ?
+        LIMIT 1
+    ");
+    $stmt->bind_param("ii", $patient_id, $professional_id);
+    $stmt->execute();
+    return (bool) $stmt->get_result()->fetch_assoc();
+}
+
+function professional_photo_with_dashboard_fallback($row, $dashboard_photo)
+{
+    $photo = $row['public_photo_path'] ?? ($row['professional_photo_path'] ?? '');
+    if (!$photo && ($row['user_role'] ?? $row['professional_user_role'] ?? '') === 'superadmin') {
+        return $dashboard_photo;
+    }
+    return $photo ?: '';
+}
+
 function admin_ensure_password_reset_table($mysqli)
 {
     $mysqli->query("
@@ -78,6 +177,8 @@ function ensure_payment_settings_table($mysqli)
         CREATE TABLE IF NOT EXISTS payment_settings (
             id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
             app_name VARCHAR(255) DEFAULT 'PsicoLogic',
+            site_tagline VARCHAR(255) DEFAULT NULL,
+            site_phone VARCHAR(40) DEFAULT NULL,
             profile_image_path VARCHAR(255) DEFAULT NULL,
             landing_image_path VARCHAR(255) DEFAULT NULL,
             primary_color VARCHAR(7) NOT NULL DEFAULT '#8f7fba',
@@ -150,6 +251,8 @@ function ensure_payment_settings_table($mysqli)
     $columns = [
         'email_provider' => "ALTER TABLE payment_settings ADD email_provider ENUM('phpmailer', 'google') NOT NULL DEFAULT 'phpmailer' AFTER admin_notification_email",
         'app_name' => "ALTER TABLE payment_settings ADD app_name VARCHAR(255) DEFAULT 'PsicoLogic' AFTER id",
+        'site_tagline' => "ALTER TABLE payment_settings ADD site_tagline VARCHAR(255) DEFAULT NULL AFTER app_name",
+        'site_phone' => "ALTER TABLE payment_settings ADD site_phone VARCHAR(40) DEFAULT NULL AFTER site_tagline",
         'profile_image_path' => "ALTER TABLE payment_settings ADD profile_image_path VARCHAR(255) DEFAULT NULL AFTER app_name",
         'landing_image_path' => "ALTER TABLE payment_settings ADD landing_image_path VARCHAR(255) DEFAULT NULL AFTER profile_image_path",
         'primary_color' => "ALTER TABLE payment_settings ADD primary_color VARCHAR(7) NOT NULL DEFAULT '#8f7fba' AFTER landing_image_path",
@@ -514,19 +617,66 @@ if ($action === 'generate_invite') {
         echo json_encode(['success' => false, 'error' => 'Error generando invitación']);
     }
 } elseif ($action === 'get_patients') {
-    $res = $mysqli->query("SELECT id, name FROM users WHERE role = 'patient' ORDER BY name ASC");
-    echo json_encode(['success' => true, 'patients' => $res->fetch_all(MYSQLI_ASSOC)]);
-} elseif ($action === 'list_patients') {
+    $professional_id = $is_superadmin ? 0 : admin_requested_professional_filter($mysqli);
+    $branding = get_public_branding_settings($mysqli);
+    $dashboard_photo = $branding['profile_image_path'] ?? '';
+    $professional_where = $professional_id > 0 ? " AND COALESCE(ppf.professional_id, pp.professional_id) = " . (int) $professional_id : ($professional_id < 0 ? " AND 1 = 0" : "");
     $res = $mysqli->query("
-        SELECT u.id, u.name, u.email, u.phone, u.created_at, u.password_hash,
-               pp.patient_type, pp.admission_date, pp.notes, pp.document_path, pp.document_name, pp.created_by_admin
+        SELECT u.id, u.name, u.email, u.phone,
+               COALESCE(ppf.professional_id, pp.professional_id) AS professional_id,
+               p.display_name AS professional_name, p.public_photo_path AS professional_photo_path,
+               pu.role AS professional_user_role
         FROM users u
         LEFT JOIN patient_profiles pp ON pp.user_id = u.id
+        LEFT JOIN patient_professionals ppf ON ppf.patient_id = u.id AND ppf.is_primary = 1
+        LEFT JOIN professionals p ON p.id = COALESCE(ppf.professional_id, pp.professional_id)
+        LEFT JOIN users pu ON pu.id = p.user_id
         WHERE u.role = 'patient'
+          $professional_where
         ORDER BY u.name ASC
     ");
     $patients = [];
     while ($row = $res->fetch_assoc()) {
+        $row['professional_photo_path'] = professional_photo_with_dashboard_fallback($row, $dashboard_photo);
+        $patients[] = [
+            'id' => (int) $row['id'],
+            'name' => $row['name'],
+            'email' => $row['email'] ?? '',
+            'phone' => $row['phone'] ?? '',
+            'professional_id' => (int) ($row['professional_id'] ?? 0),
+            'professional_name' => $row['professional_name'] ?? '',
+            'professional_photo_path' => $row['professional_photo_path'] ?? ''
+        ];
+    }
+    echo json_encode([
+        'success' => true,
+        'patients' => $patients,
+        'professionals' => $is_superadmin ? active_professionals_payload($mysqli) : [],
+        'current_professional_id' => current_professional_id_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0))
+    ]);
+} elseif ($action === 'list_patients') {
+    $professional_id = $is_superadmin ? 0 : admin_requested_professional_filter($mysqli);
+    $branding = get_public_branding_settings($mysqli);
+    $dashboard_photo = $branding['profile_image_path'] ?? '';
+    $professional_where = $professional_id > 0 ? " AND COALESCE(ppf.professional_id, pp.professional_id) = " . (int) $professional_id : ($professional_id < 0 ? " AND 1 = 0" : "");
+    $res = $mysqli->query("
+        SELECT u.id, u.name, u.email, u.phone, u.created_at, u.password_hash,
+               pp.patient_type, pp.admission_date, pp.notes, pp.document_path, pp.document_name, pp.created_by_admin,
+               COALESCE(ppf.professional_id, pp.professional_id) AS professional_id,
+               p.display_name AS professional_name, p.public_photo_path AS professional_photo_path,
+               pu.role AS professional_user_role
+        FROM users u
+        LEFT JOIN patient_profiles pp ON pp.user_id = u.id
+        LEFT JOIN patient_professionals ppf ON ppf.patient_id = u.id AND ppf.is_primary = 1
+        LEFT JOIN professionals p ON p.id = COALESCE(ppf.professional_id, pp.professional_id)
+        LEFT JOIN users pu ON pu.id = p.user_id
+        WHERE u.role = 'patient'
+          $professional_where
+        ORDER BY u.name ASC
+    ");
+    $patients = [];
+    while ($row = $res->fetch_assoc()) {
+        $professional_photo_path = professional_photo_with_dashboard_fallback($row, $dashboard_photo);
         $patients[] = [
             'id' => (int) $row['id'],
             'name' => $row['name'],
@@ -537,11 +687,72 @@ if ($action === 'generate_invite') {
             'notes' => $row['notes'] ?? '',
             'document_path' => $row['document_path'] ?? '',
             'document_name' => $row['document_name'] ?? '',
+            'professional_id' => (int) ($row['professional_id'] ?? 0),
+            'professional_name' => $row['professional_name'] ?? '',
+            'professional_photo_path' => $professional_photo_path,
             'created_by_admin' => (int) ($row['created_by_admin'] ?? 0),
             'has_portal_access' => patient_has_portal_access($row) ? 1 : 0
         ];
     }
-    echo json_encode(['success' => true, 'patients' => $patients]);
+    echo json_encode([
+        'success' => true,
+        'patients' => $patients,
+        'professionals' => $is_superadmin ? active_professionals_payload($mysqli) : [],
+        'current_professional_id' => current_professional_id_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0))
+    ]);
+} elseif ($action === 'patient_appointments') {
+    ensure_appointment_payment_columns($mysqli);
+    ensure_appointment_services_tables($mysqli);
+    ensure_cabinet_schema($mysqli);
+    $patient_id = (int) ($_GET['patient_id'] ?? 0);
+    if (!admin_can_access_patient($mysqli, $patient_id)) {
+        echo json_encode(['success' => false, 'error' => 'No autorizado para ver este historial.']);
+        exit;
+    }
+
+    $branding = get_public_branding_settings($mysqli);
+    $dashboard_photo = $branding['profile_image_path'] ?? '';
+    $stmt = $mysqli->prepare("
+        SELECT a.id, a.appointment_date, a.appointment_time, a.status, a.consultation_type, a.service_type,
+               COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
+               COALESCE(a.payment_status, 'pending') AS payment_status,
+               a.payment_method, a.patient_bonus_id, a.paid_at, a.created_at,
+               s.name AS service_name,
+               p.id AS professional_id, p.display_name AS professional_name, p.public_photo_path AS professional_photo_path,
+               pu.role AS professional_user_role
+        FROM appointments a
+        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
+        LEFT JOIN appointment_services s ON s.id = so.service_id
+        LEFT JOIN professionals p ON p.id = a.professional_id
+        LEFT JOIN users pu ON pu.id = p.user_id
+        WHERE a.user_id = ?
+        ORDER BY a.appointment_date DESC, a.appointment_time DESC, a.id DESC
+    ");
+    $stmt->bind_param("i", $patient_id);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $appointments = [];
+    while ($row = $res->fetch_assoc()) {
+        $row['professional_photo_path'] = professional_photo_with_dashboard_fallback($row, $dashboard_photo);
+        $appointments[] = [
+            'id' => (int) $row['id'],
+            'appointment_date' => $row['appointment_date'],
+            'appointment_time' => substr((string) $row['appointment_time'], 0, 5),
+            'status' => $row['status'] ?? '',
+            'consultation_type' => $row['consultation_type'] ?? 'presencial',
+            'duration_minutes' => (int) ($row['duration_minutes'] ?? 60),
+            'service_label' => appointment_service_option_label($row),
+            'payment_status' => $row['payment_status'] ?? 'pending',
+            'payment_method' => $row['payment_method'] ?? '',
+            'patient_bonus_id' => $row['patient_bonus_id'],
+            'paid_at' => $row['paid_at'],
+            'created_at' => $row['created_at'],
+            'professional_id' => (int) ($row['professional_id'] ?? 0),
+            'professional_name' => $row['professional_name'] ?? '',
+            'professional_photo_path' => $row['professional_photo_path'] ?? ''
+        ];
+    }
+    echo json_encode(['success' => true, 'appointments' => $appointments]);
 } elseif ($action === 'save_patient') {
     $patient_id = (int) ($_POST['patient_id'] ?? 0);
     $name = trim($_POST['name'] ?? '');
@@ -550,6 +761,10 @@ if ($action === 'generate_invite') {
     $patient_type = trim($_POST['patient_type'] ?? '');
     $admission_date = trim($_POST['admission_date'] ?? '');
     $notes = trim($_POST['notes'] ?? '');
+    $selected_professional_id = admin_requested_professional_filter($mysqli);
+    if ($selected_professional_id <= 0) {
+        $selected_professional_id = current_professional_id_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0));
+    }
 
     $email = $email !== '' ? $email : null;
     $phone = $phone !== '' ? $phone : null;
@@ -610,12 +825,21 @@ if ($action === 'generate_invite') {
         $uploaded_document = save_patient_document_upload($_FILES['patient_document'] ?? null, $patient_id);
 
         $stmt = $mysqli->prepare("
-            INSERT INTO patient_profiles (user_id, patient_type, admission_date, notes, created_by_admin)
-            VALUES (?, ?, ?, ?, 1)
-            ON DUPLICATE KEY UPDATE patient_type = VALUES(patient_type), admission_date = VALUES(admission_date), notes = VALUES(notes)
+            INSERT INTO patient_profiles (user_id, professional_id, patient_type, admission_date, notes, created_by_admin)
+            VALUES (?, ?, ?, ?, ?, 1)
+            ON DUPLICATE KEY UPDATE professional_id = VALUES(professional_id), patient_type = VALUES(patient_type), admission_date = VALUES(admission_date), notes = VALUES(notes)
         ");
-        $stmt->bind_param("isss", $patient_id, $patient_type, $admission_date, $notes);
+        $stmt->bind_param("iisss", $patient_id, $selected_professional_id, $patient_type, $admission_date, $notes);
         $stmt->execute();
+        if ($selected_professional_id > 0) {
+            $stmt = $mysqli->prepare("
+                INSERT INTO patient_professionals (patient_id, professional_id, is_primary, notes)
+                VALUES (?, ?, 1, 'Asignación desde ficha')
+                ON DUPLICATE KEY UPDATE is_primary = 1
+            ");
+            $stmt->bind_param("ii", $patient_id, $selected_professional_id);
+            $stmt->execute();
+        }
 
         if ($uploaded_document !== null) {
             $stmt = $mysqli->prepare("UPDATE patient_profiles SET document_path = ?, document_name = ? WHERE user_id = ?");
@@ -711,8 +935,14 @@ if ($action === 'generate_invite') {
 } elseif ($action === 'upcoming_appointments') {
     ensure_appointment_payment_columns($mysqli);
     ensure_appointment_services_tables($mysqli);
+    ensure_cabinet_schema($mysqli);
+    $branding = get_public_branding_settings($mysqli);
+    $dashboard_photo = $branding['profile_image_path'] ?? '';
     $scope = $_GET['scope'] ?? 'limit10';
+    $requested_professional_raw = $_GET['professional_id'] ?? '';
+    $requested_professional_id = (int) $requested_professional_raw;
     $where_extra = '';
+    $professional_filter = '';
     $limit_sql = 'LIMIT 10';
     if ($scope === '3days') {
         $where_extra = " AND a.appointment_date < DATE_ADD(CURDATE(), INTERVAL 3 DAY)";
@@ -724,26 +954,44 @@ if ($action === 'generate_invite') {
         $limit_sql = '';
     }
 
+    $current_professional_id = current_professional_id_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0));
+    if ($is_superadmin) {
+        if ($requested_professional_raw === 'current') {
+            $requested_professional_id = $current_professional_id;
+        }
+        if ($requested_professional_raw !== 'all' && $requested_professional_id > 0) {
+            $professional_filter = " AND a.professional_id = " . $requested_professional_id;
+        }
+    } elseif (!$is_superadmin) {
+        $professional_filter = $current_professional_id > 0 ? " AND a.professional_id = " . $current_professional_id : " AND 1 = 0";
+    }
+
     $res = $mysqli->query("
         SELECT a.id, a.appointment_date, a.appointment_time, a.consultation_type, a.service_type,
                COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
                s.name AS service_name,
                COALESCE(a.payment_status, 'pending') AS payment_status,
                a.payment_method, a.patient_bonus_id,
-               u.name, u.email, u.phone
+               u.name, u.email, u.phone,
+               p.id AS professional_id, p.display_name AS professional_name, p.public_photo_path AS professional_photo_path,
+               pu.role AS professional_user_role
         FROM appointments a
         LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
         LEFT JOIN appointment_services s ON s.id = so.service_id
+        LEFT JOIN professionals p ON p.id = a.professional_id
+        LEFT JOIN users pu ON pu.id = p.user_id
         JOIN users u ON u.id = a.user_id
         WHERE a.status = 'booked'
           AND CONCAT(a.appointment_date, ' ', a.appointment_time) >= NOW()
           $where_extra
+          $professional_filter
         ORDER BY a.appointment_date ASC, a.appointment_time ASC
         $limit_sql
     ");
 
     $appointments = [];
     while ($row = $res->fetch_assoc()) {
+        $professional_photo_path = professional_photo_with_dashboard_fallback($row, $dashboard_photo);
         $appointments[] = [
             'id' => (int) $row['id'],
             'appointment_date' => $row['appointment_date'],
@@ -751,6 +999,9 @@ if ($action === 'generate_invite') {
             'patient_name' => $row['name'],
             'patient_email' => $row['email'],
             'patient_phone' => $row['phone'],
+            'professional_id' => (int) ($row['professional_id'] ?? 0),
+            'professional_name' => $row['professional_name'] ?? '',
+            'professional_photo_path' => $professional_photo_path,
             'consultation_type' => $row['consultation_type'] ?? 'presencial',
             'service_label' => appointment_service_option_label($row),
             'payment_status' => $row['payment_status'] ?? 'pending',
@@ -759,12 +1010,29 @@ if ($action === 'generate_invite') {
         ];
     }
 
-    echo json_encode(['success' => true, 'appointments' => $appointments]);
+    $professionals = [];
+    if ($is_superadmin) {
+        $professionals = active_professionals_payload($mysqli);
+    }
+
+    echo json_encode([
+        'success' => true,
+        'appointments' => $appointments,
+        'professionals' => $professionals,
+        'current_professional_id' => $current_professional_id
+    ]);
 } elseif ($action === 'admin_stats') {
     ensure_appointment_payment_columns($mysqli);
     ensure_appointment_services_tables($mysqli);
     ensure_bonus_tables($mysqli);
     ensure_payment_attempts_table($mysqli);
+    ensure_cabinet_schema($mysqli);
+    $branding = get_public_branding_settings($mysqli);
+    $dashboard_photo = $branding['profile_image_path'] ?? '';
+    $professional_id = admin_requested_professional_filter($mysqli);
+    $appointment_filter = $professional_id > 0 ? " AND professional_id = " . (int) $professional_id : ($professional_id < 0 ? " AND 1 = 0" : "");
+    $patient_join = "LEFT JOIN patient_professionals ppf ON ppf.patient_id = u.id AND ppf.is_primary = 1 LEFT JOIN patient_profiles pp ON pp.user_id = u.id";
+    $patient_filter = $professional_id > 0 ? " AND COALESCE(ppf.professional_id, pp.professional_id) = " . (int) $professional_id : ($professional_id < 0 ? " AND 1 = 0" : "");
 
     $stats = [
         'upcoming_count' => 0,
@@ -774,15 +1042,16 @@ if ($action === 'generate_invite') {
         'online_revenue_month' => '0.00',
         'active_bonus_count' => 0,
         'active_bonus_sessions' => 0,
-        'top_patients' => []
+        'top_patients' => [],
+        'professional_summary' => []
     ];
 
-    $res = $mysqli->query("SELECT COUNT(*) AS total FROM appointments WHERE status = 'booked' AND CONCAT(appointment_date, ' ', appointment_time) >= NOW()");
+    $res = $mysqli->query("SELECT COUNT(*) AS total FROM appointments WHERE status = 'booked' AND CONCAT(appointment_date, ' ', appointment_time) >= NOW() $appointment_filter");
     if ($row = $res->fetch_assoc()) {
         $stats['upcoming_count'] = (int) $row['total'];
     }
 
-    $res = $mysqli->query("SELECT COUNT(*) AS total FROM appointments WHERE status = 'booked' AND appointment_date = CURDATE()");
+    $res = $mysqli->query("SELECT COUNT(*) AS total FROM appointments WHERE status = 'booked' AND appointment_date = CURDATE() $appointment_filter");
     if ($row = $res->fetch_assoc()) {
         $stats['today_count'] = (int) $row['total'];
     }
@@ -793,12 +1062,19 @@ if ($action === 'generate_invite') {
         WHERE status = 'booked'
           AND appointment_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
           AND appointment_date < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 1 MONTH)
+          $appointment_filter
     ");
     if ($row = $res->fetch_assoc()) {
         $stats['month_count'] = (int) $row['total'];
     }
 
-    $res = $mysqli->query("SELECT COUNT(*) AS total FROM users WHERE role = 'patient'");
+    $res = $mysqli->query("
+        SELECT COUNT(DISTINCT u.id) AS total
+        FROM users u
+        $patient_join
+        WHERE u.role = 'patient'
+          $patient_filter
+    ");
     if ($row = $res->fetch_assoc()) {
         $stats['patient_count'] = (int) $row['total'];
     }
@@ -809,6 +1085,7 @@ if ($action === 'generate_invite') {
         WHERE status = 'OK'
           AND created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
           AND created_at < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 1 MONTH)
+          " . ($professional_id > 0 ? " AND professional_id = " . (int) $professional_id : ($professional_id < 0 ? " AND 1 = 0" : "")) . "
     ");
     if ($row = $res->fetch_assoc()) {
         $stats['online_revenue_month'] = number_format(((int) $row['cents']) / 100, 2, '.', '');
@@ -820,6 +1097,7 @@ if ($action === 'generate_invite') {
         WHERE status = 'active'
           AND remaining_sessions > 0
           AND (expires_at IS NULL OR expires_at >= CURDATE())
+          " . ($professional_id > 0 ? " AND professional_id = " . (int) $professional_id : ($professional_id < 0 ? " AND 1 = 0" : "")) . "
     ");
     if ($row = $res->fetch_assoc()) {
         $stats['active_bonus_count'] = (int) $row['total'];
@@ -831,6 +1109,7 @@ if ($action === 'generate_invite') {
         FROM appointments a
         JOIN users u ON u.id = a.user_id
         WHERE a.status = 'booked'
+          $appointment_filter
         GROUP BY a.user_id, u.name, u.email
         ORDER BY sessions DESC, u.name ASC
         LIMIT 5
@@ -843,15 +1122,68 @@ if ($action === 'generate_invite') {
         ];
     }
 
+    if ($is_superadmin) {
+        $res = $mysqli->query("
+            SELECT p.id, p.display_name, p.public_photo_path, u.role AS user_role,
+                   COUNT(DISTINCT COALESCE(ppf.patient_id, pp.user_id)) AS patient_count,
+                   COUNT(DISTINCT CASE WHEN a.status = 'booked' AND CONCAT(a.appointment_date, ' ', a.appointment_time) >= NOW() THEN a.id END) AS upcoming_count
+            FROM professionals p
+            LEFT JOIN users u ON u.id = p.user_id
+            LEFT JOIN patient_professionals ppf ON ppf.professional_id = p.id AND ppf.is_primary = 1
+            LEFT JOIN patient_profiles pp ON pp.professional_id = p.id
+            LEFT JOIN appointments a ON a.professional_id = p.id
+            WHERE p.is_active = 1
+            GROUP BY p.id, p.display_name, p.public_photo_path, u.role
+            ORDER BY CASE WHEN u.role = 'superadmin' THEN 0 ELSE 1 END ASC,
+                     p.sort_order ASC,
+                     p.display_name ASC
+        ");
+        while ($row = $res->fetch_assoc()) {
+            $photo_path = professional_photo_with_dashboard_fallback($row, $dashboard_photo);
+            $stats['professional_summary'][] = [
+                'id' => (int) $row['id'],
+                'display_name' => $row['display_name'],
+                'public_photo_path' => $photo_path,
+                'patient_count' => (int) $row['patient_count'],
+                'upcoming_count' => (int) $row['upcoming_count']
+            ];
+        }
+    }
+
     echo json_encode(['success' => true, 'stats' => $stats]);
 } elseif ($action === 'list_closed_days') {
-    $res = $mysqli->query("SELECT * FROM closed_days WHERE closed_date >= CURDATE() ORDER BY closed_date ASC");
-    echo json_encode(['success' => true, 'days' => $res->fetch_all(MYSQLI_ASSOC)]);
+    ensure_cabinet_schema($mysqli);
+    $branding = get_public_branding_settings($mysqli);
+    $dashboard_photo = $branding['profile_image_path'] ?? '';
+    $current_professional_id = current_professional_id_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0));
+    $effective_professional_expr = "CASE WHEN cd.is_global = 0 AND cd.professional_id IS NULL THEN " . (int) $current_professional_id . " ELSE cd.professional_id END";
+    $where = $is_superadmin
+        ? "1 = 1"
+        : "($effective_professional_expr = " . (int) $current_professional_id . " OR cd.is_global = 1)";
+    $res = $mysqli->query("
+        SELECT cd.*, $effective_professional_expr AS effective_professional_id,
+               p.display_name AS professional_name, p.public_photo_path AS professional_photo_path,
+               pu.role AS professional_user_role
+        FROM closed_days cd
+        LEFT JOIN professionals p ON p.id = $effective_professional_expr
+        LEFT JOIN users pu ON pu.id = p.user_id
+        WHERE cd.closed_date >= CURDATE()
+          AND $where
+        ORDER BY cd.closed_date ASC, cd.is_global DESC, p.sort_order ASC, p.display_name ASC
+    ");
+    $days = [];
+    while ($row = $res->fetch_assoc()) {
+        $row['professional_id'] = (int) ($row['effective_professional_id'] ?? 0);
+        $row['professional_photo_path'] = professional_photo_with_dashboard_fallback($row, $dashboard_photo);
+        $days[] = $row;
+    }
+    echo json_encode(['success' => true, 'days' => $days, 'show_professionals' => $is_superadmin ? 1 : 0]);
 } elseif ($action === 'add_closed_day') {
     $date = $_POST['date'] ?? ($_POST['start_date'] ?? '');
     $end_date = $_POST['end_date'] ?? $date;
     $reason = $_POST['reason'] ?? 'Descanso';
     $is_global = ($is_superadmin && isset($_POST['is_global']) && $_POST['is_global'] === '1') ? 1 : 0;
+    $professional_id = $is_global ? null : current_professional_id_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0));
     if (!$date) {
         echo json_encode(['success' => false, 'error' => 'Fecha inválida']);
         exit;
@@ -882,19 +1214,29 @@ if ($action === 'generate_invite') {
     try {
         $inserted = 0;
         $skipped = 0;
-        $stmt = $mysqli->prepare("INSERT IGNORE INTO closed_days (closed_date, reason, is_global) VALUES (?, ?, ?)");
+        $stmt = $mysqli->prepare("INSERT INTO closed_days (closed_date, professional_id, reason, is_global) VALUES (?, ?, ?, ?)");
         $current = clone $start;
 
         while ($current <= $end) {
             $current_date = $current->format('Y-m-d');
-            $stmt->bind_param("ssi", $current_date, $reason, $is_global);
+            if ($is_global) {
+                $exists_stmt = $mysqli->prepare("SELECT id FROM closed_days WHERE closed_date = ? AND is_global = 1 AND reason = ? LIMIT 1");
+                $exists_stmt->bind_param("ss", $current_date, $reason);
+            } else {
+                $exists_stmt = $mysqli->prepare("SELECT id FROM closed_days WHERE closed_date = ? AND is_global = 0 AND professional_id = ? AND reason = ? LIMIT 1");
+                $exists_stmt->bind_param("sis", $current_date, $professional_id, $reason);
+            }
+            $exists_stmt->execute();
+            if ($exists_stmt->get_result()->fetch_assoc()) {
+                $skipped++;
+                $current->modify('+1 day');
+                continue;
+            }
+
+            $stmt->bind_param("sisi", $current_date, $professional_id, $reason, $is_global);
             $stmt->execute();
 
-            if ($stmt->affected_rows > 0) {
-                $inserted++;
-            } else {
-                $skipped++;
-            }
+            $inserted++;
 
             $current->modify('+1 day');
         }
@@ -917,14 +1259,36 @@ if ($action === 'generate_invite') {
     $end_date = $_POST['end_date'] ?? $start_date;
     $reason = $_POST['reason'] ?? '';
     $is_global = isset($_POST['is_global']) && $_POST['is_global'] === '1' ? 1 : 0;
+    $professional_id = isset($_POST['professional_id']) && $_POST['professional_id'] !== '' ? (int) $_POST['professional_id'] : 0;
 
     if (!$start_date || !$end_date || $reason === '') {
         echo json_encode(['success' => false, 'error' => 'Rango invalido']);
         exit;
     }
 
-    $stmt = $mysqli->prepare("DELETE FROM closed_days WHERE closed_date BETWEEN ? AND ? AND reason = ? AND is_global = ?");
-    $stmt->bind_param("sssi", $start_date, $end_date, $reason, $is_global);
+    if ($is_superadmin) {
+        if ($is_global) {
+            $stmt = $mysqli->prepare("DELETE FROM closed_days WHERE closed_date BETWEEN ? AND ? AND reason = ? AND is_global = 1");
+            $stmt->bind_param("sss", $start_date, $end_date, $reason);
+        } elseif ($professional_id <= 0) {
+            $stmt = $mysqli->prepare("DELETE FROM closed_days WHERE closed_date BETWEEN ? AND ? AND reason = ? AND is_global = 0 AND professional_id IS NULL");
+            $stmt->bind_param("sss", $start_date, $end_date, $reason);
+        } else {
+            $current_professional_id = current_professional_id_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0));
+            $stmt = $mysqli->prepare("
+                DELETE FROM closed_days
+                WHERE closed_date BETWEEN ? AND ?
+                  AND reason = ?
+                  AND is_global = 0
+                  AND (professional_id = ? OR (professional_id IS NULL AND ? = ?))
+            ");
+            $stmt->bind_param("sssiii", $start_date, $end_date, $reason, $professional_id, $professional_id, $current_professional_id);
+        }
+    } else {
+        $current_professional_id = current_professional_id_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0));
+        $stmt = $mysqli->prepare("DELETE FROM closed_days WHERE closed_date BETWEEN ? AND ? AND reason = ? AND is_global = 0 AND professional_id = ?");
+        $stmt->bind_param("sssi", $start_date, $end_date, $reason, $current_professional_id);
+    }
     $stmt->execute();
     echo json_encode(['success' => true, 'deleted' => $stmt->affected_rows]);
 } elseif ($action === 'get_cabinet_settings') {
@@ -939,7 +1303,7 @@ if ($action === 'generate_invite') {
     $settings = $settings_res ? $settings_res->fetch_assoc() : ['show_team_public' => 0, 'allow_patient_transfer' => 0];
     $dashboard_photo_path = $settings['profile_image_path'] ?? '';
     $res = $mysqli->query("
-        SELECT p.id, p.user_id, p.display_name, p.professional_title, p.professional_specialty, p.public_photo_path, p.public_email, p.public_phone,
+        SELECT p.id, p.user_id, p.display_name, p.professional_title, p.license_number, p.professional_specialty, p.public_photo_path, p.public_email, p.public_phone,
                p.is_active, u.email AS login_email, u.role
         FROM professionals p
         LEFT JOIN users u ON u.id = p.user_id
@@ -955,6 +1319,7 @@ if ($action === 'generate_invite') {
             'user_id' => (int) ($row['user_id'] ?? 0),
             'display_name' => $row['display_name'] ?? '',
             'professional_title' => $row['professional_title'] ?? '',
+            'license_number' => $row['license_number'] ?? '',
             'professional_specialty' => $row['professional_specialty'] ?? '',
             'public_photo_path' => $photo_path,
             'display_photo_path' => $display_photo_path,
@@ -1076,7 +1441,13 @@ if ($action === 'generate_invite') {
         exit;
     }
 
-    $stmt = $mysqli->prepare("SELECT user_id, display_name FROM professionals WHERE id = ? LIMIT 1");
+    $stmt = $mysqli->prepare("
+        SELECT p.user_id, p.display_name, u.role AS user_role
+        FROM professionals p
+        LEFT JOIN users u ON u.id = p.user_id
+        WHERE p.id = ?
+        LIMIT 1
+    ");
     $stmt->bind_param("i", $professional_id);
     $stmt->execute();
     $professional = $stmt->get_result()->fetch_assoc();
@@ -1086,6 +1457,10 @@ if ($action === 'generate_invite') {
     }
     if ((int) ($professional['user_id'] ?? 0) === (int) ($_SESSION['user_id'] ?? 0)) {
         echo json_encode(['success' => false, 'error' => 'No puedes borrar tu propio usuario administrador.']);
+        exit;
+    }
+    if (($professional['user_role'] ?? '') === 'superadmin') {
+        echo json_encode(['success' => false, 'error' => 'No se puede borrar el usuario superadmin.']);
         exit;
     }
 
@@ -1165,8 +1540,26 @@ if ($action === 'generate_invite') {
         $stmt = $mysqli->prepare("DELETE FROM professionals WHERE id = ?");
         $stmt->bind_param("i", $professional_id);
         $stmt->execute();
+
+        $stmt = $mysqli->prepare("DELETE FROM professional_settings WHERE professional_id = ?");
+        $stmt->bind_param("i", $professional_id);
+        $stmt->execute();
+
+        $linked_user_id = (int) ($professional['user_id'] ?? 0);
+        if ($linked_user_id > 0 && ($professional['user_role'] ?? '') === 'admin') {
+            $password_resets_exists = $mysqli->query("SHOW TABLES LIKE 'password_resets'");
+            if ($password_resets_exists && $password_resets_exists->num_rows > 0) {
+                $stmt = $mysqli->prepare("DELETE FROM password_resets WHERE user_id = ?");
+                $stmt->bind_param("i", $linked_user_id);
+                $stmt->execute();
+            }
+            $stmt = $mysqli->prepare("DELETE FROM users WHERE id = ? AND role = 'admin'");
+            $stmt->bind_param("i", $linked_user_id);
+            $stmt->execute();
+        }
+
         $mysqli->commit();
-        echo json_encode(['success' => true, 'message' => $usage_total > 0 ? 'Traspaso realizado y profesional borrado correctamente.' : 'Profesional borrado correctamente.']);
+        echo json_encode(['success' => true, 'message' => $usage_total > 0 ? 'Traspaso realizado, profesional y cuenta de acceso borrados correctamente.' : 'Profesional y cuenta de acceso borrados correctamente.']);
     } catch (\Exception $e) {
         $mysqli->rollback();
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
@@ -1192,7 +1585,14 @@ if ($action === 'generate_invite') {
     $password_setup_users = [];
     $mysqli->begin_transaction();
     try {
-        $stmt = $mysqli->prepare("UPDATE payment_settings SET show_team_public = ?, allow_patient_transfer = ? WHERE id = 1");
+        $mysqli->query("INSERT IGNORE INTO payment_settings (id) VALUES (1)");
+        $stmt = $mysqli->prepare("
+            INSERT INTO payment_settings (id, show_team_public, allow_patient_transfer)
+            VALUES (1, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                show_team_public = VALUES(show_team_public),
+                allow_patient_transfer = VALUES(allow_patient_transfer)
+        ");
         $stmt->bind_param("ii", $show_team_public, $allow_patient_transfer);
         $stmt->execute();
 
@@ -1201,6 +1601,7 @@ if ($action === 'generate_invite') {
             $user_id = (int) ($professional['user_id'] ?? 0);
             $display_name = trim((string) ($professional['display_name'] ?? ''));
             $title = trim((string) ($professional['professional_title'] ?? ''));
+            $license_number = trim((string) ($professional['license_number'] ?? ''));
             $specialty = trim((string) ($professional['professional_specialty'] ?? ''));
             $current_photo_path = trim((string) ($professional['public_photo_path'] ?? ''));
             $email = trim((string) ($professional['email'] ?? ''));
@@ -1247,17 +1648,17 @@ if ($action === 'generate_invite') {
             if ($professional_id > 0) {
                 $stmt = $mysqli->prepare("
                     UPDATE professionals
-                    SET user_id = ?, display_name = ?, public_slug = ?, professional_title = ?, professional_specialty = ?, public_photo_path = ?, public_email = ?, is_active = ?, sort_order = ?
+                    SET user_id = ?, display_name = ?, public_slug = ?, professional_title = ?, license_number = ?, professional_specialty = ?, public_photo_path = ?, public_email = ?, is_active = ?, sort_order = ?
                     WHERE id = ?
                 ");
-                $stmt->bind_param("issssssiii", $user_id, $display_name, $slug, $title, $specialty, $current_photo_path, $email, $is_active, $sort_order, $professional_id);
+                $stmt->bind_param("isssssssiii", $user_id, $display_name, $slug, $title, $license_number, $specialty, $current_photo_path, $email, $is_active, $sort_order, $professional_id);
             } else {
                 $stmt = $mysqli->prepare("
-                    INSERT INTO professionals (user_id, display_name, public_slug, professional_title, professional_specialty, public_photo_path, public_email, is_active, sort_order)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON DUPLICATE KEY UPDATE display_name = VALUES(display_name), professional_title = VALUES(professional_title), professional_specialty = VALUES(professional_specialty), public_photo_path = VALUES(public_photo_path), public_email = VALUES(public_email), is_active = VALUES(is_active), sort_order = VALUES(sort_order)
+                    INSERT INTO professionals (user_id, display_name, public_slug, professional_title, license_number, professional_specialty, public_photo_path, public_email, is_active, sort_order)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE display_name = VALUES(display_name), professional_title = VALUES(professional_title), license_number = VALUES(license_number), professional_specialty = VALUES(professional_specialty), public_photo_path = VALUES(public_photo_path), public_email = VALUES(public_email), is_active = VALUES(is_active), sort_order = VALUES(sort_order)
                 ");
-                $stmt->bind_param("issssssii", $user_id, $display_name, $slug, $title, $specialty, $current_photo_path, $email, $is_active, $sort_order);
+                $stmt->bind_param("isssssssii", $user_id, $display_name, $slug, $title, $license_number, $specialty, $current_photo_path, $email, $is_active, $sort_order);
             }
             $stmt->execute();
             $saved_professional_id = $professional_id > 0 ? $professional_id : (int) $mysqli->insert_id;
@@ -1267,6 +1668,9 @@ if ($action === 'generate_invite') {
                 $stmt->execute();
                 $saved_row = $stmt->get_result()->fetch_assoc();
                 $saved_professional_id = $saved_row ? (int) $saved_row['id'] : 0;
+            }
+            if ($saved_professional_id > 0) {
+                cabinet_seed_professional_settings_from_superadmin($mysqli, $saved_professional_id);
             }
 
             if ($photo_index === $index && isset($_FILES['professional_photo']) && ($_FILES['professional_photo']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
@@ -1286,16 +1690,26 @@ if ($action === 'generate_invite') {
             }
         }
         $mysqli->commit();
-        echo json_encode(['success' => true, 'message' => 'Modo gabinete guardado correctamente.']);
+        $settings_res = $mysqli->query("SELECT show_team_public, allow_patient_transfer FROM payment_settings WHERE id = 1");
+        $saved_settings = $settings_res ? $settings_res->fetch_assoc() : ['show_team_public' => $show_team_public, 'allow_patient_transfer' => $allow_patient_transfer];
+        echo json_encode([
+            'success' => true,
+            'message' => 'Equipo guardado correctamente.',
+            'settings' => [
+                'show_team_public' => (int) ($saved_settings['show_team_public'] ?? 0),
+                'allow_patient_transfer' => (int) ($saved_settings['allow_patient_transfer'] ?? 0)
+            ]
+        ]);
     } catch (\Exception $e) {
         $mysqli->rollback();
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
     }
 } elseif ($action === 'get_payment_settings') {
     ensure_payment_settings_table($mysqli);
+    ensure_cabinet_schema($mysqli);
 
     $res = $mysqli->query("
-        SELECT app_name, profile_image_path, landing_image_path, primary_color, show_profile_image_public, show_prices_public, online_booking_enabled, bonuses_enabled, create_compensation_bonus_on_paid_cancel, online_payment_enabled, environment, merchant_code, terminal,
+        SELECT app_name, site_tagline, site_phone, profile_image_path, landing_image_path, primary_color, show_profile_image_public, show_prices_public, online_booking_enabled, bonuses_enabled, create_compensation_bonus_on_paid_cancel, online_payment_enabled, environment, merchant_code, terminal,
                appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, admin_notification_email,
                appointment_delivery_mode, available_session_types, available_session_durations,
                appointment_reminder_enabled,
@@ -1315,9 +1729,21 @@ if ($action === 'generate_invite') {
         WHERE id = 1
     ");
     $settings = $res->fetch_assoc();
+    $current_professional_id = current_professional_id_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0));
+    if ($current_professional_id > 0) {
+        $professional_settings = cabinet_get_effective_professional_settings($mysqli, $current_professional_id);
+        foreach ($professional_settings as $key => $value) {
+            $settings[$key] = $value;
+        }
+    }
+    $settings['current_professional_id'] = $current_professional_id;
 
     echo json_encode(['success' => true, 'settings' => $settings, 'services' => fetch_appointment_services($mysqli), 'bonuses' => fetch_appointment_bonuses($mysqli)]);
 } elseif ($action === 'save_bonuses') {
+    if (!$is_superadmin) {
+        echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede modificar bonos globales.']);
+        exit;
+    }
     ensure_payment_settings_table($mysqli);
     ensure_bonus_tables($mysqli);
 
@@ -1370,6 +1796,10 @@ if ($action === 'generate_invite') {
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
     }
 } elseif ($action === 'save_services') {
+    if (!$is_superadmin) {
+        echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede modificar precios globales.']);
+        exit;
+    }
     ensure_payment_settings_table($mysqli);
     ensure_appointment_services_tables($mysqli);
 
@@ -1454,9 +1884,13 @@ if ($action === 'generate_invite') {
     }
 } elseif ($action === 'save_payment_settings') {
     ensure_payment_settings_table($mysqli);
+    ensure_cabinet_schema($mysqli);
 
+    $settings_section = $_POST['settings_section'] ?? '';
     $enabled = isset($_POST['online_payment_enabled']) && $_POST['online_payment_enabled'] === '1' ? 1 : 0;
     $app_name = trim($_POST['app_name'] ?? '');
+    $site_tagline = trim($_POST['site_tagline'] ?? '');
+    $site_phone = trim($_POST['site_phone'] ?? '');
     $primary_color = trim($_POST['primary_color'] ?? '#8f7fba');
     $environment = $_POST['environment'] ?? 'sandbox';
     $merchant_code = trim($_POST['merchant_code'] ?? '');
@@ -1596,6 +2030,35 @@ if ($action === 'generate_invite') {
         exit;
     }
 
+    $private_settings_payload = [
+        'appointment_delivery_mode' => $appointment_delivery_mode,
+        'available_session_types' => $available_session_types,
+        'available_session_durations' => $available_session_durations,
+        'appointment_start_time' => $appointment_start_time,
+        'appointment_end_time' => $appointment_end_time,
+        'break_start_time' => $break_start_time === '' ? null : $break_start_time,
+        'break_end_time' => $break_end_time === '' ? null : $break_end_time,
+        'available_weekdays' => $available_weekdays,
+        'min_booking_notice_days' => $min_booking_notice_days,
+        'max_booking_notice_days' => $max_booking_notice_days,
+        'bonuses_enabled' => isset($_POST['bonuses_enabled']) && $_POST['bonuses_enabled'] === '1' ? 1 : 0,
+        'create_compensation_bonus_on_paid_cancel' => isset($_POST['create_compensation_bonus_on_paid_cancel']) && $_POST['create_compensation_bonus_on_paid_cancel'] === '1' ? 1 : 0
+    ];
+
+    $current_professional_id = current_professional_id_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0));
+    if (!$is_superadmin) {
+        if (!in_array($settings_section, ['general', 'booking'], true)) {
+            echo json_encode(['success' => false, 'error' => 'No tienes permiso para modificar esta seccion de configuracion.']);
+            exit;
+        }
+        if ($current_professional_id <= 0 || !cabinet_upsert_professional_settings($mysqli, $current_professional_id, $private_settings_payload)) {
+            echo json_encode(['success' => false, 'error' => 'No se pudo guardar la configuracion privada del profesional.']);
+            exit;
+        }
+        echo json_encode(['success' => true, 'message' => 'Cambios guardados']);
+        exit;
+    }
+
     if (!in_array($email_provider, ['phpmailer', 'google'], true)) {
         echo json_encode(['success' => false, 'error' => 'Proveedor de email inválido']);
         exit;
@@ -1728,23 +2191,23 @@ if ($action === 'generate_invite') {
     if ($merchant_key !== '') {
         $stmt = $mysqli->prepare("
             UPDATE payment_settings
-            SET app_name = ?, online_payment_enabled = ?, environment = ?, merchant_code = ?, merchant_key = ?, terminal = ?, appointment_price = ?, online_appointment_price = ?, couple_appointment_price = ?, online_couple_appointment_price = ?, admin_notification_email = ?,
+            SET app_name = ?, site_tagline = ?, site_phone = ?, online_payment_enabled = ?, environment = ?, merchant_code = ?, merchant_key = ?, terminal = ?, appointment_price = ?, online_appointment_price = ?, couple_appointment_price = ?, online_couple_appointment_price = ?, admin_notification_email = ?,
                 appointment_reminder_enabled = ?, min_booking_notice_days = ?, max_booking_notice_days = ?,
                 email_provider = ?, smtp_host = ?, smtp_port = ?, smtp_username = ?, smtp_secure = ?, smtp_from_email = ?, smtp_from_name = ?,
                 google_client_id = ?, google_connected_email = ?, google_redirect_uri = ?, google_calendar_enabled = ?, google_calendar_id = ?
             WHERE id = 1
         ");
-        bind_params_dynamic($stmt, "sissssddddsiiississsssssis", [$app_name, $enabled, $environment, $merchant_code, $merchant_key, $terminal, $appointment_price, $online_appointment_price, $couple_appointment_price, $online_couple_appointment_price, $admin_notification_email, $appointment_reminder_enabled, $min_booking_notice_days, $max_booking_notice_days, $email_provider, $smtp_host, $smtp_port, $smtp_username, $smtp_secure, $smtp_from_email, $smtp_from_name, $google_client_id, $google_connected_email, $google_redirect_uri, $google_calendar_enabled, $google_calendar_id]);
+        bind_params_dynamic($stmt, "sssissssddddsiiississsssssis", [$app_name, $site_tagline, $site_phone, $enabled, $environment, $merchant_code, $merchant_key, $terminal, $appointment_price, $online_appointment_price, $couple_appointment_price, $online_couple_appointment_price, $admin_notification_email, $appointment_reminder_enabled, $min_booking_notice_days, $max_booking_notice_days, $email_provider, $smtp_host, $smtp_port, $smtp_username, $smtp_secure, $smtp_from_email, $smtp_from_name, $google_client_id, $google_connected_email, $google_redirect_uri, $google_calendar_enabled, $google_calendar_id]);
     } else {
         $stmt = $mysqli->prepare("
             UPDATE payment_settings
-            SET app_name = ?, online_payment_enabled = ?, environment = ?, merchant_code = ?, terminal = ?, appointment_price = ?, online_appointment_price = ?, couple_appointment_price = ?, online_couple_appointment_price = ?, admin_notification_email = ?,
+            SET app_name = ?, site_tagline = ?, site_phone = ?, online_payment_enabled = ?, environment = ?, merchant_code = ?, terminal = ?, appointment_price = ?, online_appointment_price = ?, couple_appointment_price = ?, online_couple_appointment_price = ?, admin_notification_email = ?,
                 appointment_reminder_enabled = ?, min_booking_notice_days = ?, max_booking_notice_days = ?,
                 email_provider = ?, smtp_host = ?, smtp_port = ?, smtp_username = ?, smtp_secure = ?, smtp_from_email = ?, smtp_from_name = ?,
                 google_client_id = ?, google_connected_email = ?, google_redirect_uri = ?, google_calendar_enabled = ?, google_calendar_id = ?
             WHERE id = 1
         ");
-        bind_params_dynamic($stmt, "sisssddddsiiississsssssis", [$app_name, $enabled, $environment, $merchant_code, $terminal, $appointment_price, $online_appointment_price, $couple_appointment_price, $online_couple_appointment_price, $admin_notification_email, $appointment_reminder_enabled, $min_booking_notice_days, $max_booking_notice_days, $email_provider, $smtp_host, $smtp_port, $smtp_username, $smtp_secure, $smtp_from_email, $smtp_from_name, $google_client_id, $google_connected_email, $google_redirect_uri, $google_calendar_enabled, $google_calendar_id]);
+        bind_params_dynamic($stmt, "sssisssddddsiiississsssssis", [$app_name, $site_tagline, $site_phone, $enabled, $environment, $merchant_code, $terminal, $appointment_price, $online_appointment_price, $couple_appointment_price, $online_couple_appointment_price, $admin_notification_email, $appointment_reminder_enabled, $min_booking_notice_days, $max_booking_notice_days, $email_provider, $smtp_host, $smtp_port, $smtp_username, $smtp_secure, $smtp_from_email, $smtp_from_name, $google_client_id, $google_connected_email, $google_redirect_uri, $google_calendar_enabled, $google_calendar_id]);
     }
 
     $stmt->execute();
@@ -1779,6 +2242,10 @@ if ($action === 'generate_invite') {
     ");
     $stmt->bind_param("sssss", $appointment_start_time, $appointment_end_time, $break_start_db, $break_end_db, $available_weekdays);
     $stmt->execute();
+
+    if ($current_professional_id > 0) {
+        cabinet_upsert_professional_settings($mysqli, $current_professional_id, $private_settings_payload);
+    }
 
     if ($uploaded_profile_image_path !== null) {
         $stmt = $mysqli->prepare("UPDATE payment_settings SET profile_image_path = ?, show_profile_image_public = ?, show_prices_public = ?, online_booking_enabled = ? WHERE id = 1");

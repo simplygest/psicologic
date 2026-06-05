@@ -220,6 +220,50 @@ function notify_admin($mysqli, $subject, $html_body, $reply_to = null)
     return send_app_email($admin_email, $subject, $html_body, $reply_to, $mysqli);
 }
 
+function get_appointment_professional($mysqli, $appointment)
+{
+    $professional_id = (int) ($appointment['professional_id'] ?? 0);
+    if ($professional_id <= 0) {
+        return null;
+    }
+
+    if (function_exists('cabinet_fetch_professional')) {
+        return cabinet_fetch_professional($mysqli, $professional_id);
+    }
+
+    $exists = $mysqli->query("SHOW TABLES LIKE 'professionals'");
+    if (!$exists || $exists->num_rows === 0) {
+        return null;
+    }
+
+    $stmt = $mysqli->prepare("
+        SELECT p.id, p.user_id, p.display_name, p.public_email, u.email AS user_email
+        FROM professionals p
+        LEFT JOIN users u ON u.id = p.user_id
+        WHERE p.id = ?
+        LIMIT 1
+    ");
+    $stmt->bind_param("i", $professional_id);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    if (!$row) {
+        return null;
+    }
+    $row['notification_email'] = trim($row['public_email'] ?: ($row['user_email'] ?? ''));
+    return $row;
+}
+
+function notify_appointment_professional($mysqli, $appointment, $subject, $html_body, $reply_to = null)
+{
+    $professional = get_appointment_professional($mysqli, $appointment);
+    $professional_email = trim((string) ($professional['notification_email'] ?? ''));
+    if ($professional_email && filter_var($professional_email, FILTER_VALIDATE_EMAIL)) {
+        return send_app_email($professional_email, $subject, $html_body, $reply_to, $mysqli);
+    }
+
+    return notify_admin($mysqli, $subject, $html_body, $reply_to);
+}
+
 function appointment_label($date, $time)
 {
     return date('d/m/Y', strtotime($date)) . ' a las ' . date('H:i', strtotime($time));
@@ -265,6 +309,10 @@ function notify_appointment_cancelled($mysqli, $appointment)
     $service_text = function_exists('appointment_service_option_label')
         ? appointment_service_option_label($appointment)
         : appointment_service_label($appointment['service_type'] ?? 'individual');
+    $professional = get_appointment_professional($mysqli, $appointment);
+    $professional_line = $professional
+        ? '<b>Profesional:</b> ' . htmlspecialchars($professional['display_name']) . '<br>'
+        : '';
     $payment_status = $appointment['payment_status'] ?? 'pending';
     $is_bonus_payment = ($appointment['payment_method'] ?? '') === 'bonus' && !empty($appointment['patient_bonus_id']);
     $compensation_bonus_created = !empty($appointment['compensation_bonus_created']);
@@ -284,11 +332,13 @@ function notify_appointment_cancelled($mysqli, $appointment)
         $patient_payment_note = '<p><b>Compensaci&oacute;n:</b> hemos generado un vale de 1 sesi&oacute;n para que puedas reservar otra cita desde la web.</p>';
     }
 
-    notify_admin(
+    notify_appointment_professional(
         $mysqli,
+        $appointment,
         'Cita cancelada',
         '<p>Se ha cancelado una cita.</p>' .
         '<p><b>Paciente:</b> ' . htmlspecialchars($patient_name) . '<br>' .
+        $professional_line .
         '<b>Fecha:</b> ' . htmlspecialchars($appointment_text) . '<br>' .
         '<b>Servicio:</b> ' . htmlspecialchars($service_text) . '<br>' .
         '<b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '<br>' .
@@ -302,6 +352,7 @@ function notify_appointment_cancelled($mysqli, $appointment)
             $patient_email,
             'Cita cancelada',
             '<p>Hola ' . htmlspecialchars($patient_name) . ',</p>' .
+            ($professional ? '<p><b>Tu cita con ' . htmlspecialchars($professional['display_name']) . '</b></p>' : '') .
             '<p>Tu cita ' . htmlspecialchars(strtolower($service_text)) . ' ' . htmlspecialchars(strtolower($consultation_text)) . ' para el ' . htmlspecialchars($appointment_text) . ' ha sido cancelada correctamente.</p>' .
             '<p><b>Servicio:</b> ' . htmlspecialchars($service_text) . '</p>' .
             '<p><b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '</p>' .

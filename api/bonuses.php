@@ -3,6 +3,7 @@ session_start();
 require_once '../db.php';
 require_once '../settings_helpers.php';
 require_once '../payment_helpers.php';
+require_once '../cabinet_helpers.php';
 header('Content-Type: application/json');
 
 if (!isset($_SESSION['user_id'])) {
@@ -13,6 +14,7 @@ if (!isset($_SESSION['user_id'])) {
 $action = $_GET['action'] ?? '';
 $user_id = (int) $_SESSION['user_id'];
 $is_admin = in_array(($_SESSION['role'] ?? ''), ['admin', 'superadmin'], true);
+$is_superadmin = ($_SESSION['role'] ?? '') === 'superadmin';
 
 if (!$is_admin && !online_booking_enabled($mysqli)) {
     echo json_encode(['success' => false, 'error' => 'El área de pacientes no está disponible en este momento.']);
@@ -21,6 +23,64 @@ if (!$is_admin && !online_booking_enabled($mysqli)) {
 
 ensure_bonus_tables($mysqli);
 ensure_payment_attempts_table($mysqli);
+ensure_cabinet_schema($mysqli);
+
+function bonus_current_professional_id_for_user($mysqli, $user_id)
+{
+    $user_id = (int) $user_id;
+    if ($user_id <= 0) {
+        return 0;
+    }
+    $stmt = $mysqli->prepare("SELECT id FROM professionals WHERE user_id = ? LIMIT 1");
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    return $row ? (int) $row['id'] : 0;
+}
+
+function bonus_requested_professional_filter($mysqli)
+{
+    global $is_superadmin, $user_id;
+    $current_professional_id = bonus_current_professional_id_for_user($mysqli, $user_id);
+    if (!$is_superadmin) {
+        return $current_professional_id > 0 ? $current_professional_id : -1;
+    }
+
+    $raw = $_GET['professional_id'] ?? '';
+    if ($raw === 'all') {
+        return 0;
+    }
+    if ($raw === '' || $raw === null) {
+        return $current_professional_id;
+    }
+    return max(0, (int) $raw);
+}
+
+function bonus_active_professionals_payload($mysqli)
+{
+    $branding = get_public_branding_settings($mysqli);
+    $dashboard_photo = $branding['profile_image_path'] ?? '';
+    $rows = [];
+    $res = $mysqli->query("
+        SELECT p.id, p.display_name, p.public_photo_path, u.role AS user_role
+        FROM professionals p
+        LEFT JOIN users u ON u.id = p.user_id
+        WHERE p.is_active = 1
+        ORDER BY CASE WHEN u.role = 'superadmin' THEN 0 ELSE 1 END ASC,
+                 p.sort_order ASC,
+                 p.display_name ASC
+    ");
+    while ($row = $res->fetch_assoc()) {
+        $photo_path = $row['public_photo_path'] ?: (($row['user_role'] ?? '') === 'superadmin' ? $dashboard_photo : '');
+        $rows[] = [
+            'id' => (int) $row['id'],
+            'display_name' => $row['display_name'],
+            'public_photo_path' => $row['public_photo_path'] ?? '',
+            'display_photo_path' => $photo_path
+        ];
+    }
+    return $rows;
+}
 
 function format_bonus_row($row)
 {
@@ -30,6 +90,13 @@ function format_bonus_row($row)
     $row['total_sessions'] = (int) $row['total_sessions'];
     $row['remaining_sessions'] = (int) $row['remaining_sessions'];
     $row['amount_paid'] = isset($row['amount_paid']) ? number_format(((int) $row['amount_paid']) / 100, 2, '.', '') : null;
+    if (isset($row['professional_id'])) {
+        $row['professional_id'] = (int) $row['professional_id'];
+    }
+    if (isset($row['professional_photo_path'], $row['professional_user_role'])) {
+        $branding = get_public_branding_settings($GLOBALS['mysqli']);
+        $row['professional_photo_path'] = $row['professional_photo_path'] ?: ($row['professional_user_role'] === 'superadmin' ? ($branding['profile_image_path'] ?? '') : '');
+    }
     return $row;
 }
 
@@ -99,21 +166,38 @@ if ($action === 'admin_list') {
         exit;
     }
 
+    $professional_id = bonus_requested_professional_filter($mysqli);
+    $effective_professional_expr = "COALESCE(pb.professional_id, ppf.professional_id, pp.professional_id)";
+    $professional_where = $professional_id > 0 ? " AND $effective_professional_expr = " . (int) $professional_id : ($professional_id < 0 ? " AND 1 = 0" : "");
+
     $res = $mysqli->query("
         SELECT pb.id, pb.user_id, pb.bonus_id, pb.total_sessions, pb.remaining_sessions, pb.status,
                pb.purchased_at, pb.expires_at, b.name, pa.amount_cents AS amount_paid, pa.payment_method,
-               u.name AS patient_name, u.email AS patient_email, u.phone AS patient_phone
+               u.name AS patient_name, u.email AS patient_email, u.phone AS patient_phone,
+               p.id AS professional_id, p.display_name AS professional_name, p.public_photo_path AS professional_photo_path,
+               pu.role AS professional_user_role
         FROM patient_bonuses pb
         JOIN appointment_bonuses b ON b.id = pb.bonus_id
         JOIN users u ON u.id = pb.user_id
         LEFT JOIN payment_attempts pa ON pa.id = pb.payment_attempt_id
+        LEFT JOIN patient_professionals ppf ON ppf.patient_id = pb.user_id AND ppf.is_primary = 1
+        LEFT JOIN patient_profiles pp ON pp.user_id = pb.user_id
+        LEFT JOIN professionals p ON p.id = $effective_professional_expr
+        LEFT JOIN users pu ON pu.id = p.user_id
+        WHERE 1 = 1
+          $professional_where
         ORDER BY pb.purchased_at DESC, pb.id DESC
     ");
     $bonuses = [];
     while ($row = $res->fetch_assoc()) {
         $bonuses[] = format_bonus_row($row);
     }
-    echo json_encode(['success' => true, 'bonuses' => $bonuses]);
+    echo json_encode([
+        'success' => true,
+        'bonuses' => $bonuses,
+        'professionals' => $is_superadmin ? bonus_active_professionals_payload($mysqli) : [],
+        'current_professional_id' => bonus_current_professional_id_for_user($mysqli, $user_id)
+    ]);
     exit;
 }
 

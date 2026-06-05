@@ -25,6 +25,30 @@ function cabinet_add_column_if_missing($mysqli, $table, $column, $definition)
     }
 }
 
+function cabinet_drop_legacy_closed_date_unique_if_needed($mysqli)
+{
+    $stmt = $mysqli->prepare("
+        SELECT s.INDEX_NAME
+        FROM INFORMATION_SCHEMA.STATISTICS s
+        WHERE s.TABLE_SCHEMA = DATABASE()
+          AND s.TABLE_NAME = 'closed_days'
+          AND s.NON_UNIQUE = 0
+          AND s.INDEX_NAME <> 'PRIMARY'
+        GROUP BY s.INDEX_NAME
+        HAVING SUM(CASE WHEN s.COLUMN_NAME = 'closed_date' THEN 1 ELSE 0 END) > 0
+           AND COUNT(*) = 1
+    ");
+    if (!$stmt) {
+        return;
+    }
+    $stmt->execute();
+    $res = $stmt->get_result();
+    while ($row = $res->fetch_assoc()) {
+        $index = $mysqli->real_escape_string($row['INDEX_NAME']);
+        $mysqli->query("ALTER TABLE closed_days DROP INDEX `$index`");
+    }
+}
+
 function ensure_cabinet_schema($mysqli)
 {
     $mysqli->query("ALTER TABLE users MODIFY role ENUM('superadmin','admin','patient') NOT NULL DEFAULT 'patient'");
@@ -38,6 +62,7 @@ function ensure_cabinet_schema($mysqli)
     $closed_days_table = $mysqli->query("SHOW TABLES LIKE 'closed_days'");
     if ($closed_days_table && $closed_days_table->num_rows > 0) {
         cabinet_add_column_if_missing($mysqli, 'closed_days', 'is_global', "TINYINT(1) NOT NULL DEFAULT 0 AFTER reason");
+        cabinet_drop_legacy_closed_date_unique_if_needed($mysqli);
         cabinet_add_index_if_missing($mysqli, 'closed_days', 'idx_closed_days_global_date', 'is_global, closed_date');
     }
 
@@ -48,6 +73,7 @@ function ensure_cabinet_schema($mysqli)
             display_name VARCHAR(150) NOT NULL,
             public_slug VARCHAR(160) DEFAULT NULL,
             professional_title VARCHAR(180) DEFAULT NULL,
+            license_number VARCHAR(80) DEFAULT NULL,
             professional_specialty TEXT DEFAULT NULL,
             public_bio TEXT DEFAULT NULL,
             public_photo_path VARCHAR(255) DEFAULT NULL,
@@ -65,6 +91,7 @@ function ensure_cabinet_schema($mysqli)
     ");
 
     cabinet_add_column_if_missing($mysqli, 'professionals', 'professional_specialty', "TEXT DEFAULT NULL AFTER professional_title");
+    cabinet_add_column_if_missing($mysqli, 'professionals', 'license_number', "VARCHAR(80) DEFAULT NULL AFTER professional_title");
     cabinet_add_column_if_missing($mysqli, 'professionals', 'public_photo_path', "VARCHAR(255) DEFAULT NULL AFTER public_bio");
 
     $mysqli->query("
@@ -82,6 +109,33 @@ function ensure_cabinet_schema($mysqli)
             INDEX idx_patient_professionals_primary (patient_id, is_primary)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     ");
+
+    $mysqli->query("
+        CREATE TABLE IF NOT EXISTS professional_settings (
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            professional_id INT UNSIGNED NOT NULL,
+            appointment_delivery_mode ENUM('both', 'presencial', 'online') DEFAULT NULL,
+            available_session_types VARCHAR(32) DEFAULT NULL,
+            available_session_durations VARCHAR(16) DEFAULT NULL,
+            appointment_start_time TIME DEFAULT NULL,
+            appointment_end_time TIME DEFAULT NULL,
+            break_start_time TIME DEFAULT NULL,
+            break_end_time TIME DEFAULT NULL,
+            available_weekdays VARCHAR(32) DEFAULT NULL,
+            min_booking_notice_days INT UNSIGNED DEFAULT NULL,
+            max_booking_notice_days INT UNSIGNED DEFAULT NULL,
+            bonuses_enabled TINYINT(1) DEFAULT NULL,
+            create_compensation_bonus_on_paid_cancel TINYINT(1) DEFAULT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uniq_professional_settings_professional (professional_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+
+    cabinet_add_column_if_missing($mysqli, 'professional_settings', 'min_booking_notice_days', "INT UNSIGNED DEFAULT NULL AFTER available_weekdays");
+    cabinet_add_column_if_missing($mysqli, 'professional_settings', 'max_booking_notice_days', "INT UNSIGNED DEFAULT NULL AFTER min_booking_notice_days");
+    cabinet_add_column_if_missing($mysqli, 'professional_settings', 'bonuses_enabled', "TINYINT(1) DEFAULT NULL AFTER max_booking_notice_days");
+    cabinet_add_column_if_missing($mysqli, 'professional_settings', 'create_compensation_bonus_on_paid_cancel', "TINYINT(1) DEFAULT NULL AFTER bonuses_enabled");
 
     $column_targets = [
         'appointments' => "INT UNSIGNED DEFAULT NULL AFTER user_id",
@@ -112,7 +166,464 @@ function ensure_cabinet_schema($mysqli)
     cabinet_add_index_if_missing($mysqli, 'appointment_service_options', 'idx_service_options_professional', 'professional_id');
     cabinet_add_index_if_missing($mysqli, 'appointment_bonuses', 'idx_appointment_bonuses_professional', 'professional_id');
 
-    seed_default_professional($mysqli);
+    $default_professional_id = seed_default_professional($mysqli);
+    if ($default_professional_id) {
+        cabinet_seed_professional_settings_from_superadmin($mysqli, $default_professional_id);
+    }
+    cabinet_seed_missing_professional_settings($mysqli);
+}
+
+function cabinet_professional_settings_columns()
+{
+    return [
+        'appointment_delivery_mode',
+        'available_session_types',
+        'available_session_durations',
+        'appointment_start_time',
+        'appointment_end_time',
+        'break_start_time',
+        'break_end_time',
+        'available_weekdays',
+        'min_booking_notice_days',
+        'max_booking_notice_days',
+        'bonuses_enabled',
+        'create_compensation_bonus_on_paid_cancel'
+    ];
+}
+
+function cabinet_default_professional_settings()
+{
+    return [
+        'appointment_delivery_mode' => 'both',
+        'available_session_types' => 'individual',
+        'available_session_durations' => '60',
+        'appointment_start_time' => '10:00:00',
+        'appointment_end_time' => '19:00:00',
+        'break_start_time' => '15:00:00',
+        'break_end_time' => '16:00:00',
+        'available_weekdays' => '1,2,3,4,5',
+        'min_booking_notice_days' => 2,
+        'max_booking_notice_days' => 40,
+        'bonuses_enabled' => 0,
+        'create_compensation_bonus_on_paid_cancel' => 1
+    ];
+}
+
+function cabinet_global_settings_as_professional_defaults($mysqli)
+{
+    $defaults = cabinet_default_professional_settings();
+    $settings_table = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
+    if (!$settings_table || $settings_table->num_rows === 0) {
+        return $defaults;
+    }
+
+    $columns = [];
+    foreach (cabinet_professional_settings_columns() as $column) {
+        if (cabinet_column_exists($mysqli, 'payment_settings', $column)) {
+            $columns[] = "`$column`";
+        }
+    }
+    if (!$columns) {
+        return $defaults;
+    }
+
+    $res = $mysqli->query("SELECT " . implode(', ', $columns) . " FROM payment_settings WHERE id = 1 LIMIT 1");
+    $row = $res ? $res->fetch_assoc() : null;
+    if (!$row) {
+        return $defaults;
+    }
+
+    foreach ($defaults as $key => $default_value) {
+        if (array_key_exists($key, $row) && $row[$key] !== null && $row[$key] !== '') {
+            $defaults[$key] = $row[$key];
+        }
+    }
+
+    return $defaults;
+}
+
+function cabinet_superadmin_professional_id($mysqli)
+{
+    $stmt = $mysqli->prepare("
+        SELECT p.id
+        FROM professionals p
+        INNER JOIN users u ON u.id = p.user_id
+        WHERE u.role = 'superadmin'
+        ORDER BY p.id ASC
+        LIMIT 1
+    ");
+    if ($stmt) {
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        if ($row) {
+            return (int) $row['id'];
+        }
+    }
+
+    $stmt = $mysqli->prepare("
+        SELECT p.id
+        FROM professionals p
+        INNER JOIN users u ON u.id = p.user_id
+        WHERE u.role IN ('admin', 'superadmin')
+        ORDER BY FIELD(u.role, 'superadmin', 'admin'), p.id ASC
+        LIMIT 1
+    ");
+    if (!$stmt) {
+        return 0;
+    }
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    return $row ? (int) $row['id'] : 0;
+}
+
+function cabinet_fetch_professional_settings_row($mysqli, $professional_id)
+{
+    $professional_id = (int) $professional_id;
+    if ($professional_id <= 0) {
+        return null;
+    }
+
+    $stmt = $mysqli->prepare("
+        SELECT appointment_delivery_mode, available_session_types, available_session_durations,
+               appointment_start_time, appointment_end_time, break_start_time, break_end_time,
+               available_weekdays, min_booking_notice_days, max_booking_notice_days,
+               bonuses_enabled, create_compensation_bonus_on_paid_cancel
+        FROM professional_settings
+        WHERE professional_id = ?
+        LIMIT 1
+    ");
+    if (!$stmt) {
+        return null;
+    }
+    $stmt->bind_param("i", $professional_id);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    return $row ?: null;
+}
+
+function cabinet_get_effective_professional_settings($mysqli, $professional_id)
+{
+    ensure_cabinet_schema($mysqli);
+    $settings = cabinet_global_settings_as_professional_defaults($mysqli);
+    $row = cabinet_fetch_professional_settings_row($mysqli, $professional_id);
+    if (!$row) {
+        return $settings;
+    }
+
+    foreach ($settings as $key => $default_value) {
+        if (array_key_exists($key, $row) && $row[$key] !== null && $row[$key] !== '') {
+            $settings[$key] = $row[$key];
+        }
+    }
+
+    return $settings;
+}
+
+function cabinet_upsert_professional_settings($mysqli, $professional_id, $settings)
+{
+    $professional_id = (int) $professional_id;
+    if ($professional_id <= 0) {
+        return false;
+    }
+
+    $defaults = cabinet_default_professional_settings();
+    $settings = array_merge($defaults, array_intersect_key((array) $settings, $defaults));
+
+    $appointment_delivery_mode = $settings['appointment_delivery_mode'] ?? 'both';
+    $available_session_types = $settings['available_session_types'] ?? 'individual';
+    $available_session_durations = $settings['available_session_durations'] ?? '60';
+    $appointment_start_time = $settings['appointment_start_time'] ?? '10:00:00';
+    $appointment_end_time = $settings['appointment_end_time'] ?? '19:00:00';
+    $break_start_time = $settings['break_start_time'] ?? null;
+    $break_end_time = $settings['break_end_time'] ?? null;
+    $available_weekdays = $settings['available_weekdays'] ?? '1,2,3,4,5';
+    $min_booking_notice_days = (int) ($settings['min_booking_notice_days'] ?? 2);
+    $max_booking_notice_days = (int) ($settings['max_booking_notice_days'] ?? 40);
+    $bonuses_enabled = (int) ($settings['bonuses_enabled'] ?? 0);
+    $create_compensation_bonus = (int) ($settings['create_compensation_bonus_on_paid_cancel'] ?? 1);
+
+    $stmt = $mysqli->prepare("
+        INSERT INTO professional_settings (
+            professional_id,
+            appointment_delivery_mode,
+            available_session_types,
+            available_session_durations,
+            appointment_start_time,
+            appointment_end_time,
+            break_start_time,
+            break_end_time,
+            available_weekdays,
+            min_booking_notice_days,
+            max_booking_notice_days,
+            bonuses_enabled,
+            create_compensation_bonus_on_paid_cancel
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+            appointment_delivery_mode = VALUES(appointment_delivery_mode),
+            available_session_types = VALUES(available_session_types),
+            available_session_durations = VALUES(available_session_durations),
+            appointment_start_time = VALUES(appointment_start_time),
+            appointment_end_time = VALUES(appointment_end_time),
+            break_start_time = VALUES(break_start_time),
+            break_end_time = VALUES(break_end_time),
+            available_weekdays = VALUES(available_weekdays),
+            min_booking_notice_days = VALUES(min_booking_notice_days),
+            max_booking_notice_days = VALUES(max_booking_notice_days),
+            bonuses_enabled = VALUES(bonuses_enabled),
+            create_compensation_bonus_on_paid_cancel = VALUES(create_compensation_bonus_on_paid_cancel)
+    ");
+    if (!$stmt) {
+        return false;
+    }
+
+    $stmt->bind_param(
+        "issssssssiiii",
+        $professional_id,
+        $appointment_delivery_mode,
+        $available_session_types,
+        $available_session_durations,
+        $appointment_start_time,
+        $appointment_end_time,
+        $break_start_time,
+        $break_end_time,
+        $available_weekdays,
+        $min_booking_notice_days,
+        $max_booking_notice_days,
+        $bonuses_enabled,
+        $create_compensation_bonus
+    );
+    $stmt->execute();
+    return true;
+}
+
+function cabinet_seed_professional_settings_from_superadmin($mysqli, $professional_id)
+{
+    $professional_id = (int) $professional_id;
+    if ($professional_id <= 0) {
+        return false;
+    }
+
+    $stmt = $mysqli->prepare("SELECT id FROM professional_settings WHERE professional_id = ? LIMIT 1");
+    if (!$stmt) {
+        return false;
+    }
+    $stmt->bind_param("i", $professional_id);
+    $stmt->execute();
+    if ($stmt->get_result()->fetch_assoc()) {
+        return false;
+    }
+
+    $settings = null;
+    $superadmin_professional_id = cabinet_superadmin_professional_id($mysqli);
+    if ($superadmin_professional_id > 0 && $superadmin_professional_id !== $professional_id) {
+        $settings = cabinet_fetch_professional_settings_row($mysqli, $superadmin_professional_id);
+    }
+    if (!$settings) {
+        $settings = cabinet_global_settings_as_professional_defaults($mysqli);
+    }
+
+    $stmt = $mysqli->prepare("
+        INSERT INTO professional_settings (
+            professional_id,
+            appointment_delivery_mode,
+            available_session_types,
+            available_session_durations,
+            appointment_start_time,
+            appointment_end_time,
+            break_start_time,
+            break_end_time,
+            available_weekdays,
+            min_booking_notice_days,
+            max_booking_notice_days,
+            bonuses_enabled,
+            create_compensation_bonus_on_paid_cancel
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ");
+    if (!$stmt) {
+        return false;
+    }
+
+    $appointment_delivery_mode = $settings['appointment_delivery_mode'] ?? 'both';
+    $available_session_types = $settings['available_session_types'] ?? 'individual';
+    $available_session_durations = $settings['available_session_durations'] ?? '60';
+    $appointment_start_time = $settings['appointment_start_time'] ?? '10:00:00';
+    $appointment_end_time = $settings['appointment_end_time'] ?? '19:00:00';
+    $break_start_time = $settings['break_start_time'] ?? null;
+    $break_end_time = $settings['break_end_time'] ?? null;
+    $available_weekdays = $settings['available_weekdays'] ?? '1,2,3,4,5';
+    $min_booking_notice_days = (int) ($settings['min_booking_notice_days'] ?? 2);
+    $max_booking_notice_days = (int) ($settings['max_booking_notice_days'] ?? 40);
+    $bonuses_enabled = (int) ($settings['bonuses_enabled'] ?? 0);
+    $create_compensation_bonus = (int) ($settings['create_compensation_bonus_on_paid_cancel'] ?? 1);
+
+    $stmt->bind_param(
+        "issssssssiiii",
+        $professional_id,
+        $appointment_delivery_mode,
+        $available_session_types,
+        $available_session_durations,
+        $appointment_start_time,
+        $appointment_end_time,
+        $break_start_time,
+        $break_end_time,
+        $available_weekdays,
+        $min_booking_notice_days,
+        $max_booking_notice_days,
+        $bonuses_enabled,
+        $create_compensation_bonus
+    );
+    $stmt->execute();
+    return true;
+}
+
+function cabinet_seed_missing_professional_settings($mysqli)
+{
+    $res = $mysqli->query("SELECT id FROM professionals ORDER BY id ASC");
+    if (!$res) {
+        return 0;
+    }
+
+    $created = 0;
+    while ($row = $res->fetch_assoc()) {
+        if (cabinet_seed_professional_settings_from_superadmin($mysqli, (int) $row['id'])) {
+            $created++;
+        }
+    }
+    return $created;
+}
+
+function cabinet_fetch_professional($mysqli, $professional_id)
+{
+    $professional_id = (int) $professional_id;
+    if ($professional_id <= 0) {
+        return null;
+    }
+
+    $exists = $mysqli->query("SHOW TABLES LIKE 'professionals'");
+    if (!$exists || $exists->num_rows === 0) {
+        return null;
+    }
+
+    $stmt = $mysqli->prepare("
+        SELECT p.id, p.user_id, p.display_name, p.public_email, u.email AS user_email
+        FROM professionals p
+        LEFT JOIN users u ON u.id = p.user_id
+        WHERE p.id = ?
+        LIMIT 1
+    ");
+    $stmt->bind_param("i", $professional_id);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    if (!$row) {
+        return null;
+    }
+
+    $row['notification_email'] = trim($row['public_email'] ?: ($row['user_email'] ?? ''));
+    return $row;
+}
+
+function cabinet_fetch_public_team_members($mysqli)
+{
+    ensure_cabinet_schema($mysqli);
+    $dashboard_photo = '';
+    $settings_res = $mysqli->query("SELECT profile_image_path FROM payment_settings WHERE id = 1");
+    if ($settings_row = ($settings_res ? $settings_res->fetch_assoc() : null)) {
+        $dashboard_photo = $settings_row['profile_image_path'] ?? '';
+    }
+    $members = [];
+    $res = $mysqli->query("
+        SELECT p.id, p.user_id, p.display_name, p.professional_title, p.license_number, p.professional_specialty,
+               p.public_bio, p.public_photo_path, p.public_email, p.public_phone,
+               u.role AS user_role
+        FROM professionals p
+        LEFT JOIN users u ON u.id = p.user_id
+        WHERE p.is_active = 1
+        ORDER BY CASE WHEN u.role = 'superadmin' THEN 0 ELSE 1 END ASC,
+                 p.sort_order ASC,
+                 p.display_name ASC
+    ");
+    if (!$res) {
+        return [];
+    }
+    while ($row = $res->fetch_assoc()) {
+        $row['display_photo_path'] = $row['public_photo_path'] ?: (($row['user_role'] ?? '') === 'superadmin' ? $dashboard_photo : '');
+        $members[] = $row;
+    }
+    return $members;
+}
+
+function cabinet_public_team_enabled($mysqli)
+{
+    ensure_cabinet_schema($mysqli);
+    $res = $mysqli->query("SELECT show_team_public FROM payment_settings WHERE id = 1");
+    $settings = $res ? $res->fetch_assoc() : null;
+    if (!$settings || (int) ($settings['show_team_public'] ?? 0) !== 1) {
+        return false;
+    }
+
+    $members = cabinet_fetch_public_team_members($mysqli);
+    $has_member_besides_superadmin = false;
+    foreach ($members as $member) {
+        if (($member['user_role'] ?? '') !== 'superadmin') {
+            $has_member_besides_superadmin = true;
+            break;
+        }
+    }
+
+    return count($members) > 1 && $has_member_besides_superadmin;
+}
+
+function cabinet_resolve_professional_id($mysqli, $session_user_id, $patient_user_id, $is_admin)
+{
+    ensure_cabinet_schema($mysqli);
+    $session_user_id = (int) $session_user_id;
+    $patient_user_id = (int) $patient_user_id;
+
+    if ($is_admin && $session_user_id > 0) {
+        $stmt = $mysqli->prepare("SELECT id FROM professionals WHERE user_id = ? AND is_active = 1 LIMIT 1");
+        $stmt->bind_param("i", $session_user_id);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        if ($row) {
+            return (int) $row['id'];
+        }
+    }
+
+    if ($patient_user_id > 0) {
+        $stmt = $mysqli->prepare("
+            SELECT professional_id
+            FROM patient_professionals
+            WHERE patient_id = ? AND is_primary = 1
+            ORDER BY assigned_at DESC, id DESC
+            LIMIT 1
+        ");
+        $stmt->bind_param("i", $patient_user_id);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        if ($row) {
+            return (int) $row['professional_id'];
+        }
+
+        $profile_exists = $mysqli->query("SHOW TABLES LIKE 'patient_profiles'");
+        if ($profile_exists && $profile_exists->num_rows > 0) {
+            $stmt = $mysqli->prepare("SELECT professional_id FROM patient_profiles WHERE user_id = ? LIMIT 1");
+            $stmt->bind_param("i", $patient_user_id);
+            $stmt->execute();
+            $row = $stmt->get_result()->fetch_assoc();
+            if ($row && !empty($row['professional_id'])) {
+                return (int) $row['professional_id'];
+            }
+        }
+    }
+
+    $stmt = $mysqli->prepare("SELECT id FROM professionals WHERE is_active = 1 ORDER BY sort_order ASC, id ASC LIMIT 1");
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    if ($row) {
+        return (int) $row['id'];
+    }
+
+    return seed_default_professional($mysqli);
 }
 
 function cabinet_add_index_if_missing($mysqli, $table, $index, $columns)
