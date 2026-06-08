@@ -34,12 +34,70 @@ body {
     white-space: nowrap;
 }
 
+.dashboard-mobile-menu {
+    display: none;
+}
+
 .brand-avatar {
     width: 34px;
     height: 34px;
     border-radius: 50%;
     object-fit: cover;
     border: 2px solid var(--primary-light);
+}
+
+@media (max-width: 995px) {
+    .dashboard-actions-admin {
+        width: 100%;
+    }
+
+    .dashboard-actions-admin .dashboard-action-buttons {
+        display: none !important;
+    }
+
+    .dashboard-actions-admin .dashboard-mobile-menu {
+        display: block;
+    }
+
+    .dashboard-actions-admin #btn-calendar-view-toggle {
+        margin-left: auto !important;
+    }
+}
+
+@media (max-width: 575.98px) {
+    .navbar .container {
+        flex-wrap: nowrap;
+        gap: 8px;
+    }
+
+    #app-brand {
+        display: none;
+    }
+
+    .navbar-brand {
+        margin-right: 0;
+        min-width: 38px;
+    }
+
+    .dashboard-user-greeting {
+        max-width: 132px;
+    }
+
+    #patient-bonus-actions.dashboard-actions-bar {
+        width: 100%;
+    }
+
+    #patient-bonus-actions .dashboard-action-buttons {
+        display: none !important;
+    }
+
+    #patient-bonus-actions .dashboard-mobile-menu {
+        display: block;
+    }
+
+    #patient-bonus-actions #btn-calendar-view-toggle {
+        margin-left: auto !important;
+    }
 }
 
 .auth-brand-image {
@@ -81,6 +139,12 @@ body {
 .form-control {
     border-radius: 8px;
     border: 1px solid var(--border-color);
+}
+
+.form-control::placeholder,
+textarea.form-control::placeholder {
+    color: #9aa4ad;
+    opacity: 1;
 }
 
 .form-control:focus {
@@ -563,6 +627,15 @@ body {
     margin-bottom: 14px;
 }
 
+.team-phone {
+    align-items: center;
+    color: #52616d;
+    display: flex;
+    font-size: 0.95rem;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
 .team-specialty-pills {
     display: flex;
     flex-wrap: wrap;
@@ -586,6 +659,32 @@ body {
     font-size: 0.95rem;
     line-height: 1.65;
     margin-bottom: 0;
+}
+
+.team-social-links {
+    display: flex;
+    gap: 10px;
+    margin-top: 18px;
+}
+
+.team-social-links a {
+    align-items: center;
+    background: color-mix(in srgb, var(--primary-color) 12%, #fff);
+    border: 1px solid color-mix(in srgb, var(--primary-color) 28%, #fff);
+    border-radius: 50%;
+    color: var(--primary-color);
+    display: inline-flex;
+    height: 38px;
+    justify-content: center;
+    text-decoration: none;
+    transition: all 0.2s ease;
+    width: 38px;
+}
+
+.team-social-links a:hover {
+    background: var(--primary-color);
+    color: #fff;
+    transform: translateY(-1px);
 }
 
 .team-cta {
@@ -1075,6 +1174,59 @@ body {
     grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.contact-page-section {
+    min-height: calc(100vh - 130px);
+}
+
+.contact-layout {
+    display: grid;
+    gap: 32px;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    align-items: start;
+}
+
+.contact-card {
+    background: #ffffff;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 18px 44px rgba(38, 50, 56, 0.08);
+    padding: 28px;
+}
+
+.contact-note {
+    background: color-mix(in srgb, var(--primary-color) 9%, white);
+    border-left: 4px solid var(--primary-color);
+    border-radius: 6px;
+    color: #46505a;
+    line-height: 1.65;
+    padding: 14px 16px;
+}
+
+.contact-phone {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 22px;
+}
+
+.contact-phone span {
+    color: #6b7280;
+    font-size: 0.9rem;
+}
+
+.contact-phone a {
+    color: var(--primary-color);
+    font-size: 1.2rem;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+@media (max-width: 900px) {
+    .contact-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
 .cta-section {
     background: #eef4f0;
 }
@@ -1255,6 +1407,151 @@ body {
     color: #66737d;
     display: inline-flex;
     justify-content: center;
+}
+
+.table-avatar {
+    border-radius: 50%;
+    flex: 0 0 auto;
+    height: 30px;
+    object-fit: cover;
+    width: 30px;
+}
+
+.table-avatar-empty {
+    align-items: center;
+    background: #f4f6f7;
+    border: 1px solid var(--border-color);
+    color: #66737d;
+    display: inline-flex;
+    justify-content: center;
+}
+
+.booking-professional-context {
+    align-items: center;
+    background: #f7f5fb;
+    border: 1px solid rgba(142, 123, 186, 0.25);
+    border-radius: 8px;
+    color: #4a4359;
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding: 12px 14px;
+}
+
+.patient-professional-choice {
+    background: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 16px;
+    padding: 14px;
+}
+
+.patient-professional-choice-title {
+    font-weight: 700;
+    margin-bottom: 2px;
+}
+
+.patient-professional-choice-help {
+    color: #66737d;
+    font-size: 0.92rem;
+    margin-bottom: 12px;
+}
+
+.patient-professional-card-grid {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.patient-professional-card {
+    align-items: center;
+    background: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: #263238;
+    display: flex;
+    gap: 10px;
+    min-height: 64px;
+    padding: 10px 12px;
+    text-align: left;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+    width: 100%;
+}
+
+.patient-professional-card:hover {
+    border-color: rgba(142, 123, 186, 0.55);
+    box-shadow: 0 6px 18px rgba(31, 41, 55, 0.08);
+}
+
+.patient-professional-card.is-selected {
+    background: #f7f5fb;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(142, 123, 186, 0.14);
+}
+
+.patient-professional-card-avatar {
+    border-radius: 50%;
+    flex: 0 0 auto;
+    height: 42px;
+    object-fit: cover;
+    width: 42px;
+}
+
+.patient-professional-card-avatar-empty {
+    align-items: center;
+    background: #f4f6f7;
+    border: 1px solid var(--border-color);
+    color: #8f7cba;
+    display: inline-flex;
+    justify-content: center;
+}
+
+.patient-professional-card-name {
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.slot-professional-card-grid {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.slot-professional-card-grid .patient-professional-card {
+    min-height: 58px;
+}
+
+.booking-professional-context-modal {
+    justify-content: center;
+    margin-top: -4px;
+    text-align: left;
+}
+
+.booking-professional-avatar {
+    border-radius: 50%;
+    flex: 0 0 auto;
+    height: 44px;
+    object-fit: cover;
+    width: 44px;
+}
+
+.booking-professional-avatar-empty {
+    align-items: center;
+    background: #fff;
+    border: 1px solid var(--border-color);
+    color: #8f7cba;
+    display: inline-flex;
+    justify-content: center;
+}
+
+.booking-professional-title {
+    font-weight: 700;
+    line-height: 1.25;
+}
+
+.booking-professional-subtitle {
+    color: #66737d;
+    font-size: 0.9rem;
 }
 
 .closed-day-row-main {

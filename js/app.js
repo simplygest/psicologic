@@ -1,6 +1,6 @@
 let currentStartDate = getMonday(new Date());
 let currentMonthDate = new Date();
-let currentCalendarView = 'week';
+let currentCalendarView = (typeof INITIAL_CALENDAR_VIEW !== 'undefined' && INITIAL_CALENDAR_VIEW === 'week') ? 'week' : 'month';
 let currentMonthData = null;
 let selectedMonthDay = null;
 let PAYMENT_SETTINGS = {
@@ -36,6 +36,14 @@ let bonusesModal = null;
 let selectedBonusToBuy = null;
 let currentInviteLink = '';
 let currentInviteToken = '';
+let currentCancelAppointmentId = null;
+let CURRENT_PATIENT_PROFESSIONAL_CONTEXT = null;
+let CURRENT_BOOKING_PROFESSIONAL_CONTEXT = null;
+let CURRENT_PATIENT_SELECTED_PROFESSIONAL_ID = 0;
+let CURRENT_PATIENT_PROFESSIONALS = [];
+let CURRENT_PATIENT_BOOKING_MODE = '';
+let CURRENT_SLOT_PROFESSIONALS = [];
+let CURRENT_SLOT_SELECTED_PROFESSIONAL_ID = 0;
 
 function getMonday(d) {
     d = new Date(d);
@@ -81,17 +89,204 @@ function updateCalendarNavigationLabels() {
     $('#calendar-next-label').text(monthMode ? 'Mes siguiente' : 'Semana Siguiente');
 }
 
+function setPatientProfessionalContext(context) {
+    CURRENT_PATIENT_PROFESSIONAL_CONTEXT = context && context.display_name && context.is_patient_assigned == 1 ? context : null;
+    CURRENT_BOOKING_PROFESSIONAL_CONTEXT = context && context.display_name ? context : null;
+    renderPatientProfessionalContext();
+}
+
+function professionalContextHtml(context, titlePrefix, options = {}) {
+    if (!context || !context.display_name) {
+        return '';
+    }
+    const showSubtitle = options.showSubtitle !== false;
+    const name = escapeHtml(context.display_name);
+    const photo = context.display_photo_path
+        ? `<img class="booking-professional-avatar" src="${escapeHtml(context.display_photo_path)}" alt="${name}">`
+        : '<span class="booking-professional-avatar booking-professional-avatar-empty"><i class="bi bi-person"></i></span>';
+    return `
+        ${photo}
+        <div>
+            <div class="booking-professional-title">${escapeHtml(titlePrefix)} ${name}</div>
+            ${showSubtitle ? '<div class="booking-professional-subtitle">Busca una fecha/hora disponible utilizando el calendario semanal o mensual.</div>' : ''}
+        </div>
+    `;
+}
+
+function renderPatientProfessionalContext() {
+    const $context = $('#patient-professional-context');
+    if (!$context.length || IS_ADMIN || !CURRENT_PATIENT_PROFESSIONAL_CONTEXT) {
+        $context.addClass('d-none').empty();
+        return;
+    }
+    $context.html(professionalContextHtml(CURRENT_PATIENT_PROFESSIONAL_CONTEXT, 'Reserva tu cita con')).removeClass('d-none');
+}
+
+function renderModalProfessionalContext() {
+    const $context = $('#modal-professional-context');
+    const context = CURRENT_PATIENT_PROFESSIONAL_CONTEXT || CURRENT_BOOKING_PROFESSIONAL_CONTEXT;
+    const choosingProfessionalInsideModal = CURRENT_PATIENT_BOOKING_MODE === 'day_first'
+        && !CURRENT_PATIENT_PROFESSIONAL_CONTEXT
+        && CURRENT_SLOT_PROFESSIONALS.length > 0;
+    if (!$context.length || IS_ADMIN || !context || choosingProfessionalInsideModal) {
+        $context.addClass('d-none').empty();
+        return;
+    }
+    $context.html(professionalContextHtml(context, 'Tu cita con', { showSubtitle: false })).removeClass('d-none');
+}
+
+function setSlotBookingProfessional(professionalId) {
+    CURRENT_SLOT_SELECTED_PROFESSIONAL_ID = parseInt(professionalId || 0, 10);
+    const professional = CURRENT_SLOT_PROFESSIONALS.find(item => parseInt(item.id, 10) === CURRENT_SLOT_SELECTED_PROFESSIONAL_ID) || null;
+    if (!professional) {
+        ACTIVE_SERVICE_OPTIONS = [];
+        CURRENT_BOOKING_PROFESSIONAL_CONTEXT = null;
+        $('#modal-professional-context').addClass('d-none').empty();
+        renderBookingServiceOptions();
+        refreshBookingBonusNotice();
+        return;
+    }
+    CURRENT_BOOKING_PROFESSIONAL_CONTEXT = professional;
+    ACTIVE_SERVICE_OPTIONS = Array.isArray(professional.service_options) ? professional.service_options : [];
+    renderSlotProfessionalCards();
+    renderModalProfessionalContext();
+    renderBookingServiceOptions();
+    refreshBookingBonusNotice();
+}
+
+function renderSlotProfessionalCards() {
+    const $container = $('#patientSlotProfessionalSelect');
+    if (!$container.length) return;
+    if (!CURRENT_SLOT_PROFESSIONALS.length) {
+        $container.html('<div class="alert alert-secondary mb-0 text-center">No hay profesionales disponibles para este horario.</div>').removeClass('d-none');
+        return;
+    }
+
+    const cards = CURRENT_SLOT_PROFESSIONALS.map(professional => {
+        const id = parseInt(professional.id, 10);
+        const selected = id === CURRENT_SLOT_SELECTED_PROFESSIONAL_ID;
+        const name = escapeHtml(professional.display_name || 'Sin nombre');
+        const photo = professional.display_photo_path
+            ? `<img class="patient-professional-card-avatar" src="${escapeHtml(professional.display_photo_path)}" alt="${name}">`
+            : '<span class="patient-professional-card-avatar patient-professional-card-avatar-empty"><i class="bi bi-person"></i></span>';
+        return `
+            <button type="button" class="patient-professional-card ${selected ? 'is-selected' : ''}" data-professional-id="${id}" aria-pressed="${selected ? 'true' : 'false'}">
+                ${photo}
+                <span class="patient-professional-card-name">${name}</span>
+            </button>
+        `;
+    }).join('');
+
+    $container.html(`
+        <div class="patient-professional-choice-title mb-1">Profesionales disponibles</div>
+        <div class="patient-professional-choice-help mb-2">Elige con qui&eacute;n quieres tu consulta para este horario.</div>
+        <div class="slot-professional-card-grid">${cards}</div>
+    `).removeClass('d-none');
+}
+
+function loadAvailableProfessionalsForSlot(date, time) {
+    const $container = $('#patientSlotProfessionalSelect');
+    $container.html('<div class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm me-2"></span>Buscando profesionales disponibles...</div>').removeClass('d-none');
+    $('#btn-confirm-action').prop('disabled', true);
+    ACTIVE_SERVICE_OPTIONS = [];
+    CURRENT_SLOT_PROFESSIONALS = [];
+    CURRENT_SLOT_SELECTED_PROFESSIONAL_ID = 0;
+    CURRENT_BOOKING_PROFESSIONAL_CONTEXT = null;
+    renderBookingServiceOptions();
+    refreshBookingBonusNotice();
+
+    $.ajax({
+        url: 'api/appointments.php?action=available_professionals_for_slot',
+        method: 'GET',
+        dataType: 'json',
+        data: { date, time },
+        success: function (res) {
+            if (!res.success) {
+                $container.html(`<div class="alert alert-danger mb-0">${escapeHtml(res.error || 'No se pudo cargar la disponibilidad.')}</div>`);
+                return;
+            }
+            CURRENT_SLOT_PROFESSIONALS = Array.isArray(res.professionals) ? res.professionals : [];
+            if (CURRENT_SLOT_PROFESSIONALS.length) {
+                setSlotBookingProfessional(CURRENT_SLOT_PROFESSIONALS[0].id);
+            } else {
+                renderSlotProfessionalCards();
+            }
+        },
+        error: function () {
+            $container.html('<div class="alert alert-danger mb-0">Error al cargar profesionales disponibles.</div>');
+        },
+        complete: function () {
+            $('#btn-confirm-action').prop('disabled', CURRENT_SLOT_PROFESSIONALS.length === 0);
+        }
+    });
+}
+
+function selectedPatientProfessionalRequestData() {
+    if (IS_ADMIN || !CURRENT_PATIENT_SELECTED_PROFESSIONAL_ID) {
+        return {};
+    }
+    return { professional_id: CURRENT_PATIENT_SELECTED_PROFESSIONAL_ID };
+}
+
+function renderPatientProfessionalChoice(professionals, context, mode) {
+    const $choice = $('#patient-professional-choice');
+    CURRENT_PATIENT_BOOKING_MODE = mode || '';
+    if (!$choice.length || IS_ADMIN || mode !== 'professional_first' || !Array.isArray(professionals) || !professionals.length) {
+        $choice.addClass('d-none').empty();
+        CURRENT_PATIENT_PROFESSIONALS = [];
+        CURRENT_PATIENT_SELECTED_PROFESSIONAL_ID = 0;
+        return;
+    }
+
+    CURRENT_PATIENT_PROFESSIONALS = professionals;
+    const contextId = context && context.id ? parseInt(context.id, 10) : 0;
+    if (!CURRENT_PATIENT_SELECTED_PROFESSIONAL_ID || !professionals.some(professional => parseInt(professional.id, 10) === CURRENT_PATIENT_SELECTED_PROFESSIONAL_ID)) {
+        CURRENT_PATIENT_SELECTED_PROFESSIONAL_ID = contextId || parseInt(professionals[0].id, 10);
+    }
+
+    const cards = professionals.map(professional => {
+        const id = parseInt(professional.id, 10);
+        const selected = id === CURRENT_PATIENT_SELECTED_PROFESSIONAL_ID;
+        const name = escapeHtml(professional.display_name || 'Sin nombre');
+        const photo = professional.display_photo_path
+            ? `<img class="patient-professional-card-avatar" src="${escapeHtml(professional.display_photo_path)}" alt="${name}">`
+            : '<span class="patient-professional-card-avatar patient-professional-card-avatar-empty"><i class="bi bi-person"></i></span>';
+        return `
+            <button type="button" class="patient-professional-card ${selected ? 'is-selected' : ''}" data-professional-id="${id}" aria-pressed="${selected ? 'true' : 'false'}">
+                ${photo}
+                <span class="patient-professional-card-name">${name}</span>
+            </button>
+        `;
+    }).join('');
+
+    $choice.html(`
+        <div class="patient-professional-choice-title">Elige con qui&eacute;n quieres tu cita</div>
+        <div class="patient-professional-choice-help">Elige con qui&eacute;n quieres tu consulta. Despu&eacute;s podr&aacute;s buscar la fecha y hora.</div>
+        <div class="patient-professional-card-grid">
+            ${cards}
+        </div>
+    `).removeClass('d-none');
+}
+
+function shouldChooseProfessionalInSlot() {
+    return !IS_ADMIN
+        && CURRENT_PATIENT_BOOKING_MODE === 'day_first'
+        && !CURRENT_PATIENT_PROFESSIONAL_CONTEXT;
+}
+
 function loadCalendar(startDateStr) {
     $('#calendar-container').html('<div class="text-center text-muted py-5"><div class="spinner-border text-secondary" role="status"></div><br>Cargando...</div>');
 
     $.ajax({
         url: 'api/appointments.php?action=get_week',
-        data: { start_date: startDateStr },
+        data: { start_date: startDateStr, ...selectedPatientProfessionalRequestData() },
         method: 'GET',
         dataType: 'json',
         success: function (res) {
             if (res.success) {
                 PAYMENT_SETTINGS = res.payment_settings || PAYMENT_SETTINGS;
+                setPatientProfessionalContext(res.professional_context || null);
+                renderPatientProfessionalChoice(res.professionals || [], res.professional_context || null, res.new_patient_booking_mode || '');
                 if (Array.isArray(res.service_options)) {
                     ACTIVE_SERVICE_OPTIONS = res.service_options;
                 }
@@ -107,12 +302,14 @@ function loadMonthCalendar(monthStr) {
 
     $.ajax({
         url: 'api/appointments.php?action=get_month',
-        data: { month: monthStr },
+        data: { month: monthStr, ...selectedPatientProfessionalRequestData() },
         method: 'GET',
         dataType: 'json',
         success: function (res) {
             if (res.success) {
                 PAYMENT_SETTINGS = res.payment_settings || PAYMENT_SETTINGS;
+                setPatientProfessionalContext(res.professional_context || null);
+                renderPatientProfessionalChoice(res.professionals || [], res.professional_context || null, res.new_patient_booking_mode || '');
                 if (Array.isArray(res.service_options)) {
                     ACTIVE_SERVICE_OPTIONS = res.service_options;
                 }
@@ -410,6 +607,7 @@ function renderSlot(dateStr, timeStr, dayApps) {
         let consultationBadge = getConsultationBadge(app.consultation_type);
         let serviceBadge = getServiceBadge(app);
         let cancelPayloadArg = encodeURIComponent(JSON.stringify({
+            id: app.id || null,
             name: app.name || '',
             email: app.email || '',
             phone: app.phone || '',
@@ -555,6 +753,7 @@ let closedDayModal = document.getElementById('closedDayModal') ? new bootstrap.M
 let professionalEditorModal = document.getElementById('professionalEditorModal') ? new bootstrap.Modal(document.getElementById('professionalEditorModal')) : null;
 let professionalTransferModal = document.getElementById('professionalTransferModal') ? new bootstrap.Modal(document.getElementById('professionalTransferModal')) : null;
 let changePasswordModal = document.getElementById('changePasswordModal') ? new bootstrap.Modal(document.getElementById('changePasswordModal')) : null;
+let patientSelfDataModal = document.getElementById('patientSelfDataModal') ? new bootstrap.Modal(document.getElementById('patientSelfDataModal')) : null;
 inviteModal = document.getElementById('inviteModal') ? new bootstrap.Modal(document.getElementById('inviteModal')) : null;
 upcomingAppointmentsModal = document.getElementById('upcomingAppointmentsModal') ? new bootstrap.Modal(document.getElementById('upcomingAppointmentsModal')) : null;
 adminStatsModal = document.getElementById('adminStatsModal') ? new bootstrap.Modal(document.getElementById('adminStatsModal')) : null;
@@ -583,9 +782,12 @@ function openModal(date, time, status, extraName = '', extraEmail = '', extraPho
     $('#serviceTypeSelect').addClass('d-none');
     $('#serviceOptionSelect').addClass('d-none');
     $('#adminProfessionalSelect').addClass('d-none');
+    $('#patientSlotProfessionalSelect').addClass('d-none').empty();
+    $('#modal-professional-context').addClass('d-none').empty();
     $('#booking-patient-professional-note').text('');
     $('#booking-bonus-notice').addClass('d-none').text('');
     currentPaymentAppointmentId = null;
+    currentCancelAppointmentId = null;
     $('#btn-confirm-action').removeClass('d-none').prop('disabled', false);
 
     if (status === 'available') {
@@ -599,10 +801,15 @@ function openModal(date, time, status, extraName = '', extraEmail = '', extraPho
                 updateBookingPatientProfessionalNote(bookingPatientById($('#patientSelect').val()));
             }
         } else {
-            $('#modalDesc').text('¿Estás seguro de que deseas reservar este horario?');
+            $('#modalDesc').text('Confirma la fecha/hora de tu cita.');
+        }
+        if (!IS_ADMIN && !shouldChooseProfessionalInSlot()) {
+            renderModalProfessionalContext();
         }
         if (IS_SUPERADMIN) {
             loadBookingContextForProfessional($('#booking-professional').val() || CURRENT_PROFESSIONAL_ID);
+        } else if (shouldChooseProfessionalInSlot()) {
+            loadAvailableProfessionalsForSlot(date, time);
         } else {
             renderBookingServiceOptions();
             refreshBookingBonusNotice();
@@ -612,12 +819,14 @@ function openModal(date, time, status, extraName = '', extraEmail = '', extraPho
     } else if (status === 'cancel_admin') {
         $('#modalTitle').text(`Cancelar cita: ${formatDisplayDate(date)} a las ${time}`);
         $('#modalDesc').html(`Paciente: <b>${extraName}</b><br><small>Email: ${extraEmail}<br>Tel: ${extraPhone}</small><br><br>¿Confirmar cancelación?`);
+        currentCancelAppointmentId = parseCancelPayload(extraName).id || null;
         if (IS_ADMIN) $('#adminPatientSelect').addClass('d-none');
         $('#adminProfessionalSelect').addClass('d-none');
         $('#btn-confirm-action').removeClass('btn-primary').addClass('btn-danger').text('Cancelar cita');
     } else if (status === 'cancel_own') {
         $('#modalTitle').text(`Cancelar tu cita: ${formatDisplayDate(date)} a las ${time}`);
         $('#modalDesc').text('¿Estás seguro de que deseas cancelar tu cita?');
+        currentCancelAppointmentId = parseCancelPayload(extraName).id || null;
         $('#btn-confirm-action').removeClass('btn-primary').addClass('btn-danger').text('Cancelar cita');
     } else if (status === 'pay_own') {
         currentPaymentAppointmentId = parseInt(extraName, 10);
@@ -657,6 +866,7 @@ function applyCancelPaymentNotice(status, payload) {
         return;
     }
     const data = parseCancelPayload(payload);
+    currentCancelAppointmentId = data.id || null;
     const notice = cancelBonusNotice(data);
     if (status === 'cancel_admin') {
         $('#modalDesc').html(`Paciente: <b>${escapeHtml(data.name || '')}</b><br><small>Email: ${escapeHtml(data.email || '')}<br>Tel: ${escapeHtml(data.phone || '')}</small>${notice}<br>&iquest;Confirmar cancelaci&oacute;n?`);
@@ -706,6 +916,16 @@ $(document).ready(function () {
         renderWeekInfo();
     });
 
+    $('#patient-professional-choice').on('click', '.patient-professional-card', function () {
+        CURRENT_PATIENT_SELECTED_PROFESSIONAL_ID = parseInt($(this).data('professional-id') || 0, 10);
+        selectedMonthDay = null;
+        renderWeekInfo();
+    });
+
+    $('#patientSlotProfessionalSelect').on('click', '.patient-professional-card', function () {
+        setSlotBookingProfessional($(this).data('professional-id'));
+    });
+
     $('#btn-buy-bonus').click(function () {
         openBuyBonusModal();
     });
@@ -714,8 +934,20 @@ $(document).ready(function () {
         openMyBonusesModal();
     });
 
+    $('#btn-mobile-buy-bonus').click(function () {
+        $('#btn-buy-bonus').trigger('click');
+    });
+
+    $('#btn-mobile-my-bonuses').click(function () {
+        $('#btn-my-bonuses').trigger('click');
+    });
+
     $('#btn-admin-bonuses').click(function () {
         openAdminBonusesModal();
+    });
+
+    $('#btn-mobile-admin-bonuses').click(function () {
+        $('#btn-admin-bonuses').trigger('click');
     });
 
     $('#btn-generate-invite').off('click').click(function () {
@@ -741,6 +973,10 @@ $(document).ready(function () {
         });
     });
 
+    $('#btn-mobile-generate-invite').click(function () {
+        $('#btn-generate-invite').trigger('click');
+    });
+
     $('#btn-copy-invite-link').click(function () {
         copyTextToClipboard(currentInviteLink, function () {
             showInviteAlert('success', 'Enlace copiado al portapapeles.');
@@ -753,6 +989,10 @@ $(document).ready(function () {
 
     $('#btn-upcoming-appointments').click(function () {
         openUpcomingAppointmentsModal();
+    });
+
+    $('#btn-mobile-upcoming-appointments').click(function () {
+        $('#btn-upcoming-appointments').trigger('click');
     });
 
     $('#upcoming-appointments-search').on('input', function () {
@@ -771,8 +1011,16 @@ $(document).ready(function () {
         openAdminStatsModal();
     });
 
+    $('#btn-mobile-admin-stats').click(function () {
+        $('#btn-admin-stats').trigger('click');
+    });
+
     $('#btn-admin-patients').click(function () {
         openAdminPatientsModal();
+    });
+
+    $('#btn-mobile-admin-patients').click(function () {
+        $('#btn-admin-patients').trigger('click');
     });
 
     $('#btn-new-patient').click(function () {
@@ -799,6 +1047,14 @@ $(document).ready(function () {
     $('#patient-editor-form').submit(function (e) {
         e.preventDefault();
         savePatient(this);
+    });
+
+    $('#patient-editor-photo').on('change', function () {
+        const file = this.files && this.files[0] ? this.files[0] : null;
+        if (file) {
+            $('#patient-editor-photo-preview').attr('src', URL.createObjectURL(file)).removeClass('d-none');
+            $('#patient-editor-photo-status').text(file.name);
+        }
     });
 
     $('#patient-history-tab').on('shown.bs.tab', function () {
@@ -876,6 +1132,23 @@ $(document).ready(function () {
         if (changePasswordModal) {
             changePasswordModal.show();
         }
+    });
+
+    $('#btn-my-profile').click(function () {
+        openPatientSelfDataModal();
+    });
+
+    $('#patient-self-photo').on('change', function () {
+        const file = this.files && this.files[0] ? this.files[0] : null;
+        if (file) {
+            $('#patient-self-photo-preview').attr('src', URL.createObjectURL(file)).removeClass('d-none');
+            $('#patient-self-photo-status').text(file.name);
+        }
+    });
+
+    $('#patient-self-data-form').submit(function (e) {
+        e.preventDefault();
+        savePatientSelfData(this);
     });
 
     $('#change-password-form').submit(function (e) {
@@ -1007,6 +1280,9 @@ $(document).ready(function () {
 
     $('#btn-save-cabinet-settings').click(function () {
         saveCabinetSettings(this);
+    });
+    $('#new-patient-booking-mode').on('change', function () {
+        updateNewPatientBookingModeUi();
     });
 
     $('#btn-new-professional').click(function () {
@@ -1144,6 +1420,11 @@ function bookAppointment() {
     if (IS_SUPERADMIN) {
         data.professional_id = $('#booking-professional').val();
         if (!data.professional_id) { alert('Selecciona un profesional'); return; }
+    } else if (!IS_ADMIN && shouldChooseProfessionalInSlot()) {
+        data.professional_id = CURRENT_SLOT_SELECTED_PROFESSIONAL_ID;
+        if (!data.professional_id) { alert('Selecciona un profesional disponible'); return; }
+    } else if (!IS_ADMIN && CURRENT_PATIENT_SELECTED_PROFESSIONAL_ID) {
+        data.professional_id = CURRENT_PATIENT_SELECTED_PROFESSIONAL_ID;
     }
     if (!data.service_option_id) {
         alert('Selecciona un servicio disponible');
@@ -1365,6 +1646,7 @@ function cancelAppointment() {
         url: 'api/appointments.php?action=cancel',
         method: 'POST',
         data: {
+            appointment_id: currentCancelAppointmentId || '',
             date: $('#modalDate').val(),
             time: $('#modalTime').val()
         },
@@ -1428,6 +1710,9 @@ function togglePatientBonusActions() {
     $('#patient-bonus-actions').attr('style', '');
     $('#btn-buy-bonus').toggle(canBuyBonuses);
     $('#btn-my-bonuses').toggle(showBonusArea);
+    $('#btn-mobile-buy-bonus').closest('li').toggle(canBuyBonuses);
+    $('#btn-mobile-my-bonuses').closest('li').toggle(showBonusArea);
+    $('#patient-bonus-actions .dashboard-mobile-menu').toggleClass('d-none', !showBonusArea);
 }
 
 function openBuyBonusModal() {
@@ -1827,6 +2112,10 @@ function loadAdminPatients() {
                 return;
             }
             if (Array.isArray(res.professionals)) {
+                CABINET_PROFESSIONALS = res.professionals.map(professional => ({
+                    ...professional,
+                    is_active: typeof professional.is_active === 'undefined' || professional.is_active === null ? 1 : professional.is_active
+                }));
                 populateAdminPatientsProfessionalsFilter(res.professionals, res.current_professional_id);
             }
             ADMIN_PATIENTS = Array.isArray(res.patients) ? res.patients : [];
@@ -1861,6 +2150,25 @@ function populateAdminPatientsProfessionalsFilter(professionals = null, currentP
     }
 }
 
+function populatePatientEditorProfessionalSelect(patient = null) {
+    const $select = $('#patient-editor-professional');
+    if (!$select.length) return;
+    const selected = patient
+        ? String(patient.professional_id || '')
+        : String(CURRENT_PROFESSIONAL_ID || '');
+    $select.html('<option value="">Permitir elegir profesional al paciente</option>');
+    CABINET_PROFESSIONALS
+        .filter(professional => professional.is_active != 0)
+        .forEach(professional => {
+            $select.append(`<option value="${professional.id}">${escapeHtml(professional.display_name || 'Sin nombre')}</option>`);
+        });
+    if (selected && $select.find(`option[value="${selected}"]`).length) {
+        $select.val(selected);
+    } else {
+        $select.val('');
+    }
+}
+
 function renderAdminPatients(patients) {
     const filteredPatients = filterAndSortAdminPatients(patients);
     const colspan = adminPatientsColspan();
@@ -1877,6 +2185,9 @@ function renderAdminPatients(patients) {
     }
 
     const html = filteredPatients.map(patient => {
+        const photo = patient.photo_path
+            ? `<img class="table-avatar" src="${escapeHtml(patient.photo_path)}" alt="${escapeHtml(patient.name || '')}">`
+            : '<span class="table-avatar table-avatar-empty"><i class="bi bi-person"></i></span>';
         const contact = [
             patient.email ? `<div>${escapeHtml(patient.email)}</div>` : '',
             patient.phone ? `<small class="text-muted">${escapeHtml(patient.phone)}</small>` : ''
@@ -1893,7 +2204,12 @@ function renderAdminPatients(patients) {
 
         return `
             <tr>
-                <td><strong>${escapeHtml(patient.name || '')}</strong></td>
+                <td>
+                    <div class="d-flex align-items-center gap-2">
+                        ${photo}
+                        <strong>${escapeHtml(patient.name || '')}</strong>
+                    </div>
+                </td>
                 ${showProfessional ? `<td>${professionalCellHtml(patient, 'professional_name', 'professional_photo_path')}</td>` : ''}
                 <td>${contact}</td>
                 <td>${patient.patient_type ? escapeHtml(patient.patient_type) : '<span class="text-muted">-</span>'}</td>
@@ -1964,6 +2280,15 @@ function openPatientEditorModal(patient = null) {
     $('#patient-editor-type').val(patient ? patient.patient_type || '' : '');
     $('#patient-editor-email').val(patient ? patient.email || '' : '');
     $('#patient-editor-phone').val(patient ? patient.phone || '' : '');
+    $('#patient-editor-photo').val('');
+    if (patient && patient.photo_path) {
+        $('#patient-editor-photo-preview').attr('src', patient.photo_path).removeClass('d-none');
+        $('#patient-editor-photo-status').text('Foto actual guardada.');
+    } else {
+        $('#patient-editor-photo-preview').attr('src', '').addClass('d-none');
+        $('#patient-editor-photo-status').text('Formatos permitidos: JPG, PNG, WEBP o GIF. Maximo 2 MB.');
+    }
+    populatePatientEditorProfessionalSelect(patient);
     $('#patient-editor-admission-date').val(patient ? patient.admission_date || formatDate(new Date()) : formatDate(new Date()));
     $('#patient-editor-notes').val(patient ? patient.notes || '' : '');
     if (patient && patient.document_path) {
@@ -2044,9 +2369,13 @@ function savePatient(form) {
     const $button = $('#btn-save-patient');
     const original = $button.html();
     const formData = new FormData(form);
-    const selectedProfessional = $('#admin-patients-professional').val() || '';
-    if (selectedProfessional && selectedProfessional !== 'all') {
-        formData.set('professional_id', selectedProfessional);
+    if ($('#patient-editor-professional').length) {
+        formData.set('professional_id', $('#patient-editor-professional').val() || '');
+    } else {
+        const selectedProfessional = $('#admin-patients-professional').val() || '';
+        if (selectedProfessional && selectedProfessional !== 'all') {
+            formData.set('professional_id', selectedProfessional);
+        }
     }
     $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Guardando');
     $('#patient-editor-alert').addClass('d-none').text('');
@@ -2735,6 +3064,8 @@ function loadPaymentSettings() {
             document.title = `Dashboard - ${settings.app_name || 'PsicoLogic'}`;
             $('#show-profile-image-public').prop('checked', settings.show_profile_image_public == 1);
             $('#show-prices-public').prop('checked', settings.show_prices_public == 1);
+            $('#show-contact-public').prop('checked', settings.show_contact_public == 1);
+            $('#initial-calendar-view').val(settings.initial_calendar_view === 'week' ? 'week' : 'month');
             $('#online-booking-enabled').prop('checked', settings.online_booking_enabled === undefined ? true : settings.online_booking_enabled == 1);
             $('#bonuses-enabled').prop('checked', settings.bonuses_enabled == 1);
             $('#create-compensation-bonus-on-paid-cancel').prop('checked', settings.create_compensation_bonus_on_paid_cancel === undefined ? true : settings.create_compensation_bonus_on_paid_cancel == 1);
@@ -2781,7 +3112,6 @@ function loadPaymentSettings() {
             $('#break-start-time').val(settings.break_start_time ? settings.break_start_time.slice(0, 5) : '15:00');
             $('#break-end-time').val(settings.break_end_time ? settings.break_end_time.slice(0, 5) : '16:00');
             setAvailableWeekdays(settings.available_weekdays || '1,2,3,4,5');
-            $('#admin-notification-email').val(settings.admin_notification_email || '');
             $('#appointment-reminder-enabled').prop('checked', settings.appointment_reminder_enabled == 1);
             $('#email-provider').val(settings.email_provider || 'phpmailer');
             $('#smtp-host').val(settings.smtp_host || '');
@@ -3093,7 +3423,7 @@ function loadCabinetSettings() {
     if (!$body.length) return;
     $body.html('<tr><td colspan="6" class="text-center text-muted py-4">Cargando...</td></tr>');
     $('#cabinet-settings-loading').removeClass('d-none');
-    $('#show-team-public, #allow-patient-transfer').prop('disabled', true);
+    $('#show-team-public, #allow-patient-transfer, #new-patient-booking-mode, #new-patient-fixed-professional').prop('disabled', true);
 
     $.ajax({
         url: 'api/admin.php?action=get_cabinet_settings',
@@ -3106,6 +3436,9 @@ function loadCabinetSettings() {
             $('#show-team-public').prop('checked', res.settings && res.settings.show_team_public == 1);
             $('#allow-patient-transfer').prop('checked', res.settings && res.settings.allow_patient_transfer == 1);
             CABINET_PROFESSIONALS = (res.professionals || []).map(normalizeProfessional);
+            populateNewPatientFixedProfessionalSelect(res.settings && res.settings.new_patient_fixed_professional_id);
+            $('#new-patient-booking-mode').val((res.settings && res.settings.new_patient_booking_mode) || 'day_first');
+            updateNewPatientBookingModeUi();
             renderProfessionalsSettings();
         },
         error: function () {
@@ -3113,9 +3446,34 @@ function loadCabinetSettings() {
         },
         complete: function () {
             $('#cabinet-settings-loading').addClass('d-none');
-            $('#show-team-public, #allow-patient-transfer').prop('disabled', false);
+            $('#show-team-public, #allow-patient-transfer, #new-patient-booking-mode, #new-patient-fixed-professional').prop('disabled', false);
+            updateNewPatientBookingModeUi();
         }
     });
+}
+
+function populateNewPatientFixedProfessionalSelect(selectedId = null) {
+    const $select = $('#new-patient-fixed-professional');
+    if (!$select.length) return;
+    const activeProfessionals = CABINET_PROFESSIONALS.filter(professional => professional.is_active != 0);
+    const superadmin = activeProfessionals.find(professional => professional.role === 'superadmin');
+    const fallbackProfessional = superadmin || activeProfessionals[0] || null;
+    const selected = parseInt(selectedId || (fallbackProfessional ? fallbackProfessional.id : 0) || 0, 10);
+    let html = '';
+    activeProfessionals.forEach(professional => {
+        html += `<option value="${professional.id}" ${parseInt(professional.id || 0, 10) === selected ? 'selected' : ''}>${escapeHtml(professional.display_name || 'Sin nombre')}</option>`;
+    });
+    $select.html(html);
+    if (selected > 0) {
+        $select.val(String(selected));
+    }
+}
+
+function updateNewPatientBookingModeUi() {
+    const mode = $('#new-patient-booking-mode').val() || 'day_first';
+    const showFixedProfessional = mode === 'fixed_professional';
+    $('#new-patient-fixed-professional-row').toggleClass('d-none', !showFixedProfessional);
+    $('#new-patient-fixed-professional').prop('disabled', !showFixedProfessional || $('#cabinet-settings-loading').is(':visible'));
 }
 
 function normalizeProfessional(professional = {}) {
@@ -3126,9 +3484,14 @@ function normalizeProfessional(professional = {}) {
         professional_title: professional.professional_title || '',
         license_number: professional.license_number || '',
         professional_specialty: professional.professional_specialty || '',
+        public_bio: professional.public_bio || '',
         public_photo_path: professional.public_photo_path || '',
         display_photo_path: professional.display_photo_path || professional.public_photo_path || '',
         email: professional.email || '',
+        public_phone: professional.public_phone || '',
+        instagram_url: professional.instagram_url || '',
+        facebook_url: professional.facebook_url || '',
+        tiktok_url: professional.tiktok_url || '',
         role: professional.role === 'superadmin' ? 'superadmin' : 'admin',
         is_active: professional.is_active == 0 ? 0 : 1,
         is_current_user: professional.is_current_user == 1 ? 1 : 0
@@ -3206,6 +3569,11 @@ function openProfessionalEditor(index = -1) {
     $('#professional-editor-title-field').val(professional.professional_title || '');
     $('#professional-editor-license').val(professional.license_number || '');
     $('#professional-editor-specialty').val(professional.professional_specialty || '');
+    $('#professional-editor-bio').val(professional.public_bio || '');
+    $('#professional-editor-phone').val(professional.public_phone || '');
+    $('#professional-editor-instagram').val(professional.instagram_url || '');
+    $('#professional-editor-facebook').val(professional.facebook_url || '');
+    $('#professional-editor-tiktok').val(professional.tiktok_url || '');
     $('#professional-editor-photo').val('');
     PROFESSIONAL_PHOTO_FILE = null;
     const photo = professional.public_photo_path || professional.display_photo_path || '';
@@ -3236,6 +3604,11 @@ function saveProfessionalEditor(button = null) {
         professional_title: $('#professional-editor-title-field').val().trim(),
         license_number: $('#professional-editor-license').val().trim(),
         professional_specialty: $('#professional-editor-specialty').val().trim(),
+        public_bio: $('#professional-editor-bio').val().trim(),
+        public_phone: $('#professional-editor-phone').val().trim(),
+        instagram_url: $('#professional-editor-instagram').val().trim(),
+        facebook_url: $('#professional-editor-facebook').val().trim(),
+        tiktok_url: $('#professional-editor-tiktok').val().trim(),
         public_photo_path: existing.public_photo_path || '',
         display_photo_path: existing.display_photo_path || existing.public_photo_path || '',
         role: isCurrentSuperadmin ? 'superadmin' : $('#professional-editor-role').val(),
@@ -3261,6 +3634,80 @@ function saveProfessionalEditor(button = null) {
         closeProfessionalModal: true,
         photoFile: selectedPhotoFile,
         photoIndex: index >= 0 ? index : CABINET_PROFESSIONALS.length - 1
+    });
+}
+
+function openPatientSelfDataModal() {
+    if (!patientSelfDataModal) return;
+    $('#patient-self-data-form')[0].reset();
+    $('#patient-self-data-alert').addClass('d-none').removeClass('alert-success alert-danger').text('');
+    $('#patient-self-photo-status').text('Formatos permitidos: JPG, PNG, WEBP o GIF. Maximo 2 MB.');
+
+    $.ajax({
+        url: 'api/auth.php?action=my_profile',
+        dataType: 'json',
+        success: function (res) {
+            if (!res.success) {
+                $('#patient-self-data-alert').removeClass('d-none alert-success').addClass('alert-danger').text(res.error || 'No se pudieron cargar tus datos.');
+                return;
+            }
+            const profile = res.profile || {};
+            $('#patient-self-email').val(profile.email || '');
+            $('#patient-self-phone').val(profile.phone || '');
+            const photo = profile.photo_path || '';
+            if (photo) {
+                $('#patient-self-photo-preview').attr('src', photo).removeClass('d-none');
+            } else {
+                $('#patient-self-photo-preview').attr('src', '').addClass('d-none');
+            }
+        },
+        error: function () {
+            $('#patient-self-data-alert').removeClass('d-none alert-success').addClass('alert-danger').text('Error de conexion al cargar tus datos.');
+        }
+    });
+
+    patientSelfDataModal.show();
+}
+
+function savePatientSelfData(form) {
+    const $button = $('#btn-save-patient-self-data');
+    const original = $button.html();
+    const $alert = $('#patient-self-data-alert');
+    const formData = new FormData(form);
+
+    $alert.addClass('d-none').removeClass('alert-success alert-danger').text('');
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Guardando');
+
+    $.ajax({
+        url: 'api/auth.php?action=save_my_profile',
+        method: 'POST',
+        dataType: 'json',
+        data: formData,
+        processData: false,
+        contentType: false,
+        success: function (res) {
+            if (!res.success) {
+                $alert.removeClass('d-none alert-success').addClass('alert-danger').text(res.error || 'No se pudieron guardar tus datos.');
+                return;
+            }
+            const profile = res.profile || {};
+            if (profile.photo_path) {
+                $('#app-brand-image').attr('src', profile.photo_path).removeClass('d-none');
+                $('#patient-self-photo-preview').attr('src', profile.photo_path).removeClass('d-none');
+            }
+            $alert.removeClass('d-none alert-danger').addClass('alert-success').text(res.message || 'Datos actualizados correctamente.');
+            setTimeout(function () {
+                if (patientSelfDataModal) {
+                    patientSelfDataModal.hide();
+                }
+            }, 1200);
+        },
+        error: function () {
+            $alert.removeClass('d-none alert-success').addClass('alert-danger').text('Error de conexion al guardar tus datos.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
     });
 }
 
@@ -3462,6 +3909,8 @@ function saveCabinetSettings(button = null, options = {}) {
     const formData = new FormData();
     formData.append('show_team_public', $('#show-team-public').is(':checked') ? '1' : '0');
     formData.append('allow_patient_transfer', $('#allow-patient-transfer').is(':checked') ? '1' : '0');
+    formData.append('new_patient_booking_mode', $('#new-patient-booking-mode').val() || 'day_first');
+    formData.append('new_patient_fixed_professional_id', $('#new-patient-fixed-professional').val() || '');
     formData.append('professionals_json', JSON.stringify(professionals));
     if (options.photoFile && options.photoIndex >= 0) {
         formData.append('professional_photo', options.photoFile);
@@ -3559,6 +4008,8 @@ function savePaymentSettings(alertSelector = '#payment-settings-alert', onSucces
     });
     formData.append('show_profile_image_public', $('#show-profile-image-public').is(':checked') ? '1' : '0');
     formData.append('show_prices_public', $('#show-prices-public').is(':checked') ? '1' : '0');
+    formData.append('show_contact_public', $('#show-contact-public').is(':checked') ? '1' : '0');
+    formData.append('initial_calendar_view', $('#initial-calendar-view').val() || 'month');
     formData.append('online_booking_enabled', $('#online-booking-enabled').is(':checked') ? '1' : '0');
     if ($('#profile-image')[0] && $('#profile-image')[0].files[0]) {
         formData.append('profile_image', $('#profile-image')[0].files[0]);
@@ -3582,7 +4033,6 @@ function savePaymentSettings(alertSelector = '#payment-settings-alert', onSucces
     $('.available-weekday:checked').each(function () {
         formData.append('available_weekdays[]', this.value);
     });
-    formData.append('admin_notification_email', $('#admin-notification-email').val().trim());
     formData.append('appointment_reminder_enabled', reminderEnabledValue);
     formData.append('merchant_key', $('#merchant-key').val().trim());
     formData.append('email_provider', $('#email-provider').val());

@@ -19,6 +19,7 @@ $is_admin = ($_SESSION['role'] ?? '') === 'admin';
 $online_booking_enabled = (int) ($branding['online_booking_enabled'] ?? 1) === 1;
 $show_patient_area = $online_booking_enabled || $is_admin;
 $show_team_public = cabinet_public_team_enabled($mysqli);
+$show_contact_public = (int) ($branding['show_contact_public'] ?? 0) === 1;
 $services = fetch_appointment_services($mysqli, true);
 $bonuses = [];
 $public_delivery_mode = 'both';
@@ -83,6 +84,9 @@ function public_consultation_label($type)
                 <a class="nav-link" href="index.php">Inicio</a>
                 <?php if ($show_team_public): ?>
                     <a class="nav-link" href="equipo.php">Equipo</a>
+                <?php endif; ?>
+                <?php if ($show_contact_public): ?>
+                    <a class="nav-link" href="contacto.php">Contacto</a>
                 <?php endif; ?>
                 <?php if ($show_patient_area): ?>
                     <a class="btn btn-primary btn-sm ms-lg-2" href="<?= $is_logged_in ? 'dashboard.php' : 'login.php' ?>">

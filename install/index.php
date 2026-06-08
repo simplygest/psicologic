@@ -84,6 +84,7 @@ function install_base_tables($mysqli)
         patient_type VARCHAR(80) DEFAULT NULL,
         admission_date DATE DEFAULT NULL,
         notes LONGTEXT DEFAULT NULL,
+        photo_path VARCHAR(255) DEFAULT NULL,
         document_path VARCHAR(255) DEFAULT NULL,
         document_name VARCHAR(255) DEFAULT NULL,
         created_by_admin TINYINT(1) NOT NULL DEFAULT 0,
@@ -121,6 +122,7 @@ function install_base_tables($mysqli)
         site_phone VARCHAR(40) NULL,
         admin_notification_email VARCHAR(150) NULL,
         show_team_public TINYINT(1) NOT NULL DEFAULT 0,
+        show_contact_public TINYINT(1) NOT NULL DEFAULT 0,
         allow_patient_transfer TINYINT(1) NOT NULL DEFAULT 0,
         online_booking_enabled TINYINT(1) NOT NULL DEFAULT 1,
         online_payment_enabled TINYINT(1) NOT NULL DEFAULT 0,
@@ -144,9 +146,11 @@ function install_ensure_payment_settings_columns($mysqli)
     $mysqli->query("ALTER TABLE users MODIFY role ENUM('superadmin','admin','patient') NOT NULL DEFAULT 'patient'");
     install_add_column_if_missing($mysqli, 'invitations', 'user_id', 'INT UNSIGNED DEFAULT NULL AFTER token');
     install_add_column_if_missing($mysqli, 'patient_profiles', 'document_path', 'VARCHAR(255) DEFAULT NULL AFTER notes');
+    install_add_column_if_missing($mysqli, 'patient_profiles', 'photo_path', 'VARCHAR(255) DEFAULT NULL AFTER notes');
     install_add_column_if_missing($mysqli, 'patient_profiles', 'document_name', 'VARCHAR(255) DEFAULT NULL AFTER document_path');
     install_add_column_if_missing($mysqli, 'closed_days', 'is_global', 'TINYINT(1) NOT NULL DEFAULT 0 AFTER reason');
     install_add_column_if_missing($mysqli, 'payment_settings', 'show_team_public', 'TINYINT(1) NOT NULL DEFAULT 0');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'show_contact_public', 'TINYINT(1) NOT NULL DEFAULT 0');
     install_add_column_if_missing($mysqli, 'payment_settings', 'allow_patient_transfer', 'TINYINT(1) NOT NULL DEFAULT 0');
     install_add_column_if_missing($mysqli, 'payment_settings', 'site_tagline', 'VARCHAR(255) NULL AFTER app_name');
     install_add_column_if_missing($mysqli, 'payment_settings', 'site_phone', 'VARCHAR(40) NULL AFTER site_tagline');
@@ -162,6 +166,7 @@ function install_ensure_payment_settings_columns($mysqli)
     install_add_column_if_missing($mysqli, 'payment_settings', 'available_session_types', 'VARCHAR(100) NOT NULL DEFAULT "individual"');
     install_add_column_if_missing($mysqli, 'payment_settings', 'available_session_durations', 'VARCHAR(30) NOT NULL DEFAULT "60"');
     install_add_column_if_missing($mysqli, 'payment_settings', 'online_booking_enabled', 'TINYINT(1) NOT NULL DEFAULT 1');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'initial_calendar_view', 'VARCHAR(12) NOT NULL DEFAULT "month"');
     install_add_column_if_missing($mysqli, 'payment_settings', 'calendar_provider', 'VARCHAR(16) NOT NULL DEFAULT "none"');
     install_add_column_if_missing($mysqli, 'payment_settings', 'icloud_calendar_email', 'VARCHAR(255) NULL');
     install_add_column_if_missing($mysqli, 'payment_settings', 'icloud_calendar_app_password', 'VARCHAR(255) NULL');

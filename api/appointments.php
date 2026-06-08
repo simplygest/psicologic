@@ -119,14 +119,39 @@ function active_weekdays($settings)
     return $days ?: [1, 2, 3, 4, 5];
 }
 
-function appointment_context_professional_id($mysqli, $session_user_id, $is_admin)
+function appointment_context_professional_id($mysqli, $session_user_id, $is_admin, $requested_professional_id = 0)
 {
+    if (!$is_admin) {
+        $assigned_professional_id = cabinet_patient_primary_professional_id($mysqli, (int) $session_user_id);
+        if ($assigned_professional_id > 0) {
+            return $assigned_professional_id;
+        }
+        if (cabinet_new_patient_booking_mode($mysqli) === 'professional_first'
+            && (int) $requested_professional_id > 0
+            && cabinet_active_professional_exists($mysqli, (int) $requested_professional_id)) {
+            return (int) $requested_professional_id;
+        }
+    }
     return cabinet_resolve_professional_id($mysqli, (int) $session_user_id, (int) $session_user_id, $is_admin);
 }
 
-function apply_effective_professional_settings($mysqli, $payment_settings, $session_user_id, $is_admin)
+function patient_uses_day_first_without_professional($mysqli, $session_user_id, $is_admin, $patient_has_assigned_professional = null)
 {
-    $professional_id = appointment_context_professional_id($mysqli, $session_user_id, $is_admin);
+    if ($is_admin) {
+        return false;
+    }
+    if ($patient_has_assigned_professional === null) {
+        $patient_has_assigned_professional = cabinet_patient_primary_professional_id($mysqli, (int) $session_user_id) > 0;
+    }
+    return !$patient_has_assigned_professional && cabinet_new_patient_booking_mode($mysqli) === 'day_first';
+}
+
+function apply_effective_professional_settings($mysqli, $payment_settings, $session_user_id, $is_admin, $context_professional_id = 0)
+{
+    $professional_id = (int) $context_professional_id;
+    if ($professional_id <= 0) {
+        $professional_id = appointment_context_professional_id($mysqli, $session_user_id, $is_admin);
+    }
     if ($professional_id > 0) {
         $payment_settings = array_merge($payment_settings, cabinet_get_effective_professional_settings($mysqli, $professional_id));
         $payment_settings['current_professional_id'] = $professional_id;
@@ -234,6 +259,18 @@ function resolve_booking_professional_id($mysqli, $session_user_id, $target_user
     if ($is_superadmin && (int) $requested_professional_id > 0 && active_professional_exists($mysqli, (int) $requested_professional_id)) {
         return (int) $requested_professional_id;
     }
+    if (!$is_admin) {
+        $assigned_professional_id = cabinet_patient_primary_professional_id($mysqli, (int) $target_user_id);
+        if ($assigned_professional_id > 0) {
+            return $assigned_professional_id;
+        }
+        $new_patient_booking_mode = cabinet_new_patient_booking_mode($mysqli);
+        if (in_array($new_patient_booking_mode, ['professional_first', 'day_first'], true)
+            && (int) $requested_professional_id > 0
+            && active_professional_exists($mysqli, (int) $requested_professional_id)) {
+            return (int) $requested_professional_id;
+        }
+    }
     return cabinet_resolve_professional_id($mysqli, (int) $session_user_id, (int) $target_user_id, $is_admin);
 }
 
@@ -262,6 +299,82 @@ function admin_can_book_patient_for_professional($mysqli, $patient_user_id, $pro
     return (bool) $stmt->get_result()->fetch_assoc();
 }
 
+function patient_booking_context_payload($mysqli, $user_id, $is_admin, $context_professional_id, $patient_has_assigned_professional)
+{
+    $professional_context = cabinet_professional_display_payload($mysqli, $context_professional_id);
+    if ($professional_context) {
+        $professional_context['is_patient_assigned'] = $patient_has_assigned_professional ? 1 : 0;
+    }
+
+    $mode = $is_admin ? '' : cabinet_new_patient_booking_mode($mysqli);
+    return [
+        'professional_context' => $professional_context,
+        'patient_has_assigned_professional' => $patient_has_assigned_professional ? 1 : 0,
+        'new_patient_booking_mode' => $mode,
+        'professionals' => (!$is_admin && !$patient_has_assigned_professional && $mode === 'professional_first')
+            ? cabinet_active_professionals_for_booking($mysqli)
+            : []
+    ];
+}
+
+function professional_can_take_slot($mysqli, $professional_id, $date, $time, $duration_minutes, $settings)
+{
+    $professional_id = (int) $professional_id;
+    if ($professional_id <= 0 || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || !preg_match('/^\d{2}:\d{2}/', $time)) {
+        return false;
+    }
+
+    $booking_date = new DateTime($date);
+    if (!in_array((int) $booking_date->format('N'), active_weekdays($settings), true)) {
+        return false;
+    }
+
+    if (!in_array(substr($time, 0, 5), schedule_slot_list($settings), true)) {
+        return false;
+    }
+
+    $new_start = minutes_from_time($time);
+    $new_end = $new_start + (int) $duration_minutes;
+    $day_end = minutes_from_time($settings['appointment_end_time'] ?? '19:00:00') + 60;
+    if ($new_end > $day_end) {
+        return false;
+    }
+
+    if (!empty($settings['break_start_time']) && !empty($settings['break_end_time'])) {
+        $break_start = minutes_from_time($settings['break_start_time']);
+        $break_end = minutes_from_time($settings['break_end_time']);
+        if ($new_start < $break_end && $new_end > $break_start) {
+            return false;
+        }
+    }
+
+    $stmt = $mysqli->prepare("SELECT id FROM closed_days WHERE closed_date = ? AND (is_global = 1 OR professional_id = ?) LIMIT 1");
+    $stmt->bind_param("si", $date, $professional_id);
+    $stmt->execute();
+    if ($stmt->get_result()->fetch_assoc()) {
+        return false;
+    }
+
+    $stmt = $mysqli->prepare("
+        SELECT appointment_time, COALESCE(duration_minutes, 60) AS duration_minutes
+        FROM appointments
+        WHERE appointment_date = ? AND status = 'booked'
+          AND professional_id = ?
+    ");
+    $stmt->bind_param("si", $date, $professional_id);
+    $stmt->execute();
+    $existing_res = $stmt->get_result();
+    while ($existing = $existing_res->fetch_assoc()) {
+        $existing_start = minutes_from_time($existing['appointment_time']);
+        $existing_end = $existing_start + (int) ($existing['duration_minutes'] ?? 60);
+        if ($new_start < $existing_end && $new_end > $existing_start) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 if ($action === 'booking_context') {
     if (!$is_admin) {
         echo json_encode(['success' => false, 'error' => 'No autorizado']);
@@ -277,9 +390,47 @@ if ($action === 'booking_context') {
     echo json_encode([
         'success' => true,
         'professional_id' => $context_professional_id,
+        'professional_context' => cabinet_professional_display_payload($mysqli, $context_professional_id),
         'payment_settings' => $payment_settings,
         'service_options' => service_options_for_settings($mysqli, $payment_settings)
     ]);
+} elseif ($action === 'available_professionals_for_slot') {
+    if ($is_admin) {
+        echo json_encode(['success' => false, 'error' => 'No autorizado']);
+        exit;
+    }
+
+    $date = $_GET['date'] ?? '';
+    $time = $_GET['time'] ?? '';
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) || !preg_match('/^\d{2}:\d{2}$/', $time)) {
+        echo json_encode(['success' => false, 'error' => 'Fecha u hora no valida.']);
+        exit;
+    }
+
+    if (cabinet_patient_primary_professional_id($mysqli, (int) $user_id) > 0 || cabinet_new_patient_booking_mode($mysqli) !== 'day_first') {
+        echo json_encode(['success' => true, 'professionals' => []]);
+        exit;
+    }
+
+    $base_settings = load_booking_payment_settings($mysqli);
+    $available_professionals = [];
+    foreach (cabinet_active_professionals_for_booking($mysqli) as $professional) {
+        $professional_id = (int) ($professional['id'] ?? 0);
+        $settings = array_merge($base_settings, cabinet_get_effective_professional_settings($mysqli, $professional_id));
+        $settings['current_professional_id'] = $professional_id;
+        $service_options = [];
+        foreach (service_options_for_settings($mysqli, $settings) as $option) {
+            if (professional_can_take_slot($mysqli, $professional_id, $date, $time, (int) $option['duration_minutes'], $settings)) {
+                $service_options[] = $option;
+            }
+        }
+        if ($service_options) {
+            $professional['service_options'] = $service_options;
+            $available_professionals[] = $professional;
+        }
+    }
+
+    echo json_encode(['success' => true, 'professionals' => $available_professionals]);
 } elseif ($action === 'get_month') {
     $month = $_GET['month'] ?? date('Y-m-01');
     if (!preg_match('/^\d{4}-\d{2}-01$/', $month)) {
@@ -287,28 +438,39 @@ if ($action === 'booking_context') {
     }
     $start_date = date('Y-m-01', strtotime($month));
     $end_date = date('Y-m-t', strtotime($month));
-    $context_professional_id = appointment_context_professional_id($mysqli, $user_id, $is_admin);
+    $requested_professional_id = (int) ($_GET['professional_id'] ?? 0);
+    $patient_has_assigned_professional = !$is_admin && cabinet_patient_primary_professional_id($mysqli, (int) $user_id) > 0;
+    $is_day_first_unassigned = patient_uses_day_first_without_professional($mysqli, $user_id, $is_admin, $patient_has_assigned_professional);
+    $context_professional_id = $is_day_first_unassigned ? 0 : appointment_context_professional_id($mysqli, $user_id, $is_admin, $requested_professional_id);
 
-    $stmt = $mysqli->prepare("
-        SELECT a.id, a.appointment_date, a.appointment_time, a.user_id,
-               COALESCE(a.payment_status, 'pending') AS payment_status,
-               a.payment_method, a.paid_at, a.patient_bonus_id, a.consultation_type, a.service_type,
-               COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
-               so.price AS service_price, s.name AS service_name, s.service_key,
-               u.name, u.email, u.phone
-        FROM appointments a
-        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
-        LEFT JOIN appointment_services s ON s.id = so.service_id
-        JOIN users u ON a.user_id = u.id
-        WHERE a.appointment_date BETWEEN ? AND ? AND a.status = 'booked'
-          AND (a.professional_id = ? OR a.professional_id IS NULL)
-    ");
-    $stmt->bind_param("ssi", $start_date, $end_date, $context_professional_id);
-    $stmt->execute();
-    $appointments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $appointments = [];
+    if (!$is_day_first_unassigned) {
+        $stmt = $mysqli->prepare("
+            SELECT a.id, a.appointment_date, a.appointment_time, a.user_id,
+                   COALESCE(a.payment_status, 'pending') AS payment_status,
+                   a.payment_method, a.paid_at, a.patient_bonus_id, a.consultation_type, a.service_type,
+                   COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
+                   so.price AS service_price, s.name AS service_name, s.service_key,
+                   u.name, u.email, u.phone
+            FROM appointments a
+            LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
+            LEFT JOIN appointment_services s ON s.id = so.service_id
+            JOIN users u ON a.user_id = u.id
+            WHERE a.appointment_date BETWEEN ? AND ? AND a.status = 'booked'
+              AND a.professional_id = ?
+        ");
+        $stmt->bind_param("ssi", $start_date, $end_date, $context_professional_id);
+        $stmt->execute();
+        $appointments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    }
 
-    $stmt2 = $mysqli->prepare("SELECT closed_date, reason FROM closed_days WHERE closed_date BETWEEN ? AND ? AND (is_global = 1 OR professional_id = ? OR professional_id IS NULL)");
-    $stmt2->bind_param("ssi", $start_date, $end_date, $context_professional_id);
+    if ($is_day_first_unassigned) {
+        $stmt2 = $mysqli->prepare("SELECT closed_date, reason FROM closed_days WHERE closed_date BETWEEN ? AND ? AND is_global = 1");
+        $stmt2->bind_param("ss", $start_date, $end_date);
+    } else {
+        $stmt2 = $mysqli->prepare("SELECT closed_date, reason FROM closed_days WHERE closed_date BETWEEN ? AND ? AND (is_global = 1 OR professional_id = ?)");
+        $stmt2->bind_param("ssi", $start_date, $end_date, $context_professional_id);
+    }
     $stmt2->execute();
     $closed_days_fetch = $stmt2->get_result()->fetch_all(MYSQLI_ASSOC);
 
@@ -393,7 +555,9 @@ if ($action === 'booking_context') {
             $payment_settings = $settings_row;
         }
     }
-    $payment_settings = apply_effective_professional_settings($mysqli, $payment_settings, $user_id, $is_admin);
+    if (!$is_day_first_unassigned) {
+        $payment_settings = apply_effective_professional_settings($mysqli, $payment_settings, $user_id, $is_admin, $context_professional_id);
+    }
 
     $service_options = [];
     $active_durations = active_session_durations($payment_settings);
@@ -416,44 +580,61 @@ if ($action === 'booking_context') {
         }
     }
 
+    $patient_booking_context = patient_booking_context_payload($mysqli, (int) $user_id, $is_admin, $context_professional_id, $patient_has_assigned_professional);
+
     echo json_encode([
         'success' => true,
         'month' => $start_date,
         'appointments' => $apps_map,
         'closed_days' => $closed_days,
         'payment_settings' => $payment_settings,
-        'service_options' => $service_options
+        'service_options' => $service_options,
+        'professional_context' => $patient_booking_context['professional_context'],
+        'patient_has_assigned_professional' => $patient_booking_context['patient_has_assigned_professional'],
+        'new_patient_booking_mode' => $patient_booking_context['new_patient_booking_mode'],
+        'professionals' => $patient_booking_context['professionals']
     ]);
 
 } elseif ($action === 'get_week') {
     // start_date expected to be a Monday (YYYY-MM-DD)
     $start_date = $_GET['start_date'] ?? date('Y-m-d', strtotime('monday this week'));
     $end_date = date('Y-m-d', strtotime($start_date . ' +5 days')); // Saturday when enabled
-    $context_professional_id = appointment_context_professional_id($mysqli, $user_id, $is_admin);
+    $requested_professional_id = (int) ($_GET['professional_id'] ?? 0);
+    $patient_has_assigned_professional = !$is_admin && cabinet_patient_primary_professional_id($mysqli, (int) $user_id) > 0;
+    $is_day_first_unassigned = patient_uses_day_first_without_professional($mysqli, $user_id, $is_admin, $patient_has_assigned_professional);
+    $context_professional_id = $is_day_first_unassigned ? 0 : appointment_context_professional_id($mysqli, $user_id, $is_admin, $requested_professional_id);
 
     // Get appointments in range
-    $stmt = $mysqli->prepare("
-        SELECT a.id, a.appointment_date, a.appointment_time, a.user_id,
-               COALESCE(a.payment_status, 'pending') AS payment_status,
-               a.payment_method, a.paid_at, a.patient_bonus_id, a.consultation_type, a.service_type,
-               COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
-               so.price AS service_price, s.name AS service_name, s.service_key,
-               u.name, u.email, u.phone
-        FROM appointments a
-        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
-        LEFT JOIN appointment_services s ON s.id = so.service_id
-        JOIN users u ON a.user_id = u.id
-        WHERE a.appointment_date BETWEEN ? AND ? AND a.status = 'booked'
-          AND (a.professional_id = ? OR a.professional_id IS NULL)
-    ");
-    $stmt->bind_param("ssi", $start_date, $end_date, $context_professional_id);
-    $stmt->execute();
-    $res = $stmt->get_result();
-    $appointments = $res->fetch_all(MYSQLI_ASSOC);
+    $appointments = [];
+    if (!$is_day_first_unassigned) {
+        $stmt = $mysqli->prepare("
+            SELECT a.id, a.appointment_date, a.appointment_time, a.user_id,
+                   COALESCE(a.payment_status, 'pending') AS payment_status,
+                   a.payment_method, a.paid_at, a.patient_bonus_id, a.consultation_type, a.service_type,
+                   COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
+                   so.price AS service_price, s.name AS service_name, s.service_key,
+                   u.name, u.email, u.phone
+            FROM appointments a
+            LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
+            LEFT JOIN appointment_services s ON s.id = so.service_id
+            JOIN users u ON a.user_id = u.id
+            WHERE a.appointment_date BETWEEN ? AND ? AND a.status = 'booked'
+              AND a.professional_id = ?
+        ");
+        $stmt->bind_param("ssi", $start_date, $end_date, $context_professional_id);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $appointments = $res->fetch_all(MYSQLI_ASSOC);
+    }
 
     // Get closed days
-    $stmt2 = $mysqli->prepare("SELECT closed_date, reason FROM closed_days WHERE closed_date BETWEEN ? AND ? AND (is_global = 1 OR professional_id = ? OR professional_id IS NULL)");
-    $stmt2->bind_param("ssi", $start_date, $end_date, $context_professional_id);
+    if ($is_day_first_unassigned) {
+        $stmt2 = $mysqli->prepare("SELECT closed_date, reason FROM closed_days WHERE closed_date BETWEEN ? AND ? AND is_global = 1");
+        $stmt2->bind_param("ss", $start_date, $end_date);
+    } else {
+        $stmt2 = $mysqli->prepare("SELECT closed_date, reason FROM closed_days WHERE closed_date BETWEEN ? AND ? AND (is_global = 1 OR professional_id = ?)");
+        $stmt2->bind_param("ssi", $start_date, $end_date, $context_professional_id);
+    }
     $stmt2->execute();
     $res2 = $stmt2->get_result();
     $closed_days_fetch = $res2->fetch_all(MYSQLI_ASSOC);
@@ -539,7 +720,9 @@ if ($action === 'booking_context') {
             $payment_settings = $settings_row;
         }
     }
-    $payment_settings = apply_effective_professional_settings($mysqli, $payment_settings, $user_id, $is_admin);
+    if (!$is_day_first_unassigned) {
+        $payment_settings = apply_effective_professional_settings($mysqli, $payment_settings, $user_id, $is_admin, $context_professional_id);
+    }
 
     $service_options = [];
     $active_durations = active_session_durations($payment_settings);
@@ -562,7 +745,19 @@ if ($action === 'booking_context') {
         }
     }
 
-    echo json_encode(['success' => true, 'appointments' => $apps_map, 'closed_days' => $closed_days, 'payment_settings' => $payment_settings, 'service_options' => $service_options]);
+    $patient_booking_context = patient_booking_context_payload($mysqli, (int) $user_id, $is_admin, $context_professional_id, $patient_has_assigned_professional);
+
+    echo json_encode([
+        'success' => true,
+        'appointments' => $apps_map,
+        'closed_days' => $closed_days,
+        'payment_settings' => $payment_settings,
+        'service_options' => $service_options,
+        'professional_context' => $patient_booking_context['professional_context'],
+        'patient_has_assigned_professional' => $patient_booking_context['patient_has_assigned_professional'],
+        'new_patient_booking_mode' => $patient_booking_context['new_patient_booking_mode'],
+        'professionals' => $patient_booking_context['professionals']
+    ]);
 
 } elseif ($action === 'book') {
     $date = $_POST['date'] ?? '';
@@ -663,7 +858,7 @@ if ($action === 'booking_context') {
     }
 
     // Check closed days
-    $stmt = $mysqli->prepare("SELECT id FROM closed_days WHERE closed_date = ? AND (is_global = 1 OR professional_id = ? OR professional_id IS NULL)");
+    $stmt = $mysqli->prepare("SELECT id FROM closed_days WHERE closed_date = ? AND (is_global = 1 OR professional_id = ?)");
     $stmt->bind_param("si", $date, $booking_professional_id);
     $stmt->execute();
     $res = $stmt->get_result();
@@ -696,7 +891,7 @@ if ($action === 'booking_context') {
         SELECT appointment_time, COALESCE(duration_minutes, 60) AS duration_minutes
         FROM appointments
         WHERE appointment_date = ? AND status = 'booked'
-          AND (professional_id = ? OR professional_id IS NULL)
+          AND professional_id = ?
     ");
     $stmt->bind_param("si", $date, $booking_professional_id);
     $stmt->execute();
@@ -718,6 +913,9 @@ if ($action === 'booking_context') {
         $stmt->bind_param("iissssii", $target_user_id, $professional_id, $date, $time, $consultation_type, $service_type, $nullable_service_option_id, $duration_minutes);
         $stmt->execute();
         $appointment_id = $mysqli->insert_id;
+        if (!$is_admin) {
+            cabinet_assign_patient_to_professional_if_missing($mysqli, (int) $target_user_id, (int) $professional_id);
+        }
         $cancel_token = bin2hex(random_bytes(32));
         $stmt = $mysqli->prepare("UPDATE appointments SET cancel_token = ? WHERE id = ?");
         $stmt->bind_param("si", $cancel_token, $appointment_id);
@@ -856,8 +1054,11 @@ if ($action === 'booking_context') {
     ]);
 
 } elseif ($action === 'cancel') {
+    $appointment_id = (int) ($_POST['appointment_id'] ?? 0);
     $date = $_POST['date'] ?? '';
     $time = $_POST['time'] ?? '';
+    $is_superadmin = ($_SESSION['role'] ?? '') === 'superadmin';
+    $context_professional_id = appointment_context_professional_id($mysqli, $user_id, $is_admin);
 
     $lookup_sql = "
         SELECT a.id, a.appointment_date, a.appointment_time, a.consultation_type, a.service_type,
@@ -871,19 +1072,42 @@ if ($action === 'booking_context') {
         LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
         LEFT JOIN appointment_services s ON s.id = so.service_id
         JOIN users u ON u.id = a.user_id
-        WHERE a.appointment_date = ? AND a.appointment_time = ? AND a.status = 'booked'
+        WHERE a.status = 'booked'
     ";
+    $bind_types = '';
+    $bind_values = [];
+    if ($appointment_id > 0) {
+        $lookup_sql .= " AND a.id = ?";
+        $bind_types .= 'i';
+        $bind_values[] = $appointment_id;
+    } else {
+        $lookup_sql .= " AND a.appointment_date = ? AND a.appointment_time = ?";
+        $bind_types .= 'ss';
+        $bind_values[] = $date;
+        $bind_values[] = $time;
+    }
     if (!$is_admin) {
         $lookup_sql .= " AND a.user_id = ?";
+        $bind_types .= 'i';
+        $bind_values[] = (int) $user_id;
+    } elseif (!$is_superadmin) {
+        $lookup_sql .= " AND a.professional_id = ?";
+        $bind_types .= 'i';
+        $bind_values[] = (int) $context_professional_id;
     }
     $lookup_stmt = $mysqli->prepare($lookup_sql);
-    if ($is_admin) {
-        $lookup_stmt->bind_param("ss", $date, $time);
-    } else {
-        $lookup_stmt->bind_param("ssi", $date, $time, $user_id);
+    $bind_refs = [];
+    foreach ($bind_values as $key => &$value) {
+        $bind_refs[$key] = &$value;
     }
+    call_user_func_array([$lookup_stmt, 'bind_param'], array_merge([$bind_types], $bind_refs));
     $lookup_stmt->execute();
     $appointment_to_cancel = $lookup_stmt->get_result()->fetch_assoc();
+
+    if (!$appointment_to_cancel) {
+        echo json_encode(['success' => false, 'error' => 'No se pudo cancelar o no tienes permiso']);
+        exit;
+    }
 
     if ($appointment_to_cancel) {
         try {
@@ -898,15 +1122,10 @@ if ($action === 'booking_context') {
         }
     }
 
-    if ($is_admin) {
-        $stmt = $mysqli->prepare("DELETE FROM appointments WHERE appointment_date = ? AND appointment_time = ? AND status = 'booked'");
-        $stmt->bind_param("ss", $date, $time);
-        $stmt->execute();
-    } else {
-        $stmt = $mysqli->prepare("DELETE FROM appointments WHERE appointment_date = ? AND appointment_time = ? AND user_id = ? AND status = 'booked'");
-        $stmt->bind_param("ssi", $date, $time, $user_id);
-        $stmt->execute();
-    }
+    $stmt = $mysqli->prepare("DELETE FROM appointments WHERE id = ? AND status = 'booked'");
+    $cancel_id = (int) $appointment_to_cancel['id'];
+    $stmt->bind_param("i", $cancel_id);
+    $stmt->execute();
 
     if ($stmt->affected_rows > 0) {
         if (!empty($appointment_to_cancel['patient_bonus_id']) && ($appointment_to_cancel['payment_method'] ?? '') === 'bonus') {

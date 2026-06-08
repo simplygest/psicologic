@@ -16,7 +16,9 @@ function ensure_branding_columns($mysqli)
         'primary_color' => "ALTER TABLE payment_settings ADD primary_color VARCHAR(7) NOT NULL DEFAULT '#8f7fba' AFTER landing_image_path",
         'show_profile_image_public' => "ALTER TABLE payment_settings ADD show_profile_image_public TINYINT(1) NOT NULL DEFAULT 0 AFTER profile_image_path",
         'show_prices_public' => "ALTER TABLE payment_settings ADD show_prices_public TINYINT(1) NOT NULL DEFAULT 0 AFTER show_profile_image_public",
-        'online_booking_enabled' => "ALTER TABLE payment_settings ADD online_booking_enabled TINYINT(1) NOT NULL DEFAULT 1 AFTER show_prices_public"
+        'show_contact_public' => "ALTER TABLE payment_settings ADD show_contact_public TINYINT(1) NOT NULL DEFAULT 0 AFTER show_prices_public",
+        'online_booking_enabled' => "ALTER TABLE payment_settings ADD online_booking_enabled TINYINT(1) NOT NULL DEFAULT 1 AFTER show_contact_public",
+        'initial_calendar_view' => "ALTER TABLE payment_settings ADD initial_calendar_view VARCHAR(12) NOT NULL DEFAULT 'month' AFTER online_booking_enabled"
     ];
 
     foreach ($columns as $column => $sql) {
@@ -38,7 +40,9 @@ function get_public_branding_settings($mysqli)
         'primary_color' => '#8f7fba',
         'show_profile_image_public' => 0,
         'show_prices_public' => 0,
-        'online_booking_enabled' => 1
+        'show_contact_public' => 0,
+        'online_booking_enabled' => 1,
+        'initial_calendar_view' => 'month'
     ];
 
     $res = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
@@ -49,7 +53,7 @@ function get_public_branding_settings($mysqli)
     ensure_branding_columns($mysqli);
 
     $res = $mysqli->query("
-        SELECT app_name, site_tagline, site_phone, profile_image_path, landing_image_path, primary_color, show_profile_image_public, show_prices_public, online_booking_enabled
+        SELECT app_name, site_tagline, site_phone, profile_image_path, landing_image_path, primary_color, show_profile_image_public, show_prices_public, show_contact_public, online_booking_enabled, initial_calendar_view
         FROM payment_settings
         WHERE id = 1
     ");
@@ -63,7 +67,9 @@ function get_public_branding_settings($mysqli)
         $settings['primary_color'] = preg_match('/^#[0-9a-fA-F]{6}$/', $row['primary_color'] ?? '') ? strtolower($row['primary_color']) : '#8f7fba';
         $settings['show_profile_image_public'] = (int) ($row['show_profile_image_public'] ?? 0);
         $settings['show_prices_public'] = (int) ($row['show_prices_public'] ?? 0);
+        $settings['show_contact_public'] = (int) ($row['show_contact_public'] ?? 0);
         $settings['online_booking_enabled'] = (int) ($row['online_booking_enabled'] ?? 1);
+        $settings['initial_calendar_view'] = in_array(($row['initial_calendar_view'] ?? ''), ['week', 'month'], true) ? $row['initial_calendar_view'] : 'month';
     }
 
     return $settings;

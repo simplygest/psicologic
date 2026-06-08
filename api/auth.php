@@ -37,6 +37,10 @@ function ensure_patient_registration_schema($mysqli)
         $mysqli->query("ALTER TABLE invitations ADD user_id INT UNSIGNED DEFAULT NULL AFTER token");
         $mysqli->query("ALTER TABLE invitations ADD INDEX idx_invitations_user_id (user_id)");
     }
+    $res = $mysqli->query("SHOW COLUMNS FROM invitations LIKE 'used_at'");
+    if ($res && $res->num_rows === 0) {
+        $mysqli->query("ALTER TABLE invitations ADD used_at DATETIME NULL AFTER created_at");
+    }
 
     $mysqli->query("
         CREATE TABLE IF NOT EXISTS patient_profiles (
@@ -44,6 +48,7 @@ function ensure_patient_registration_schema($mysqli)
             patient_type VARCHAR(80) DEFAULT NULL,
             admission_date DATE DEFAULT NULL,
             notes LONGTEXT DEFAULT NULL,
+            photo_path VARCHAR(255) DEFAULT NULL,
             document_path VARCHAR(255) DEFAULT NULL,
             document_name VARCHAR(255) DEFAULT NULL,
             created_by_admin TINYINT(1) NOT NULL DEFAULT 0,
@@ -53,8 +58,10 @@ function ensure_patient_registration_schema($mysqli)
     ");
 
     $columns = [
+        'photo_path' => "ALTER TABLE patient_profiles ADD photo_path VARCHAR(255) DEFAULT NULL AFTER notes",
         'document_path' => "ALTER TABLE patient_profiles ADD document_path VARCHAR(255) DEFAULT NULL AFTER notes",
-        'document_name' => "ALTER TABLE patient_profiles ADD document_name VARCHAR(255) DEFAULT NULL AFTER document_path"
+        'document_name' => "ALTER TABLE patient_profiles ADD document_name VARCHAR(255) DEFAULT NULL AFTER document_path",
+        'created_by_admin' => "ALTER TABLE patient_profiles ADD created_by_admin TINYINT(1) NOT NULL DEFAULT 0 AFTER document_name"
     ];
     foreach ($columns as $column => $sql) {
         $res = $mysqli->query("SHOW COLUMNS FROM patient_profiles LIKE '$column'");
@@ -65,6 +72,43 @@ function ensure_patient_registration_schema($mysqli)
 }
 
 ensure_patient_registration_schema($mysqli);
+
+function save_patient_profile_photo_upload($file, $patient_id)
+{
+    if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+        return null;
+    }
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        throw new \Exception('No se pudo subir la foto.');
+    }
+    if (($file['size'] ?? 0) > 2 * 1024 * 1024) {
+        throw new \Exception('La foto no puede superar 2 MB.');
+    }
+
+    $image_info = @getimagesize($file['tmp_name']);
+    if (!$image_info || !in_array($image_info['mime'], ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], true)) {
+        throw new \Exception('Formato de foto no valido. Usa JPG, PNG, WEBP o GIF.');
+    }
+
+    $extensions = [
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+        'image/gif' => 'gif'
+    ];
+    $upload_dir = dirname(__DIR__) . '/uploads/patients';
+    if (!is_dir($upload_dir) && !mkdir($upload_dir, 0755, true)) {
+        throw new \Exception('No se pudo crear la carpeta de fotos.');
+    }
+
+    $filename = 'patient_photo_' . (int) $patient_id . '_' . bin2hex(random_bytes(8)) . '.' . $extensions[$image_info['mime']];
+    $destination = $upload_dir . '/' . $filename;
+    if (!move_uploaded_file($file['tmp_name'], $destination)) {
+        throw new \Exception('No se pudo guardar la foto.');
+    }
+
+    return 'uploads/patients/' . $filename;
+}
 
 if ($action === 'login') {
     $login_id = trim($_POST['login_id'] ?? '');
@@ -208,6 +252,7 @@ if ($action === 'login') {
         echo json_encode(['success' => true]);
     } catch (\Exception $e) {
         $mysqli->rollback();
+        error_log('Error registrando invitacion: ' . $e->getMessage());
         echo json_encode(['success' => false, 'error' => 'Error al registrar.']);
     }
 } elseif ($action === 'request_password_reset') {
@@ -291,6 +336,105 @@ if ($action === 'login') {
     } catch (\Exception $e) {
         $mysqli->rollback();
         echo json_encode(['success' => false, 'error' => 'No se pudo actualizar la contraseña.']);
+    }
+} elseif ($action === 'my_profile') {
+    if (!isset($_SESSION['user_id']) || ($_SESSION['role'] ?? '') !== 'patient') {
+        echo json_encode(['success' => false, 'error' => 'No autorizado.']);
+        exit;
+    }
+
+    $user_id = (int) $_SESSION['user_id'];
+    $stmt = $mysqli->prepare("
+        SELECT u.name, u.email, u.phone, pp.photo_path
+        FROM users u
+        LEFT JOIN patient_profiles pp ON pp.user_id = u.id
+        WHERE u.id = ? AND u.role = 'patient'
+        LIMIT 1
+    ");
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $profile = $stmt->get_result()->fetch_assoc();
+    if (!$profile) {
+        echo json_encode(['success' => false, 'error' => 'Paciente no encontrado.']);
+        exit;
+    }
+
+    echo json_encode([
+        'success' => true,
+        'profile' => [
+            'name' => $profile['name'] ?? '',
+            'email' => $profile['email'] ?? '',
+            'phone' => $profile['phone'] ?? '',
+            'photo_path' => $profile['photo_path'] ?? ''
+        ]
+    ]);
+} elseif ($action === 'save_my_profile') {
+    if (!isset($_SESSION['user_id']) || ($_SESSION['role'] ?? '') !== 'patient') {
+        echo json_encode(['success' => false, 'error' => 'No autorizado.']);
+        exit;
+    }
+
+    $user_id = (int) $_SESSION['user_id'];
+    $email = trim($_POST['email'] ?? '');
+    $phone = trim($_POST['phone'] ?? '');
+    if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        echo json_encode(['success' => false, 'error' => 'Indica un email valido.']);
+        exit;
+    }
+    $phone = $phone !== '' ? $phone : null;
+
+    $stmt = $mysqli->prepare("SELECT id FROM users WHERE email = ? AND id <> ? LIMIT 1");
+    $stmt->bind_param("si", $email, $user_id);
+    $stmt->execute();
+    if ($stmt->get_result()->fetch_assoc()) {
+        echo json_encode(['success' => false, 'error' => 'Ya existe otra cuenta con ese email.']);
+        exit;
+    }
+
+    if ($phone !== null) {
+        $stmt = $mysqli->prepare("SELECT id FROM users WHERE phone = ? AND id <> ? LIMIT 1");
+        $stmt->bind_param("si", $phone, $user_id);
+        $stmt->execute();
+        if ($stmt->get_result()->fetch_assoc()) {
+            echo json_encode(['success' => false, 'error' => 'Ya existe otra cuenta con ese telefono.']);
+            exit;
+        }
+    }
+
+    try {
+        $uploaded_photo_path = save_patient_profile_photo_upload($_FILES['patient_photo'] ?? null, $user_id);
+    } catch (\Exception $e) {
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+        exit;
+    }
+
+    $mysqli->begin_transaction();
+    try {
+        $stmt = $mysqli->prepare("UPDATE users SET email = ?, phone = ? WHERE id = ? AND role = 'patient'");
+        $stmt->bind_param("ssi", $email, $phone, $user_id);
+        $stmt->execute();
+
+        $stmt = $mysqli->prepare("
+            INSERT INTO patient_profiles (user_id, photo_path)
+            VALUES (?, ?)
+            ON DUPLICATE KEY UPDATE photo_path = COALESCE(VALUES(photo_path), photo_path)
+        ");
+        $stmt->bind_param("is", $user_id, $uploaded_photo_path);
+        $stmt->execute();
+
+        $mysqli->commit();
+        echo json_encode([
+            'success' => true,
+            'message' => 'Datos actualizados correctamente.',
+            'profile' => [
+                'email' => $email,
+                'phone' => $phone ?? '',
+                'photo_path' => $uploaded_photo_path ?? ''
+            ]
+        ]);
+    } catch (\Exception $e) {
+        $mysqli->rollback();
+        echo json_encode(['success' => false, 'error' => 'No se pudieron guardar los datos.']);
     }
 } elseif ($action === 'change_password') {
     if (!isset($_SESSION['user_id'])) {

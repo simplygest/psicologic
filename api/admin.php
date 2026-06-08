@@ -184,6 +184,7 @@ function ensure_payment_settings_table($mysqli)
             primary_color VARCHAR(7) NOT NULL DEFAULT '#8f7fba',
             show_profile_image_public TINYINT(1) NOT NULL DEFAULT 0,
             show_prices_public TINYINT(1) NOT NULL DEFAULT 0,
+            show_contact_public TINYINT(1) NOT NULL DEFAULT 0,
             online_booking_enabled TINYINT(1) NOT NULL DEFAULT 1,
             bonuses_enabled TINYINT(1) NOT NULL DEFAULT 0,
             create_compensation_bonus_on_paid_cancel TINYINT(1) NOT NULL DEFAULT 1,
@@ -258,7 +259,9 @@ function ensure_payment_settings_table($mysqli)
         'primary_color' => "ALTER TABLE payment_settings ADD primary_color VARCHAR(7) NOT NULL DEFAULT '#8f7fba' AFTER landing_image_path",
         'show_profile_image_public' => "ALTER TABLE payment_settings ADD show_profile_image_public TINYINT(1) NOT NULL DEFAULT 0 AFTER profile_image_path",
         'show_prices_public' => "ALTER TABLE payment_settings ADD show_prices_public TINYINT(1) NOT NULL DEFAULT 0 AFTER show_profile_image_public",
-        'online_booking_enabled' => "ALTER TABLE payment_settings ADD online_booking_enabled TINYINT(1) NOT NULL DEFAULT 1 AFTER show_prices_public",
+        'show_contact_public' => "ALTER TABLE payment_settings ADD show_contact_public TINYINT(1) NOT NULL DEFAULT 0 AFTER show_prices_public",
+        'online_booking_enabled' => "ALTER TABLE payment_settings ADD online_booking_enabled TINYINT(1) NOT NULL DEFAULT 1 AFTER show_contact_public",
+        'initial_calendar_view' => "ALTER TABLE payment_settings ADD initial_calendar_view VARCHAR(12) NOT NULL DEFAULT 'month' AFTER online_booking_enabled",
         'bonuses_enabled' => "ALTER TABLE payment_settings ADD bonuses_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER show_prices_public",
         'create_compensation_bonus_on_paid_cancel' => "ALTER TABLE payment_settings ADD create_compensation_bonus_on_paid_cancel TINYINT(1) NOT NULL DEFAULT 1 AFTER bonuses_enabled",
         'appointment_delivery_mode' => "ALTER TABLE payment_settings ADD appointment_delivery_mode ENUM('both', 'presencial', 'online') NOT NULL DEFAULT 'both' AFTER admin_notification_email",
@@ -356,6 +359,7 @@ function ensure_patient_management_tables($mysqli)
             patient_type VARCHAR(80) DEFAULT NULL,
             admission_date DATE DEFAULT NULL,
             notes LONGTEXT DEFAULT NULL,
+            photo_path VARCHAR(255) DEFAULT NULL,
             document_path VARCHAR(255) DEFAULT NULL,
             document_name VARCHAR(255) DEFAULT NULL,
             created_by_admin TINYINT(1) NOT NULL DEFAULT 0,
@@ -367,6 +371,7 @@ function ensure_patient_management_tables($mysqli)
     ");
 
     $columns = [
+        'photo_path' => "ALTER TABLE patient_profiles ADD photo_path VARCHAR(255) DEFAULT NULL AFTER notes",
         'document_path' => "ALTER TABLE patient_profiles ADD document_path VARCHAR(255) DEFAULT NULL AFTER notes",
         'document_name' => "ALTER TABLE patient_profiles ADD document_name VARCHAR(255) DEFAULT NULL AFTER document_path"
     ];
@@ -420,6 +425,43 @@ function save_patient_document_upload($file, $patient_id)
         'path' => 'uploads/patients/' . $filename,
         'name' => basename($file['name'])
     ];
+}
+
+function save_patient_photo_upload($file, $patient_id)
+{
+    if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+        return null;
+    }
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        throw new \Exception('No se pudo subir la foto del paciente.');
+    }
+    if (($file['size'] ?? 0) > 2 * 1024 * 1024) {
+        throw new \Exception('La foto del paciente no puede superar 2 MB.');
+    }
+
+    $image_info = @getimagesize($file['tmp_name']);
+    if (!$image_info || !in_array($image_info['mime'], ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], true)) {
+        throw new \Exception('Formato de foto no valido. Usa JPG, PNG, WEBP o GIF.');
+    }
+
+    $extensions = [
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+        'image/gif' => 'gif'
+    ];
+    $upload_dir = dirname(__DIR__) . '/uploads/patients';
+    if (!is_dir($upload_dir) && !mkdir($upload_dir, 0755, true)) {
+        throw new \Exception('No se pudo crear la carpeta de fotos de pacientes.');
+    }
+
+    $filename = 'patient_photo_' . (int) $patient_id . '_' . bin2hex(random_bytes(8)) . '.' . $extensions[$image_info['mime']];
+    $destination = $upload_dir . '/' . $filename;
+    if (!move_uploaded_file($file['tmp_name'], $destination)) {
+        throw new \Exception('No se pudo guardar la foto del paciente.');
+    }
+
+    return 'uploads/patients/' . $filename;
 }
 
 function normalize_time_field($value, $default = '')
@@ -483,6 +525,21 @@ function normalize_available_session_durations($value)
 
     sort($selected);
     return $selected ? implode(',', $selected) : '60';
+}
+
+function normalize_optional_url($value, $label)
+{
+    $value = trim((string) $value);
+    if ($value === '') {
+        return '';
+    }
+    if (!preg_match('#^https?://#i', $value)) {
+        $value = 'https://' . $value;
+    }
+    if (!filter_var($value, FILTER_VALIDATE_URL)) {
+        throw new \Exception($label . ' no tiene una URL valida.');
+    }
+    return $value;
 }
 
 function sync_service_availability($mysqli, $available_session_types, $available_session_durations, $appointment_delivery_mode)
@@ -661,7 +718,7 @@ if ($action === 'generate_invite') {
     $professional_where = $professional_id > 0 ? " AND COALESCE(ppf.professional_id, pp.professional_id) = " . (int) $professional_id : ($professional_id < 0 ? " AND 1 = 0" : "");
     $res = $mysqli->query("
         SELECT u.id, u.name, u.email, u.phone, u.created_at, u.password_hash,
-               pp.patient_type, pp.admission_date, pp.notes, pp.document_path, pp.document_name, pp.created_by_admin,
+               pp.patient_type, pp.admission_date, pp.notes, pp.photo_path, pp.document_path, pp.document_name, pp.created_by_admin,
                COALESCE(ppf.professional_id, pp.professional_id) AS professional_id,
                p.display_name AS professional_name, p.public_photo_path AS professional_photo_path,
                pu.role AS professional_user_role
@@ -685,6 +742,7 @@ if ($action === 'generate_invite') {
             'patient_type' => $row['patient_type'] ?? '',
             'admission_date' => $row['admission_date'] ?? substr((string) $row['created_at'], 0, 10),
             'notes' => $row['notes'] ?? '',
+            'photo_path' => $row['photo_path'] ?? '',
             'document_path' => $row['document_path'] ?? '',
             'document_name' => $row['document_name'] ?? '',
             'professional_id' => (int) ($row['professional_id'] ?? 0),
@@ -761,9 +819,14 @@ if ($action === 'generate_invite') {
     $patient_type = trim($_POST['patient_type'] ?? '');
     $admission_date = trim($_POST['admission_date'] ?? '');
     $notes = trim($_POST['notes'] ?? '');
-    $selected_professional_id = admin_requested_professional_filter($mysqli);
-    if ($selected_professional_id <= 0) {
-        $selected_professional_id = current_professional_id_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0));
+    $professional_was_posted = array_key_exists('professional_id', $_POST);
+    if ($is_superadmin && $professional_was_posted) {
+        $selected_professional_id = max(0, (int) ($_POST['professional_id'] ?? 0));
+    } else {
+        $selected_professional_id = admin_requested_professional_filter($mysqli);
+        if ($selected_professional_id <= 0) {
+            $selected_professional_id = current_professional_id_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0));
+        }
     }
 
     $email = $email !== '' ? $email : null;
@@ -822,16 +885,21 @@ if ($action === 'generate_invite') {
             $patient_id = $mysqli->insert_id;
         }
 
+        $uploaded_photo_path = save_patient_photo_upload($_FILES['patient_photo'] ?? null, $patient_id);
         $uploaded_document = save_patient_document_upload($_FILES['patient_document'] ?? null, $patient_id);
 
+        $profile_professional_id = $selected_professional_id > 0 ? $selected_professional_id : null;
         $stmt = $mysqli->prepare("
             INSERT INTO patient_profiles (user_id, professional_id, patient_type, admission_date, notes, created_by_admin)
             VALUES (?, ?, ?, ?, ?, 1)
             ON DUPLICATE KEY UPDATE professional_id = VALUES(professional_id), patient_type = VALUES(patient_type), admission_date = VALUES(admission_date), notes = VALUES(notes)
         ");
-        $stmt->bind_param("iisss", $patient_id, $selected_professional_id, $patient_type, $admission_date, $notes);
+        $stmt->bind_param("iisss", $patient_id, $profile_professional_id, $patient_type, $admission_date, $notes);
         $stmt->execute();
         if ($selected_professional_id > 0) {
+            $stmt = $mysqli->prepare("UPDATE patient_professionals SET is_primary = 0 WHERE patient_id = ?");
+            $stmt->bind_param("i", $patient_id);
+            $stmt->execute();
             $stmt = $mysqli->prepare("
                 INSERT INTO patient_professionals (patient_id, professional_id, is_primary, notes)
                 VALUES (?, ?, 1, 'Asignación desde ficha')
@@ -839,11 +907,20 @@ if ($action === 'generate_invite') {
             ");
             $stmt->bind_param("ii", $patient_id, $selected_professional_id);
             $stmt->execute();
+        } elseif ($is_superadmin && $professional_was_posted) {
+            $stmt = $mysqli->prepare("DELETE FROM patient_professionals WHERE patient_id = ? AND is_primary = 1");
+            $stmt->bind_param("i", $patient_id);
+            $stmt->execute();
         }
 
         if ($uploaded_document !== null) {
             $stmt = $mysqli->prepare("UPDATE patient_profiles SET document_path = ?, document_name = ? WHERE user_id = ?");
             $stmt->bind_param("ssi", $uploaded_document['path'], $uploaded_document['name'], $patient_id);
+            $stmt->execute();
+        }
+        if ($uploaded_photo_path !== null) {
+            $stmt = $mysqli->prepare("UPDATE patient_profiles SET photo_path = ? WHERE user_id = ?");
+            $stmt->bind_param("si", $uploaded_photo_path, $patient_id);
             $stmt->execute();
         }
 
@@ -1299,11 +1376,12 @@ if ($action === 'generate_invite') {
     ensure_payment_settings_table($mysqli);
     ensure_cabinet_schema($mysqli);
 
-    $settings_res = $mysqli->query("SELECT show_team_public, allow_patient_transfer, profile_image_path FROM payment_settings WHERE id = 1");
-    $settings = $settings_res ? $settings_res->fetch_assoc() : ['show_team_public' => 0, 'allow_patient_transfer' => 0];
+    $settings_res = $mysqli->query("SELECT show_team_public, allow_patient_transfer, new_patient_booking_mode, new_patient_fixed_professional_id, profile_image_path FROM payment_settings WHERE id = 1");
+    $settings = $settings_res ? $settings_res->fetch_assoc() : ['show_team_public' => 0, 'allow_patient_transfer' => 0, 'new_patient_booking_mode' => 'day_first', 'new_patient_fixed_professional_id' => null];
     $dashboard_photo_path = $settings['profile_image_path'] ?? '';
     $res = $mysqli->query("
-        SELECT p.id, p.user_id, p.display_name, p.professional_title, p.license_number, p.professional_specialty, p.public_photo_path, p.public_email, p.public_phone,
+        SELECT p.id, p.user_id, p.display_name, p.professional_title, p.license_number, p.professional_specialty, p.public_bio,
+               p.public_photo_path, p.public_email, p.public_phone, p.instagram_url, p.facebook_url, p.tiktok_url,
                p.is_active, u.email AS login_email, u.role
         FROM professionals p
         LEFT JOIN users u ON u.id = p.user_id
@@ -1321,9 +1399,14 @@ if ($action === 'generate_invite') {
             'professional_title' => $row['professional_title'] ?? '',
             'license_number' => $row['license_number'] ?? '',
             'professional_specialty' => $row['professional_specialty'] ?? '',
+            'public_bio' => $row['public_bio'] ?? '',
             'public_photo_path' => $photo_path,
             'display_photo_path' => $display_photo_path,
             'email' => $row['login_email'] ?: ($row['public_email'] ?? ''),
+            'public_phone' => $row['public_phone'] ?? '',
+            'instagram_url' => $row['instagram_url'] ?? '',
+            'facebook_url' => $row['facebook_url'] ?? '',
+            'tiktok_url' => $row['tiktok_url'] ?? '',
             'role' => in_array($row['role'] ?? 'admin', ['superadmin', 'admin'], true) ? $row['role'] : 'admin',
             'is_active' => (int) ($row['is_active'] ?? 1),
             'is_current_user' => $is_current_user
@@ -1575,6 +1658,28 @@ if ($action === 'generate_invite') {
 
     $show_team_public = isset($_POST['show_team_public']) && $_POST['show_team_public'] === '1' ? 1 : 0;
     $allow_patient_transfer = isset($_POST['allow_patient_transfer']) && $_POST['allow_patient_transfer'] === '1' ? 1 : 0;
+    $new_patient_booking_mode = $_POST['new_patient_booking_mode'] ?? 'day_first';
+    if (!in_array($new_patient_booking_mode, ['day_first', 'professional_first', 'fixed_professional'], true)) {
+        $new_patient_booking_mode = 'day_first';
+    }
+    $new_patient_fixed_professional_id = (int) ($_POST['new_patient_fixed_professional_id'] ?? 0);
+    if ($new_patient_booking_mode !== 'fixed_professional') {
+        $new_patient_fixed_professional_id = 0;
+    } elseif ($new_patient_fixed_professional_id <= 0) {
+        $new_patient_fixed_professional_id = cabinet_superadmin_professional_id($mysqli);
+        if ($new_patient_fixed_professional_id <= 0) {
+            echo json_encode(['success' => false, 'error' => 'No se pudo localizar el profesional administrador para derivar nuevos pacientes.']);
+            exit;
+        }
+    } else {
+        $stmt = $mysqli->prepare("SELECT id FROM professionals WHERE id = ? AND is_active = 1 LIMIT 1");
+        $stmt->bind_param("i", $new_patient_fixed_professional_id);
+        $stmt->execute();
+        if (!$stmt->get_result()->fetch_assoc()) {
+            echo json_encode(['success' => false, 'error' => 'El profesional de derivacion no esta activo o no existe.']);
+            exit;
+        }
+    }
     $professionals = json_decode($_POST['professionals_json'] ?? '[]', true);
     if (!is_array($professionals)) {
         echo json_encode(['success' => false, 'error' => 'Listado de profesionales invalido.']);
@@ -1587,13 +1692,16 @@ if ($action === 'generate_invite') {
     try {
         $mysqli->query("INSERT IGNORE INTO payment_settings (id) VALUES (1)");
         $stmt = $mysqli->prepare("
-            INSERT INTO payment_settings (id, show_team_public, allow_patient_transfer)
-            VALUES (1, ?, ?)
+            INSERT INTO payment_settings (id, show_team_public, allow_patient_transfer, new_patient_booking_mode, new_patient_fixed_professional_id)
+            VALUES (1, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
                 show_team_public = VALUES(show_team_public),
-                allow_patient_transfer = VALUES(allow_patient_transfer)
+                allow_patient_transfer = VALUES(allow_patient_transfer),
+                new_patient_booking_mode = VALUES(new_patient_booking_mode),
+                new_patient_fixed_professional_id = VALUES(new_patient_fixed_professional_id)
         ");
-        $stmt->bind_param("ii", $show_team_public, $allow_patient_transfer);
+        $fixed_professional_db = $new_patient_fixed_professional_id > 0 ? $new_patient_fixed_professional_id : null;
+        $stmt->bind_param("iisi", $show_team_public, $allow_patient_transfer, $new_patient_booking_mode, $fixed_professional_db);
         $stmt->execute();
 
         foreach ($professionals as $index => $professional) {
@@ -1603,8 +1711,13 @@ if ($action === 'generate_invite') {
             $title = trim((string) ($professional['professional_title'] ?? ''));
             $license_number = trim((string) ($professional['license_number'] ?? ''));
             $specialty = trim((string) ($professional['professional_specialty'] ?? ''));
+            $public_bio = trim((string) ($professional['public_bio'] ?? ''));
             $current_photo_path = trim((string) ($professional['public_photo_path'] ?? ''));
             $email = trim((string) ($professional['email'] ?? ''));
+            $public_phone = trim((string) ($professional['public_phone'] ?? ''));
+            $instagram_url = normalize_optional_url($professional['instagram_url'] ?? '', 'Instagram');
+            $facebook_url = normalize_optional_url($professional['facebook_url'] ?? '', 'Facebook');
+            $tiktok_url = normalize_optional_url($professional['tiktok_url'] ?? '', 'TikTok');
             $role = ($professional['role'] ?? 'admin') === 'superadmin' ? 'superadmin' : 'admin';
             $is_active = !empty($professional['is_active']) ? 1 : 0;
 
@@ -1648,17 +1761,17 @@ if ($action === 'generate_invite') {
             if ($professional_id > 0) {
                 $stmt = $mysqli->prepare("
                     UPDATE professionals
-                    SET user_id = ?, display_name = ?, public_slug = ?, professional_title = ?, license_number = ?, professional_specialty = ?, public_photo_path = ?, public_email = ?, is_active = ?, sort_order = ?
+                    SET user_id = ?, display_name = ?, public_slug = ?, professional_title = ?, license_number = ?, professional_specialty = ?, public_bio = ?, public_photo_path = ?, public_email = ?, public_phone = ?, instagram_url = ?, facebook_url = ?, tiktok_url = ?, is_active = ?, sort_order = ?
                     WHERE id = ?
                 ");
-                $stmt->bind_param("isssssssiii", $user_id, $display_name, $slug, $title, $license_number, $specialty, $current_photo_path, $email, $is_active, $sort_order, $professional_id);
+                $stmt->bind_param("issssssssssssiii", $user_id, $display_name, $slug, $title, $license_number, $specialty, $public_bio, $current_photo_path, $email, $public_phone, $instagram_url, $facebook_url, $tiktok_url, $is_active, $sort_order, $professional_id);
             } else {
                 $stmt = $mysqli->prepare("
-                    INSERT INTO professionals (user_id, display_name, public_slug, professional_title, license_number, professional_specialty, public_photo_path, public_email, is_active, sort_order)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON DUPLICATE KEY UPDATE display_name = VALUES(display_name), professional_title = VALUES(professional_title), license_number = VALUES(license_number), professional_specialty = VALUES(professional_specialty), public_photo_path = VALUES(public_photo_path), public_email = VALUES(public_email), is_active = VALUES(is_active), sort_order = VALUES(sort_order)
+                    INSERT INTO professionals (user_id, display_name, public_slug, professional_title, license_number, professional_specialty, public_bio, public_photo_path, public_email, public_phone, instagram_url, facebook_url, tiktok_url, is_active, sort_order)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE display_name = VALUES(display_name), professional_title = VALUES(professional_title), license_number = VALUES(license_number), professional_specialty = VALUES(professional_specialty), public_bio = VALUES(public_bio), public_photo_path = VALUES(public_photo_path), public_email = VALUES(public_email), public_phone = VALUES(public_phone), instagram_url = VALUES(instagram_url), facebook_url = VALUES(facebook_url), tiktok_url = VALUES(tiktok_url), is_active = VALUES(is_active), sort_order = VALUES(sort_order)
                 ");
-                $stmt->bind_param("isssssssii", $user_id, $display_name, $slug, $title, $license_number, $specialty, $current_photo_path, $email, $is_active, $sort_order);
+                $stmt->bind_param("issssssssssssii", $user_id, $display_name, $slug, $title, $license_number, $specialty, $public_bio, $current_photo_path, $email, $public_phone, $instagram_url, $facebook_url, $tiktok_url, $is_active, $sort_order);
             }
             $stmt->execute();
             $saved_professional_id = $professional_id > 0 ? $professional_id : (int) $mysqli->insert_id;
@@ -1690,14 +1803,16 @@ if ($action === 'generate_invite') {
             }
         }
         $mysqli->commit();
-        $settings_res = $mysqli->query("SELECT show_team_public, allow_patient_transfer FROM payment_settings WHERE id = 1");
-        $saved_settings = $settings_res ? $settings_res->fetch_assoc() : ['show_team_public' => $show_team_public, 'allow_patient_transfer' => $allow_patient_transfer];
+        $settings_res = $mysqli->query("SELECT show_team_public, allow_patient_transfer, new_patient_booking_mode, new_patient_fixed_professional_id FROM payment_settings WHERE id = 1");
+        $saved_settings = $settings_res ? $settings_res->fetch_assoc() : ['show_team_public' => $show_team_public, 'allow_patient_transfer' => $allow_patient_transfer, 'new_patient_booking_mode' => $new_patient_booking_mode, 'new_patient_fixed_professional_id' => $new_patient_fixed_professional_id];
         echo json_encode([
             'success' => true,
             'message' => 'Equipo guardado correctamente.',
             'settings' => [
                 'show_team_public' => (int) ($saved_settings['show_team_public'] ?? 0),
-                'allow_patient_transfer' => (int) ($saved_settings['allow_patient_transfer'] ?? 0)
+                'allow_patient_transfer' => (int) ($saved_settings['allow_patient_transfer'] ?? 0),
+                'new_patient_booking_mode' => $saved_settings['new_patient_booking_mode'] ?? 'day_first',
+                'new_patient_fixed_professional_id' => (int) ($saved_settings['new_patient_fixed_professional_id'] ?? 0)
             ]
         ]);
     } catch (\Exception $e) {
@@ -1709,7 +1824,7 @@ if ($action === 'generate_invite') {
     ensure_cabinet_schema($mysqli);
 
     $res = $mysqli->query("
-        SELECT app_name, site_tagline, site_phone, profile_image_path, landing_image_path, primary_color, show_profile_image_public, show_prices_public, online_booking_enabled, bonuses_enabled, create_compensation_bonus_on_paid_cancel, online_payment_enabled, environment, merchant_code, terminal,
+        SELECT app_name, site_tagline, site_phone, profile_image_path, landing_image_path, primary_color, show_profile_image_public, show_prices_public, show_contact_public, online_booking_enabled, initial_calendar_view, bonuses_enabled, create_compensation_bonus_on_paid_cancel, online_payment_enabled, environment, merchant_code, terminal,
                appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, admin_notification_email,
                appointment_delivery_mode, available_session_types, available_session_durations,
                appointment_reminder_enabled,
@@ -1892,6 +2007,7 @@ if ($action === 'generate_invite') {
     $site_tagline = trim($_POST['site_tagline'] ?? '');
     $site_phone = trim($_POST['site_phone'] ?? '');
     $primary_color = trim($_POST['primary_color'] ?? '#8f7fba');
+    $initial_calendar_view = $_POST['initial_calendar_view'] ?? 'month';
     $environment = $_POST['environment'] ?? 'sandbox';
     $merchant_code = trim($_POST['merchant_code'] ?? '');
     $merchant_key = trim($_POST['merchant_key'] ?? '');
@@ -1940,8 +2056,14 @@ if ($action === 'generate_invite') {
         $icloud_calendar_url = 'https://caldav.icloud.com';
     }
     $send_patient_calendar_link = isset($_POST['send_patient_calendar_link']) && $_POST['send_patient_calendar_link'] === '1' ? 1 : 0;
+    if ($email_provider === 'google') {
+        $admin_notification_email = $google_connected_email;
+    } else {
+        $admin_notification_email = $smtp_from_email;
+    }
     $show_profile_image_public = isset($_POST['show_profile_image_public']) && $_POST['show_profile_image_public'] === '1' ? 1 : 0;
     $show_prices_public = isset($_POST['show_prices_public']) && $_POST['show_prices_public'] === '1' ? 1 : 0;
+    $show_contact_public = isset($_POST['show_contact_public']) && $_POST['show_contact_public'] === '1' ? 1 : 0;
     $online_booking_enabled = isset($_POST['online_booking_enabled']) && $_POST['online_booking_enabled'] === '1' ? 1 : 0;
     $uploaded_profile_image_path = null;
     $uploaded_landing_image_path = null;
@@ -1955,6 +2077,9 @@ if ($action === 'generate_invite') {
         exit;
     }
     $primary_color = strtolower($primary_color);
+    if (!in_array($initial_calendar_view, ['week', 'month'], true)) {
+        $initial_calendar_view = 'month';
+    }
 
     if (!in_array($environment, ['sandbox', 'real'], true)) {
         echo json_encode(['success' => false, 'error' => 'Modo de pasarela inválido']);
@@ -2040,9 +2165,7 @@ if ($action === 'generate_invite') {
         'break_end_time' => $break_end_time === '' ? null : $break_end_time,
         'available_weekdays' => $available_weekdays,
         'min_booking_notice_days' => $min_booking_notice_days,
-        'max_booking_notice_days' => $max_booking_notice_days,
-        'bonuses_enabled' => isset($_POST['bonuses_enabled']) && $_POST['bonuses_enabled'] === '1' ? 1 : 0,
-        'create_compensation_bonus_on_paid_cancel' => isset($_POST['create_compensation_bonus_on_paid_cancel']) && $_POST['create_compensation_bonus_on_paid_cancel'] === '1' ? 1 : 0
+        'max_booking_notice_days' => $max_booking_notice_days
     ];
 
     $current_professional_id = current_professional_id_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0));
@@ -2248,12 +2371,12 @@ if ($action === 'generate_invite') {
     }
 
     if ($uploaded_profile_image_path !== null) {
-        $stmt = $mysqli->prepare("UPDATE payment_settings SET profile_image_path = ?, show_profile_image_public = ?, show_prices_public = ?, online_booking_enabled = ? WHERE id = 1");
-        $stmt->bind_param("siii", $uploaded_profile_image_path, $show_profile_image_public, $show_prices_public, $online_booking_enabled);
+        $stmt = $mysqli->prepare("UPDATE payment_settings SET profile_image_path = ?, show_profile_image_public = ?, show_prices_public = ?, show_contact_public = ?, online_booking_enabled = ?, initial_calendar_view = ? WHERE id = 1");
+        $stmt->bind_param("siiiis", $uploaded_profile_image_path, $show_profile_image_public, $show_prices_public, $show_contact_public, $online_booking_enabled, $initial_calendar_view);
         $stmt->execute();
     } else {
-        $stmt = $mysqli->prepare("UPDATE payment_settings SET show_profile_image_public = ?, show_prices_public = ?, online_booking_enabled = ? WHERE id = 1");
-        $stmt->bind_param("iii", $show_profile_image_public, $show_prices_public, $online_booking_enabled);
+        $stmt = $mysqli->prepare("UPDATE payment_settings SET show_profile_image_public = ?, show_prices_public = ?, show_contact_public = ?, online_booking_enabled = ?, initial_calendar_view = ? WHERE id = 1");
+        $stmt->bind_param("iiiis", $show_profile_image_public, $show_prices_public, $show_contact_public, $online_booking_enabled, $initial_calendar_view);
         $stmt->execute();
     }
 

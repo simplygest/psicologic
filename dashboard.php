@@ -16,9 +16,27 @@ if (!$is_admin && (int) ($branding['online_booking_enabled'] ?? 1) !== 1) {
 }
 $app_name = $branding['app_name'];
 $profile_image_path = $branding['profile_image_path'];
-$navbar_brand_text = 'Panel de Control';
+$navbar_brand_text = $is_admin ? 'Panel de Control' : 'Gestiona tus citas';
 $navbar_image_path = $profile_image_path;
 $has_team_members = false;
+if (!$is_admin) {
+  $photo_column = $mysqli->query("SHOW COLUMNS FROM patient_profiles LIKE 'photo_path'");
+  if ($photo_column && $photo_column->num_rows === 0) {
+    $mysqli->query("ALTER TABLE patient_profiles ADD photo_path VARCHAR(255) DEFAULT NULL AFTER notes");
+  }
+  $stmt = $mysqli->prepare("
+    SELECT photo_path
+    FROM patient_profiles
+    WHERE user_id = ?
+    LIMIT 1
+  ");
+  $stmt->bind_param("i", $_SESSION['user_id']);
+  $stmt->execute();
+  $patient_navbar = $stmt->get_result()->fetch_assoc();
+  if (!empty($patient_navbar['photo_path'])) {
+    $navbar_image_path = $patient_navbar['photo_path'];
+  }
+}
 if ($is_admin) {
   ensure_cabinet_schema($mysqli);
   $team_count_res = $mysqli->query("SELECT COUNT(*) AS total FROM professionals WHERE is_active = 1");
@@ -76,6 +94,13 @@ if ($is_admin) {
             <i class="bi bi-three-dots-vertical"></i> Opciones
           </button>
           <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dashboard-options-menu">
+            <?php if (!$is_admin): ?>
+              <li>
+                <button class="dropdown-item" id="btn-my-profile" type="button">
+                  <i class="bi bi-person-circle me-2"></i>Mis datos
+                </button>
+              </li>
+            <?php endif; ?>
             <li>
               <button class="dropdown-item" id="btn-change-password" type="button">
                 <i class="bi bi-key me-2"></i>Cambiar contrase&ntilde;a
@@ -115,23 +140,51 @@ if ($is_admin) {
     </div>
 
     <?php if ($is_admin): ?>
-      <div class="mb-4 d-flex gap-2 flex-wrap align-items-center">
+      <div class="mb-4 d-flex gap-2 flex-wrap align-items-center dashboard-actions-bar dashboard-actions-admin">
+        <div class="dashboard-action-buttons d-flex gap-2 flex-wrap align-items-center">
         <button class="btn btn-primary" id="btn-generate-invite"><i class="bi bi-link-45deg"></i> Generar
           Invitación</button>
         <button class="btn btn-primary" id="btn-upcoming-appointments" type="button"><i class="bi bi-list-check"></i> Pr&oacute;ximas citas</button>
         <button class="btn btn-primary" id="btn-admin-stats" type="button"><i class="bi bi-bar-chart"></i> Estad&iacute;sticas</button>
-        <button class="btn btn-primary" id="btn-admin-bonuses" type="button"><i class="bi bi-card-list"></i> Consultar bonos</button>
+          <button class="btn btn-primary" id="btn-admin-bonuses" type="button"><i class="bi bi-card-list"></i> Bonos</button>
         <button class="btn btn-primary" id="btn-admin-patients" type="button"><i class="bi bi-people"></i> <?= $is_superadmin ? 'Pacientes' : 'Mis pacientes' ?></button>
+        </div>
+        <div class="dropdown dashboard-mobile-menu">
+          <button class="btn btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="bi bi-list"></i> Men&uacute;
+          </button>
+          <ul class="dropdown-menu">
+            <li><button class="dropdown-item" type="button" id="btn-mobile-generate-invite"><i class="bi bi-link-45deg me-2"></i>Generar invitaci&oacute;n</button></li>
+            <li><button class="dropdown-item" type="button" id="btn-mobile-upcoming-appointments"><i class="bi bi-list-check me-2"></i>Pr&oacute;ximas citas</button></li>
+            <li><button class="dropdown-item" type="button" id="btn-mobile-admin-stats"><i class="bi bi-bar-chart me-2"></i>Estad&iacute;sticas</button></li>
+            <li><button class="dropdown-item" type="button" id="btn-mobile-admin-bonuses"><i class="bi bi-card-list me-2"></i>Bonos</button></li>
+            <li><button class="dropdown-item" type="button" id="btn-mobile-admin-patients"><i class="bi bi-people me-2"></i><?= $is_superadmin ? 'Pacientes' : 'Mis pacientes' ?></button></li>
+          </ul>
+        </div>
         <span id="admin-actions-msg" class="align-self-center ms-2 text-success" style="display: none;"></span>
         <button class="btn btn-primary ms-auto" id="btn-calendar-view-toggle" type="button"><i class="bi bi-calendar3"></i> Ver mes</button>
       </div>
     <?php else: ?>
-      <div class="mb-4 d-flex gap-2 flex-wrap align-items-center" id="patient-bonus-actions" style="display: none !important;">
-        <button class="btn btn-primary" id="btn-buy-bonus" type="button"><i class="bi bi-bag-check"></i> Comprar bono</button>
-        <button class="btn btn-primary" id="btn-my-bonuses" type="button"><i class="bi bi-card-list"></i> Consultar bonos</button>
+      <div class="mb-4 d-flex gap-2 flex-wrap align-items-center dashboard-actions-bar" id="patient-bonus-actions" style="display: none !important;">
+        <div class="dashboard-action-buttons d-flex gap-2 flex-wrap align-items-center">
+          <button class="btn btn-primary" id="btn-buy-bonus" type="button"><i class="bi bi-bag-check"></i> Comprar bono</button>
+          <button class="btn btn-primary" id="btn-my-bonuses" type="button"><i class="bi bi-card-list"></i> Mis bonos</button>
+        </div>
+        <div class="dropdown dashboard-mobile-menu">
+          <button class="btn btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="bi bi-list"></i> Men&uacute;
+          </button>
+          <ul class="dropdown-menu">
+            <li><button class="dropdown-item" type="button" id="btn-mobile-buy-bonus"><i class="bi bi-bag-check me-2"></i>Comprar bono</button></li>
+            <li><button class="dropdown-item" type="button" id="btn-mobile-my-bonuses"><i class="bi bi-card-list me-2"></i>Mis bonos</button></li>
+          </ul>
+        </div>
         <button class="btn btn-primary ms-auto" id="btn-calendar-view-toggle" type="button"><i class="bi bi-calendar3"></i> Ver mes</button>
       </div>
     <?php endif; ?>
+
+    <div id="patient-professional-choice" class="patient-professional-choice d-none"></div>
+    <div id="patient-professional-context" class="booking-professional-context d-none"></div>
 
     <div id="calendar-container">
       <div class="text-center text-muted py-5">
@@ -149,6 +202,7 @@ if ($is_admin) {
         </div>
         <div class="modal-body py-4 text-center">
           <p id="modalDesc" class="mb-4">¿Qué deseas hacer?</p>
+          <div id="modal-professional-context" class="booking-professional-context booking-professional-context-modal d-none"></div>
           <input type="hidden" id="modalDate">
           <input type="hidden" id="modalTime">
           <input type="hidden" id="modalStatus">
@@ -170,6 +224,8 @@ if ($is_admin) {
               <div class="form-text" id="booking-patient-professional-note"></div>
             </div>
           <?php endif; ?>
+
+          <div id="patientSlotProfessionalSelect" class="mb-3 d-none text-start"></div>
 
           <div id="consultationTypeSelect" class="mb-3 d-none text-start">
             <label class="form-label" for="consultation-type">Modalidad de la cita</label>
@@ -341,6 +397,22 @@ if ($is_admin) {
                       <label class="form-label" for="patient-editor-phone">Tel&eacute;fono</label>
                       <input type="text" class="form-control" id="patient-editor-phone" name="phone">
                     </div>
+                    <div class="col-md-6">
+                      <label class="form-label" for="patient-editor-photo">Foto</label>
+                      <input type="file" class="form-control" id="patient-editor-photo" name="patient_photo" accept="image/jpeg,image/png,image/webp,image/gif">
+                      <div class="d-flex align-items-center gap-3 mt-2">
+                        <img src="" alt="" id="patient-editor-photo-preview" class="d-none" style="width: 56px; height: 56px; border-radius: 50%; object-fit: cover;">
+                        <div class="form-text" id="patient-editor-photo-status">Formatos permitidos: JPG, PNG, WEBP o GIF. M&aacute;ximo 2 MB.</div>
+                      </div>
+                    </div>
+                    <?php if ($is_superadmin): ?>
+                      <div class="col-md-6">
+                        <label class="form-label" for="patient-editor-professional">Asignar profesional</label>
+                        <select class="form-select" id="patient-editor-professional" name="professional_id">
+                          <option value="">Permitir elegir profesional al paciente</option>
+                        </select>
+                      </div>
+                    <?php endif; ?>
                     <div class="col-md-6">
                       <label class="form-label" for="patient-editor-admission-date">Fecha de alta</label>
                       <input type="date" class="form-control" id="patient-editor-admission-date" name="admission_date">
@@ -553,10 +625,6 @@ if ($is_admin) {
               <li class="nav-item <?= $is_superadmin ? '' : 'd-none' ?>" role="presentation">
                 <button class="nav-link" id="calendar-settings-tab" data-bs-toggle="tab" data-bs-target="#calendar-settings-panel"
                   type="button" role="tab">Calendario online</button>
-              </li>
-              <li class="nav-item <?= $is_superadmin ? '' : 'd-none' ?>" role="presentation">
-                <button class="nav-link" id="sms-settings-tab" data-bs-toggle="tab" data-bs-target="#sms-settings-panel"
-                  type="button" role="tab">SMS</button>
               </li>
               <li class="nav-item <?= $is_superadmin ? '' : 'd-none' ?>" role="presentation">
                 <button class="nav-link" id="interface-settings-tab" data-bs-toggle="tab" data-bs-target="#interface-settings-panel"
@@ -804,6 +872,20 @@ if ($is_admin) {
                         <input class="form-check-input" type="checkbox" id="show-prices-public">
                         <label class="form-check-label" for="show-prices-public">Mostrar precios en la página principal/comercial</label>
                       </div>
+                      <div class="form-check form-switch mt-3">
+                        <input class="form-check-input" type="checkbox" id="show-contact-public">
+                        <label class="form-check-label" for="show-contact-public">Mostrar página "Contactar" en la web</label>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="row g-3 align-items-start mb-4">
+                    <label class="col-lg-2 col-form-label" for="initial-calendar-view">Vista inicial</label>
+                    <div class="col-lg-10">
+                      <select class="form-select" id="initial-calendar-view">
+                        <option value="month">Mensual</option>
+                        <option value="week">Semanal</option>
+                      </select>
+                      <div class="form-text">Se podrá alternar entre semanal y mensual, pero por defecto aparecerá el de la opción configurada.</div>
                     </div>
                   </div>
                 </div>
@@ -962,12 +1044,6 @@ if ($is_admin) {
               <div class="tab-pane fade" id="email-settings-panel" role="tabpanel" aria-labelledby="email-settings-tab">
                 <div id="email-settings-alert" class="alert d-none"></div>
 
-                <div class="row g-3 align-items-center mb-3">
-                  <label class="col-lg-2 col-form-label" for="admin-notification-email">Email avisos</label>
-                  <div class="col-lg-10">
-                    <input type="email" class="form-control" id="admin-notification-email" autocomplete="email">
-                  </div>
-                </div>
                 <div class="row g-3 align-items-center mb-3">
                   <label class="col-lg-2 col-form-label" for="smtp-from-name">Remitente</label>
                   <div class="col-lg-10">
@@ -1144,12 +1220,6 @@ if ($is_admin) {
                   <button type="button" class="btn btn-primary" id="btn-save-calendar-settings">Guardar configuración</button>
                 </div>
               </div>
-
-              <div class="tab-pane fade" id="sms-settings-panel" role="tabpanel" aria-labelledby="sms-settings-tab">
-                <div class="text-muted">
-                  La configuración de SMS se añadirá aquí cuando elijas la plataforma de envío.
-                </div>
-              </div>
               <?php if ($is_superadmin): ?>
                 <div class="tab-pane fade" id="cabinet-settings-panel" role="tabpanel" aria-labelledby="cabinet-settings-tab">
                   <div id="cabinet-settings-alert" class="alert d-none"></div>
@@ -1161,6 +1231,25 @@ if ($is_admin) {
                     <input class="form-check-input" type="checkbox" id="allow-patient-transfer">
                     <label class="form-check-label" for="allow-patient-transfer">Permitir traspaso de pacientes</label>
                     <div class="form-text">Solo el usuario Administrador puede realizar los traspasos.</div>
+                  </div>
+                  <div class="row g-3 align-items-start mb-4">
+                    <label class="col-lg-3 col-form-label" for="new-patient-booking-mode">M&eacute;todo de reserva para nuevos pacientes</label>
+                    <div class="col-lg-9">
+                      <select class="form-select" id="new-patient-booking-mode">
+                        <option value="day_first">Elegir primero d&iacute;a/hora deseado y despu&eacute;s al profesional</option>
+                        <option value="professional_first">Elegir primero al profesional y despu&eacute;s la fecha/hora</option>
+                        <option value="fixed_professional">Derivar siempre los nuevos pacientes a un profesional concreto</option>
+                      </select>
+                      <div class="form-text">Solo se aplicar&aacute; a pacientes nuevos que todav&iacute;a no tengan profesional asignado.</div>
+                    </div>
+                  </div>
+                  <div class="row g-3 align-items-start mb-4 d-none" id="new-patient-fixed-professional-row">
+                    <label class="col-lg-3 col-form-label" for="new-patient-fixed-professional">Profesional de derivaci&oacute;n</label>
+                    <div class="col-lg-9">
+                      <select class="form-select" id="new-patient-fixed-professional">
+                        <option value="">Selecciona un profesional</option>
+                      </select>
+                    </div>
                   </div>
                   <div class="text-muted small mb-3 d-none" id="cabinet-settings-loading">Cargando configuraci&oacute;n del equipo...</div>
                   <hr class="my-4">
@@ -1287,6 +1376,26 @@ if ($is_admin) {
                   <textarea class="form-control" id="professional-editor-specialty" rows="3" placeholder="Ansiedad, terapia infantil, adultos, pareja..."></textarea>
                 </div>
                 <div class="col-12">
+                  <label class="form-label" for="professional-editor-bio">Informaci&oacute;n sobre m&iacute;</label>
+                  <textarea class="form-control" id="professional-editor-bio" rows="4" placeholder="Presentaci&oacute;n breve del profesional, enfoque de trabajo, experiencia o forma de acompa&ntilde;ar al paciente..."></textarea>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" for="professional-editor-phone">Tel&eacute;fono</label>
+                  <input type="text" class="form-control" id="professional-editor-phone" placeholder="Ej. 600 000 000">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" for="professional-editor-instagram">Instagram</label>
+                  <input type="text" class="form-control" id="professional-editor-instagram" placeholder="https://instagram.com/...">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" for="professional-editor-facebook">Facebook</label>
+                  <input type="text" class="form-control" id="professional-editor-facebook" placeholder="https://facebook.com/...">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" for="professional-editor-tiktok">TikTok</label>
+                  <input type="text" class="form-control" id="professional-editor-tiktok" placeholder="https://tiktok.com/@...">
+                </div>
+                <div class="col-12">
                   <label class="form-label" for="professional-editor-photo">Foto del profesional</label>
                   <input type="file" class="form-control" id="professional-editor-photo" accept="image/jpeg,image/png,image/webp,image/gif">
                   <div class="d-flex align-items-center gap-3 mt-2">
@@ -1341,6 +1450,44 @@ if ($is_admin) {
     </div>
   <?php endif; ?>
 
+  <?php if (!$is_admin): ?>
+    <div class="modal fade" id="patientSelfDataModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-md modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Mis datos</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <form id="patient-self-data-form">
+            <div class="modal-body">
+              <div id="patient-self-data-alert" class="alert d-none"></div>
+              <div class="mb-3">
+                <label class="form-label" for="patient-self-email">Email</label>
+                <input type="email" class="form-control" id="patient-self-email" name="email" required>
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="patient-self-phone">Tel&eacute;fono</label>
+                <input type="text" class="form-control" id="patient-self-phone" name="phone">
+              </div>
+              <div>
+                <label class="form-label" for="patient-self-photo">Foto de perfil</label>
+                <input type="file" class="form-control" id="patient-self-photo" name="patient_photo" accept="image/jpeg,image/png,image/webp,image/gif">
+                <div class="d-flex align-items-center gap-3 mt-2">
+                  <img src="" alt="" id="patient-self-photo-preview" class="d-none" style="width: 56px; height: 56px; border-radius: 50%; object-fit: cover;">
+                  <div class="form-text" id="patient-self-photo-status">Formatos permitidos: JPG, PNG, WEBP o GIF. M&aacute;ximo 2 MB.</div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button class="btn btn-primary" type="submit" id="btn-save-patient-self-data">Guardar datos</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  <?php endif; ?>
+
   <div class="modal fade" id="changePasswordModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-md modal-dialog-centered">
       <div class="modal-content">
@@ -1377,6 +1524,7 @@ if ($is_admin) {
     const IS_ADMIN = <?= $is_admin ? 'true' : 'false' ?>;
     const IS_SUPERADMIN = <?= $is_superadmin ? 'true' : 'false' ?>;
     const CURRENT_USER_ID = <?= (int) $_SESSION['user_id'] ?>;
+    const INITIAL_CALENDAR_VIEW = <?= json_encode(($branding['initial_calendar_view'] ?? 'month') === 'week' ? 'week' : 'month') ?>;
   </script>
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>

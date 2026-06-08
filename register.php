@@ -60,6 +60,9 @@ if ($token) {
                         </div>
                     <?php else: ?>
                         <div id="register-alert" class="alert d-none"></div>
+                        <div id="register-login-cta" class="d-none">
+                            <a href="login.php" class="btn btn-primary w-100">Iniciar sesi&oacute;n</a>
+                        </div>
 
                         <form id="register-form">
                             <input type="hidden" name="token" value="<?= htmlspecialchars($token) ?>">
@@ -84,7 +87,7 @@ if ($token) {
                     <?php endif; ?>
 
                     <div class="text-center mt-3">
-                        <a href="login.php" class="text-decoration-none" style="color: var(--primary-color);">Ya tengo una cuenta</a>
+                        <a href="login.php" id="login-link" class="text-decoration-none" style="color: var(--primary-color);">Ya tengo una cuenta</a>
                     </div>
                 </div>
             </div>
@@ -112,6 +115,8 @@ if ($token) {
                     success: function (res) {
                         if (res.success) {
                             $('#register-form').hide();
+                            $('#register-login-cta').removeClass('d-none');
+                            $('#login-link').text('Iniciar sesiÃ³n');
                             $('#register-alert').removeClass('d-none alert-danger').addClass('alert-success').text("Registro completado con éxito. Ya puedes iniciar sesión.");
                         } else {
                             $('#register-alert').removeClass('d-none alert-success').addClass('alert-danger').text(res.error);

@@ -10,6 +10,7 @@ $site_phone = trim($branding['site_phone'] ?? '');
 $profile_image_path = $branding['show_profile_image_public'] ? $branding['profile_image_path'] : '';
 $landing_image_path = $branding['landing_image_path'] ?: '';
 $show_prices_public = (int) ($branding['show_prices_public'] ?? 0) === 1;
+$show_contact_public = (int) ($branding['show_contact_public'] ?? 0) === 1;
 $show_team_public = cabinet_public_team_enabled($mysqli);
 $is_logged_in = isset($_SESSION['user_id']);
 $is_admin = in_array($_SESSION['role'] ?? '', ['admin', 'superadmin'], true);
@@ -69,15 +70,17 @@ function public_delivery_text($mode)
             <div class="collapse navbar-collapse" id="publicNav">
                 <div class="navbar-nav ms-auto align-items-lg-center gap-lg-2">
                     <a class="nav-link" href="#servicios">Servicios</a>
-                    <?php if ($show_prices_public): ?>
-                        <a class="nav-link" href="precios.php">Precios</a>
-                    <?php endif; ?>
+                    <a class="nav-link" href="#formacion">Formación</a>
+                    <a class="nav-link" href="#experiencia">Experiencia</a>
                     <?php if ($show_team_public): ?>
                         <a class="nav-link" href="equipo.php">Equipo</a>
                     <?php endif; ?>
-                    <a class="nav-link" href="#experiencia">Experiencia</a>
-                    <a class="nav-link" href="#formacion">Formación</a>
-                    <a class="nav-link" href="#consulta">Consulta</a>
+                    <?php if ($show_prices_public): ?>
+                        <a class="nav-link" href="precios.php">Precios</a>
+                    <?php endif; ?>
+                    <?php if ($show_contact_public): ?>
+                        <a class="nav-link" href="contacto.php">Contacto</a>
+                    <?php endif; ?>
                     <?php if ($show_patient_area): ?>
                         <a class="btn btn-primary btn-sm ms-lg-2" href="<?= $is_logged_in ? 'dashboard.php' : 'login.php' ?>">
                             <?= $is_admin ? 'Panel admin' : ($is_logged_in ? 'Ir a mis citas' : '&Aacute;rea pacientes') ?>
@@ -103,6 +106,9 @@ function public_delivery_text($mode)
                                 </a>
                             <?php endif; ?>
                             <a href="#servicios" class="btn btn-outline-secondary btn-lg">Ver servicios</a>
+                            <?php if ($show_contact_public): ?>
+                                <a href="contacto.php" class="btn btn-outline-secondary btn-lg">Enviar consulta</a>
+                            <?php endif; ?>
                         </div>
                         <?php if ($site_phone !== ''): ?>
                             <div class="landing-contact">
@@ -231,6 +237,11 @@ function public_delivery_text($mode)
                         <?php if ($site_phone !== ''): ?>
                             <a href="tel:<?= htmlspecialchars(preg_replace('/[^\d+]/', '', $site_phone)) ?>" class="btn btn-outline-secondary btn-lg ms-lg-2 mt-2 mt-lg-0">
                                 Llamar
+                            </a>
+                        <?php endif; ?>
+                        <?php if ($show_contact_public): ?>
+                            <a href="contacto.php" class="btn btn-outline-secondary btn-lg ms-lg-2 mt-2 mt-lg-0">
+                                Enviar consulta
                             </a>
                         <?php endif; ?>
                     </div>

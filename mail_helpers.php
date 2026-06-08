@@ -78,9 +78,22 @@ function get_admin_notification_email($mysqli)
 {
     ensure_admin_notification_email_column($mysqli);
 
-    $res = $mysqli->query("SELECT admin_notification_email FROM payment_settings WHERE id = 1");
+    $res = $mysqli->query("
+        SELECT email_provider, admin_notification_email, smtp_from_email, google_connected_email
+        FROM payment_settings
+        WHERE id = 1
+    ");
     $row = $res->fetch_assoc();
-    return trim($row['admin_notification_email'] ?? '');
+    if (!$row) {
+        return '';
+    }
+
+    $provider = $row['email_provider'] ?? 'phpmailer';
+    if ($provider === 'google') {
+        return trim($row['google_connected_email'] ?? '');
+    }
+
+    return trim($row['smtp_from_email'] ?? '');
 }
 
 function get_email_settings($mysqli)
@@ -145,8 +158,12 @@ function default_from_email()
 
 function send_app_email($to, $subject, $html_body, $reply_to = null, $mysqli = null)
 {
+    global $APP_EMAIL_LAST_ERROR;
+    $APP_EMAIL_LAST_ERROR = '';
+
     $to = trim((string) $to);
     if (!$to || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
+        $APP_EMAIL_LAST_ERROR = 'Email de destino no valido.';
         return false;
     }
 
@@ -158,12 +175,14 @@ function send_app_email($to, $subject, $html_body, $reply_to = null, $mysqli = n
         try {
             return google_send_email($mysqli, $to, $subject, $html_body, $reply_to);
         } catch (\Exception $e) {
+            $APP_EMAIL_LAST_ERROR = 'Gmail API: ' . $e->getMessage();
             error_log('Error enviando email con Gmail API: ' . $e->getMessage());
             return false;
         }
     }
 
     if (!load_phpmailer()) {
+        $APP_EMAIL_LAST_ERROR = 'PHPMailer no esta instalado.';
         error_log('PHPMailer no está instalado. No se pudo enviar: ' . $subject);
         return false;
     }
@@ -205,9 +224,16 @@ function send_app_email($to, $subject, $html_body, $reply_to = null, $mysqli = n
 
         return $mail->send();
     } catch (\Exception $e) {
-        error_log('Error enviando email: ' . $mail->ErrorInfo);
+        $APP_EMAIL_LAST_ERROR = $mail->ErrorInfo ?: $e->getMessage();
+        error_log('Error enviando email: ' . $APP_EMAIL_LAST_ERROR);
         return false;
     }
+}
+
+function get_app_email_last_error()
+{
+    global $APP_EMAIL_LAST_ERROR;
+    return trim((string) ($APP_EMAIL_LAST_ERROR ?? ''));
 }
 
 function notify_admin($mysqli, $subject, $html_body, $reply_to = null)

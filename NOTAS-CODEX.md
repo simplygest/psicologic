@@ -278,6 +278,10 @@ git config --global --add safe.directory C:/Sete/psicologic
     - El backend rechaza guardados de secciones globales si no es superadmin.
     - El calendario semanal/mensual y la reserva usan la configuracion efectiva del profesional actual y filtran citas/cierres por `professional_id`, manteniendo compatibilidad con registros antiguos sin profesional.
   - Precios y Bonos quedan ocultos para admins normales hasta completar el subcorte de tablas privadas por profesional, porque las tablas actuales aun tienen indices globales para `service_key`, opciones y `bonus_key`.
+  - Nueva opcion global de Interfaz `show_contact_public` para activar la pagina publica `contacto.php`.
+  - `contacto.php` muestra un formulario "Enviar consulta" con nombre, telefono, email, textarea y check obligatorio de politica de privacidad, desmarcado por defecto.
+  - Las consultas se envian al email del sistema con asunto `Solicitud de informacion`, usando el email del paciente como reply-to.
+  - `index.php`, `precios.php` y `equipo.php` muestran enlace a Contacto solo si `show_contact_public` esta activo.
 
 ## Pendientes sugeridos
 

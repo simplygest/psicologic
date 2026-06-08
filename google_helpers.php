@@ -116,14 +116,19 @@ function google_exchange_code($mysqli, $code)
     ]);
 
     if (empty($response['access_token'])) {
-        throw new \Exception('Google no devolvió access token');
+        $detail = google_token_error_detail($status, $response);
+        throw new \Exception('Google no devolvió access token' . ($detail ? ': ' . $detail : ''));
     }
 
-    if (!empty($response['refresh_token'])) {
-        $stmt = $mysqli->prepare("UPDATE payment_settings SET google_refresh_token = ? WHERE id = 1");
-        $stmt->bind_param("s", $response['refresh_token']);
+    if (empty($response['refresh_token'])) {
+        $stmt = $mysqli->prepare("UPDATE payment_settings SET google_refresh_token = NULL WHERE id = 1");
         $stmt->execute();
+        throw new \Exception('Google no devolvió refresh token nuevo. Revoca el acceso anterior de la app en tu cuenta de Google y vuelve a conectar.');
     }
+
+    $stmt = $mysqli->prepare("UPDATE payment_settings SET google_refresh_token = ? WHERE id = 1");
+    $stmt->bind_param("s", $response['refresh_token']);
+    $stmt->execute();
 
     $email = google_fetch_user_email($response['access_token']);
     if ($email) {
@@ -150,10 +155,29 @@ function google_access_token($mysqli)
     ]);
 
     if (empty($response['access_token'])) {
-        throw new \Exception('No se pudo obtener access token de Google');
+        $detail = google_token_error_detail($status, $response);
+        throw new \Exception('No se pudo obtener access token de Google' . ($detail ? ': ' . $detail : ''));
     }
 
     return $response['access_token'];
+}
+
+function google_token_error_detail($status, $response)
+{
+    $parts = [];
+    if ($status) {
+        $parts[] = $status;
+    }
+    if (is_array($response)) {
+        if (!empty($response['error'])) {
+            $parts[] = $response['error'];
+        }
+        if (!empty($response['error_description'])) {
+            $parts[] = $response['error_description'];
+        }
+    }
+
+    return implode(' - ', $parts);
 }
 
 function google_fetch_user_email($access_token)
