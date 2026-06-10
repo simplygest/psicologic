@@ -73,6 +73,7 @@ function team_social_links($member)
     <meta name="robots" content="noindex, nofollow, noarchive">
     <title>Equipo - <?= htmlspecialchars($app_name) ?></title>
     <meta name="description" content="Equipo profesional de <?= htmlspecialchars($app_name) ?>.">
+    <?= favicon_link_tags($branding) ?>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -186,7 +187,12 @@ function team_social_links($member)
     <footer class="public-footer">
         <div class="container d-flex flex-column flex-md-row justify-content-between gap-2">
             <span>&copy; <?= date('Y') ?> <?= htmlspecialchars($app_name) ?></span>
-            <span>Equipo profesional de <?= htmlspecialchars($app_name) ?>.</span>
+            <span class="public-footer-links">
+                <a href="legal.php#privacidad">Política de privacidad</a>
+                <a href="legal.php#aviso-legal">Aviso legal</a>
+                <a href="legal.php#cookies">Política de cookies</a>
+                <a href="legal.php#condiciones">Términos y condiciones</a>
+            </span>
         </div>
     </footer>
 

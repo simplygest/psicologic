@@ -7,6 +7,9 @@ $invite_patient = null;
 $branding = get_public_branding_settings($mysqli);
 $app_name = $branding['app_name'];
 $profile_image_path = $branding['show_profile_image_public'] ? $branding['profile_image_path'] : '';
+$open_patient_registration = ($branding['patient_registration_mode'] ?? 'invite') === 'open';
+$can_register = false;
+$registration_closed_message = '';
 
 if ($token) {
     $stmt = $mysqli->prepare("
@@ -23,6 +26,13 @@ if ($token) {
         $invite_patient = $invite;
     }
 }
+
+$can_register = $valid || (!$token && $open_patient_registration);
+if (!$can_register) {
+    $registration_closed_message = $token
+        ? 'El enlace de invitación no es válido o ya ha sido utilizado.'
+        : 'Contacta con nosotros para enviarte una invitación de registro online';
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -32,6 +42,7 @@ if ($token) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow, noarchive">
     <title>Registro - <?= htmlspecialchars($app_name) ?></title>
+    <?= favicon_link_tags($branding) ?>
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Google Fonts -->
@@ -54,9 +65,9 @@ if ($token) {
                         <p class="text-muted">Crea tu cuenta para poder pedir cita.</p>
                     </div>
 
-                    <?php if (!$valid): ?>
+                    <?php if (!$can_register): ?>
                         <div class="alert alert-danger text-center">
-                            El enlace de invitación no es válido o ya ha sido utilizado.
+                            <?= htmlspecialchars($registration_closed_message) ?>
                         </div>
                     <?php else: ?>
                         <div id="register-alert" class="alert d-none"></div>
@@ -116,7 +127,7 @@ if ($token) {
                         if (res.success) {
                             $('#register-form').hide();
                             $('#register-login-cta').removeClass('d-none');
-                            $('#login-link').text('Iniciar sesiÃ³n');
+                            $('#login-link').text('Iniciar sesión');
                             $('#register-alert').removeClass('d-none alert-danger').addClass('alert-success').text("Registro completado con éxito. Ya puedes iniciar sesión.");
                         } else {
                             $('#register-alert').removeClass('d-none alert-success').addClass('alert-danger').text(res.error);

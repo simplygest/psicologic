@@ -6,6 +6,8 @@ function ensure_appointment_payment_columns($mysqli)
         'payment_status' => "ALTER TABLE appointments ADD payment_status VARCHAR(32) NOT NULL DEFAULT 'pending'",
         'payment_method' => "ALTER TABLE appointments ADD payment_method VARCHAR(16) DEFAULT NULL",
         'paid_at' => "ALTER TABLE appointments ADD paid_at DATETIME DEFAULT NULL",
+        'payment_updated_at' => "ALTER TABLE appointments ADD payment_updated_at DATETIME DEFAULT NULL",
+        'payment_updated_by' => "ALTER TABLE appointments ADD payment_updated_by INT UNSIGNED DEFAULT NULL",
         'payment_attempt_id' => "ALTER TABLE appointments ADD payment_attempt_id INT UNSIGNED DEFAULT NULL",
         'google_calendar_event_id' => "ALTER TABLE appointments ADD google_calendar_event_id VARCHAR(255) DEFAULT NULL",
         'icloud_calendar_event_url' => "ALTER TABLE appointments ADD icloud_calendar_event_url VARCHAR(512) DEFAULT NULL",

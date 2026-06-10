@@ -992,7 +992,8 @@ if ($action === 'booking_context') {
             ($appointment_price_text !== null ? '<b>Importe:</b> ' . htmlspecialchars($appointment_price_text) . ' &euro;<br>' : '') .
             '<b>Email:</b> ' . htmlspecialchars($patient['email'] ?? 'Sin email') . '<br>' .
             '<b>Teléfono:</b> ' . htmlspecialchars($patient['phone'] ?? 'Sin teléfono') . '</p>',
-            $patient['email'] ?? null
+            $patient['email'] ?? null,
+            true
         );
 
         if (!empty($patient['email'])) {

@@ -138,21 +138,30 @@ if ($action === 'login') {
         echo json_encode(['success' => false, 'error' => 'Credenciales incorrectas.']);
     }
 } elseif ($action === 'register') {
-    $token = $_POST['token'] ?? '';
+    ensure_patient_registration_schema($mysqli);
+    $token = trim($_POST['token'] ?? '');
     $name = trim($_POST['name'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $phone = trim($_POST['phone'] ?? '');
     $phone = $phone !== '' ? $phone : null;
     $password = $_POST['password'] ?? '';
 
-    $stmt = $mysqli->prepare("SELECT id, user_id FROM invitations WHERE token = ? AND used = 0");
-    $stmt->bind_param("s", $token);
-    $stmt->execute();
-    $res = $stmt->get_result();
-    $invite = $res->fetch_assoc();
+    $invite = null;
+    if ($token !== '') {
+        $stmt = $mysqli->prepare("SELECT id, user_id FROM invitations WHERE token = ? AND used = 0");
+        $stmt->bind_param("s", $token);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $invite = $res->fetch_assoc();
+    }
 
-    if (!$invite) {
+    if ($token !== '' && !$invite) {
         echo json_encode(['success' => false, 'error' => 'Token inválido o usado.']);
+        exit;
+    }
+
+    if ($token === '' && !patient_registration_is_open($mysqli)) {
+        echo json_encode(['success' => false, 'error' => 'Contacta con nosotros para enviarte una invitación de registro online.']);
         exit;
     }
 
@@ -223,9 +232,11 @@ if ($action === 'login') {
         $stmt->bind_param("ii", $new_user_id, $created_by_admin);
         $stmt->execute();
 
-        $stmt = $mysqli->prepare("UPDATE invitations SET used = 1, used_at = NOW() WHERE id = ?");
-        $stmt->bind_param("i", $invite['id']);
-        $stmt->execute();
+        if ($invite) {
+            $stmt = $mysqli->prepare("UPDATE invitations SET used = 1, used_at = NOW() WHERE id = ?");
+            $stmt->bind_param("i", $invite['id']);
+            $stmt->execute();
+        }
 
         $mysqli->commit();
 

@@ -67,6 +67,7 @@ if ($is_admin) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="robots" content="noindex, nofollow, noarchive">
   <title>Dashboard - <?= htmlspecialchars($app_name) ?></title>
+  <?= favicon_link_tags($branding) ?>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css?v=<?= filemtime(__DIR__ . '/css/style.css') ?>">
@@ -74,7 +75,7 @@ if ($is_admin) {
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
 </head>
 
-<body>
+<body class="<?= $is_admin ? 'is-admin' : 'is-patient' ?>">
 
   <nav class="navbar navbar-expand-lg py-3">
     <div class="container">
@@ -270,6 +271,57 @@ if ($is_admin) {
   </div>
 
   <?php if ($is_admin): ?>
+    <div class="modal fade" id="appointmentPaymentModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Detalle de cita</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div id="appointment-payment-alert" class="alert d-none"></div>
+            <input type="hidden" id="appointment-payment-id">
+            <div id="appointment-payment-summary" class="appointment-payment-summary mb-4">
+              <div class="text-center text-muted py-4">Cargando cita...</div>
+            </div>
+            <div id="appointment-payment-editor" class="appointment-payment-editor">
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <button type="button" class="payment-state-card" data-payment-status="pending">
+                    <span class="payment-state-icon payment-state-pending"><i class="bi bi-hourglass-split"></i></span>
+                    <strong>Pendiente</strong>
+                    <small>La cita queda marcada como no pagada.</small>
+                  </button>
+                </div>
+                <div class="col-md-6">
+                  <button type="button" class="payment-state-card" data-payment-status="paid">
+                    <span class="payment-state-icon payment-state-paid"><i class="bi bi-check2-circle"></i></span>
+                    <strong>Pagada</strong>
+                    <small>Registra un cobro manual u offline.</small>
+                  </button>
+                </div>
+              </div>
+              <div class="mt-3" id="appointment-payment-method-wrap">
+                <label class="form-label" for="appointment-payment-method">Forma de pago</label>
+                <select class="form-select" id="appointment-payment-method">
+                  <option value="cash">Efectivo</option>
+                  <option value="bank_transfer">Transferencia</option>
+                  <option value="card">Tarjeta online</option>
+                  <option value="bizum">Bizum online</option>
+                  <option value="other">Otro m&eacute;todo</option>
+                  <option value="manual">Manual</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
+            <button type="button" class="btn btn-primary" id="btn-save-appointment-payment">Guardar pago</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="modal fade" id="inviteModal" tabindex="-1" aria-hidden="true">
       <div class="modal-dialog modal-md modal-dialog-centered">
         <div class="modal-content">
@@ -375,6 +427,9 @@ if ($is_admin) {
               <li class="nav-item" role="presentation">
                 <button class="nav-link" id="patient-history-tab" data-bs-toggle="tab" data-bs-target="#patient-history-panel" type="button" role="tab">Historial de citas</button>
               </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="patient-bonuses-tab" data-bs-toggle="tab" data-bs-target="#patient-bonuses-panel" type="button" role="tab">Bonos</button>
+              </li>
             </ul>
             <div class="tab-content">
               <div class="tab-pane fade show active" id="patient-data-panel" role="tabpanel" aria-labelledby="patient-data-tab">
@@ -443,15 +498,69 @@ if ($is_admin) {
                         <th>Servicio</th>
                         <th>Modalidad</th>
                         <th>Pago</th>
+                        <th class="text-end">Acciones</th>
                         <th>Estado</th>
                       </tr>
                     </thead>
                     <tbody id="patient-history-body">
-                      <tr><td colspan="6" class="text-center text-muted py-4">Selecciona un paciente guardado para ver su historial.</td></tr>
+                      <tr><td colspan="7" class="text-center text-muted py-4">Selecciona un paciente guardado para ver su historial.</td></tr>
                     </tbody>
                   </table>
                 </div>
                 <div class="text-end text-muted small mt-2" id="patient-history-count"></div>
+              </div>
+              <div class="tab-pane fade" id="patient-bonuses-panel" role="tabpanel" aria-labelledby="patient-bonuses-tab">
+                <div id="patient-bonuses-alert" class="alert d-none"></div>
+                <?php if ($is_superadmin): ?>
+                  <div class="d-flex justify-content-end mb-3">
+                    <button class="btn btn-primary btn-sm" type="button" id="btn-show-create-patient-bonus">
+                      <i class="bi bi-plus-lg"></i> Crear bono para este paciente
+                    </button>
+                  </div>
+                  <form id="patient-bonus-create-form" class="border rounded p-3 mb-3 d-none">
+                    <div class="row g-3 align-items-end">
+                      <div class="col-md-5">
+                        <label class="form-label" for="patient-bonus-create-bonus">Tipo de bono</label>
+                        <select class="form-select" id="patient-bonus-create-bonus" name="bonus_id"></select>
+                      </div>
+                      <div class="col-md-3">
+                        <label class="form-label" for="patient-bonus-create-total">Sesiones compradas</label>
+                        <input type="number" class="form-control" id="patient-bonus-create-total" name="total_sessions" min="1" max="999" value="1">
+                      </div>
+                      <div class="col-md-3">
+                        <label class="form-label" for="patient-bonus-create-remaining">Sesiones restantes</label>
+                        <input type="number" class="form-control" id="patient-bonus-create-remaining" name="remaining_sessions" min="0" max="999" value="1">
+                      </div>
+                      <div class="col-md-1 text-end">
+                        <button class="btn btn-primary" type="submit" id="btn-create-patient-bonus" title="Guardar bono">
+                          <i class="bi bi-check2"></i>
+                        </button>
+                      </div>
+                    </div>
+                    <div class="form-text mt-2">Creacion manual para ajustes internos, regalos o regularizaciones.</div>
+                  </form>
+                <?php endif; ?>
+                <div class="table-responsive">
+                  <table class="table align-middle">
+                    <thead>
+                      <tr>
+                        <th>Bono</th>
+                        <th>Compradas</th>
+                        <th>Restantes</th>
+                        <th>Pagado</th>
+                        <th>Comprado</th>
+                        <th>Estado</th>
+                        <?php if ($is_superadmin): ?>
+                          <th class="text-end">Acciones</th>
+                        <?php endif; ?>
+                      </tr>
+                    </thead>
+                    <tbody id="patient-bonuses-body">
+                      <tr><td colspan="<?= $is_superadmin ? 7 : 6 ?>" class="text-center text-muted py-4">Selecciona un paciente guardado para ver sus bonos.</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div class="text-end text-muted small mt-2" id="patient-bonuses-count"></div>
               </div>
             </div>
           </div>
@@ -468,46 +577,82 @@ if ($is_admin) {
           </div>
           <div class="modal-body">
             <div id="upcoming-appointments-alert" class="alert d-none"></div>
-            <div class="row g-2 mb-3">
-              <div class="<?= $is_superadmin ? 'col-md-5' : 'col-md-7' ?>">
-                <input type="search" class="form-control" id="upcoming-appointments-search" placeholder="Buscar por paciente, email, profesional, servicio o pago">
-              </div>
-              <?php if ($is_superadmin): ?>
-                <div class="col-md-3">
-                  <select class="form-select" id="upcoming-appointments-professional">
-                    <option value="">Todos los profesionales</option>
-                  </select>
+            <ul class="nav nav-tabs mb-3" id="upcoming-appointments-tabs" role="tablist">
+              <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="upcoming-list-tab" data-bs-toggle="tab" data-bs-target="#upcoming-list-panel" type="button" role="tab">Listado</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="upcoming-planning-tab" data-bs-toggle="tab" data-bs-target="#upcoming-planning-panel" type="button" role="tab">Planning</button>
+              </li>
+            </ul>
+            <div class="tab-content">
+              <div class="tab-pane fade show active" id="upcoming-list-panel" role="tabpanel" aria-labelledby="upcoming-list-tab">
+                <div class="row g-2 mb-3">
+                  <div class="<?= $is_superadmin ? 'col-md-5' : 'col-md-7' ?>">
+                    <input type="search" class="form-control" id="upcoming-appointments-search" placeholder="Buscar por paciente, email, profesional, servicio o pago">
+                  </div>
+                  <?php if ($is_superadmin): ?>
+                    <div class="col-md-3">
+                      <select class="form-select" id="upcoming-appointments-professional">
+                        <option value="">Todos los profesionales</option>
+                      </select>
+                    </div>
+                  <?php endif; ?>
+                  <div class="<?= $is_superadmin ? 'col-md-4' : 'col-md-5' ?>">
+                    <select class="form-select" id="upcoming-appointments-scope">
+                      <option value="limit10">Pr&oacute;ximas 10 citas</option>
+                      <option value="3days">Pr&oacute;ximos 3 d&iacute;as</option>
+                      <option value="7days">Pr&oacute;ximos 7 d&iacute;as</option>
+                      <option value="14days">Pr&oacute;ximos 14 d&iacute;as</option>
+                      <option value="all">Todas las citas futuras</option>
+                    </select>
+                  </div>
                 </div>
-              <?php endif; ?>
-              <div class="<?= $is_superadmin ? 'col-md-4' : 'col-md-5' ?>">
-                <select class="form-select" id="upcoming-appointments-scope">
-                  <option value="limit10">Pr&oacute;ximas 10 citas</option>
-                  <option value="3days">Pr&oacute;ximos 3 d&iacute;as</option>
-                  <option value="7days">Pr&oacute;ximos 7 d&iacute;as</option>
-                  <option value="all">Todas las citas futuras</option>
-                </select>
+                <div class="table-responsive upcoming-appointments-table-wrap">
+                  <table class="table align-middle">
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Profesional</th>
+                        <th>Paciente</th>
+                        <th>Servicio</th>
+                        <th>Modalidad</th>
+                        <th>Pago</th>
+                        <th class="text-end">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody id="upcoming-appointments-body">
+                      <tr>
+                        <td colspan="7" class="text-center text-muted py-4">Cargando...</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div class="text-end text-muted small mt-2" id="upcoming-appointments-count"></div>
+              </div>
+              <div class="tab-pane fade" id="upcoming-planning-panel" role="tabpanel" aria-labelledby="upcoming-planning-tab">
+                <div class="row g-2 mb-3 justify-content-end">
+                  <div class="col-md-4 col-lg-3">
+                    <select class="form-select" id="upcoming-planning-scope">
+                      <option value="today">Hoy</option>
+                      <option value="tomorrow">Ma&ntilde;ana</option>
+                      <option value="3days">Pr&oacute;ximos 3 d&iacute;as</option>
+                      <option value="7days" selected>Pr&oacute;ximos 7 d&iacute;as</option>
+                    </select>
+                  </div>
+                </div>
+                <div id="upcoming-planning-wrap" class="upcoming-planning-wrap">
+                  <div class="text-center text-muted py-4">Cargando planning...</div>
+                </div>
+                <div class="upcoming-planning-legend mt-3">
+                  <span><i class="legend-free"></i> Libre</span>
+                  <span><i class="legend-booked"></i> Cita</span>
+                  <span><i class="legend-break"></i> Descanso</span>
+                  <span><i class="legend-closed"></i> Cierre</span>
+                  <span><i class="legend-unavailable"></i> No disponible</span>
+                </div>
               </div>
             </div>
-            <div class="table-responsive upcoming-appointments-table-wrap">
-              <table class="table align-middle">
-                <thead>
-                  <tr>
-                    <th>Fecha</th>
-                    <th>Profesional</th>
-                    <th>Paciente</th>
-                    <th>Servicio</th>
-                    <th>Modalidad</th>
-                    <th>Pago</th>
-                  </tr>
-                </thead>
-                <tbody id="upcoming-appointments-body">
-                  <tr>
-                    <td colspan="6" class="text-center text-muted py-4">Cargando...</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div class="text-end text-muted small mt-2" id="upcoming-appointments-count"></div>
           </div>
         </div>
       </div>
@@ -630,6 +775,10 @@ if ($is_admin) {
                 <button class="nav-link" id="interface-settings-tab" data-bs-toggle="tab" data-bs-target="#interface-settings-panel"
                   type="button" role="tab">Interfaz</button>
               </li>
+              <li class="nav-item <?= $is_superadmin ? '' : 'd-none' ?>" role="presentation">
+                <button class="nav-link" id="legal-settings-tab" data-bs-toggle="tab" data-bs-target="#legal-settings-panel"
+                  type="button" role="tab">Legal</button>
+              </li>
               <?php if ($is_superadmin): ?>
                 <li class="nav-item" role="presentation">
                   <button class="nav-link" id="cabinet-settings-tab" data-bs-toggle="tab" data-bs-target="#cabinet-settings-panel"
@@ -637,6 +786,8 @@ if ($is_admin) {
                 </li>
               <?php endif; ?>
             </ul>
+
+            <div id="settings-save-alert" class="alert d-none"></div>
 
             <div class="tab-content">
               <div class="tab-pane fade show active" id="closed-days-panel" role="tabpanel" aria-labelledby="closed-days-tab">
@@ -648,6 +799,15 @@ if ($is_admin) {
                       <label class="form-check-label" for="online-booking-enabled">Permitir reservas online (dashboard público)</label>
                     </div>
                     <div class="form-text">Si se desactiva, los pacientes no tendrán acceso a la reserva de citas, y será de uso interno por los profesionales.</div>
+                  </div>
+                </div>
+                <div class="row g-3 align-items-center mb-4 <?= $is_superadmin ? '' : 'd-none' ?>">
+                  <label class="col-lg-2 col-form-label" for="patient-registration-mode">Registro de nuevos pacientes</label>
+                  <div class="col-lg-10">
+                    <select class="form-select" id="patient-registration-mode">
+                      <option value="invite">Los pacientes necesitan una invitación para registrarse y poder realizar reservas</option>
+                      <option value="open">Los pacientes pueden darse de alta directamente en la web sin invitación previa</option>
+                    </select>
                   </div>
                 </div>
 
@@ -754,9 +914,6 @@ if ($is_admin) {
                   </button>
                 </div>
                 <ul class="list-group" id="closed-days-list"></ul>
-                <div class="text-end mt-4">
-                  <button type="button" class="btn btn-primary" id="btn-save-general-settings">Guardar configuración</button>
-                </div>
               </div>
 
               <div class="tab-pane fade" id="services-settings-panel" role="tabpanel" aria-labelledby="services-settings-tab">
@@ -777,9 +934,6 @@ if ($is_admin) {
                       </tr>
                     </tbody>
                   </table>
-                </div>
-                <div class="text-end mt-4">
-                  <button type="button" class="btn btn-primary" id="btn-save-services-settings">Guardar precios</button>
                 </div>
               </div>
 
@@ -812,9 +966,6 @@ if ($is_admin) {
                       </tbody>
                     </table>
                   </div>
-                </div>
-                <div class="text-end mt-4">
-                  <button type="button" class="btn btn-primary" id="btn-save-bonuses-settings">Guardar bonos</button>
                 </div>
               </div>
 
@@ -901,9 +1052,6 @@ if ($is_admin) {
                     </div>
                   </div>
                 </div>
-                <div class="text-end mt-4">
-                  <button type="button" class="btn btn-primary" id="btn-save-interface-settings">Guardar configuración</button>
-                </div>
               </div>
 
               <div class="tab-pane fade" id="booking-settings-panel" role="tabpanel" aria-labelledby="booking-settings-tab">
@@ -985,9 +1133,6 @@ if ($is_admin) {
                   </div>
                   <div class="form-text">El calendario mostrará solo los días seleccionados.</div>
                 </div>
-                <div class="text-end">
-                  <button type="button" class="btn btn-primary" id="btn-save-booking-settings">Guardar configuración</button>
-                </div>
               </div>
 
               <div class="tab-pane fade" id="payment-settings-panel" role="tabpanel" aria-labelledby="payment-settings-tab">
@@ -1035,9 +1180,6 @@ if ($is_admin) {
                     </div>
                   </div>
 
-                  <div class="text-end">
-                    <button type="submit" class="btn btn-primary">Guardar configuración</button>
-                  </div>
                 </form>
               </div>
 
@@ -1143,9 +1285,6 @@ if ($is_admin) {
                   </div>
                 </div>
 
-                <div class="text-end settings-actions">
-                  <button type="button" class="btn btn-primary" id="btn-save-email-settings">Guardar configuración</button>
-                </div>
               </div>
 
               <div class="tab-pane fade" id="calendar-settings-panel" role="tabpanel" aria-labelledby="calendar-settings-tab">
@@ -1216,8 +1355,59 @@ if ($is_admin) {
                     <div class="form-text" id="send-patient-calendar-link-status"></div>
                   </div>
                 </div>
-                <div class="text-end">
-                  <button type="button" class="btn btn-primary" id="btn-save-calendar-settings">Guardar configuración</button>
+              </div>
+
+              <div class="tab-pane fade" id="legal-settings-panel" role="tabpanel" aria-labelledby="legal-settings-tab">
+                <div id="legal-settings-alert" class="alert d-none"></div>
+                <div class="row g-3 align-items-start mb-3">
+                  <label class="col-lg-2 col-form-label" for="legal-owner-name">Titular</label>
+                  <div class="col-lg-4">
+                    <input type="text" class="form-control" id="legal-owner-name" placeholder="Nombre y apellidos o razón social">
+                  </div>
+                  <label class="col-lg-2 col-form-label" for="legal-nif">NIF/CIF</label>
+                  <div class="col-lg-4">
+                    <input type="text" class="form-control" id="legal-nif" placeholder="NIF, NIE o CIF">
+                  </div>
+                </div>
+                <div class="row g-3 align-items-start mb-3">
+                  <label class="col-lg-2 col-form-label" for="legal-address">Domicilio</label>
+                  <div class="col-lg-10">
+                    <input type="text" class="form-control" id="legal-address" placeholder="Domicilio profesional">
+                  </div>
+                </div>
+                <div class="row g-3 align-items-start mb-3">
+                  <label class="col-lg-2 col-form-label" for="legal-email">Email legal</label>
+                  <div class="col-lg-4">
+                    <input type="email" class="form-control" id="legal-email" placeholder="privacidad@dominio.com">
+                    <div class="form-text">Se usará para privacidad, derechos RGPD y comunicaciones legales.</div>
+                  </div>
+                  <label class="col-lg-2 col-form-label" for="legal-license-number">Nº colegiado</label>
+                  <div class="col-lg-4">
+                    <input type="text" class="form-control" id="legal-license-number" placeholder="Ej. T-00000">
+                  </div>
+                </div>
+                <div class="row g-3 align-items-start mb-4">
+                  <label class="col-lg-2 col-form-label" for="legal-professional-college">Colegio profesional</label>
+                  <div class="col-lg-10">
+                    <input type="text" class="form-control" id="legal-professional-college" placeholder="Colegio Oficial de Psicología...">
+                  </div>
+                </div>
+                <hr class="my-4">
+                <div class="row g-3 align-items-start mb-4">
+                  <div class="col-lg-10 offset-lg-2">
+                    <div class="form-check form-switch">
+                      <input class="form-check-input" type="checkbox" id="legal-uses-non-technical-cookies">
+                      <label class="form-check-label" for="legal-uses-non-technical-cookies">La web usa cookies no técnicas</label>
+                    </div>
+                    <div class="form-text">Actívalo solo si añades analítica, publicidad, píxeles o servicios similares que no sean estrictamente necesarios.</div>
+                  </div>
+                </div>
+                <div class="row g-3 align-items-start">
+                  <label class="col-lg-2 col-form-label" for="legal-terms-notes">Condiciones particulares</label>
+                  <div class="col-lg-10">
+                    <textarea class="form-control" id="legal-terms-notes" rows="5" placeholder="Ej. condiciones de cancelación, bonos, devoluciones, terapia online o cualquier matiz propio de la consulta."></textarea>
+                    <div class="form-text">Este texto aparecerá al final de las condiciones del servicio. Admite HTML básico: &lt;p&gt;, &lt;br&gt;, &lt;strong&gt;, &lt;em&gt;, &lt;ul&gt;, &lt;ol&gt; y &lt;li&gt;.</div>
+                  </div>
                 </div>
               </div>
               <?php if ($is_superadmin): ?>
@@ -1278,12 +1468,12 @@ if ($is_admin) {
                       </tbody>
                     </table>
                   </div>
-                  <div class="text-end mt-4">
-                    <button type="button" class="btn btn-primary" id="btn-save-cabinet-settings">Guardar equipo</button>
-                  </div>
                 </div>
               <?php endif; ?>
             </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-primary" id="btn-save-all-settings">Guardar cambios</button>
           </div>
         </div>
       </div>
@@ -1347,68 +1537,107 @@ if ($is_admin) {
               <input type="hidden" id="professional-editor-index" value="-1">
               <input type="hidden" id="professional-editor-id" value="0">
               <input type="hidden" id="professional-editor-user-id" value="0">
-              <div class="row g-3">
-                <div class="col-md-6">
-                  <label class="form-label" for="professional-editor-name">Nombre</label>
-                  <input type="text" class="form-control" id="professional-editor-name" required>
-                </div>
-                <div class="col-md-6">
-                  <label class="form-label" for="professional-editor-email">Email de acceso</label>
-                  <input type="email" class="form-control" id="professional-editor-email" required>
-                </div>
-                <div class="col-md-6">
-                  <label class="form-label" for="professional-editor-title-field">Cargo</label>
-                  <input type="text" class="form-control" id="professional-editor-title-field" placeholder="Psicóloga sanitaria, Psicólogo clínico...">
-                </div>
-                <div class="col-md-3">
-                  <label class="form-label" for="professional-editor-license">Nº de colegiado</label>
-                  <input type="text" class="form-control" id="professional-editor-license" placeholder="Ej. T-00000">
-                </div>
-                <div class="col-md-3 professional-editor-permission-wrap">
-                  <label class="form-label" for="professional-editor-role">Permiso</label>
-                  <select class="form-select" id="professional-editor-role">
-                    <option value="admin">Admin</option>
-                    <option value="superadmin">Superadmin</option>
-                  </select>
-                </div>
-                <div class="col-12">
-                  <label class="form-label" for="professional-editor-specialty">Especialidad</label>
-                  <textarea class="form-control" id="professional-editor-specialty" rows="3" placeholder="Ansiedad, terapia infantil, adultos, pareja..."></textarea>
-                </div>
-                <div class="col-12">
-                  <label class="form-label" for="professional-editor-bio">Informaci&oacute;n sobre m&iacute;</label>
-                  <textarea class="form-control" id="professional-editor-bio" rows="4" placeholder="Presentaci&oacute;n breve del profesional, enfoque de trabajo, experiencia o forma de acompa&ntilde;ar al paciente..."></textarea>
-                </div>
-                <div class="col-md-6">
-                  <label class="form-label" for="professional-editor-phone">Tel&eacute;fono</label>
-                  <input type="text" class="form-control" id="professional-editor-phone" placeholder="Ej. 600 000 000">
-                </div>
-                <div class="col-md-6">
-                  <label class="form-label" for="professional-editor-instagram">Instagram</label>
-                  <input type="text" class="form-control" id="professional-editor-instagram" placeholder="https://instagram.com/...">
-                </div>
-                <div class="col-md-6">
-                  <label class="form-label" for="professional-editor-facebook">Facebook</label>
-                  <input type="text" class="form-control" id="professional-editor-facebook" placeholder="https://facebook.com/...">
-                </div>
-                <div class="col-md-6">
-                  <label class="form-label" for="professional-editor-tiktok">TikTok</label>
-                  <input type="text" class="form-control" id="professional-editor-tiktok" placeholder="https://tiktok.com/@...">
-                </div>
-                <div class="col-12">
-                  <label class="form-label" for="professional-editor-photo">Foto del profesional</label>
-                  <input type="file" class="form-control" id="professional-editor-photo" accept="image/jpeg,image/png,image/webp,image/gif">
-                  <div class="d-flex align-items-center gap-3 mt-2">
-                    <img src="" alt="" id="professional-editor-photo-preview" class="d-none" style="width: 56px; height: 56px; border-radius: 50%; object-fit: cover;">
-                    <div class="form-text" id="professional-editor-photo-status">Formatos permitidos: JPG, PNG, WEBP o GIF. Máximo 2 MB.</div>
+              <div class="professional-editor-compact">
+                <div class="row g-3 align-items-start mb-3">
+                  <label class="col-lg-2 col-form-label" for="professional-editor-name">Nombre</label>
+                  <div class="col-lg-4">
+                    <input type="text" class="form-control" id="professional-editor-name" required>
+                  </div>
+                  <label class="col-lg-2 col-form-label" for="professional-editor-email">Email de acceso</label>
+                  <div class="col-lg-4">
+                    <input type="email" class="form-control" id="professional-editor-email" required>
                   </div>
                 </div>
-                <div class="col-12 professional-editor-status-wrap">
-                  <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" id="professional-editor-active" checked>
-                    <label class="form-check-label" for="professional-editor-active">Profesional activo</label>
+
+                <div class="row g-3 align-items-start mb-3">
+                  <label class="col-lg-2 col-form-label" for="professional-editor-title-field">Cargo</label>
+                  <div class="col-lg-4">
+                    <input type="text" class="form-control" id="professional-editor-title-field" placeholder="Psic&oacute;loga sanitaria, Psic&oacute;logo cl&iacute;nico...">
                   </div>
-                  <div class="form-text">Si está desactivado, no aparecerá como profesional disponible del gabinete.</div>
+                  <label class="col-lg-2 col-form-label" for="professional-editor-license">N&ordm; de colegiado</label>
+                  <div class="col-lg-4">
+                    <input type="text" class="form-control" id="professional-editor-license" placeholder="Ej. T-00000">
+                  </div>
+                </div>
+
+                <div class="row g-3 align-items-start mb-3">
+                  <label class="col-lg-2 col-form-label professional-editor-permission-wrap" for="professional-editor-role">Permiso</label>
+                  <div class="col-lg-4 professional-editor-permission-wrap">
+                    <select class="form-select" id="professional-editor-role">
+                      <option value="admin">Admin</option>
+                      <option value="superadmin">Superadmin</option>
+                    </select>
+                  </div>
+                  <label class="col-lg-2 col-form-label" for="professional-editor-phone">Tel&eacute;fono</label>
+                  <div class="col-lg-4">
+                    <input type="text" class="form-control" id="professional-editor-phone" placeholder="Ej. 600 000 000">
+                  </div>
+                </div>
+
+                <div class="row g-3 align-items-start mb-3">
+                  <label class="col-lg-2 col-form-label" for="professional-editor-specialty">Especialidad</label>
+                  <div class="col-lg-10">
+                    <textarea class="form-control" id="professional-editor-specialty" rows="2" placeholder="Ansiedad, terapia infantil, adultos, pareja..."></textarea>
+                  </div>
+                </div>
+
+                <div class="row g-3 align-items-start mb-3">
+                  <label class="col-lg-2 col-form-label" for="professional-editor-bio">Informaci&oacute;n sobre m&iacute;</label>
+                  <div class="col-lg-10">
+                    <textarea class="form-control" id="professional-editor-bio" rows="3" placeholder="Presentaci&oacute;n breve del profesional, enfoque de trabajo, experiencia o forma de acompa&ntilde;ar al paciente..."></textarea>
+                  </div>
+                </div>
+
+                <div class="row g-3 align-items-start mb-3">
+                  <label class="col-lg-2 col-form-label" for="professional-editor-instagram">Instagram</label>
+                  <div class="col-lg-4">
+                    <input type="text" class="form-control" id="professional-editor-instagram" placeholder="https://instagram.com/...">
+                  </div>
+                  <label class="col-lg-2 col-form-label" for="professional-editor-facebook">Facebook</label>
+                  <div class="col-lg-4">
+                    <input type="text" class="form-control" id="professional-editor-facebook" placeholder="https://facebook.com/...">
+                  </div>
+                </div>
+
+                <div class="row g-3 align-items-start mb-3">
+                  <label class="col-lg-2 col-form-label" for="professional-editor-tiktok">TikTok</label>
+                  <div class="col-lg-4">
+                    <input type="text" class="form-control" id="professional-editor-tiktok" placeholder="https://tiktok.com/@...">
+                  </div>
+                </div>
+
+                <div class="row g-3 align-items-start mb-3">
+                  <label class="col-lg-2 col-form-label" for="professional-editor-summary-mode">Resumen de citas</label>
+                  <div class="col-lg-10">
+                    <select class="form-select" id="professional-editor-summary-mode">
+                      <option value="disabled">Desactivado</option>
+                      <option value="tomorrow_evening">Recibir email con planning del d&iacute;a siguiente a &uacute;ltima hora de la tarde</option>
+                      <option value="today_morning">Recibir email con planning del d&iacute;a a primera hora de la ma&ntilde;ana</option>
+                      <option value="on_booking">Recibir un planning de las pr&oacute;ximas citas cada vez que se reciba un aviso de reserva</option>
+                    </select>
+                    <div class="form-text" id="professional-editor-summary-status"></div>
+                  </div>
+                </div>
+
+                <div class="row g-3 align-items-start mb-3">
+                  <label class="col-lg-2 col-form-label" for="professional-editor-photo">Foto del profesional</label>
+                  <div class="col-lg-10">
+                    <input type="file" class="form-control" id="professional-editor-photo" accept="image/jpeg,image/png,image/webp,image/gif">
+                    <div class="d-flex align-items-center gap-3 mt-2">
+                      <img src="" alt="" id="professional-editor-photo-preview" class="d-none" style="width: 56px; height: 56px; border-radius: 50%; object-fit: cover;">
+                      <div class="form-text" id="professional-editor-photo-status">Formatos permitidos: JPG, PNG, WEBP o GIF. M&aacute;ximo 2 MB.</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="row g-3 align-items-start">
+                  <div class="offset-lg-2 col-lg-10 professional-editor-status-wrap">
+                    <div class="form-check form-switch">
+                      <input class="form-check-input" type="checkbox" id="professional-editor-active" checked>
+                      <label class="form-check-label" for="professional-editor-active">Profesional activo</label>
+                    </div>
+                    <div class="form-text">Si est&aacute; desactivado, no aparecer&aacute; como profesional disponible del gabinete.</div>
+                  </div>
                 </div>
               </div>
             </div>

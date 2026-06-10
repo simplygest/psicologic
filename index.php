@@ -49,6 +49,7 @@ function public_delivery_text($mode)
     <meta name="robots" content="noindex, nofollow, noarchive">
     <title><?= htmlspecialchars($app_name) ?> - Psicología sanitaria</title>
     <meta name="description" content="<?= htmlspecialchars($site_tagline) ?>">
+    <?= favicon_link_tags($branding) ?>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css?v=<?= filemtime(__DIR__ . '/css/style.css') ?>">
@@ -252,8 +253,13 @@ function public_delivery_text($mode)
 
     <footer class="public-footer">
         <div class="container d-flex flex-column flex-md-row justify-content-between gap-2">
-            <span>&copy; <?= date('Y') ?> Stephanie Luis Báez</span>
-            <span>Psicóloga sanitaria y neuropsicóloga. Santa Cruz de Tenerife.</span>
+            <span>&copy; <?= date('Y') ?> <?= htmlspecialchars($app_name) ?></span>
+            <span class="public-footer-links">
+                <a href="legal.php#privacidad">Política de privacidad</a>
+                <a href="legal.php#aviso-legal">Aviso legal</a>
+                <a href="legal.php#cookies">Política de cookies</a>
+                <a href="legal.php#condiciones">Términos y condiciones</a>
+            </span>
         </div>
     </footer>
 

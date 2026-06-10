@@ -18,6 +18,7 @@ $profile_image_path = $branding['show_profile_image_public'] ? $branding['profil
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow, noarchive">
     <title>Recordar contrase&ntilde;a - <?= htmlspecialchars($app_name) ?></title>
+    <?= favicon_link_tags($branding) ?>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css?v=<?= filemtime(__DIR__ . '/css/style.css') ?>">

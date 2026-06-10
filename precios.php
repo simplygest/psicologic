@@ -65,6 +65,7 @@ function public_consultation_label($type)
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow, noarchive">
     <title>Precios - <?= htmlspecialchars($app_name) ?></title>
+    <?= favicon_link_tags($branding) ?>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css?v=<?= filemtime(__DIR__ . '/css/style.css') ?>">
@@ -180,7 +181,12 @@ function public_consultation_label($type)
     <footer class="public-footer">
         <div class="container d-flex flex-column flex-md-row justify-content-between gap-2">
             <span>&copy; <?= date('Y') ?> <?= htmlspecialchars($app_name) ?></span>
-            <span>Psicología sanitaria y neuropsicología. Santa Cruz de Tenerife.</span>
+            <span class="public-footer-links">
+                <a href="legal.php#privacidad">Política de privacidad</a>
+                <a href="legal.php#aviso-legal">Aviso legal</a>
+                <a href="legal.php#cookies">Política de cookies</a>
+                <a href="legal.php#condiciones">Términos y condiciones</a>
+            </span>
         </div>
     </footer>
 </body>

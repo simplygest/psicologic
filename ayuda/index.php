@@ -80,7 +80,8 @@ $app_name = $branding['app_name'] ?: 'PsicoLogic';
                 <a href="#pacientes">Pacientes</a>
                 <a href="#invitaciones">Invitaciones</a>
                 <a href="#bonos">Bonos</a>
-                <a href="#pagos">Pagos online</a>
+                <a href="#pagos">Pagos y cobros</a>
+                <a href="#equipo">Equipo profesional</a>
                 <a href="#configuracion">Configuración</a>
                 <a href="#emails">Emails y recordatorios</a>
                 <a href="#publica">Web pública</a>
@@ -105,6 +106,7 @@ $app_name = $branding['app_name'] ?: 'PsicoLogic';
                     <div><i class="bi bi-check2-circle"></i> Configura horarios, días de consulta, descansos y vacaciones en <strong>Reservas</strong>.</div>
                     <div><i class="bi bi-check2-circle"></i> Si vas a cobrar online, completa <strong>Pago online</strong> y prueba una reserva en entorno sandbox.</div>
                     <div><i class="bi bi-check2-circle"></i> Conecta Gmail y Calendar si quieres emails automáticos y eventos en Google Calendar.</div>
+                    <div><i class="bi bi-check2-circle"></i> Si trabajas con varios profesionales, revisa <strong>Equipo</strong> y asigna cada paciente a su profesional.</div>
                 </div>
             </article>
 
@@ -114,10 +116,17 @@ $app_name = $branding['app_name'] ?: 'PsicoLogic';
                     En la parte superior del dashboard tienes accesos para generar invitaciones, revisar próximas citas,
                     consultar estadísticas y ver bonos de pacientes sin entrar en configuración.
                 </p>
+                <p>
+                    En pantallas pequeñas, las acciones principales se agrupan en un botón <strong>Menú</strong> para que el calendario tenga más espacio.
+                </p>
                 <figure class="help-figure">
                     <img src="assets/modal-proximas-citas.png" alt="Modal de próximas citas">
                     <figcaption>Próximas citas muestra las reservas futuras ordenadas de la más cercana a la más lejana.</figcaption>
                 </figure>
+                <p>
+                    La ventana <strong>Próximas citas</strong> incluye dos vistas: listado y planning. El planning muestra los próximos días con huecos libres,
+                    cierres, descansos y citas para hacerse una idea visual de la agenda.
+                </p>
                 <figure class="help-figure">
                     <img src="assets/modal-estadisticas.png" alt="Modal de estadísticas">
                     <figcaption>Estadísticas resume actividad de citas, pacientes y bonos en un vistazo rápido.</figcaption>
@@ -202,6 +211,8 @@ $app_name = $branding['app_name'] ?: 'PsicoLogic';
                 </p>
                 <ul>
                     <li>Si la reserva la hace el admin, debe seleccionar antes el paciente.</li>
+                    <li>En modo gabinete, el superadmin puede asignar la reserva a un profesional concreto.</li>
+                    <li>Si el paciente todavía no tiene profesional asignado, el sistema puede pedir primero profesional o primero día/hora, según la configuración.</li>
                     <li>Si el paciente tiene un bono válido, la cita puede quedar marcada como pagada con bono.</li>
                     <li>Al cancelar una cita pagada con bono, la sesión vuelve al saldo disponible del paciente.</li>
                     <li>Al cancelar una cita pagada con tarjeta o Bizum, la app puede crear un vale interno si está activada esa opción.</li>
@@ -221,6 +232,8 @@ $app_name = $branding['app_name'] ?: 'PsicoLogic';
                     <li>El listado permite buscar pacientes, ordenarlos por nombre o fecha de alta y ver si tienen acceso web o est&aacute;n pendientes de registro.</li>
                     <li>Si el paciente no tiene acceso, el bot&oacute;n de invitaci&oacute;n abre el modal con enlace, QR y env&iacute;o por email, pero vinculado a su ficha.</li>
                     <li>Cuando el paciente usa esa invitaci&oacute;n, completa su cuenta sin duplicar la ficha creada por el profesional.</li>
+                    <li>La ficha del paciente incluye un historial de citas con fecha, profesional, servicio, modalidad, pago y estado.</li>
+                    <li>El paciente puede actualizar sus propios datos básicos desde <strong>Mis datos</strong>: email, teléfono y foto de perfil.</li>
                 </ul>
                 <div class="help-note">
                     En invitaciones vinculadas, si el paciente ya tiene email en su ficha, el campo de env&iacute;o se rellena autom&aacute;ticamente.
@@ -256,14 +269,16 @@ $app_name = $branding['app_name'] ?: 'PsicoLogic';
                 </figure>
                 <ul>
                     <li>Desde <strong>Configuración &gt; Bonos</strong> se activa la venta y se define qué bonos se ofrecen.</li>
-                    <li>Desde <strong>Consultar bonos</strong> el admin puede revisar pacientes, sesiones compradas, restantes, importe y fecha de compra.</li>
+                    <li>Desde <strong>Bonos</strong> el admin puede revisar pacientes, sesiones compradas, restantes, importe y fecha de compra.</li>
                     <li>Los bonos internos de compensación no aparecen en la página de precios ni se pueden comprar manualmente.</li>
                     <li>Si una reserva consume bono, al cancelar se devuelve automáticamente una sesión al saldo.</li>
+                    <li>El superadmin puede ajustar manualmente las sesiones restantes de un bono o eliminarlo si hay que corregir una incidencia.</li>
+                    <li>La edición manual de bonos solo está disponible si los bonos están habilitados.</li>
                 </ul>
             </article>
 
             <article class="help-section" id="pagos">
-                <h2>Pagos online</h2>
+                <h2>Pagos y cobros</h2>
                 <p>
                     El pago online se configura con Redsys para tarjeta y Bizum. La app guarda intentos de pago,
                     marca reservas y bonos como pagados cuando la pasarela confirma la operación y envía los emails correspondientes.
@@ -273,6 +288,33 @@ $app_name = $branding['app_name'] ?: 'PsicoLogic';
                     <li>El nombre que aparece en la pasarela usa el título configurado de la web.</li>
                     <li>El precio de una reserva depende del servicio, modalidad y duración seleccionados.</li>
                     <li>Los bonos se pagan siempre antes de activarse.</li>
+                </ul>
+                <p>
+                    Los profesionales también pueden actualizar manualmente el estado de pago de una cita desde la agenda,
+                    desde <strong>Próximas citas</strong> o desde el historial del paciente. Esto sirve para cobros en efectivo,
+                    transferencia u otros métodos no online.
+                </p>
+                <ul>
+                    <li><strong>Superadmin:</strong> puede editar el pago de cualquier cita.</li>
+                    <li><strong>Admin:</strong> puede editar solo las citas de su propia agenda.</li>
+                    <li>Las citas pagadas con bono se muestran como <strong>Pagada con bono</strong> y no se modifican manualmente desde ese modal.</li>
+                    <li>Al marcar una cita como pagada se puede elegir la forma de pago: efectivo, transferencia, tarjeta, Bizum u otro método.</li>
+                </ul>
+            </article>
+
+            <article class="help-section" id="equipo">
+                <h2>Equipo profesional</h2>
+                <p>
+                    Si la consulta trabaja como gabinete, el superadmin puede gestionar los miembros del equipo desde
+                    <strong>Configuración &gt; Equipo</strong>. Cada profesional puede tener nombre, email de acceso, cargo,
+                    número de colegiado, especialidad, foto, teléfono, redes sociales e información de presentación.
+                </p>
+                <ul>
+                    <li>El primer usuario creado en la instalación actúa como superadmin.</li>
+                    <li>El superadmin puede crear profesionales, activar o desactivar miembros y definir permisos.</li>
+                    <li>Los admins solo ven y gestionan la parte que les corresponde, según los permisos configurados.</li>
+                    <li>Si está activa la página pública de Equipo, los profesionales activos se muestran en la web con su foto, especialidades y enlaces sociales.</li>
+                    <li>Al borrar un profesional, conviene revisar antes sus pacientes y citas pendientes para traspasarlos si procede.</li>
                 </ul>
             </article>
 
@@ -293,7 +335,7 @@ $app_name = $branding['app_name'] ?: 'PsicoLogic';
                 <div class="help-grid">
                     <div>
                         <h3>General</h3>
-                        <p>Modalidades disponibles, servicios ofrecidos, duraciones de sesión y vacaciones.</p>
+                        <p>Reservas online, registro de pacientes, modalidades disponibles, servicios ofrecidos, duraciones de sesión y vacaciones.</p>
                     </div>
                     <div>
                         <h3>Precios</h3>
@@ -313,8 +355,16 @@ $app_name = $branding['app_name'] ?: 'PsicoLogic';
                     </div>
                     <div>
                         <h3>Interfaz</h3>
-                        <p>Título, imágenes de dashboard y landing, visibilidad de imagen y color principal.</p>
+                        <p>Título, eslogan, teléfono, imágenes de dashboard y landing, vista inicial del calendario, color principal y favicon.</p>
                     </div>
+                    <div>
+                        <h3>Equipo</h3>
+                        <p>Alta de profesionales, permisos, fotos, datos públicos y opciones generales del gabinete.</p>
+                    </div>
+                </div>
+                <div class="help-note">
+                    En modo gabinete hay opciones globales y opciones propias de cada profesional. El superadmin gestiona la configuración global;
+                    cada profesional puede trabajar con su agenda, horarios y disponibilidad cuando la configuración lo permite.
                 </div>
             </article>
 
@@ -329,6 +379,7 @@ $app_name = $branding['app_name'] ?: 'PsicoLogic';
                     <li>El paciente recibe confirmaciones y enlaces de gestión de cita cuando tiene email informado.</li>
                     <li>Los recordatorios 24 horas antes se activan desde la configuración de emails.</li>
                     <li>Al activar recordatorios, la app prepara automáticamente la integración de avisos.</li>
+                    <li>Cada profesional puede configurar si quiere recibir resúmenes de próximas citas por email.</li>
                     <li>Si cambias de dominio, puede ser necesario reconectar Google para autorizar la nueva Redirect URI.</li>
                 </ul>
             </article>
@@ -344,6 +395,14 @@ $app_name = $branding['app_name'] ?: 'PsicoLogic';
                     <img src="assets/modal-configuracion-interfaz.png" alt="Pestaña Interfaz de configuración">
                     <figcaption>Interfaz: título de la web, imágenes del dashboard y de la landing, y color principal.</figcaption>
                 </figure>
+                <ul>
+                    <li>La página <strong>Equipo</strong> se muestra solo si se activa en configuración y hay profesionales activos.</li>
+                    <li>La página <strong>Precios</strong> se muestra solo si el superadmin decide publicar precios.</li>
+                    <li>La página <strong>Contactar</strong> se muestra solo si se activa la opción correspondiente.</li>
+                    <li>El formulario de contacto pide aceptar la política de privacidad antes de enviar la consulta.</li>
+                    <li>El footer de la web enlaza la información legal: política de privacidad, aviso legal, cookies y condiciones.</li>
+                    <li>El registro puede funcionar solo por invitación o como alta libre desde la web, según <strong>General &gt; Registro de nuevos pacientes</strong>.</li>
+                </ul>
             </article>
 
             <article class="help-section" id="problemas">
@@ -358,7 +417,15 @@ $app_name = $branding['app_name'] ?: 'PsicoLogic';
                 </details>
                 <details>
                     <summary>Un paciente no puede reservar con bono</summary>
-                    <p>Revisa en Consultar bonos que tenga un bono activo con sesiones restantes. Los bonos agotados o inactivos no se ofrecen al reservar.</p>
+                    <p>Revisa en Bonos que tenga un bono activo con sesiones restantes. Los bonos agotados o inactivos no se ofrecen al reservar.</p>
+                </details>
+                <details>
+                    <summary>Un paciente no ve el enlace para crear cuenta</summary>
+                    <p>Comprueba en General si el registro está configurado como solo por invitación. En ese modo, el paciente necesita recibir un enlace de registro.</p>
+                </details>
+                <details>
+                    <summary>No aparece la página Equipo, Precios o Contactar</summary>
+                    <p>Revisa que la opción pública correspondiente esté activada y que exista información suficiente para mostrar esa página.</p>
                 </details>
                 <details>
                     <summary>No se envían los recordatorios de citas</summary>

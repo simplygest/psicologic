@@ -120,6 +120,28 @@ function standard_individual_session_price($mysqli)
     return 70.00;
 }
 
+function bonus_admin_can_access_patient($mysqli, $patient_id)
+{
+    global $is_superadmin, $user_id;
+    $patient_id = (int) $patient_id;
+    if ($patient_id <= 0) {
+        return false;
+    }
+    if ($is_superadmin) {
+        return true;
+    }
+    $current_professional_id = bonus_current_professional_id_for_user($mysqli, $user_id);
+    return $current_professional_id > 0 && cabinet_patient_primary_professional_id($mysqli, $patient_id) === $current_professional_id;
+}
+
+function bonus_patient_exists($mysqli, $patient_id)
+{
+    $stmt = $mysqli->prepare("SELECT id FROM users WHERE id = ? AND role = 'patient' LIMIT 1");
+    $stmt->bind_param("i", $patient_id);
+    $stmt->execute();
+    return (bool) $stmt->get_result()->fetch_assoc();
+}
+
 if ($action === 'catalog') {
     $enabled = bonuses_are_enabled($mysqli);
     $bonuses = $enabled ? fetch_appointment_bonuses($mysqli, true) : [];
@@ -136,6 +158,108 @@ if ($action === 'catalog') {
         'bonuses_enabled' => $enabled ? 1 : 0,
         'bonuses' => $bonuses
     ]);
+    exit;
+}
+
+if ($action === 'patient_bonuses') {
+    if (!$is_admin) {
+        echo json_encode(['success' => false, 'error' => 'No autorizado']);
+        exit;
+    }
+
+    $patient_id = (int) ($_GET['patient_id'] ?? 0);
+    if (!bonus_patient_exists($mysqli, $patient_id) || !bonus_admin_can_access_patient($mysqli, $patient_id)) {
+        echo json_encode(['success' => false, 'error' => 'Paciente no valido.']);
+        exit;
+    }
+
+    $stmt = $mysqli->prepare("
+        SELECT pb.id, pb.user_id, pb.bonus_id, pb.total_sessions, pb.remaining_sessions, pb.status,
+               pb.purchased_at, pb.expires_at, b.name, pa.amount_cents AS amount_paid, pa.payment_method,
+               p.id AS professional_id, p.display_name AS professional_name, p.public_photo_path AS professional_photo_path,
+               pu.role AS professional_user_role
+        FROM patient_bonuses pb
+        JOIN appointment_bonuses b ON b.id = pb.bonus_id
+        LEFT JOIN payment_attempts pa ON pa.id = pb.payment_attempt_id
+        LEFT JOIN professionals p ON p.id = pb.professional_id
+        LEFT JOIN users pu ON pu.id = p.user_id
+        WHERE pb.user_id = ?
+        ORDER BY pb.purchased_at DESC, pb.id DESC
+    ");
+    $stmt->bind_param("i", $patient_id);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $bonuses = [];
+    while ($row = $res->fetch_assoc()) {
+        $bonuses[] = format_bonus_row($row);
+    }
+
+    echo json_encode([
+        'success' => true,
+        'bonuses' => $bonuses,
+        'bonuses_enabled' => bonuses_are_enabled($mysqli) ? 1 : 0,
+        'can_manage' => $is_superadmin && bonuses_are_enabled($mysqli) ? 1 : 0,
+        'catalog' => $is_superadmin && bonuses_are_enabled($mysqli) ? fetch_appointment_bonuses($mysqli, true, true) : []
+    ]);
+    exit;
+}
+
+if ($action === 'create_patient_bonus') {
+    if (!$is_superadmin) {
+        echo json_encode(['success' => false, 'error' => 'No autorizado']);
+        exit;
+    }
+    if (!bonuses_are_enabled($mysqli)) {
+        echo json_encode(['success' => false, 'error' => 'Los bonos no estan habilitados.']);
+        exit;
+    }
+
+    $patient_id = (int) ($_POST['patient_id'] ?? 0);
+    $bonus_id = (int) ($_POST['bonus_id'] ?? 0);
+    $total_sessions = (int) ($_POST['total_sessions'] ?? 0);
+    $remaining_sessions = max(0, (int) ($_POST['remaining_sessions'] ?? 0));
+    if (!bonus_patient_exists($mysqli, $patient_id)) {
+        echo json_encode(['success' => false, 'error' => 'Paciente no valido.']);
+        exit;
+    }
+    if ($bonus_id <= 0) {
+        echo json_encode(['success' => false, 'error' => 'Selecciona un bono valido.']);
+        exit;
+    }
+
+    $stmt = $mysqli->prepare("SELECT id, session_count FROM appointment_bonuses WHERE id = ? AND is_active = 1 LIMIT 1");
+    $stmt->bind_param("i", $bonus_id);
+    $stmt->execute();
+    $bonus = $stmt->get_result()->fetch_assoc();
+    if (!$bonus) {
+        echo json_encode(['success' => false, 'error' => 'El bono seleccionado no esta disponible.']);
+        exit;
+    }
+
+    if ($total_sessions <= 0) {
+        $total_sessions = (int) $bonus['session_count'];
+    }
+    if ($remaining_sessions <= 0 && !isset($_POST['remaining_sessions'])) {
+        $remaining_sessions = $total_sessions;
+    }
+    $total_sessions = max($total_sessions, $remaining_sessions);
+    $status = $remaining_sessions > 0 ? 'active' : 'used';
+    $professional_id = cabinet_patient_primary_professional_id($mysqli, $patient_id);
+    if ($professional_id <= 0) {
+        $professional_id = bonus_current_professional_id_for_user($mysqli, $user_id);
+    }
+
+    $stmt = $mysqli->prepare("
+        INSERT INTO patient_bonuses (professional_id, user_id, bonus_id, total_sessions, remaining_sessions, status, purchased_at)
+        VALUES (?, ?, ?, ?, ?, ?, NOW())
+    ");
+    $stmt->bind_param("iiiiis", $professional_id, $patient_id, $bonus_id, $total_sessions, $remaining_sessions, $status);
+    if (!$stmt->execute()) {
+        echo json_encode(['success' => false, 'error' => 'No se pudo crear el bono.']);
+        exit;
+    }
+
+    echo json_encode(['success' => true, 'message' => 'Bono creado correctamente.']);
     exit;
 }
 
@@ -198,6 +322,76 @@ if ($action === 'admin_list') {
         'professionals' => $is_superadmin ? bonus_active_professionals_payload($mysqli) : [],
         'current_professional_id' => bonus_current_professional_id_for_user($mysqli, $user_id)
     ]);
+    exit;
+}
+
+if ($action === 'update_patient_bonus') {
+    if (!$is_superadmin) {
+        echo json_encode(['success' => false, 'error' => 'No autorizado']);
+        exit;
+    }
+    if (!bonuses_are_enabled($mysqli)) {
+        echo json_encode(['success' => false, 'error' => 'Los bonos no están habilitados.']);
+        exit;
+    }
+
+    $patient_bonus_id = (int) ($_POST['patient_bonus_id'] ?? 0);
+    $remaining_sessions = max(0, (int) ($_POST['remaining_sessions'] ?? 0));
+    if ($patient_bonus_id <= 0) {
+        echo json_encode(['success' => false, 'error' => 'Bono no válido.']);
+        exit;
+    }
+
+    $stmt = $mysqli->prepare("SELECT id, total_sessions FROM patient_bonuses WHERE id = ? LIMIT 1");
+    $stmt->bind_param("i", $patient_bonus_id);
+    $stmt->execute();
+    $bonus = $stmt->get_result()->fetch_assoc();
+    if (!$bonus) {
+        echo json_encode(['success' => false, 'error' => 'No se encontró el bono.']);
+        exit;
+    }
+
+    $total_sessions = max((int) $bonus['total_sessions'], $remaining_sessions);
+    $status = $remaining_sessions > 0 ? 'active' : 'used';
+    $stmt = $mysqli->prepare("
+        UPDATE patient_bonuses
+        SET total_sessions = ?, remaining_sessions = ?, status = ?
+        WHERE id = ?
+    ");
+    $stmt->bind_param("iisi", $total_sessions, $remaining_sessions, $status, $patient_bonus_id);
+    if (!$stmt->execute()) {
+        echo json_encode(['success' => false, 'error' => 'No se pudo actualizar el bono.']);
+        exit;
+    }
+
+    echo json_encode(['success' => true, 'message' => 'Bono actualizado correctamente.']);
+    exit;
+}
+
+if ($action === 'delete_patient_bonus') {
+    if (!$is_superadmin) {
+        echo json_encode(['success' => false, 'error' => 'No autorizado']);
+        exit;
+    }
+    if (!bonuses_are_enabled($mysqli)) {
+        echo json_encode(['success' => false, 'error' => 'Los bonos no están habilitados.']);
+        exit;
+    }
+
+    $patient_bonus_id = (int) ($_POST['patient_bonus_id'] ?? 0);
+    if ($patient_bonus_id <= 0) {
+        echo json_encode(['success' => false, 'error' => 'Bono no válido.']);
+        exit;
+    }
+
+    $stmt = $mysqli->prepare("DELETE FROM patient_bonuses WHERE id = ?");
+    $stmt->bind_param("i", $patient_bonus_id);
+    if (!$stmt->execute()) {
+        echo json_encode(['success' => false, 'error' => 'No se pudo eliminar el bono.']);
+        exit;
+    }
+
+    echo json_encode(['success' => true, 'message' => 'Bono eliminado correctamente.']);
     exit;
 }
 

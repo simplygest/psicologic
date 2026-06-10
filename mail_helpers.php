@@ -279,11 +279,16 @@ function get_appointment_professional($mysqli, $appointment)
     return $row;
 }
 
-function notify_appointment_professional($mysqli, $appointment, $subject, $html_body, $reply_to = null)
+function notify_appointment_professional($mysqli, $appointment, $subject, $html_body, $reply_to = null, $append_booking_summary = false)
 {
     $professional = get_appointment_professional($mysqli, $appointment);
     $professional_email = trim((string) ($professional['notification_email'] ?? ''));
     if ($professional_email && filter_var($professional_email, FILTER_VALIDATE_EMAIL)) {
+        if ($append_booking_summary
+            && ($professional['appointment_summary_email_mode'] ?? 'on_booking') === 'on_booking'
+            && !empty($professional['id'])) {
+            $html_body .= professional_appointments_summary_table($mysqli, (int) $professional['id'], null, 3);
+        }
         return send_app_email($professional_email, $subject, $html_body, $reply_to, $mysqli);
     }
 
@@ -311,6 +316,92 @@ function appointment_payment_label($payment_status)
     }
 
     return 'No pagada online';
+}
+
+function professional_appointments_summary_table($mysqli, $professional_id, $start_date = null, $days = 3)
+{
+    $professional_id = (int) $professional_id;
+    $days = max(1, min(14, (int) $days));
+    if ($professional_id <= 0) {
+        return '';
+    }
+
+    $start = $start_date ? new DateTime($start_date) : new DateTime('today');
+    $end = clone $start;
+    $end->modify('+' . $days . ' days');
+    $start_sql = $start->format('Y-m-d');
+    $end_sql = $end->format('Y-m-d');
+
+    $stmt = $mysqli->prepare("
+        SELECT a.appointment_date, a.appointment_time, a.consultation_type, a.service_type,
+               COALESCE(a.duration_minutes, 60) AS duration_minutes,
+               COALESCE(a.payment_status, 'pending') AS payment_status,
+               u.name AS patient_name,
+               s.name AS service_name
+        FROM appointments a
+        INNER JOIN users u ON u.id = a.user_id
+        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
+        LEFT JOIN appointment_services s ON s.id = so.service_id
+        WHERE a.professional_id = ?
+          AND a.status = 'booked'
+          AND a.appointment_date >= ?
+          AND a.appointment_date < ?
+        ORDER BY a.appointment_date ASC, a.appointment_time ASC
+    ");
+    if (!$stmt) {
+        return '';
+    }
+    $stmt->bind_param('iss', $professional_id, $start_sql, $end_sql);
+    $stmt->execute();
+    $res = $stmt->get_result();
+
+    $rows = '';
+    $row_index = 0;
+    while ($appointment = $res->fetch_assoc()) {
+        $row_index++;
+        $service = function_exists('appointment_service_option_label')
+            ? appointment_service_option_label($appointment)
+            : (($appointment['service_name'] ?? '') ?: appointment_service_label($appointment['service_type'] ?? 'individual'));
+        $consultation = appointment_consultation_label($appointment['consultation_type'] ?? 'presencial');
+        $payment = appointment_payment_label($appointment['payment_status'] ?? 'pending');
+        $date_text = date('d/m/Y', strtotime($appointment['appointment_date']));
+        $time_text = date('H:i', strtotime($appointment['appointment_time']));
+        $bg = $row_index % 2 === 0 ? '#fbfafc' : '#ffffff';
+        $consultation_bg = ($appointment['consultation_type'] ?? '') === 'online' ? '#e8f1ff' : '#e8f7ef';
+        $consultation_color = ($appointment['consultation_type'] ?? '') === 'online' ? '#1e5aa8' : '#166534';
+        $payment_bg = ($appointment['payment_status'] ?? '') === 'paid' ? '#dcfce7' : '#fff7d6';
+        $payment_color = ($appointment['payment_status'] ?? '') === 'paid' ? '#166534' : '#8a6d1d';
+
+        $rows .= '<tr style="background:' . $bg . ';">' .
+            '<td style="padding:10px 12px;border-bottom:1px solid #ebe7f1;color:#4b5563;white-space:nowrap;">' . htmlspecialchars($date_text) . '</td>' .
+            '<td style="padding:10px 12px;border-bottom:1px solid #ebe7f1;color:#2f2642;font-weight:700;white-space:nowrap;">' . htmlspecialchars($time_text) . '</td>' .
+            '<td style="padding:10px 12px;border-bottom:1px solid #ebe7f1;color:#2f2642;font-weight:600;">' . htmlspecialchars($appointment['patient_name'] ?? 'Paciente') . '</td>' .
+            '<td style="padding:10px 12px;border-bottom:1px solid #ebe7f1;color:#4b5563;">' . htmlspecialchars($service) . '</td>' .
+            '<td style="padding:10px 12px;border-bottom:1px solid #ebe7f1;white-space:nowrap;"><span style="display:inline-block;padding:4px 8px;border-radius:999px;background:' . $consultation_bg . ';color:' . $consultation_color . ';font-size:12px;font-weight:700;">' . htmlspecialchars($consultation) . '</span></td>' .
+            '<td style="padding:10px 12px;border-bottom:1px solid #ebe7f1;white-space:nowrap;"><span style="display:inline-block;padding:4px 8px;border-radius:999px;background:' . $payment_bg . ';color:' . $payment_color . ';font-size:12px;font-weight:700;">' . htmlspecialchars($payment) . '</span></td>' .
+            '</tr>';
+    }
+
+    if ($rows === '') {
+        $rows = '<tr><td colspan="6" style="padding:14px 12px;border-bottom:1px solid #ebe7f1;color:#6b7280;text-align:center;">No hay citas previstas en este periodo.</td></tr>';
+    }
+
+    $period_end = clone $end;
+    $period_end->modify('-1 day');
+    $period_text = 'del ' . $start->format('d/m/Y') . ' al ' . $period_end->format('d/m/Y');
+
+    return '<div style="margin-top:24px;padding-top:18px;border-top:1px solid #e5e1ed;">' .
+        '<h3 style="margin:0 0 6px 0;color:#2f2642;font-size:18px;">Planning de pr&oacute;ximas citas</h3>' .
+        '<p style="margin:0 0 12px 0;color:#6b7280;font-size:14px;">Aqu&iacute; tienes el resumen de citas ' . htmlspecialchars($period_text) . '.</p>' .
+        '<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;border:1px solid #e5e1ed;border-radius:8px;overflow:hidden;background:#ffffff;">' .
+        '<thead><tr style="background:#8f7fba;color:#ffffff;">' .
+        '<th align="left" style="padding:10px 12px;font-size:13px;">Fecha</th>' .
+        '<th align="left" style="padding:10px 12px;font-size:13px;">Hora</th>' .
+        '<th align="left" style="padding:10px 12px;font-size:13px;">Paciente</th>' .
+        '<th align="left" style="padding:10px 12px;font-size:13px;">Servicio</th>' .
+        '<th align="left" style="padding:10px 12px;font-size:13px;">Modalidad</th>' .
+        '<th align="left" style="padding:10px 12px;font-size:13px;">Pago</th>' .
+        '</tr></thead><tbody>' . $rows . '</tbody></table></div>';
 }
 
 function appointment_cancel_payment_label($appointment)

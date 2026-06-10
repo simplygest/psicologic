@@ -100,6 +100,11 @@ function install_base_tables($mysqli)
         appointment_date DATE NOT NULL,
         appointment_time TIME NOT NULL,
         status VARCHAR(32) NOT NULL DEFAULT 'booked',
+        payment_status VARCHAR(32) NOT NULL DEFAULT 'pending',
+        payment_method VARCHAR(16) DEFAULT NULL,
+        paid_at DATETIME DEFAULT NULL,
+        payment_updated_at DATETIME DEFAULT NULL,
+        payment_updated_by INT UNSIGNED DEFAULT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         cancelled_at DATETIME NULL,
         INDEX idx_date_time (appointment_date, appointment_time),
@@ -121,10 +126,20 @@ function install_base_tables($mysqli)
         site_tagline VARCHAR(255) NULL,
         site_phone VARCHAR(40) NULL,
         admin_notification_email VARCHAR(150) NULL,
+        favicon_path VARCHAR(255) NULL,
         show_team_public TINYINT(1) NOT NULL DEFAULT 0,
         show_contact_public TINYINT(1) NOT NULL DEFAULT 0,
         allow_patient_transfer TINYINT(1) NOT NULL DEFAULT 0,
         online_booking_enabled TINYINT(1) NOT NULL DEFAULT 1,
+        patient_registration_mode VARCHAR(16) NOT NULL DEFAULT 'invite',
+        legal_owner_name VARCHAR(255) NULL,
+        legal_nif VARCHAR(50) NULL,
+        legal_address VARCHAR(500) NULL,
+        legal_email VARCHAR(255) NULL,
+        legal_license_number VARCHAR(100) NULL,
+        legal_professional_college VARCHAR(255) NULL,
+        legal_uses_non_technical_cookies TINYINT NOT NULL DEFAULT 0,
+        legal_terms_notes TEXT NULL,
         online_payment_enabled TINYINT(1) NOT NULL DEFAULT 0,
         environment ENUM('sandbox','production') NOT NULL DEFAULT 'sandbox',
         merchant_code VARCHAR(20) NULL,
@@ -154,6 +169,15 @@ function install_ensure_payment_settings_columns($mysqli)
     install_add_column_if_missing($mysqli, 'payment_settings', 'allow_patient_transfer', 'TINYINT(1) NOT NULL DEFAULT 0');
     install_add_column_if_missing($mysqli, 'payment_settings', 'site_tagline', 'VARCHAR(255) NULL AFTER app_name');
     install_add_column_if_missing($mysqli, 'payment_settings', 'site_phone', 'VARCHAR(40) NULL AFTER site_tagline');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'favicon_path', 'VARCHAR(255) NULL AFTER profile_image_path');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'legal_owner_name', 'VARCHAR(255) NULL');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'legal_nif', 'VARCHAR(50) NULL');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'legal_address', 'VARCHAR(500) NULL');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'legal_email', 'VARCHAR(255) NULL');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'legal_license_number', 'VARCHAR(100) NULL');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'legal_professional_college', 'VARCHAR(255) NULL');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'legal_uses_non_technical_cookies', 'TINYINT NOT NULL DEFAULT 0');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'legal_terms_notes', 'TEXT NULL');
 
     install_add_column_if_missing($mysqli, 'payment_settings', 'min_booking_notice_days', 'INT NOT NULL DEFAULT 2');
     install_add_column_if_missing($mysqli, 'payment_settings', 'max_booking_notice_days', 'INT NOT NULL DEFAULT 40');
@@ -166,12 +190,14 @@ function install_ensure_payment_settings_columns($mysqli)
     install_add_column_if_missing($mysqli, 'payment_settings', 'available_session_types', 'VARCHAR(100) NOT NULL DEFAULT "individual"');
     install_add_column_if_missing($mysqli, 'payment_settings', 'available_session_durations', 'VARCHAR(30) NOT NULL DEFAULT "60"');
     install_add_column_if_missing($mysqli, 'payment_settings', 'online_booking_enabled', 'TINYINT(1) NOT NULL DEFAULT 1');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'patient_registration_mode', 'VARCHAR(16) NOT NULL DEFAULT "invite"');
     install_add_column_if_missing($mysqli, 'payment_settings', 'initial_calendar_view', 'VARCHAR(12) NOT NULL DEFAULT "month"');
     install_add_column_if_missing($mysqli, 'payment_settings', 'calendar_provider', 'VARCHAR(16) NOT NULL DEFAULT "none"');
     install_add_column_if_missing($mysqli, 'payment_settings', 'icloud_calendar_email', 'VARCHAR(255) NULL');
     install_add_column_if_missing($mysqli, 'payment_settings', 'icloud_calendar_app_password', 'VARCHAR(255) NULL');
     install_add_column_if_missing($mysqli, 'payment_settings', 'icloud_calendar_url', 'VARCHAR(512) NULL DEFAULT "https://caldav.icloud.com"');
     install_add_column_if_missing($mysqli, 'payment_settings', 'send_patient_calendar_link', 'TINYINT(1) NOT NULL DEFAULT 1');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'fastcron_planning_cron_id', 'VARCHAR(64) NULL');
 }
 
 function install_write_config($path, $settings)

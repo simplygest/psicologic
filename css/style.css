@@ -38,6 +38,18 @@ body {
     display: none;
 }
 
+.dashboard-action-buttons {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 !important;
+    margin: -4px;
+}
+
+.dashboard-action-buttons > .btn {
+    margin: 4px;
+}
+
 .brand-avatar {
     width: 34px;
     height: 34px;
@@ -286,8 +298,12 @@ textarea.form-control::placeholder {
 .slot.booked {
     background-color: #fdecec;
     color: #8f3b3b;
-    cursor: not-allowed;
+    cursor: pointer;
     border: 1px solid #f4caca;
+}
+
+body:not(.is-admin) .slot.booked {
+    cursor: not-allowed;
 }
 
 .month-calendar-layout {
@@ -343,6 +359,7 @@ textarea.form-control::placeholder {
 }
 
 .month-day {
+    align-items: center;
     background: #ffffff;
     border: 0;
     border-bottom: 1px solid var(--border-color);
@@ -353,20 +370,46 @@ textarea.form-control::placeholder {
     justify-content: center;
     min-height: 0;
     padding: 8px 5px;
+    position: relative;
     text-align: center;
 }
 
+.month-day-appointment-badge {
+    align-items: center;
+    background: var(--primary-color);
+    border-radius: 999px;
+    bottom: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+    color: #fff;
+    display: inline-flex;
+    font-size: 0.58rem;
+    font-weight: 700;
+    height: 14px;
+    justify-content: center;
+    line-height: 1;
+    min-width: 14px;
+    padding: 0 4px;
+    position: absolute;
+    right: 8px;
+}
+
 .month-day span {
+    display: block;
     font-size: 1.05rem;
     font-weight: 700;
+    text-align: center;
+    width: 100%;
 }
 
 .month-day small {
     color: #66737d;
+    display: block;
     font-size: 0.72rem;
     line-height: 1.15;
     margin-top: 4px;
     min-height: 1.6em;
+    text-align: center;
+    width: 100%;
 }
 
 .month-day.available-day {
@@ -383,6 +426,12 @@ textarea.form-control::placeholder {
 .month-day.available-day:hover small,
 .month-day.available-day.selected small {
     color: #ffffff;
+}
+
+.month-day.available-day:hover .month-day-appointment-badge,
+.month-day.available-day.selected .month-day-appointment-badge {
+    background: #ffffff;
+    color: var(--primary-color);
 }
 
 .month-day.full-day,
@@ -411,6 +460,49 @@ textarea.form-control::placeholder {
 
 .month-day-panel {
     overflow-y: auto;
+}
+
+.month-day-panel-enter-right {
+    animation: monthPanelEnterRight 360ms ease-out both;
+}
+
+.month-day-panel-enter-left {
+    animation: monthPanelEnterLeft 360ms ease-out both;
+}
+
+.month-day-panel-fade {
+    animation: monthPanelFade 280ms ease-out both;
+}
+
+@keyframes monthPanelEnterRight {
+    from {
+        opacity: 0;
+        transform: translateX(18px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes monthPanelEnterLeft {
+    from {
+        opacity: 0;
+        transform: translateX(-18px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes monthPanelFade {
+    from {
+        opacity: 0.35;
+    }
+    to {
+        opacity: 1;
+    }
 }
 
 .month-day-panel-header {
@@ -1237,6 +1329,162 @@ textarea.form-control::placeholder {
     padding: 22px 0;
 }
 
+.public-footer-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 0;
+}
+
+.public-footer-links a {
+    color: #d7dee2;
+    text-decoration: none;
+}
+
+.public-footer-links a:hover {
+    color: #ffffff;
+    text-decoration: underline;
+}
+
+.public-footer-links a + a::before {
+    color: #8ea0aa;
+    content: "|";
+    display: inline-block;
+    margin: 0 8px;
+    text-decoration: none;
+}
+
+.legal-page-section {
+    background: #f7f9f8;
+}
+
+.legal-layout {
+    align-items: start;
+    display: grid;
+    gap: 28px;
+    grid-template-columns: 260px minmax(0, 1fr);
+}
+
+.legal-nav {
+    background: #ffffff;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    display: grid;
+    gap: 4px;
+    padding: 12px;
+    position: sticky;
+    top: 18px;
+}
+
+.legal-nav a {
+    border-radius: 6px;
+    color: #46505a;
+    font-weight: 600;
+    padding: 10px 12px;
+    text-decoration: none;
+}
+
+.legal-nav a:hover {
+    background: color-mix(in srgb, var(--primary-color) 10%, white);
+    color: var(--primary-color);
+}
+
+.legal-content {
+    display: grid;
+    gap: 18px;
+}
+
+.legal-card {
+    background: #ffffff;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 28px;
+    scroll-margin-top: 20px;
+}
+
+.legal-card h2 {
+    color: #263238;
+    font-size: 1.55rem;
+    font-weight: 700;
+    margin-bottom: 18px;
+}
+
+.legal-card h3 {
+    color: #263238;
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin: 22px 0 8px;
+}
+
+.legal-card p {
+    color: #46505a;
+    line-height: 1.75;
+    margin-bottom: 12px;
+}
+
+.legal-custom-html {
+    color: #46505a;
+    line-height: 1.75;
+}
+
+.legal-custom-html p {
+    margin-bottom: 12px;
+}
+
+.legal-custom-html ul,
+.legal-custom-html ol {
+    margin: 0 0 14px 1.2rem;
+    padding-left: 1rem;
+}
+
+.legal-custom-html li + li {
+    margin-top: 6px;
+}
+
+.legal-data-grid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-bottom: 18px;
+}
+
+.legal-data-grid div {
+    background: #f7f9f8;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 14px 16px;
+}
+
+.legal-data-grid strong {
+    color: #263238;
+    display: block;
+    font-size: 0.86rem;
+    margin-bottom: 4px;
+}
+
+.legal-data-grid span {
+    color: #46505a;
+}
+
+@media (max-width: 900px) {
+    .legal-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .legal-nav {
+        position: static;
+    }
+}
+
+@media (max-width: 640px) {
+    .legal-card {
+        padding: 22px;
+    }
+
+    .legal-data-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 .invite-qr-wrap {
     align-items: center;
     background: #f7f9f8;
@@ -1251,6 +1499,153 @@ textarea.form-control::placeholder {
 .invite-qr-wrap img,
 .invite-qr-wrap canvas {
     display: block;
+}
+
+.appointment-payment-card {
+    background: #f7f9f8;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 18px;
+}
+
+.appointment-payment-main {
+    align-items: flex-start;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+}
+
+.appointment-payment-main h6 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin: 2px 0;
+}
+
+.appointment-payment-status {
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    padding: 6px 10px;
+    white-space: nowrap;
+}
+
+.appointment-payment-status-paid {
+    background: #dff4e8;
+    color: #17633a;
+}
+
+.appointment-payment-status-pending {
+    background: #fff3cd;
+    color: #8a6100;
+}
+
+.appointment-payment-grid {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.appointment-payment-grid div {
+    background: #ffffff;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 10px 12px;
+}
+
+.appointment-payment-grid span {
+    color: #66737d;
+    display: block;
+    font-size: 0.78rem;
+    margin-bottom: 2px;
+}
+
+.appointment-payment-grid strong {
+    color: #263238;
+    font-size: 0.92rem;
+}
+
+.payment-state-card {
+    background: #ffffff;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    color: #39434d;
+    display: grid;
+    gap: 6px;
+    height: 100%;
+    padding: 16px;
+    text-align: left;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+    width: 100%;
+}
+
+.payment-state-card:hover,
+.payment-state-card.active {
+    border-color: var(--primary-color);
+    box-shadow: 0 8px 20px rgba(143, 127, 186, 0.16);
+    transform: translateY(-1px);
+}
+
+.payment-state-card strong {
+    font-size: 1rem;
+}
+
+.payment-state-card small {
+    color: #66737d;
+}
+
+.payment-state-icon {
+    align-items: center;
+    border-radius: 10px;
+    display: inline-flex;
+    height: 34px;
+    justify-content: center;
+    width: 34px;
+}
+
+.payment-state-pending {
+    background: #fff3cd;
+    color: #8a6100;
+}
+
+.payment-state-paid {
+    background: #dff4e8;
+    color: #17633a;
+}
+
+.bonus-remaining-input {
+    max-width: 86px;
+}
+
+.bonus-remaining-control {
+    align-items: center;
+    display: inline-flex;
+}
+
+.bonus-remaining-control .bonus-remaining-input {
+    border-bottom-right-radius: 0;
+    border-top-right-radius: 0;
+    width: 74px;
+}
+
+.bonus-remaining-control .btn {
+    border-bottom-left-radius: 0;
+    border-left: 0;
+    border-top-left-radius: 0;
+    height: 31px;
+    width: 34px;
+}
+
+.bonus-row-actions {
+    display: inline-flex;
+    gap: 6px;
+}
+
+.bonus-row-actions .btn {
+    align-items: center;
+    display: inline-flex;
+    height: 32px;
+    justify-content: center;
+    width: 34px;
 }
 
 .stats-summary-grid {
@@ -1407,6 +1802,158 @@ textarea.form-control::placeholder {
     color: #66737d;
     display: inline-flex;
     justify-content: center;
+}
+
+.upcoming-planning-table-wrap {
+    max-height: 58vh;
+    overflow: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.upcoming-planning-table {
+    margin: 0;
+    min-width: 860px;
+    table-layout: fixed;
+}
+
+.upcoming-planning-table thead th {
+    background: #ffffff;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--primary-color);
+    position: sticky;
+    text-align: center;
+    top: 0;
+    z-index: 2;
+}
+
+.upcoming-planning-table thead th span,
+.upcoming-planning-table thead th strong {
+    display: block;
+}
+
+.upcoming-planning-table thead th span {
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.upcoming-planning-table thead th strong {
+    color: #263238;
+    font-size: 0.92rem;
+}
+
+.planning-hour-head,
+.planning-hour {
+    left: 0;
+    min-width: 72px;
+    position: sticky;
+    width: 72px;
+    z-index: 3;
+}
+
+.planning-hour {
+    background: #ffffff;
+    color: #66737d;
+    font-size: 0.86rem;
+    font-weight: 700;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.upcoming-planning-table td.planning-cell {
+    border: 1px solid #e2e7ea;
+    font-size: 0.78rem;
+    height: 52px;
+    padding: 5px 6px;
+    text-align: center;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.upcoming-planning-table td.planning-cell-free {
+    background: #e9f7ef;
+    color: #17633a;
+}
+
+.upcoming-planning-table td.planning-cell-booked {
+    background: color-mix(in srgb, var(--primary-color) 18%, white);
+    color: #263238;
+    text-align: left;
+    white-space: normal;
+}
+
+.upcoming-planning-table td.planning-cell-booked-continuation {
+    background: color-mix(in srgb, var(--primary-color) 10%, white);
+}
+
+.upcoming-planning-table td.planning-cell-break {
+    background: #f3f4f6;
+    color: #66737d;
+}
+
+.upcoming-planning-table td.planning-cell-closed {
+    background: #fde8e8;
+    color: #9f2a2a;
+}
+
+.upcoming-planning-table td.planning-cell-unavailable {
+    background: #f6f7f8;
+    color: #9aa4ad;
+}
+
+.planning-appointment {
+    display: grid;
+    gap: 2px;
+    line-height: 1.18;
+}
+
+.planning-appointment strong {
+    font-size: 0.82rem;
+}
+
+.planning-appointment span,
+.planning-appointment small {
+    color: #4f5c66;
+    font-size: 0.7rem;
+}
+
+.upcoming-planning-legend {
+    color: #66737d;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    font-size: 0.82rem;
+}
+
+.upcoming-planning-legend span {
+    align-items: center;
+    display: inline-flex;
+    gap: 6px;
+}
+
+.upcoming-planning-legend i {
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    display: inline-block;
+    height: 12px;
+    width: 12px;
+}
+
+.legend-free {
+    background: #e9f7ef;
+}
+
+.legend-booked {
+    background: color-mix(in srgb, var(--primary-color) 18%, white);
+}
+
+.legend-break,
+.legend-unavailable {
+    background: #f3f4f6;
+}
+
+.legend-closed {
+    background: #fde8e8;
 }
 
 .table-avatar {
@@ -1580,6 +2127,18 @@ body.patients-secondary-modal-open #adminPatientsModal .modal-content {
     filter: grayscale(0.2);
     opacity: 0.42;
     transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
+body.appointment-payment-secondary-modal-open #upcomingAppointmentsModal .modal-content,
+body.appointment-payment-secondary-modal-open #patientEditorModal .modal-content,
+body.appointment-payment-secondary-modal-open #bonusesModal .modal-content {
+    filter: grayscale(0.2);
+    opacity: 0.42;
+    transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
+#appointmentPaymentModal {
+    z-index: 1075;
 }
 
 @media (max-width: 768px) {

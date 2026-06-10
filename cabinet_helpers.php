@@ -84,6 +84,7 @@ function ensure_cabinet_schema($mysqli)
             instagram_url VARCHAR(255) DEFAULT NULL,
             facebook_url VARCHAR(255) DEFAULT NULL,
             tiktok_url VARCHAR(255) DEFAULT NULL,
+            appointment_summary_email_mode VARCHAR(32) NOT NULL DEFAULT 'on_booking',
             is_active TINYINT(1) NOT NULL DEFAULT 1,
             sort_order INT NOT NULL DEFAULT 0,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -103,6 +104,7 @@ function ensure_cabinet_schema($mysqli)
     cabinet_add_column_if_missing($mysqli, 'professionals', 'instagram_url', "VARCHAR(255) DEFAULT NULL AFTER public_phone");
     cabinet_add_column_if_missing($mysqli, 'professionals', 'facebook_url', "VARCHAR(255) DEFAULT NULL AFTER instagram_url");
     cabinet_add_column_if_missing($mysqli, 'professionals', 'tiktok_url', "VARCHAR(255) DEFAULT NULL AFTER facebook_url");
+    cabinet_add_column_if_missing($mysqli, 'professionals', 'appointment_summary_email_mode', "VARCHAR(32) NOT NULL DEFAULT 'on_booking' AFTER tiktok_url");
 
     $mysqli->query("
         CREATE TABLE IF NOT EXISTS patient_professionals (
@@ -615,7 +617,7 @@ function cabinet_fetch_professional($mysqli, $professional_id)
     $stmt = $mysqli->prepare("
         SELECT p.id, p.user_id, p.display_name, p.professional_title, p.license_number,
                p.professional_specialty, p.public_bio, p.public_photo_path, p.public_email, p.public_phone,
-               p.instagram_url, p.facebook_url, p.tiktok_url,
+               p.instagram_url, p.facebook_url, p.tiktok_url, p.appointment_summary_email_mode,
                u.email AS user_email, u.role AS user_role
         FROM professionals p
         LEFT JOIN users u ON u.id = p.user_id

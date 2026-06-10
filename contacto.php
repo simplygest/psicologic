@@ -101,6 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="robots" content="noindex, nofollow, noarchive">
     <title>Contacto - <?= contact_h($app_name) ?></title>
     <meta name="description" content="Envía una consulta a <?= contact_h($app_name) ?>.">
+    <?= favicon_link_tags($branding) ?>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css?v=<?= filemtime(__DIR__ . '/css/style.css') ?>">
@@ -190,7 +191,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <div class="form-check mt-3">
                                 <input class="form-check-input" type="checkbox" value="1" id="privacy-accept" name="privacy_accept" required>
                                 <label class="form-check-label" for="privacy-accept">
-                                    Acepto la <a href="politica-privacidad.php" target="_blank" rel="noopener">política de privacidad</a>
+                                    Acepto la <a href="legal.php#privacidad" target="_blank" rel="noopener">política de privacidad</a>
                                 </label>
                             </div>
                             <div class="text-end mt-4">
@@ -206,7 +207,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <footer class="public-footer">
         <div class="container d-flex flex-column flex-md-row justify-content-between gap-2">
             <span>&copy; <?= date('Y') ?> <?= contact_h($app_name) ?></span>
-            <span><?= contact_h($site_tagline ?: 'Consulta profesional') ?></span>
+            <span class="public-footer-links">
+                <a href="legal.php#privacidad">Política de privacidad</a>
+                <a href="legal.php#aviso-legal">Aviso legal</a>
+                <a href="legal.php#cookies">Política de cookies</a>
+                <a href="legal.php#condiciones">Términos y condiciones</a>
+            </span>
         </div>
     </footer>
 
