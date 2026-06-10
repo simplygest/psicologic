@@ -819,6 +819,7 @@ let CURRENT_PATIENT_HISTORY_ID = 0;
 let CURRENT_PATIENT_BONUSES_ID = 0;
 let CURRENT_PATIENT_BONUS_CATALOG = [];
 let CURRENT_PATIENT_BONUS_CAN_MANAGE = false;
+let CURRENT_APPOINTMENT_PAYMENT_DETAIL = null;
 
 function openModal(date, time, status, extraName = '', extraEmail = '', extraPhone = '') {
     $('#modalDate').val(date);
@@ -1064,6 +1065,10 @@ $(document).ready(function () {
 
     $('#btn-save-appointment-payment').on('click', function () {
         saveAppointmentPayment();
+    });
+
+    $('#btn-cancel-appointment-from-detail').on('click', function () {
+        cancelAppointmentFromPaymentDetail();
     });
 
     $('#appointmentPaymentModal').on('hidden.bs.modal', function () {
@@ -1727,7 +1732,7 @@ function cancelAppointment() {
         success: function (res) {
             if (res.success) {
                 appointmentModal.hide();
-                renderWeekInfo();
+                refreshAfterAppointmentPaymentUpdate();
                 setAppointmentActionLoading(false);
             } else {
                 alert(res.error);
@@ -3388,11 +3393,13 @@ function openAppointmentPaymentModal(appointmentId) {
     if (!appointmentPaymentModal || !appointmentId) {
         return;
     }
+    CURRENT_APPOINTMENT_PAYMENT_DETAIL = null;
     $('#appointment-payment-id').val(appointmentId);
     $('#appointment-payment-alert').addClass('d-none').text('');
     $('#appointment-payment-summary').html('<div class="text-center text-muted py-4">Cargando cita...</div>');
     $('#appointment-payment-editor').removeClass('d-none');
     $('#btn-save-appointment-payment').removeClass('d-none').prop('disabled', true);
+    $('#btn-cancel-appointment-from-detail').addClass('d-none').prop('disabled', true);
     $('body').toggleClass('appointment-payment-secondary-modal-open', $('.modal.show').not('#appointmentPaymentModal').length > 0);
     appointmentPaymentModal.show();
 
@@ -3407,11 +3414,13 @@ function openAppointmentPaymentModal(appointmentId) {
                 return;
             }
             const app = res.appointment || {};
+            CURRENT_APPOINTMENT_PAYMENT_DETAIL = app;
             $('#appointment-payment-summary').html(renderAppointmentPaymentSummary(app));
             setAppointmentPaymentSelection(app.payment_status, app.payment_method);
             const locked = app.is_bonus_payment == 1 || app.status === 'cancelled';
             $('#appointment-payment-editor').toggleClass('d-none', locked);
             $('#btn-save-appointment-payment').toggleClass('d-none', locked).prop('disabled', locked);
+            $('#btn-cancel-appointment-from-detail').toggleClass('d-none', app.status !== 'booked').prop('disabled', app.status !== 'booked');
             if (locked) {
                 showAppointmentPaymentAlert('warning', app.is_bonus_payment == 1
                     ? 'Esta cita fue pagada con bono y no es posible modificarlo desde aquí.'
@@ -3421,8 +3430,32 @@ function openAppointmentPaymentModal(appointmentId) {
         error: function () {
             showAppointmentPaymentAlert('danger', 'Error de conexión al cargar la cita.');
             $('#appointment-payment-editor').addClass('d-none');
+            $('#btn-cancel-appointment-from-detail').addClass('d-none').prop('disabled', true);
         }
     });
+}
+
+function cancelAppointmentFromPaymentDetail() {
+    const app = CURRENT_APPOINTMENT_PAYMENT_DETAIL || {};
+    if (!app.id || app.status !== 'booked') {
+        showAppointmentPaymentAlert('danger', 'No se ha podido identificar la cita para cancelarla.');
+        return;
+    }
+    const payload = encodeURIComponent(JSON.stringify({
+        id: app.id,
+        name: app.patient_name || '',
+        email: app.patient_email || '',
+        phone: app.patient_phone || '',
+        payment_status: app.payment_status || '',
+        payment_method: app.payment_method || '',
+        patient_bonus_id: app.patient_bonus_id || null
+    }));
+    const date = app.appointment_date || '';
+    const time = String(app.appointment_time || '').slice(0, 5);
+    appointmentPaymentModal.hide();
+    setTimeout(() => {
+        openModal(date, time, 'cancel_admin', payload);
+    }, 180);
 }
 
 function saveAppointmentPayment() {
@@ -3799,7 +3832,6 @@ function loadPaymentSettings() {
             $('#primary-color-text').val(primaryColor);
             document.documentElement.style.setProperty('--primary-color', primaryColor);
             $('#appointment-delivery-mode').val(settings.appointment_delivery_mode || 'both');
-            $('#app-brand').text(settings.app_name || 'PsicoLogic');
             document.title = `Dashboard - ${settings.app_name || 'PsicoLogic'}`;
             $('#show-profile-image-public').prop('checked', settings.show_profile_image_public == 1);
             $('#show-prices-public').prop('checked', settings.show_prices_public == 1);

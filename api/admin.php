@@ -1367,6 +1367,7 @@ if ($action === 'generate_invite') {
     $dashboard_photo = $branding['profile_image_path'] ?? '';
     $professional_id = admin_requested_professional_filter($mysqli);
     $appointment_filter = $professional_id > 0 ? " AND professional_id = " . (int) $professional_id : ($professional_id < 0 ? " AND 1 = 0" : "");
+    $appointment_filter_a = $professional_id > 0 ? " AND a.professional_id = " . (int) $professional_id : ($professional_id < 0 ? " AND 1 = 0" : "");
     $patient_join = "LEFT JOIN patient_professionals ppf ON ppf.patient_id = u.id AND ppf.is_primary = 1 LEFT JOIN patient_profiles pp ON pp.user_id = u.id";
     $patient_filter = $professional_id > 0 ? " AND COALESCE(ppf.professional_id, pp.professional_id) = " . (int) $professional_id : ($professional_id < 0 ? " AND 1 = 0" : "");
 
@@ -1460,7 +1461,7 @@ if ($action === 'generate_invite') {
           AND COALESCE(a.payment_status, 'pending') = 'paid'
           AND a.appointment_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
           AND a.appointment_date < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 1 MONTH)
-          $appointment_filter
+          $appointment_filter_a
         GROUP BY COALESCE(a.payment_method, 'manual')
     ");
     while ($row = $res->fetch_assoc()) {
@@ -1488,7 +1489,7 @@ if ($action === 'generate_invite') {
         FROM appointments a
         JOIN users u ON u.id = a.user_id
         WHERE a.status = 'booked'
-          $appointment_filter
+          $appointment_filter_a
         GROUP BY a.user_id, u.name, u.email
         ORDER BY sessions DESC, u.name ASC
         LIMIT 5

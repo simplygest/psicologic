@@ -16,7 +16,6 @@ if (!$is_admin && (int) ($branding['online_booking_enabled'] ?? 1) !== 1) {
 }
 $app_name = $branding['app_name'];
 $profile_image_path = $branding['profile_image_path'];
-$navbar_brand_text = $is_admin ? 'Panel de Control' : 'Gestiona tus citas';
 $navbar_image_path = $profile_image_path;
 $has_team_members = false;
 if (!$is_admin) {
@@ -43,7 +42,6 @@ if ($is_admin) {
   $team_count = $team_count_res ? (int) ($team_count_res->fetch_assoc()['total'] ?? 0) : 0;
   $has_team_members = $team_count > 1;
   if ($has_team_members && !$is_superadmin) {
-    $navbar_brand_text = 'Gesti&oacute;n de Reservas';
     $stmt = $mysqli->prepare("
       SELECT public_photo_path
       FROM professionals
@@ -85,11 +83,9 @@ if ($is_admin) {
         <?php else: ?>
           <img src="" alt="" class="brand-avatar d-none" id="app-brand-image">
         <?php endif; ?>
-        <span id="app-brand"><?= $navbar_brand_text ?></span>
+        <span id="app-brand" class="dashboard-user-greeting">Hola, <?= htmlspecialchars($_SESSION['name']) ?></span>
       </a>
       <div class="d-flex align-items-center gap-2">
-        <span class="dashboard-user-greeting" style="color: var(--text-color);">Hola,
-          <?= htmlspecialchars($_SESSION['name']) ?></span>
         <div class="dropdown">
           <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="dashboard-options-menu" data-bs-toggle="dropdown" aria-expanded="false">
             <i class="bi bi-three-dots-vertical"></i> Opciones
@@ -275,7 +271,7 @@ if ($is_admin) {
       <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title">Detalle de cita</h5>
+            <h5 class="modal-title">Detalle de la cita</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body">
@@ -315,8 +311,8 @@ if ($is_admin) {
             </div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
-            <button type="button" class="btn btn-primary" id="btn-save-appointment-payment">Guardar pago</button>
+            <button type="button" class="btn btn-outline-danger me-auto" id="btn-cancel-appointment-from-detail">Cancelar cita</button>
+            <button type="button" class="btn btn-primary" id="btn-save-appointment-payment">Guardar cambios</button>
           </div>
         </div>
       </div>
