@@ -73,11 +73,13 @@ function active_professionals_payload($mysqli)
     ");
     while ($row = $res->fetch_assoc()) {
         $display_photo_path = professional_photo_with_dashboard_fallback($row, $dashboard_photo);
+        $effective_settings = cabinet_get_effective_professional_settings($mysqli, (int) $row['id']);
         $rows[] = [
             'id' => (int) $row['id'],
             'display_name' => $row['display_name'],
             'public_photo_path' => $row['public_photo_path'] ?? '',
-            'display_photo_path' => $display_photo_path
+            'display_photo_path' => $display_photo_path,
+            'appointment_delivery_mode' => $effective_settings['appointment_delivery_mode'] ?? 'both'
         ];
     }
     return $rows;

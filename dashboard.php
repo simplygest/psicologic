@@ -214,10 +214,11 @@ if ($is_admin) {
 
           <?php if ($is_superadmin): ?>
             <div id="adminProfessionalSelect" class="mb-3 d-none text-start">
-              <label class="form-label" for="booking-professional">Profesional</label>
-              <select id="booking-professional" class="form-select">
+              <label class="form-label">Profesional</label>
+              <select id="booking-professional" class="form-select d-none">
                 <option value="">Selecciona un profesional...</option>
               </select>
+              <div id="booking-professional-cards" class="booking-professional-card-grid"></div>
               <div class="form-text" id="booking-patient-professional-note"></div>
             </div>
           <?php endif; ?>
@@ -238,6 +239,11 @@ if ($is_admin) {
               <option value="individual">Individual</option>
               <option value="couple">Pareja</option>
             </select>
+          </div>
+
+          <div id="bookingConsultationSelect" class="mb-3 d-none text-start">
+            <label class="form-label">Modalidad</label>
+            <div id="booking-consultation-cards" class="booking-consultation-card-grid"></div>
           </div>
 
           <div id="serviceOptionSelect" class="mb-3 d-none text-start">

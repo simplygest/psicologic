@@ -432,19 +432,25 @@ function notify_appointment_cancelled($mysqli, $appointment)
         : '';
     $payment_status = $appointment['payment_status'] ?? 'pending';
     $is_bonus_payment = ($appointment['payment_method'] ?? '') === 'bonus' && !empty($appointment['patient_bonus_id']);
+    $bonus_session_restored = !empty($appointment['bonus_session_restored']);
     $compensation_bonus_created = !empty($appointment['compensation_bonus_created']);
     $payment_text = appointment_cancel_payment_label($appointment);
     $paid_warning = $payment_status === 'paid'
         ? '<p><b>Atención:</b> esta cita constaba como pagada. Revisa si corresponde hacer devolución o contactar con el paciente.</p>'
         : '';
-    if ($is_bonus_payment) {
+    if ($is_bonus_payment && $bonus_session_restored) {
         $paid_warning = '<p>Esta cita fue reservada con bono. El paciente volver&aacute; a tener una cita disponible en su bono.</p>';
+    } elseif ($is_bonus_payment) {
+        $paid_warning = '<p>Esta cita fue reservada con bono.</p>';
     } elseif ($compensation_bonus_created) {
         $paid_warning = '<p>Se ha creado un vale de 1 sesi&oacute;n para el paciente. Podr&aacute; usarlo para reservar otra cita desde la web.</p>';
     }
     $patient_payment_note = $is_bonus_payment
         ? '<p><b>Estado del pago:</b> pagada con bono</p>'
         : '';
+    if ($is_bonus_payment && $bonus_session_restored) {
+        $patient_payment_note = '<p><b>Estado del pago:</b> pagada con bono. El bono vuelve a estar disponible para otra cita.</p>';
+    }
     if ($compensation_bonus_created) {
         $patient_payment_note = '<p><b>Compensaci&oacute;n:</b> hemos generado un vale de 1 sesi&oacute;n para que puedas reservar otra cita desde la web.</p>';
     }

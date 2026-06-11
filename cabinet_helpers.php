@@ -652,13 +652,15 @@ function cabinet_professional_display_payload($mysqli, $professional_id)
     if (!$photo && ($professional['user_role'] ?? '') === 'superadmin') {
         $photo = $dashboard_photo;
     }
+    $effective_settings = cabinet_get_effective_professional_settings($mysqli, (int) $professional['id']);
 
     return [
         'id' => (int) $professional['id'],
         'display_name' => $professional['display_name'] ?? '',
         'public_photo_path' => $professional['public_photo_path'] ?? '',
         'display_photo_path' => $photo ?: '',
-        'user_role' => $professional['user_role'] ?? ''
+        'user_role' => $professional['user_role'] ?? '',
+        'appointment_delivery_mode' => $effective_settings['appointment_delivery_mode'] ?? 'both'
     ];
 }
 

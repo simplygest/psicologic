@@ -1059,6 +1059,10 @@ if ($action === 'booking_context') {
     $date = $_POST['date'] ?? '';
     $time = $_POST['time'] ?? '';
     $is_superadmin = ($_SESSION['role'] ?? '') === 'superadmin';
+    $create_compensation_bonus = true;
+    if ($is_admin && isset($_POST['create_compensation_bonus'])) {
+        $create_compensation_bonus = $_POST['create_compensation_bonus'] === '1';
+    }
     $context_professional_id = appointment_context_professional_id($mysqli, $user_id, $is_admin);
 
     $lookup_sql = "
@@ -1130,9 +1134,10 @@ if ($action === 'booking_context') {
 
     if ($stmt->affected_rows > 0) {
         if (!empty($appointment_to_cancel['patient_bonus_id']) && ($appointment_to_cancel['payment_method'] ?? '') === 'bonus') {
-            restore_patient_bonus_session($mysqli, (int) $appointment_to_cancel['patient_bonus_id']);
+            $appointment_to_cancel['bonus_session_restored'] = restore_patient_bonus_session($mysqli, (int) $appointment_to_cancel['patient_bonus_id']) ? 1 : 0;
         }
         if (compensation_bonus_on_paid_cancel_enabled($mysqli)
+            && $create_compensation_bonus
             && ($appointment_to_cancel['payment_status'] ?? '') === 'paid'
             && in_array(($appointment_to_cancel['payment_method'] ?? ''), ['card', 'bizum'], true)
         ) {

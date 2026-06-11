@@ -304,7 +304,7 @@ function create_compensation_bonus_for_user($mysqli, $user_id, $payment_attempt_
 function restore_patient_bonus_session($mysqli, $patient_bonus_id)
 {
     if (!$patient_bonus_id) {
-        return;
+        return false;
     }
 
     ensure_bonus_tables($mysqli);
@@ -316,6 +316,8 @@ function restore_patient_bonus_session($mysqli, $patient_bonus_id)
     ");
     $stmt->bind_param("i", $patient_bonus_id);
     $stmt->execute();
+
+    return $stmt->affected_rows > 0;
 }
 
 function seed_default_appointment_services($mysqli)

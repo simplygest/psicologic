@@ -60,6 +60,7 @@ let CURRENT_PATIENT_PROFESSIONALS = [];
 let CURRENT_PATIENT_BOOKING_MODE = '';
 let CURRENT_SLOT_PROFESSIONALS = [];
 let CURRENT_SLOT_SELECTED_PROFESSIONAL_ID = 0;
+let CURRENT_BOOKING_CONSULTATION_TYPE = '';
 
 function getMonday(d) {
     d = new Date(d);
@@ -163,10 +164,82 @@ function setSlotBookingProfessional(professionalId) {
     }
     CURRENT_BOOKING_PROFESSIONAL_CONTEXT = professional;
     ACTIVE_SERVICE_OPTIONS = Array.isArray(professional.service_options) ? professional.service_options : [];
+    CURRENT_BOOKING_CONSULTATION_TYPE = '';
     renderSlotProfessionalCards();
     renderModalProfessionalContext();
     renderBookingServiceOptions();
     refreshBookingBonusNotice();
+}
+
+function professionalDeliveryPills(professional) {
+    const mode = professional && professional.appointment_delivery_mode ? professional.appointment_delivery_mode : 'both';
+    const pills = [];
+    if (mode === 'both' || mode === 'presencial') {
+        pills.push('<span class="professional-delivery-pill presencial">Presencial</span>');
+    }
+    if (mode === 'both' || mode === 'online') {
+        pills.push('<span class="professional-delivery-pill online">Online</span>');
+    }
+    return pills.length ? `<span class="professional-delivery-pills">${pills.join('')}</span>` : '';
+}
+
+function bookingConsultationTypesAvailable() {
+    const mode = PAYMENT_SETTINGS.appointment_delivery_mode || 'both';
+    const types = new Set();
+    ACTIVE_SERVICE_OPTIONS.forEach(option => {
+        if ((mode === 'both' || option.consultation_type === mode)
+            && selectedSlotCanFitDuration(option.duration_minutes)) {
+            types.add(option.consultation_type);
+        }
+    });
+    return types;
+}
+
+function ensureBookingConsultationType() {
+    const available = bookingConsultationTypesAvailable();
+    if (CURRENT_BOOKING_CONSULTATION_TYPE && available.has(CURRENT_BOOKING_CONSULTATION_TYPE)) {
+        return CURRENT_BOOKING_CONSULTATION_TYPE;
+    }
+    CURRENT_BOOKING_CONSULTATION_TYPE = available.has('presencial')
+        ? 'presencial'
+        : (available.has('online') ? 'online' : '');
+    return CURRENT_BOOKING_CONSULTATION_TYPE;
+}
+
+function renderBookingConsultationCards() {
+    const $wrap = $('#bookingConsultationSelect');
+    const $cards = $('#booking-consultation-cards');
+    if (!$wrap.length || !$cards.length || $('#modalStatus').val() !== 'available') {
+        $wrap.addClass('d-none');
+        $cards.empty();
+        return;
+    }
+
+    const available = bookingConsultationTypesAvailable();
+    const selected = ensureBookingConsultationType();
+    if (!available.size) {
+        $wrap.addClass('d-none');
+        $cards.empty();
+        return;
+    }
+
+    const options = [
+        { type: 'presencial', label: 'Presencial', icon: 'bi-person-check' },
+        { type: 'online', label: 'Online', icon: 'bi-camera-video' }
+    ];
+    $cards.html(options.map(option => {
+        const enabled = available.has(option.type);
+        const active = selected === option.type;
+        const disabledText = enabled ? '' : '<span class="booking-consultation-card-note">No disponible</span>';
+        return `
+            <button type="button" class="booking-consultation-card ${active ? 'is-selected' : ''} ${enabled ? '' : 'is-disabled'}" data-consultation-type="${option.type}" ${enabled ? '' : 'disabled'} aria-pressed="${active ? 'true' : 'false'}">
+                <i class="bi ${option.icon}"></i>
+                <span>${option.label}</span>
+                ${disabledText}
+            </button>
+        `;
+    }).join(''));
+    $wrap.removeClass('d-none');
 }
 
 function renderSlotProfessionalCards() {
@@ -187,7 +260,10 @@ function renderSlotProfessionalCards() {
         return `
             <button type="button" class="patient-professional-card ${selected ? 'is-selected' : ''}" data-professional-id="${id}" aria-pressed="${selected ? 'true' : 'false'}">
                 ${photo}
-                <span class="patient-professional-card-name">${name}</span>
+                <span class="patient-professional-card-body">
+                    <span class="patient-professional-card-name">${name}</span>
+                    ${professionalDeliveryPills(professional)}
+                </span>
             </button>
         `;
     }).join('');
@@ -269,7 +345,10 @@ function renderPatientProfessionalChoice(professionals, context, mode) {
         return `
             <button type="button" class="patient-professional-card ${selected ? 'is-selected' : ''}" data-professional-id="${id}" aria-pressed="${selected ? 'true' : 'false'}">
                 ${photo}
-                <span class="patient-professional-card-name">${name}</span>
+                <span class="patient-professional-card-body">
+                    <span class="patient-professional-card-name">${name}</span>
+                    ${professionalDeliveryPills(professional)}
+                </span>
             </button>
         `;
     }).join('');
@@ -832,6 +911,8 @@ function openModal(date, time, status, extraName = '', extraEmail = '', extraPho
     $('#payment-options').addClass('d-none');
     $('#consultationTypeSelect').addClass('d-none');
     $('#serviceTypeSelect').addClass('d-none');
+    $('#bookingConsultationSelect').addClass('d-none');
+    $('#booking-consultation-cards').empty();
     $('#serviceOptionSelect').addClass('d-none');
     $('#adminProfessionalSelect').addClass('d-none');
     $('#patientSlotProfessionalSelect').addClass('d-none').empty();
@@ -840,6 +921,7 @@ function openModal(date, time, status, extraName = '', extraEmail = '', extraPho
     $('#booking-bonus-notice').addClass('d-none').text('');
     currentPaymentAppointmentId = null;
     currentCancelAppointmentId = null;
+    CURRENT_BOOKING_CONSULTATION_TYPE = '';
     $('#btn-confirm-action').removeClass('d-none').prop('disabled', false);
 
     if (status === 'available') {
@@ -913,13 +995,35 @@ function cancelBonusNotice(data) {
     return '<div class="alert alert-success py-2 my-3 text-start small"><strong>Cita reservada con bono.</strong><br><span>Tras la cancelaci&oacute;n, volver&aacute;s a tener el bono disponible para otra reserva.</span></div>';
 }
 
+function canCreateCompensationBonusOnCancel(data) {
+    const settingEnabled = PAYMENT_SETTINGS.create_compensation_bonus_on_paid_cancel === undefined
+        ? true
+        : PAYMENT_SETTINGS.create_compensation_bonus_on_paid_cancel == 1;
+    return settingEnabled
+        && data
+        && data.payment_status === 'paid'
+        && ['card', 'bizum'].includes(data.payment_method || '');
+}
+
+function cancelCompensationNotice(data, status) {
+    if (!canCreateCompensationBonusOnCancel(data)) {
+        return '';
+    }
+
+    const checkbox = status === 'cancel_admin'
+        ? '<div class="form-check mt-2"><input class="form-check-input" type="checkbox" id="cancel-create-compensation-bonus" checked><label class="form-check-label" for="cancel-create-compensation-bonus">Crear bono para esta cancelaci&oacute;n</label></div>'
+        : '';
+
+    return '<div class="alert alert-info py-2 my-3 text-start small"><strong>Se crear&aacute; un bono canjeable para una nueva sesi&oacute;n.</strong>' + checkbox + '</div>';
+}
+
 function applyCancelPaymentNotice(status, payload) {
     if (!['cancel_admin', 'cancel_own'].includes(status)) {
         return;
     }
     const data = parseCancelPayload(payload);
     currentCancelAppointmentId = data.id || null;
-    const notice = cancelBonusNotice(data);
+    const notice = cancelBonusNotice(data) + cancelCompensationNotice(data, status);
     if (status === 'cancel_admin') {
         $('#modalDesc').html(`Paciente: <b>${escapeHtml(data.name || '')}</b><br><small>Email: ${escapeHtml(data.email || '')}<br>Tel: ${escapeHtml(data.phone || '')}</small>${notice}<br>&iquest;Confirmar cancelaci&oacute;n?`);
         return;
@@ -1226,9 +1330,21 @@ $(document).ready(function () {
 
     $('#booking-professional').change(function () {
         if (IS_SUPERADMIN) {
+            renderBookingProfessionalCards();
             loadBookingContextForProfessional($(this).val());
             updateBookingPatientProfessionalNote(bookingPatientById($('#patientSelect').val()));
         }
+    });
+
+    $('#booking-professional-cards').on('click', '.patient-professional-card', function () {
+        const professionalId = $(this).data('professional-id');
+        $('#booking-professional').val(String(professionalId)).trigger('change');
+    });
+
+    $('#booking-consultation-cards').on('click', '.booking-consultation-card:not(.is-disabled)', function () {
+        CURRENT_BOOKING_CONSULTATION_TYPE = $(this).data('consultation-type') || '';
+        renderBookingServiceOptions();
+        refreshBookingBonusNotice();
     });
 
     $('#service-option').change(function () {
@@ -1641,16 +1757,18 @@ function renderBookingServiceOptions() {
     const $select = $('#service-option');
     $select.empty();
     if (!selectedSlotIsAllowedForCurrentSettings()) {
+        renderBookingConsultationCards();
         $select.append('<option value="">Este profesional no tiene disponible este horario</option>');
         return;
     }
-    const mode = PAYMENT_SETTINGS.appointment_delivery_mode || 'both';
+    const selectedConsultation = ensureBookingConsultationType();
+    renderBookingConsultationCards();
     const visibleOptions = ACTIVE_SERVICE_OPTIONS.filter(option => {
-        return (mode === 'both' || option.consultation_type === mode)
+        return (!selectedConsultation || option.consultation_type === selectedConsultation)
             && selectedSlotCanFitDuration(option.duration_minutes);
     });
     visibleOptions.forEach(option => {
-        const label = `${option.service_name} · ${option.duration_minutes} min · ${consultationTypeLabel(option.consultation_type)} · ${formatPrice(option.price)} €`;
+        const label = `${option.service_name} · ${option.duration_minutes} min · ${formatPrice(option.price)} €`;
         $select.append(`<option value="${option.id}">${label}</option>`);
     });
     if (!visibleOptions.length) {
@@ -1732,14 +1850,20 @@ function setAvailableSessionDurations(value) {
 
 function cancelAppointment() {
     setAppointmentActionLoading(true);
+    const data = {
+        appointment_id: currentCancelAppointmentId || '',
+        date: $('#modalDate').val(),
+        time: $('#modalTime').val()
+    };
+    const $compensationCheckbox = $('#cancel-create-compensation-bonus');
+    if ($compensationCheckbox.length) {
+        data.create_compensation_bonus = $compensationCheckbox.is(':checked') ? '1' : '0';
+    }
+
     $.ajax({
         url: 'api/appointments.php?action=cancel',
         method: 'POST',
-        data: {
-            appointment_id: currentCancelAppointmentId || '',
-            date: $('#modalDate').val(),
-            time: $('#modalTime').val()
-        },
+        data: data,
         dataType: 'json',
         success: function (res) {
             if (res.success) {
@@ -2890,6 +3014,32 @@ function bookingProfessionalById(professionalId) {
     return CABINET_PROFESSIONALS.find(professional => String(professional.id) === String(professionalId)) || null;
 }
 
+function renderBookingProfessionalCards() {
+    const $container = $('#booking-professional-cards');
+    if (!$container.length) return;
+    const selected = String($('#booking-professional').val() || CURRENT_PROFESSIONAL_ID || '');
+    const cards = CABINET_PROFESSIONALS
+        .filter(professional => professional.is_active != 0)
+        .map(professional => {
+            const id = String(professional.id);
+            const name = escapeHtml(professional.display_name || 'Sin nombre');
+            const selectedClass = id === selected ? 'is-selected' : '';
+            const photo = professional.display_photo_path
+                ? `<img class="patient-professional-card-avatar" src="${escapeHtml(professional.display_photo_path)}" alt="${name}">`
+                : '<span class="patient-professional-card-avatar patient-professional-card-avatar-empty"><i class="bi bi-person"></i></span>';
+            return `
+                <button type="button" class="patient-professional-card ${selectedClass}" data-professional-id="${id}" aria-pressed="${id === selected ? 'true' : 'false'}">
+                    ${photo}
+                    <span class="patient-professional-card-body">
+                        <span class="patient-professional-card-name">${name}</span>
+                        ${professionalDeliveryPills(professional)}
+                    </span>
+                </button>
+            `;
+        }).join('');
+    $container.html(cards || '<div class="text-muted small">No hay profesionales activos.</div>');
+}
+
 function populateBookingProfessionalSelect(selectedProfessionalId = null) {
     const $select = $('#booking-professional');
     if (!$select.length) return;
@@ -2903,6 +3053,7 @@ function populateBookingProfessionalSelect(selectedProfessionalId = null) {
     if (selected && $select.find(`option[value="${selected}"]`).length) {
         $select.val(String(selected));
     }
+    renderBookingProfessionalCards();
 }
 
 function updateBookingPatientProfessionalNote(patient = null) {
@@ -2950,6 +3101,7 @@ function loadBookingContextForProfessional(professionalId) {
             if (res.success) {
                 PAYMENT_SETTINGS = res.payment_settings || PAYMENT_SETTINGS;
                 ACTIVE_SERVICE_OPTIONS = Array.isArray(res.service_options) ? res.service_options : [];
+                CURRENT_BOOKING_CONSULTATION_TYPE = '';
                 renderBookingServiceOptions();
                 refreshBookingBonusNotice();
             } else {

@@ -53,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $message = $cancelled ? 'Tu cita ha sido cancelada correctamente.' : 'No se pudo cancelar la cita.';
         if ($cancelled) {
             if (!empty($appointment['patient_bonus_id']) && ($appointment['payment_method'] ?? '') === 'bonus') {
-                restore_patient_bonus_session($mysqli, (int) $appointment['patient_bonus_id']);
+                $appointment['bonus_session_restored'] = restore_patient_bonus_session($mysqli, (int) $appointment['patient_bonus_id']) ? 1 : 0;
             }
             if (compensation_bonus_on_paid_cancel_enabled($mysqli)
                 && ($appointment['payment_status'] ?? '') === 'paid'
@@ -84,6 +84,12 @@ if ($settings_res->num_rows > 0) {
         $payment_settings = $settings;
     }
 }
+
+$will_create_compensation_bonus = $appointment
+    && $appointment['status'] === 'booked'
+    && compensation_bonus_on_paid_cancel_enabled($mysqli)
+    && ($appointment['payment_status'] ?? '') === 'paid'
+    && in_array(($appointment['payment_method'] ?? ''), ['card', 'bizum'], true);
 
 function payment_status_label($appointment)
 {
@@ -167,6 +173,12 @@ function current_appointment_price($settings, $appointment)
                                         <button class="btn btn-success" type="button" id="btn-pay-card">Pagar con tarjeta</button>
                                         <button class="btn btn-success" type="button" id="btn-pay-bizum">Pagar con Bizum</button>
                                     </div>
+                                </div>
+                            <?php endif; ?>
+
+                            <?php if ($will_create_compensation_bonus): ?>
+                                <div class="alert alert-info small">
+                                    <strong>Se crear&aacute; un bono canjeable para una nueva sesi&oacute;n.</strong>
                                 </div>
                             <?php endif; ?>
 

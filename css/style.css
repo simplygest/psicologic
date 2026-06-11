@@ -2035,7 +2035,6 @@ body:not(.is-admin) .slot.booked {
     border-radius: 8px;
     color: #263238;
     display: flex;
-    gap: 10px;
     min-height: 64px;
     padding: 10px 12px;
     text-align: left;
@@ -2058,6 +2057,7 @@ body:not(.is-admin) .slot.booked {
     border-radius: 50%;
     flex: 0 0 auto;
     height: 42px;
+    margin-right: 10px;
     object-fit: cover;
     width: 42px;
 }
@@ -2076,6 +2076,40 @@ body:not(.is-admin) .slot.booked {
     line-height: 1.2;
 }
 
+.patient-professional-card-body {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.patient-professional-card-name {
+    margin-bottom: 5px;
+}
+
+.professional-delivery-pills {
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.professional-delivery-pill {
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1;
+    margin: 0 4px 4px 0;
+    padding: 4px 7px;
+}
+
+.professional-delivery-pill.presencial {
+    background: #d7f2e7;
+    color: #0f6b4a;
+}
+
+.professional-delivery-pill.online {
+    background: #e7edff;
+    color: #3451a4;
+}
+
 .slot-professional-card-grid {
     display: grid;
     gap: 8px;
@@ -2084,6 +2118,87 @@ body:not(.is-admin) .slot.booked {
 
 .slot-professional-card-grid .patient-professional-card {
     min-height: 58px;
+}
+
+.booking-professional-card-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin: 0 -4px;
+}
+
+.booking-professional-card-grid .patient-professional-card {
+    margin: 0 4px 8px;
+    min-height: 62px;
+}
+
+.booking-consultation-card-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin: 0 -4px;
+}
+
+.booking-consultation-card {
+    align-items: center;
+    background: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: #263238;
+    display: flex;
+    min-height: 58px;
+    margin: 0 4px 8px;
+    padding: 10px 12px;
+    text-align: left;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease, opacity 0.15s ease;
+    width: calc(100% - 8px);
+}
+
+.booking-consultation-card i {
+    color: var(--primary-color);
+    font-size: 1.15rem;
+    margin-right: 10px;
+}
+
+.booking-consultation-card span:not(.booking-consultation-card-note) {
+    font-weight: 700;
+}
+
+.booking-consultation-card-note {
+    color: #8b98a5;
+    font-size: 0.78rem;
+    margin-left: auto;
+}
+
+.booking-consultation-card:hover {
+    border-color: rgba(142, 123, 186, 0.55);
+    box-shadow: 0 6px 18px rgba(31, 41, 55, 0.08);
+}
+
+.booking-consultation-card.is-selected {
+    background: #f7f5fb;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(142, 123, 186, 0.14);
+}
+
+.booking-consultation-card.is-disabled {
+    background: #f3f5f7;
+    border-color: #dde3e8;
+    color: #93a0aa;
+    cursor: not-allowed;
+    opacity: 0.72;
+}
+
+.booking-consultation-card.is-disabled i {
+    color: #a7b1ba;
+}
+
+@media (max-width: 767.98px) {
+    .booking-professional-card-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .booking-consultation-card-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .booking-professional-context-modal {
