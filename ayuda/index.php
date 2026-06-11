@@ -131,6 +131,10 @@ $app_name = $branding['app_name'] ?: 'PsicoLogic';
                     <img src="assets/modal-estadisticas.png" alt="Modal de estadísticas">
                     <figcaption>Estadísticas resume actividad de citas, pacientes y bonos en un vistazo rápido.</figcaption>
                 </figure>
+                <p>
+                    En <strong>Estadísticas</strong> también puedes revisar ingresos del mes por forma de pago,
+                    citas pendientes de cobro y un resumen por profesional cuando se trabaja en modo gabinete.
+                </p>
             </article>
 
             <article class="help-section" id="calendario">
@@ -153,6 +157,7 @@ $app_name = $branding['app_name'] ?: 'PsicoLogic';
                     <li>Las citas reservadas muestran paciente, modalidad, servicio y estado de pago.</li>
                     <li>Las sesiones de 90 o 120 minutos bloquean también los huecos posteriores necesarios.</li>
                     <li>Los días cerrados o de descanso no permiten nuevas reservas.</li>
+                    <li>En la vista mensual, los profesionales ven un pequeño indicador con el número de citas ya reservadas en cada día.</li>
                 </ul>
             </article>
 
@@ -233,8 +238,13 @@ $app_name = $branding['app_name'] ?: 'PsicoLogic';
                     <li>Si el paciente no tiene acceso, el bot&oacute;n de invitaci&oacute;n abre el modal con enlace, QR y env&iacute;o por email, pero vinculado a su ficha.</li>
                     <li>Cuando el paciente usa esa invitaci&oacute;n, completa su cuenta sin duplicar la ficha creada por el profesional.</li>
                     <li>La ficha del paciente incluye un historial de citas con fecha, profesional, servicio, modalidad, pago y estado.</li>
+                    <li>La ficha también incluye una pestaña de bonos para consultar compras, usos y sesiones restantes del paciente.</li>
+                    <li>El superadmin puede crear un bono manual para un paciente o ajustar sus sesiones restantes si hace falta corregir una incidencia.</li>
                     <li>El paciente puede actualizar sus propios datos básicos desde <strong>Mis datos</strong>: email, teléfono y foto de perfil.</li>
                 </ul>
+                <p>
+                    Puedes abrir la ficha de un paciente desde el botón de editar o haciendo clic directamente sobre su fila en el listado.
+                </p>
                 <div class="help-note">
                     En invitaciones vinculadas, si el paciente ya tiene email en su ficha, el campo de env&iacute;o se rellena autom&aacute;ticamente.
                     En invitaciones generales se mantiene vac&iacute;o para evitar reutilizar una direcci&oacute;n anterior por error.
@@ -300,6 +310,11 @@ $app_name = $branding['app_name'] ?: 'PsicoLogic';
                     <li>Las citas pagadas con bono se muestran como <strong>Pagada con bono</strong> y no se modifican manualmente desde ese modal.</li>
                     <li>Al marcar una cita como pagada se puede elegir la forma de pago: efectivo, transferencia, tarjeta, Bizum u otro método.</li>
                 </ul>
+                <p>
+                    El modal <strong>Detalle de la cita</strong> puede abrirse desde una cita ocupada de la agenda,
+                    desde <strong>Próximas citas</strong> o desde el historial del paciente. Desde ahí se puede revisar
+                    la información de la cita, guardar cambios de pago o iniciar la cancelación cuando el usuario tenga permiso.
+                </p>
             </article>
 
             <article class="help-section" id="equipo">

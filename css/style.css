@@ -874,6 +874,18 @@ body:not(.is-admin) .slot.booked {
     color: var(--primary-color);
 }
 
+.public-navbar .navbar-brand {
+    min-width: 0;
+    max-width: calc(100% - 58px);
+}
+
+.public-navbar .navbar-brand span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* Admin help */
 .help-page {
     background: #f6f7fb;
@@ -1744,6 +1756,14 @@ body:not(.is-admin) .slot.booked {
     color: #263238;
 }
 
+.admin-patient-row {
+    cursor: pointer;
+}
+
+.admin-patient-row:hover td {
+    background: #f8f9fa;
+}
+
 .admin-patients-table-wrap,
 .admin-bonuses-table-wrap,
 .upcoming-appointments-table-wrap,
@@ -2140,6 +2160,40 @@ body.appointment-payment-secondary-modal-open #bonusesModal .modal-content {
 }
 
 @media (max-width: 768px) {
+    .public-navbar .container {
+        flex-wrap: wrap;
+    }
+
+    .public-navbar .navbar-collapse {
+        flex-basis: 100%;
+        width: 100%;
+    }
+
+    .public-navbar .navbar-nav {
+        align-items: stretch !important;
+        padding-top: 12px;
+        text-align: center;
+    }
+
+    .public-navbar .navbar-nav .btn {
+        margin-top: 8px;
+        width: 100%;
+    }
+
+    .stats-professional-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .stats-professional-card {
+        align-items: center;
+        flex-direction: row;
+    }
+
+    .stats-professional-numbers {
+        min-width: 92px;
+        text-align: right;
+    }
+
     .calendar-grid {
         grid-template-columns: 1fr;
     }

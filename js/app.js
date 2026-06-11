@@ -409,7 +409,7 @@ function drawMonthCalendar(monthStr, appointmentsMap, closedDays) {
         const status = monthDayStatus(dateStr, appointmentsMap, closedDays, inMonth);
         const selected = selectedMonthDay === dateStr ? ' selected' : '';
         const clickable = inMonth ? `onclick="selectMonthDay('${dateStr}')"` : '';
-        const subtitle = status.available ? '' : status.label;
+        const subtitle = status.available ? '' : compactMonthDayLabel(status.label);
         const appointmentCount = monthDayAppointmentCount(appointmentsMap[dateStr]);
         const appointmentBadge = IS_ADMIN && appointmentCount > 0
             ? `<b class="month-day-appointment-badge" title="${appointmentCount} ${appointmentCount === 1 ? 'cita' : 'citas'}">${appointmentCount}</b>`
@@ -447,6 +447,10 @@ function monthDayAppointmentCount(dayApps) {
         }
     });
     return ids.size;
+}
+
+function compactMonthDayLabel(label) {
+    return label === 'No disponible' ? 'No disp.' : label;
 }
 
 function monthDayStatus(dateStr, appointmentsMap, closedDays, inMonth = true) {
@@ -1096,6 +1100,14 @@ $(document).ready(function () {
     });
 
     $('#admin-patients-body').on('click', '.btn-edit-patient', function () {
+        const patient = ADMIN_PATIENTS.find(item => String(item.id) === String($(this).data('patient-id')));
+        openPatientEditorModal(patient || null);
+    });
+
+    $('#admin-patients-body').on('click', 'tr.admin-patient-row', function (event) {
+        if ($(event.target).closest('button, a, input, select, textarea').length) {
+            return;
+        }
         const patient = ADMIN_PATIENTS.find(item => String(item.id) === String($(this).data('patient-id')));
         openPatientEditorModal(patient || null);
     });
@@ -2406,7 +2418,7 @@ function renderAdminPatients(patients) {
             : '<span class="text-muted">Sin archivo</span>';
 
         return `
-            <tr>
+            <tr class="admin-patient-row" data-patient-id="${patient.id}">
                 <td>
                     <div class="d-flex align-items-center gap-2">
                         ${photo}
