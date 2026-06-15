@@ -119,7 +119,7 @@ function public_consultation_label($type)
                         </thead>
                         <tbody>
                             <?php foreach ($services as $service): ?>
-                                <?php if ($service['service_key'] === 'couple' && !in_array('couple', $public_service_types, true)) continue; ?>
+                                <?php if (!in_array($service['service_key'], $public_service_types, true)) continue; ?>
                                 <?php foreach ($service['options'] as $option): ?>
                                     <?php if (!in_array((int) $option['duration_minutes'], $public_durations, true) || ($public_delivery_mode !== 'both' && $option['consultation_type'] !== $public_delivery_mode)) continue; ?>
                                     <?php $visible_prices++; ?>

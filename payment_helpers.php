@@ -12,7 +12,9 @@ function ensure_appointment_payment_columns($mysqli)
         'google_calendar_event_id' => "ALTER TABLE appointments ADD google_calendar_event_id VARCHAR(255) DEFAULT NULL",
         'icloud_calendar_event_url' => "ALTER TABLE appointments ADD icloud_calendar_event_url VARCHAR(512) DEFAULT NULL",
         'cancel_token' => "ALTER TABLE appointments ADD cancel_token VARCHAR(64) DEFAULT NULL",
+        'cancelled_at' => "ALTER TABLE appointments ADD cancelled_at DATETIME DEFAULT NULL",
         'reminder_sent_at' => "ALTER TABLE appointments ADD reminder_sent_at DATETIME DEFAULT NULL",
+        'online_session_url' => "ALTER TABLE appointments ADD online_session_url VARCHAR(500) DEFAULT NULL",
         'consultation_type' => "ALTER TABLE appointments ADD consultation_type VARCHAR(16) NOT NULL DEFAULT 'presencial'",
         'service_type' => "ALTER TABLE appointments ADD service_type VARCHAR(16) NOT NULL DEFAULT 'individual'",
         'service_option_id' => "ALTER TABLE appointments ADD service_option_id INT UNSIGNED DEFAULT NULL",
@@ -359,10 +361,12 @@ function seed_default_appointment_services($mysqli)
         }
     }
 
-    $legacy_couple_enabled = strpos((string) $settings['available_session_types'], 'couple') !== false;
+    $active_service_types = array_filter(array_map('trim', explode(',', (string) ($settings['available_session_types'] ?? 'individual'))));
     $services = [
         'individual' => ['name' => 'Sesión individual', 'active' => 1, 'sort' => 10],
-        'couple' => ['name' => 'Sesión de pareja', 'active' => $legacy_couple_enabled ? 1 : 0, 'sort' => 20]
+        'couple' => ['name' => 'Sesión de pareja', 'active' => in_array('couple', $active_service_types, true) ? 1 : 0, 'sort' => 20],
+        'family' => ['name' => 'Sesión familiar', 'active' => in_array('family', $active_service_types, true) ? 1 : 0, 'sort' => 30],
+        'group' => ['name' => 'Sesión grupal', 'active' => in_array('group', $active_service_types, true) ? 1 : 0, 'sort' => 40]
     ];
 
     foreach ($services as $key => $service) {
@@ -376,7 +380,7 @@ function seed_default_appointment_services($mysqli)
     }
 
     $service_ids = [];
-    $res = $mysqli->query("SELECT id, service_key FROM appointment_services WHERE service_key IN ('individual', 'couple')");
+    $res = $mysqli->query("SELECT id, service_key FROM appointment_services WHERE service_key IN ('individual', 'couple', 'family', 'group')");
     while ($row = $res->fetch_assoc()) {
         $service_ids[$row['service_key']] = (int) $row['id'];
     }
@@ -390,7 +394,7 @@ function seed_default_appointment_services($mysqli)
             foreach ($modalities as $consultation_type) {
                 $base_price = appointment_default_option_price($settings, $key, $consultation_type, $duration);
                 $is_active = $duration === 60 ? 1 : 0;
-                if ($key === 'couple' && !$legacy_couple_enabled) {
+                if ($key !== 'individual' && !in_array($key, $active_service_types, true)) {
                     $is_active = 0;
                 }
                 if ($mode === 'presencial' && $consultation_type === 'online') {
@@ -414,12 +418,13 @@ function seed_default_appointment_services($mysqli)
 
 function appointment_default_option_price($settings, $service_key, $consultation_type, $duration)
 {
-    $base = appointment_price_for_type($settings, $consultation_type, $service_key === 'couple' ? 'couple' : 'individual');
+    $is_multi_person = in_array($service_key, ['couple', 'family', 'group'], true);
+    $base = appointment_price_for_type($settings, $consultation_type, $is_multi_person ? 'couple' : 'individual');
     if ((int) $duration === 90) {
-        return $service_key === 'couple' ? max($base, 120.00) : max($base, 90.00);
+        return $is_multi_person ? max($base, 120.00) : max($base, 90.00);
     }
     if ((int) $duration === 120) {
-        return $service_key === 'couple' ? max($base, 150.00) : max($base, 120.00);
+        return $is_multi_person ? max($base, 150.00) : max($base, 120.00);
     }
     return $base;
 }
@@ -588,7 +593,7 @@ function ensure_payment_settings_price_columns($mysqli)
 function appointment_price_for_type($settings, $consultation_type, $service_type = 'individual')
 {
     $default_price = isset($settings['appointment_price']) ? (float) $settings['appointment_price'] : 70.00;
-    if ($service_type === 'couple') {
+    if (in_array($service_type, ['couple', 'family', 'group'], true)) {
         if ($consultation_type === 'online') {
             return isset($settings['online_couple_appointment_price']) ? (float) $settings['online_couple_appointment_price'] : (isset($settings['couple_appointment_price']) ? (float) $settings['couple_appointment_price'] : 90.00);
         }
@@ -605,7 +610,13 @@ function appointment_price_for_type($settings, $consultation_type, $service_type
 
 function appointment_service_label($service_type)
 {
-    return $service_type === 'couple' ? 'Pareja' : 'Individual';
+    $labels = [
+        'individual' => 'Individual',
+        'couple' => 'Pareja',
+        'family' => 'Familiar',
+        'group' => 'Grupo'
+    ];
+    return $labels[$service_type] ?? ucfirst((string) $service_type);
 }
 
 function format_appointment_price($price)

@@ -1,6 +1,6 @@
 # Notas Codex - PsicoLogic
 
-Ultima revision: 2026-06-03
+Ultima revision: 2026-06-15
 
 Este archivo sirve como historial compartido entre PCs para retomar el trabajo con Codex sin depender del chat local.
 
@@ -76,6 +76,7 @@ La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`.
 
 ## Cambios/novedades recientes detectadas
 
+- Opcion global en Configuracion > General > Duraciones para mostrar una duracion efectiva al paciente/profesional restando un offset visual (por defecto 5 min) sin cambiar la duracion real del slot.
 - Se anadio `cron_reminders.php`.
 - Se anadio `fastcron_helpers.php`.
 - Se amplio `config.php` con `CRON_WEBHOOK_TOKEN`, `FASTCRON_API_KEY` y zona horaria `Atlantic/Canary`.
@@ -283,6 +284,101 @@ git config --global --add safe.directory C:/Sete/psicologic
   - Las consultas se envian al email del sistema con asunto `Solicitud de informacion`, usando el email del paciente como reply-to.
   - `index.php`, `precios.php` y `equipo.php` muestran enlace a Contacto solo si `show_contact_public` esta activo.
 
+## Cambios del 2026-06-12
+
+- Las cancelaciones ya no eliminan citas: `api/appointments.php` y `cancelar_cita.php` marcan `appointments.status = cancelled` y guardan `cancelled_at`.
+- `payment_helpers.php`, `api/admin.php`, `api/auth.php` e `install/index.php` automigran los campos nuevos necesarios.
+- El modal `Proximas citas` incorpora pestana `Canceladas`, visible con permisos por rol:
+  - Superadmin puede ver todas o filtrar por profesional.
+  - Admin/profesional ve solo sus citas.
+- El boton `Estadisticas` pasa a llamarse `Informes`.
+- El modal de informes conserva la pestana de estadisticas y anade una pestana `Informes` con:
+  - Pacientes sin proxima cita.
+  - Cancelaciones recientes.
+  - Citas pendientes de registrar pago.
+- La ficha de paciente se amplia con pestana `Mas datos`:
+  - Estado del paciente: activo, en pausa, alta, inactivo.
+  - Fecha de nacimiento con calculo automatico de edad.
+  - Fuente/derivacion.
+  - Contacto de emergencia/tutor, telefono y relacion.
+  - Motivo inicial de consulta.
+- `patient_type` se mantiene como texto libre introducido por el profesional. No debe confundirse con el servicio de cita.
+- Desde la ficha de paciente se puede abrir un informe imprimible del paciente con datos generales, citas, evolucion, tareas/plan de trabajo, bonos y archivos relacionados.
+- La ficha de paciente tiene dos informes:
+  - `Informe interno`, completo, pensado para uso profesional o traspaso de paciente.
+  - `Informe paciente`, compartible, con fecha de alta, resumen de citas y tareas completadas/pendientes sin notas internas ni datos privados innecesarios.
+- El superadmin puede asignar o traspasar pacientes desde la ficha si `allow_patient_transfer` esta activo.
+  - La asignacion actual del paciente queda separada del profesional historico de cada cita.
+  - Al traspasar, solo se mueven las citas futuras reservadas; las citas pasadas mantienen el profesional que las atendio.
+- Se preparan tablas de seguimiento clinico/operativo:
+  - `patient_evolution_notes`
+  - `patient_evolution_files`
+  - `patient_work_plan_tasks`
+  - `work_plan_task_templates`
+  - `work_plan_task_template_items`
+- Los documentos de pacientes y archivos de evolucion se guardan en ruta protegida `_protected/uploads/psicologic/...`.
+- El catalogo cerrado de servicios de cita queda en:
+  - Individual.
+  - Pareja.
+  - Familiar.
+  - Grupo.
+- Familiar y grupo se crean desactivados por defecto y se activan desde configuracion de servicios.
+- La reserva, precios publicos y tabla de precios respetan los servicios activos.
+- Los bonos siguen aplicando solo a sesiones individuales.
+- Encima de la agenda del profesional se anade resumen rapido de citas:
+  - `Cita en curso` si la hora actual cae dentro de una cita reservada.
+  - `Siguiente cita` si ya hay cita en curso.
+  - `Proxima cita` si no hay cita en curso.
+  - Cada card incluye paciente, contacto, horario inicio-fin, servicio, modalidad, pago y boton `Abrir`.
+  - El boton abre el detalle existente de la cita.
+  - Al crear, cancelar o actualizar citas/pagos se refresca la agenda y tambien este resumen rapido.
+- Nuevo endpoint admin `api/admin.php?action=quick_appointments` para calcular cita en curso y siguiente cita usando la duracion real.
+- El resumen rapido de citas siempre muestra solo las citas del profesional vinculado al usuario conectado, tambien para superadmin.
+- En los cards de resumen rapido se elimina el nombre del profesional y se alinean modalidad y estado de pago como badges en la esquina inferior derecha.
+- Las citas online pueden guardar `online_session_url` en `appointments`.
+  - El campo se gestiona desde la pestana `Sesion` / `Preparar esta sesion` del detalle de la cita.
+  - Desde esa misma pestana se puede cambiar rapidamente una cita entre presencial y online.
+  - El cambio de modalidad aparece como boton rapido en el card de modalidad de la pestana `Detalle` y en un card compacto de `Sesion`.
+  - El boton `Cambiar a online` solo se muestra si el profesional de esa cita admite sesiones online.
+  - El enlace se puede enviar manualmente al paciente por email con el boton `Enviar al paciente`.
+  - El recordatorio automatico de cita incluye el enlace si la cita es online y ya lo tiene guardado.
+  - El planning enviado al profesional muestra enlace de videollamada en las citas online que lo tengan.
+  - El `.ics` del paciente incluye el enlace como descripcion, `LOCATION` y `URL` si ya existe al descargarlo.
+- Donde se muestra telefono de paciente en listados/cards principales se anaden botones pequenos `tel:` y WhatsApp.
+- Los modales dejan de usar `modal-dialog-centered` para evitar saltos verticales al cambiar entre pestanas con alturas distintas.
+- En la ficha de paciente, el boton `Informe` se mueve al footer, alineado a la izquierda.
+- La ventana `Detalle de la cita` incorpora pestana `Sesion` para trabajar durante la cita:
+  - Consulta de tareas del paciente y cambio rapido entre pendiente/completada.
+  - Las tareas se crean desde la ficha del paciente, no desde la cita.
+  - Notas de evolucion vinculadas a esa cita con titulo y descripcion.
+  - Subida/listado de archivos asociados a las notas de esa cita.
+  - La pestana muestra `Preparar esta sesion` si la cita es futura y `Sesion` si esta en curso o ya no es futura.
+  - Las notas con archivo se muestran como un unico item, con icono de adjunto, fecha, titulo y nombre de archivo.
+  - Desde el listado de sesion se puede eliminar una nota junto con sus adjuntos.
+- `patient_work_plan_tasks` anade `appointment_id` para diferenciar tareas generales del paciente y tareas creadas desde una sesion concreta.
+- El plan de trabajo permite crear plantillas reutilizables desde Configuracion > Plantillas.
+  - Cada plantilla tiene nombre propio, terapia/categoria y descripcion interna.
+  - Dentro de cada plantilla se crean varias tareas con titulo, descripcion y prioridad.
+  - La pestana muestra solo el listado/resumen de plantillas y sus tareas.
+  - La creacion/edicion de plantillas y tareas se hace en modales secundarios independientes.
+  - Desde la ficha del paciente se puede importar una plantilla existente y se crean todas sus tareas en el plan de trabajo del paciente.
+  - El superadmin puede crear plantillas globales para todo el gabinete; cada profesional puede crear plantillas propias.
+- El resumen rapido de proxima cita muestra textos relativos: `En X minutos`, `Hoy a HH:MM`, `Manana a HH:MM` o fecha segun corresponda.
+- El modal pasa a llamarse `Informes y estadisticas`, es scrollable y sus listados tienen scroll independiente.
+- Cada listado de la pestana `Informes` permite imprimir y exportar CSV desde la propia tabla renderizada.
+- Los listados de `Informes` tambien permiten exportar XLS simple sin dependencias externas.
+- Las ventanas `Pacientes` y `Proximas citas` permiten imprimir, exportar CSV y exportar XLS simple desde el footer respetando el filtro/orden visible.
+- Se anade buscador global para profesionales desde la navbar, con resultados en pacientes, profesionales, citas, archivos y tareas.
+- El portal del paciente muestra resumen de proxima cita en dashboard; historial de citas y tareas visibles quedan en modales `Mis citas` y `Mis tareas`.
+- Las tareas del plan de trabajo incorporan `visible_to_patient`; Configuracion permite definir si las tareas nuevas se crean visibles para el portal por defecto.
+- Las cabeceras de tablas usan `var(--primary-color)` para encajar con el color principal configurado.
+- En Configuracion > Interfaz se anade `Personalizar dashboard` con modos `Sencillo`, `Avanzado` y `Personalizado`.
+  - Los modos se basan en JSON versionados en `dashboard-config/simple.json`, `dashboard-config/advanced.json` y `dashboard-config/custom.json`.
+  - `advanced.json` activa todas las opciones conocidas.
+  - Por ahora `simple.json`, `advanced.json` y `custom.json` activan todas las opciones conocidas.
+  - `custom.json` se puede editar desde un modal con validacion JSON antes de guardar.
+  - `dashboard_config_helpers.php` fusiona claves nuevas del esquema avanzado en el JSON custom para que futuras funciones aparezcan aunque el archivo ya existiera.
+
 ## Pendientes sugeridos
 
 - Crear `.gitignore` para excluir credenciales, dumps, logs y subidas si procede.
@@ -292,6 +388,10 @@ git config --global --add safe.directory C:/Sete/psicologic
 - Revisar si `uploads/settings` debe versionarse o quedar fuera del repo.
 - Crear una documentacion minima de instalacion: requisitos PHP, extension mysqli, certificado `mysql.pem`, tablas necesarias y configuracion de servidor.
 - Probar manualmente el flujo completo: registro, reserva, cancelacion, pago, email, Google Calendar y recordatorio.
+- Retomar la personalizacion de dashboard:
+  - Definir que caracteristicas son realmente ocultables sin romper flujos.
+  - Diferenciar configuracion visual/operativa (`simple`, `advanced`, `custom`) de limitaciones por plan contratado.
+  - Actualizar los tres JSON cuando se definan flags definitivos y aplicar esos flags progresivamente en UI/API.
 
 ## Como retomar en otro PC
 

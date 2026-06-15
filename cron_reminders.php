@@ -43,7 +43,7 @@ if ((int) ($settings['appointment_reminder_enabled'] ?? 0) !== 1) {
 }
 
 $stmt = $mysqli->prepare("
-    SELECT a.id, a.appointment_date, a.appointment_time, a.consultation_type, a.service_type, a.cancel_token,
+    SELECT a.id, a.appointment_date, a.appointment_time, a.consultation_type, a.service_type, a.cancel_token, a.online_session_url,
            COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
            so.price AS service_price, s.name AS service_name,
            COALESCE(a.payment_status, 'pending') AS payment_status,
@@ -87,12 +87,20 @@ foreach ($appointments as $appointment) {
     if ($payment_enabled && $appointment['payment_status'] !== 'paid') {
         $payment_note = '<p>Si no has hecho aun el pago, puedes realizar el pago con tarjeta o Bizum desde el mismo enlace.</p>';
     }
+    $online_link_note = '';
+    if (($appointment['consultation_type'] ?? '') === 'online' && !empty($appointment['online_session_url'])) {
+        $online_link_note =
+            '<p><b>Enlace de videollamada:</b><br>' .
+            '<a href="' . htmlspecialchars($appointment['online_session_url']) . '">Acceder a la cita online</a></p>' .
+            '<p>Si el boton no funciona, copia y pega este enlace en tu navegador:<br>' . htmlspecialchars($appointment['online_session_url']) . '</p>';
+    }
 
     $body =
         '<p>Hola ' . htmlspecialchars($appointment['name']) . ',</p>' .
         '<p>Recuerda que tienes cita ' . htmlspecialchars(strtolower($service_text)) . ' ' . htmlspecialchars(strtolower($consultation_text)) . ' para el dia ' . htmlspecialchars($date) . ' a las ' . htmlspecialchars($time) . '.</p>' .
         '<p><b>Servicio:</b> ' . htmlspecialchars($service_text) . '</p>' .
         '<p><b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '</p>' .
+        $online_link_note .
         '<p><b>Importe:</b> ' . htmlspecialchars($price) . ' &euro;</p>' .
         '<p>Por favor, si no puedes acudir, puedes cancelar la cita en el siguiente enlace:</p>' .
         '<p><a href="' . htmlspecialchars($manage_link) . '">Gestionar reserva</a></p>' .

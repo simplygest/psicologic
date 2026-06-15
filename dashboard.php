@@ -7,6 +7,7 @@ if (!isset($_SESSION['user_id'])) {
 require_once 'db.php';
 require_once 'settings_helpers.php';
 require_once 'cabinet_helpers.php';
+require_once 'dashboard_config_helpers.php';
 $is_superadmin = ($_SESSION['role'] === 'superadmin');
 $is_admin = in_array($_SESSION['role'], ['admin', 'superadmin'], true);
 $branding = get_public_branding_settings($mysqli);
@@ -14,6 +15,8 @@ if (!$is_admin && (int) ($branding['online_booking_enabled'] ?? 1) !== 1) {
   header('Location: index.php');
   exit;
 }
+$dashboard_config_mode = $is_admin ? dashboard_config_mode_from_db($mysqli) : 'simple';
+$dashboard_config = dashboard_config_for_mode($dashboard_config_mode);
 $app_name = $branding['app_name'];
 $profile_image_path = $branding['profile_image_path'];
 $navbar_image_path = $profile_image_path;
@@ -86,6 +89,11 @@ if ($is_admin) {
         <span id="app-brand" class="dashboard-user-greeting">Hola, <?= htmlspecialchars($_SESSION['name']) ?></span>
       </a>
       <div class="d-flex align-items-center gap-2">
+        <?php if ($is_admin): ?>
+          <button class="btn btn-light btn-sm" type="button" id="btn-global-search" title="Buscar">
+            <i class="bi bi-search"></i>
+          </button>
+        <?php endif; ?>
         <div class="dropdown">
           <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="dashboard-options-menu" data-bs-toggle="dropdown" aria-expanded="false">
             <i class="bi bi-three-dots-vertical"></i> Opciones
@@ -142,7 +150,7 @@ if ($is_admin) {
         <button class="btn btn-primary" id="btn-generate-invite"><i class="bi bi-link-45deg"></i> Generar
           Invitación</button>
         <button class="btn btn-primary" id="btn-upcoming-appointments" type="button"><i class="bi bi-list-check"></i> Pr&oacute;ximas citas</button>
-        <button class="btn btn-primary" id="btn-admin-stats" type="button"><i class="bi bi-bar-chart"></i> Estad&iacute;sticas</button>
+        <button class="btn btn-primary" id="btn-admin-stats" type="button"><i class="bi bi-bar-chart"></i> Informes y estad&iacute;sticas</button>
           <button class="btn btn-primary" id="btn-admin-bonuses" type="button"><i class="bi bi-card-list"></i> Bonos</button>
         <button class="btn btn-primary" id="btn-admin-patients" type="button"><i class="bi bi-people"></i> <?= $is_superadmin ? 'Pacientes' : 'Mis pacientes' ?></button>
         </div>
@@ -153,7 +161,7 @@ if ($is_admin) {
           <ul class="dropdown-menu">
             <li><button class="dropdown-item" type="button" id="btn-mobile-generate-invite"><i class="bi bi-link-45deg me-2"></i>Generar invitaci&oacute;n</button></li>
             <li><button class="dropdown-item" type="button" id="btn-mobile-upcoming-appointments"><i class="bi bi-list-check me-2"></i>Pr&oacute;ximas citas</button></li>
-            <li><button class="dropdown-item" type="button" id="btn-mobile-admin-stats"><i class="bi bi-bar-chart me-2"></i>Estad&iacute;sticas</button></li>
+            <li><button class="dropdown-item" type="button" id="btn-mobile-admin-stats"><i class="bi bi-bar-chart me-2"></i>Informes y estad&iacute;sticas</button></li>
             <li><button class="dropdown-item" type="button" id="btn-mobile-admin-bonuses"><i class="bi bi-card-list me-2"></i>Bonos</button></li>
             <li><button class="dropdown-item" type="button" id="btn-mobile-admin-patients"><i class="bi bi-people me-2"></i><?= $is_superadmin ? 'Pacientes' : 'Mis pacientes' ?></button></li>
           </ul>
@@ -162,26 +170,36 @@ if ($is_admin) {
         <button class="btn btn-primary ms-auto" id="btn-calendar-view-toggle" type="button"><i class="bi bi-calendar3"></i> Ver mes</button>
       </div>
     <?php else: ?>
-      <div class="mb-4 d-flex gap-2 flex-wrap align-items-center dashboard-actions-bar" id="patient-bonus-actions" style="display: none !important;">
+      <div class="mb-4 d-flex gap-2 flex-wrap align-items-center dashboard-actions-bar" id="patient-bonus-actions">
         <div class="dashboard-action-buttons d-flex gap-2 flex-wrap align-items-center">
-          <button class="btn btn-primary" id="btn-buy-bonus" type="button"><i class="bi bi-bag-check"></i> Comprar bono</button>
-          <button class="btn btn-primary" id="btn-my-bonuses" type="button"><i class="bi bi-card-list"></i> Mis bonos</button>
+          <button class="btn btn-primary" id="btn-patient-portal-appointments" type="button"><i class="bi bi-calendar-check"></i> Mis citas</button>
+          <button class="btn btn-primary" id="btn-patient-portal-tasks" type="button"><i class="bi bi-list-check"></i> Mis tareas</button>
+          <button class="btn btn-primary" id="btn-buy-bonus" type="button" style="display: none;"><i class="bi bi-bag-check"></i> Comprar bono</button>
+          <button class="btn btn-primary" id="btn-my-bonuses" type="button" style="display: none;"><i class="bi bi-card-list"></i> Mis bonos</button>
         </div>
         <div class="dropdown dashboard-mobile-menu">
           <button class="btn btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
             <i class="bi bi-list"></i> Men&uacute;
           </button>
           <ul class="dropdown-menu">
-            <li><button class="dropdown-item" type="button" id="btn-mobile-buy-bonus"><i class="bi bi-bag-check me-2"></i>Comprar bono</button></li>
-            <li><button class="dropdown-item" type="button" id="btn-mobile-my-bonuses"><i class="bi bi-card-list me-2"></i>Mis bonos</button></li>
+            <li><button class="dropdown-item" type="button" id="btn-mobile-patient-portal-appointments"><i class="bi bi-calendar-check me-2"></i>Mis citas</button></li>
+            <li><button class="dropdown-item" type="button" id="btn-mobile-patient-portal-tasks"><i class="bi bi-list-check me-2"></i>Mis tareas</button></li>
+            <li style="display: none;"><button class="dropdown-item" type="button" id="btn-mobile-buy-bonus"><i class="bi bi-bag-check me-2"></i>Comprar bono</button></li>
+            <li style="display: none;"><button class="dropdown-item" type="button" id="btn-mobile-my-bonuses"><i class="bi bi-card-list me-2"></i>Mis bonos</button></li>
           </ul>
         </div>
         <button class="btn btn-primary ms-auto" id="btn-calendar-view-toggle" type="button"><i class="bi bi-calendar3"></i> Ver mes</button>
       </div>
     <?php endif; ?>
 
+    <?php if (!$is_admin): ?>
+      <div id="patient-quick-appointment-summary" class="quick-appointments-summary d-none"></div>
+    <?php endif; ?>
     <div id="patient-professional-choice" class="patient-professional-choice d-none"></div>
     <div id="patient-professional-context" class="booking-professional-context d-none"></div>
+    <?php if ($is_admin): ?>
+      <div id="quick-appointments-summary" class="quick-appointments-summary d-none"></div>
+    <?php endif; ?>
 
     <div id="calendar-container">
       <div class="text-center text-muted py-5">
@@ -191,7 +209,7 @@ if ($is_admin) {
   </div>
 
   <div class="modal fade" id="appointmentModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog">
       <div class="modal-content" style="border-radius: 12px;">
         <div class="modal-header border-0">
           <h5 class="modal-title" id="modalTitle">Gestión de Cita</h5>
@@ -274,7 +292,7 @@ if ($is_admin) {
 
   <?php if ($is_admin): ?>
     <div class="modal fade" id="appointmentPaymentModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-dialog modal-lg">
         <div class="modal-content">
           <div class="modal-header">
             <h5 class="modal-title">Detalle de la cita</h5>
@@ -283,49 +301,90 @@ if ($is_admin) {
           <div class="modal-body">
             <div id="appointment-payment-alert" class="alert d-none"></div>
             <input type="hidden" id="appointment-payment-id">
-            <div id="appointment-payment-summary" class="appointment-payment-summary mb-4">
-              <div class="text-center text-muted py-4">Cargando cita...</div>
-            </div>
-            <div id="appointment-payment-editor" class="appointment-payment-editor">
-              <div class="row g-3">
-                <div class="col-md-6">
-                  <button type="button" class="payment-state-card" data-payment-status="pending">
-                    <span class="payment-state-icon payment-state-pending"><i class="bi bi-hourglass-split"></i></span>
-                    <strong>Pendiente</strong>
-                    <small>La cita queda marcada como no pagada.</small>
-                  </button>
+            <ul class="nav nav-tabs mb-3" id="appointment-detail-tabs" role="tablist">
+              <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="appointment-detail-tab" data-bs-toggle="tab" data-bs-target="#appointment-detail-panel" type="button" role="tab">Detalle</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="appointment-session-tab" data-bs-toggle="tab" data-bs-target="#appointment-session-panel" type="button" role="tab">Sesi&oacute;n</button>
+              </li>
+            </ul>
+            <div class="tab-content">
+              <div class="tab-pane fade show active" id="appointment-detail-panel" role="tabpanel" aria-labelledby="appointment-detail-tab">
+                <div id="appointment-payment-summary" class="appointment-payment-summary mb-4">
+                  <div class="text-center text-muted py-4">Cargando cita...</div>
                 </div>
-                <div class="col-md-6">
-                  <button type="button" class="payment-state-card" data-payment-status="paid">
-                    <span class="payment-state-icon payment-state-paid"><i class="bi bi-check2-circle"></i></span>
-                    <strong>Pagada</strong>
-                    <small>Registra un cobro manual u offline.</small>
-                  </button>
+                <div id="appointment-payment-editor" class="appointment-payment-editor">
+                  <div class="row g-3">
+                    <div class="col-md-6">
+                      <button type="button" class="payment-state-card" data-payment-status="pending">
+                        <span class="payment-state-icon payment-state-pending"><i class="bi bi-hourglass-split"></i></span>
+                        <strong>Pendiente</strong>
+                        <small>La cita queda marcada como no pagada.</small>
+                      </button>
+                    </div>
+                    <div class="col-md-6">
+                      <button type="button" class="payment-state-card" data-payment-status="paid">
+                        <span class="payment-state-icon payment-state-paid"><i class="bi bi-check2-circle"></i></span>
+                        <strong>Pagada</strong>
+                        <small>Registra un cobro manual u offline.</small>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="mt-3" id="appointment-payment-method-wrap">
+                    <label class="form-label" for="appointment-payment-method">Forma de pago</label>
+                    <select class="form-select" id="appointment-payment-method">
+                      <option value="cash">Efectivo</option>
+                      <option value="bank_transfer">Transferencia</option>
+                      <option value="card">Tarjeta online</option>
+                      <option value="bizum">Bizum online</option>
+                      <option value="other">Otro m&eacute;todo</option>
+                      <option value="manual">Manual</option>
+                    </select>
+                  </div>
                 </div>
               </div>
-              <div class="mt-3" id="appointment-payment-method-wrap">
-                <label class="form-label" for="appointment-payment-method">Forma de pago</label>
-                <select class="form-select" id="appointment-payment-method">
-                  <option value="cash">Efectivo</option>
-                  <option value="bank_transfer">Transferencia</option>
-                  <option value="card">Tarjeta online</option>
-                  <option value="bizum">Bizum online</option>
-                  <option value="other">Otro m&eacute;todo</option>
-                  <option value="manual">Manual</option>
-                </select>
+              <div class="tab-pane fade" id="appointment-session-panel" role="tabpanel" aria-labelledby="appointment-session-tab">
+                <div id="appointment-session-alert" class="alert d-none"></div>
+                <div id="appointment-session-content">
+                  <div class="text-center text-muted py-4">Cargando sesi&oacute;n...</div>
+                </div>
               </div>
             </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-outline-danger me-auto" id="btn-cancel-appointment-from-detail">Cancelar cita</button>
+            <button type="button" class="btn btn-outline-secondary" id="btn-open-patient-from-appointment-detail">
+              <i class="bi bi-person-lines-fill"></i> Ver ficha del paciente
+            </button>
             <button type="button" class="btn btn-primary" id="btn-save-appointment-payment">Guardar cambios</button>
           </div>
         </div>
       </div>
     </div>
 
+    <div class="modal fade" id="globalSearchModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Buscar</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div class="input-group mb-3">
+              <span class="input-group-text"><i class="bi bi-search"></i></span>
+              <input type="search" class="form-control" id="global-search-input" placeholder="Buscar pacientes, citas, archivos, tareas..." autocomplete="off">
+            </div>
+            <div id="global-search-results" class="global-search-results">
+              <div class="text-center text-muted py-4">Escribe al menos 2 caracteres para buscar.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="modal fade" id="inviteModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-md modal-dialog-centered">
+      <div class="modal-dialog modal-md">
         <div class="modal-content">
           <div class="modal-header">
             <h5 class="modal-title">Invitaci&oacute;n de registro</h5>
@@ -354,7 +413,7 @@ if ($is_admin) {
     </div>
 
     <div class="modal fade" id="adminPatientsModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header">
             <h5 class="modal-title"><?= $is_superadmin ? 'Pacientes' : 'Mis pacientes' ?></h5>
@@ -399,7 +458,7 @@ if ($is_admin) {
                     <th>Alta</th>
                     <th>Acceso</th>
                     <th>Documento</th>
-                    <th class="text-end">Acciones</th>
+                    <th class="text-end no-export">Acciones</th>
                   </tr>
                 </thead>
                 <tbody id="admin-patients-body">
@@ -409,12 +468,26 @@ if ($is_admin) {
             </div>
             <div class="text-end text-muted small mt-2" id="admin-patients-count"></div>
           </div>
+          <div class="modal-footer justify-content-between flex-wrap gap-2">
+            <div class="text-muted small">Exporta el listado con el filtro y orden actuales.</div>
+            <div class="d-flex gap-2 flex-wrap">
+              <button class="btn btn-outline-primary btn-sm btn-export-modal-table" type="button" data-table-target="#adminPatientsModal" data-export-type="print">
+                <i class="bi bi-printer"></i> Imprimir
+              </button>
+              <button class="btn btn-outline-primary btn-sm btn-export-modal-table" type="button" data-table-target="#adminPatientsModal" data-export-type="csv">
+                <i class="bi bi-download"></i> CSV
+              </button>
+              <button class="btn btn-outline-primary btn-sm btn-export-modal-table" type="button" data-table-target="#adminPatientsModal" data-export-type="xls">
+                <i class="bi bi-file-earmark-spreadsheet"></i> Excel
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
     <div class="modal fade" id="patientEditorModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-xl modal-dialog-centered">
+      <div class="modal-dialog modal-xl">
         <div class="modal-content">
           <div class="modal-header">
             <h5 class="modal-title" id="patient-editor-title">Paciente</h5>
@@ -427,7 +500,19 @@ if ($is_admin) {
                 <button class="nav-link active" id="patient-data-tab" data-bs-toggle="tab" data-bs-target="#patient-data-panel" type="button" role="tab">Datos del paciente</button>
               </li>
               <li class="nav-item" role="presentation">
+                <button class="nav-link" id="patient-more-data-tab" data-bs-toggle="tab" data-bs-target="#patient-more-data-panel" type="button" role="tab">M&aacute;s datos</button>
+              </li>
+              <li class="nav-item" role="presentation">
                 <button class="nav-link" id="patient-history-tab" data-bs-toggle="tab" data-bs-target="#patient-history-panel" type="button" role="tab">Historial de citas</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="patient-work-plan-tab" data-bs-toggle="tab" data-bs-target="#patient-work-plan-panel" type="button" role="tab">Plan de trabajo</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="patient-evolution-tab" data-bs-toggle="tab" data-bs-target="#patient-evolution-panel" type="button" role="tab">Evoluci&oacute;n</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="patient-files-tab" data-bs-toggle="tab" data-bs-target="#patient-files-panel" type="button" role="tab">Archivos</button>
               </li>
               <li class="nav-item" role="presentation">
                 <button class="nav-link" id="patient-bonuses-tab" data-bs-toggle="tab" data-bs-target="#patient-bonuses-panel" type="button" role="tab">Bonos</button>
@@ -464,10 +549,32 @@ if ($is_admin) {
                     </div>
                     <?php if ($is_superadmin): ?>
                       <div class="col-md-6">
-                        <label class="form-label" for="patient-editor-professional">Asignar profesional</label>
-                        <select class="form-select" id="patient-editor-professional" name="professional_id">
-                          <option value="">Permitir elegir profesional al paciente</option>
-                        </select>
+                        <div id="patient-editor-professional-new-wrap">
+                          <label class="form-label" for="patient-editor-professional">Asignar profesional</label>
+                          <select class="form-select" id="patient-editor-professional" name="professional_id">
+                            <option value="">Permitir elegir profesional al paciente</option>
+                          </select>
+                        </div>
+                        <div id="patient-editor-professional-current-wrap" class="d-none">
+                          <label class="form-label">Profesional asignado</label>
+                          <div class="patient-transfer-box">
+                            <div>
+                              <strong id="patient-editor-current-professional">Sin profesional asignado</strong>
+                              <div class="form-text" id="patient-editor-transfer-status">El traspaso solo puede hacerlo el superadmin.</div>
+                            </div>
+                            <button type="button" class="btn btn-outline-primary btn-sm" id="btn-show-patient-transfer">
+                              <i class="bi bi-arrow-left-right"></i> Traspasar paciente
+                            </button>
+                          </div>
+                          <div id="patient-transfer-panel" class="patient-transfer-panel d-none">
+                            <select class="form-select form-select-sm" id="patient-transfer-professional">
+                              <option value="">Selecciona profesional...</option>
+                            </select>
+                            <button type="button" class="btn btn-primary btn-sm" id="btn-confirm-patient-transfer">
+                              Confirmar
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     <?php endif; ?>
                     <div class="col-md-6">
@@ -484,10 +591,48 @@ if ($is_admin) {
                       <textarea class="form-control" id="patient-editor-notes" name="notes" rows="6"></textarea>
                     </div>
                   </div>
-                  <div class="text-end mt-4">
-                    <button class="btn btn-primary" type="submit" id="btn-save-patient">Guardar paciente</button>
-                  </div>
                 </form>
+              </div>
+              <div class="tab-pane fade" id="patient-more-data-panel" role="tabpanel" aria-labelledby="patient-more-data-tab">
+                <div class="row g-3">
+                  <div class="col-md-4">
+                    <label class="form-label" for="patient-editor-status">Estado</label>
+                    <select class="form-select" id="patient-editor-status" name="patient_status" form="patient-editor-form">
+                      <option value="active">Activo</option>
+                      <option value="paused">En pausa</option>
+                      <option value="discharged">Alta</option>
+                      <option value="inactive">Baja</option>
+                    </select>
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="patient-editor-birth-date">Fecha de nacimiento</label>
+                    <input type="date" class="form-control" id="patient-editor-birth-date" name="birth_date" form="patient-editor-form">
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label">Edad</label>
+                    <div class="form-control bg-light" id="patient-editor-age">-</div>
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label" for="patient-editor-referral-source">Fuente / derivaci&oacute;n</label>
+                    <input type="text" class="form-control" id="patient-editor-referral-source" name="referral_source" form="patient-editor-form" placeholder="Web, Doctoralia, recomendaci&oacute;n, m&eacute;dico...">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label" for="patient-editor-emergency-name">Contacto de emergencia / tutor</label>
+                    <input type="text" class="form-control" id="patient-editor-emergency-name" name="emergency_contact_name" form="patient-editor-form">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label" for="patient-editor-emergency-phone">Tel&eacute;fono de emergencia</label>
+                    <input type="text" class="form-control" id="patient-editor-emergency-phone" name="emergency_contact_phone" form="patient-editor-form">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label" for="patient-editor-emergency-relation">Relaci&oacute;n</label>
+                    <input type="text" class="form-control" id="patient-editor-emergency-relation" name="emergency_contact_relation" form="patient-editor-form" placeholder="Madre, padre, pareja, familiar...">
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label" for="patient-editor-initial-reason">Motivo inicial de consulta</label>
+                    <textarea class="form-control" id="patient-editor-initial-reason" name="initial_consultation_reason" rows="4" form="patient-editor-form"></textarea>
+                  </div>
+                </div>
               </div>
               <div class="tab-pane fade" id="patient-history-panel" role="tabpanel" aria-labelledby="patient-history-tab">
                 <div id="patient-history-alert" class="alert d-none"></div>
@@ -510,6 +655,112 @@ if ($is_admin) {
                   </table>
                 </div>
                 <div class="text-end text-muted small mt-2" id="patient-history-count"></div>
+              </div>
+              <div class="tab-pane fade" id="patient-work-plan-panel" role="tabpanel" aria-labelledby="patient-work-plan-tab">
+                <div id="patient-work-plan-alert" class="alert d-none"></div>
+                <div class="alert alert-info d-flex align-items-start gap-2">
+                  <i class="bi bi-list-check fs-5"></i>
+                  <div>
+                    <strong>Plan de trabajo del paciente</strong>
+                    <div>Desde aqu&iacute; puedes personalizar tareas, actividades, temas a tratar o pautas para este paciente, y marcarlas como completadas o pendientes en las sucesivas citas.</div>
+                  </div>
+                </div>
+                <div class="d-flex justify-content-end gap-2 mb-3 flex-wrap">
+                  <button class="btn btn-primary btn-sm" type="button" id="btn-show-patient-work-plan-form">
+                    <i class="bi bi-plus-lg"></i> Crear o importar tareas
+                  </button>
+                </div>
+                <div class="row g-3">
+                  <div class="col-lg-6">
+                    <div class="patient-work-plan-column">
+                      <h6>Pendientes</h6>
+                      <div id="patient-work-plan-pending" class="patient-work-plan-list">
+                        <div class="text-center text-muted py-4">Selecciona un paciente guardado para ver su plan.</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-lg-6">
+                    <div class="patient-work-plan-column">
+                      <h6>Completadas</h6>
+                      <div id="patient-work-plan-completed-list" class="patient-work-plan-list">
+                        <div class="text-center text-muted py-4">Selecciona un paciente guardado para ver su plan.</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="text-end text-muted small mt-2" id="patient-work-plan-count"></div>
+              </div>
+              <div class="tab-pane fade" id="patient-evolution-panel" role="tabpanel" aria-labelledby="patient-evolution-tab">
+                <div id="patient-evolution-alert" class="alert d-none"></div>
+                <div class="d-flex justify-content-end mb-3">
+                  <button class="btn btn-primary btn-sm" type="button" id="btn-show-patient-evolution-form">
+                    <i class="bi bi-plus-lg"></i> Nuevo registro
+                  </button>
+                </div>
+                <form id="patient-evolution-form" class="border rounded p-3 mb-3 d-none" enctype="multipart/form-data">
+                  <input type="hidden" id="patient-evolution-id" name="note_id" value="0">
+                  <input type="hidden" id="patient-evolution-patient-id" name="patient_id" value="0">
+                  <div class="row g-3">
+                    <div class="col-md-4">
+                      <label class="form-label" for="patient-evolution-date">Fecha</label>
+                      <input type="date" class="form-control" id="patient-evolution-date" name="note_date" required>
+                    </div>
+                    <div class="col-md-8">
+                      <label class="form-label" for="patient-evolution-appointment">Cita vinculada</label>
+                      <select class="form-select" id="patient-evolution-appointment" name="appointment_id">
+                        <option value="">Nota general del paciente</option>
+                      </select>
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label" for="patient-evolution-title">T&iacute;tulo</label>
+                      <input type="text" class="form-control" id="patient-evolution-title" name="title" maxlength="180" required>
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label" for="patient-evolution-description">Descripci&oacute;n</label>
+                      <textarea class="form-control" id="patient-evolution-description" name="description" rows="3"></textarea>
+                    </div>
+                    <div class="col-md-6">
+                      <label class="form-label" for="patient-evolution-observations">Observaciones</label>
+                      <textarea class="form-control" id="patient-evolution-observations" name="observations" rows="3"></textarea>
+                    </div>
+                    <div class="col-md-6">
+                      <label class="form-label" for="patient-evolution-next-steps">Pendientes / pr&oacute;xima cita</label>
+                      <textarea class="form-control" id="patient-evolution-next-steps" name="next_steps" rows="3"></textarea>
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label" for="patient-evolution-files">Archivos</label>
+                      <input type="file" class="form-control" id="patient-evolution-files" name="evolution_files[]" accept=".pdf,.xls,.xlsx,image/jpeg,image/png,image/webp,image/gif" multiple>
+                      <div class="form-text">Puedes adjuntar PDF, Excel o im&aacute;genes. M&aacute;ximo 12 MB por archivo.</div>
+                    </div>
+                  </div>
+                  <div class="text-end mt-3">
+                    <button type="button" class="btn btn-outline-secondary" id="btn-cancel-patient-evolution-form">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="btn-save-patient-evolution">Guardar evoluci&oacute;n</button>
+                  </div>
+                </form>
+                <div id="patient-evolution-list" class="patient-evolution-list">
+                  <div class="text-center text-muted py-4">Selecciona un paciente guardado para ver su evoluci&oacute;n.</div>
+                </div>
+                <div class="text-end text-muted small mt-2" id="patient-evolution-count"></div>
+              </div>
+              <div class="tab-pane fade" id="patient-files-panel" role="tabpanel" aria-labelledby="patient-files-tab">
+                <div id="patient-files-alert" class="alert d-none"></div>
+                <div class="table-responsive">
+                  <table class="table align-middle">
+                    <thead>
+                      <tr>
+                        <th>Archivo</th>
+                        <th>Origen</th>
+                        <th>Fecha</th>
+                        <th class="text-end">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody id="patient-files-body">
+                      <tr><td colspan="4" class="text-center text-muted py-4">Selecciona un paciente guardado para ver sus archivos.</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div class="text-end text-muted small mt-2" id="patient-files-count"></div>
               </div>
               <div class="tab-pane fade" id="patient-bonuses-panel" role="tabpanel" aria-labelledby="patient-bonuses-tab">
                 <div id="patient-bonuses-alert" class="alert d-none"></div>
@@ -566,12 +817,23 @@ if ($is_admin) {
               </div>
             </div>
           </div>
+          <div class="modal-footer">
+            <div class="me-auto d-flex flex-wrap gap-2">
+              <button type="button" class="btn btn-outline-primary btn-patient-report" id="btn-patient-report-internal" data-report-type="internal" disabled>
+                <i class="bi bi-file-earmark-medical"></i> Informe interno
+              </button>
+              <button type="button" class="btn btn-outline-primary btn-patient-report" id="btn-patient-report-public" data-report-type="patient" disabled>
+                <i class="bi bi-file-earmark-person"></i> Informe paciente
+              </button>
+            </div>
+            <button class="btn btn-primary" type="submit" id="btn-save-patient" form="patient-editor-form">Guardar cambios</button>
+          </div>
         </div>
       </div>
     </div>
 
     <div class="modal fade" id="upcomingAppointmentsModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header">
             <h5 class="modal-title">Pr&oacute;ximas citas</h5>
@@ -582,6 +844,9 @@ if ($is_admin) {
             <ul class="nav nav-tabs mb-3" id="upcoming-appointments-tabs" role="tablist">
               <li class="nav-item" role="presentation">
                 <button class="nav-link active" id="upcoming-list-tab" data-bs-toggle="tab" data-bs-target="#upcoming-list-panel" type="button" role="tab">Listado</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="cancelled-list-tab" data-bs-toggle="tab" data-bs-target="#cancelled-list-panel" type="button" role="tab">Canceladas</button>
               </li>
               <li class="nav-item" role="presentation">
                 <button class="nav-link" id="upcoming-planning-tab" data-bs-toggle="tab" data-bs-target="#upcoming-planning-panel" type="button" role="tab">Planning</button>
@@ -620,7 +885,7 @@ if ($is_admin) {
                         <th>Servicio</th>
                         <th>Modalidad</th>
                         <th>Pago</th>
-                        <th class="text-end">Acciones</th>
+                        <th class="text-end no-export">Acciones</th>
                       </tr>
                     </thead>
                     <tbody id="upcoming-appointments-body">
@@ -631,6 +896,34 @@ if ($is_admin) {
                   </table>
                 </div>
                 <div class="text-end text-muted small mt-2" id="upcoming-appointments-count"></div>
+              </div>
+              <div class="tab-pane fade" id="cancelled-list-panel" role="tabpanel" aria-labelledby="cancelled-list-tab">
+                <div class="row g-2 mb-3">
+                  <div class="col-md-12">
+                    <input type="search" class="form-control" id="cancelled-appointments-search" placeholder="Buscar por paciente, email, profesional, servicio o pago">
+                  </div>
+                </div>
+                <div class="table-responsive upcoming-appointments-table-wrap">
+                  <table class="table align-middle">
+                    <thead>
+                      <tr>
+                        <th>Fecha cita</th>
+                        <th>Cancelada</th>
+                        <th>Profesional</th>
+                        <th>Paciente</th>
+                        <th>Servicio</th>
+                        <th>Modalidad</th>
+                        <th>Pago</th>
+                      </tr>
+                    </thead>
+                    <tbody id="cancelled-appointments-body">
+                      <tr>
+                        <td colspan="7" class="text-center text-muted py-4">Cargando...</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div class="text-end text-muted small mt-2" id="cancelled-appointments-count"></div>
               </div>
               <div class="tab-pane fade" id="upcoming-planning-panel" role="tabpanel" aria-labelledby="upcoming-planning-tab">
                 <div class="row g-2 mb-3 justify-content-end">
@@ -656,21 +949,52 @@ if ($is_admin) {
               </div>
             </div>
           </div>
+          <div class="modal-footer justify-content-between flex-wrap gap-2">
+            <div class="text-muted small">Exporta la pesta&ntilde;a visible con el filtro actual.</div>
+            <div class="d-flex gap-2 flex-wrap">
+              <button class="btn btn-outline-primary btn-sm btn-export-modal-table" type="button" data-table-target="#upcomingAppointmentsModal" data-export-type="print">
+                <i class="bi bi-printer"></i> Imprimir
+              </button>
+              <button class="btn btn-outline-primary btn-sm btn-export-modal-table" type="button" data-table-target="#upcomingAppointmentsModal" data-export-type="csv">
+                <i class="bi bi-download"></i> CSV
+              </button>
+              <button class="btn btn-outline-primary btn-sm btn-export-modal-table" type="button" data-table-target="#upcomingAppointmentsModal" data-export-type="xls">
+                <i class="bi bi-file-earmark-spreadsheet"></i> Excel
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
     <div class="modal fade" id="adminStatsModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-xl modal-dialog-centered">
+      <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title">Estad&iacute;sticas</h5>
+            <h5 class="modal-title">Informes y estad&iacute;sticas</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body">
             <div id="admin-stats-alert" class="alert d-none"></div>
-            <div id="admin-stats-content">
-              <div class="text-center text-muted py-4">Cargando...</div>
+            <ul class="nav nav-tabs mb-3" id="admin-reports-tabs" role="tablist">
+              <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="admin-stats-tab" data-bs-toggle="tab" data-bs-target="#admin-stats-panel" type="button" role="tab">Estad&iacute;sticas</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="admin-reports-tab" data-bs-toggle="tab" data-bs-target="#admin-reports-panel" type="button" role="tab">Informes</button>
+              </li>
+            </ul>
+            <div class="tab-content">
+              <div class="tab-pane fade show active" id="admin-stats-panel" role="tabpanel" aria-labelledby="admin-stats-tab">
+                <div id="admin-stats-content">
+                  <div class="text-center text-muted py-4">Cargando...</div>
+                </div>
+              </div>
+              <div class="tab-pane fade" id="admin-reports-panel" role="tabpanel" aria-labelledby="admin-reports-tab">
+                <div id="admin-reports-content">
+                  <div class="text-center text-muted py-4">Cargando informes...</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -679,7 +1003,7 @@ if ($is_admin) {
   <?php endif; ?>
 
   <div class="modal fade" id="bonusesModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title" id="bonusesModalTitle">Bonos</h5>
@@ -736,6 +1060,69 @@ if ($is_admin) {
   </div>
 
   <?php if ($is_admin): ?>
+    <div class="modal fade" id="patientWorkPlanTaskModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <form id="patient-work-plan-form">
+            <div class="modal-header">
+              <h5 class="modal-title" id="patient-work-plan-modal-title">Crear o importar tareas</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+              <input type="hidden" id="patient-work-plan-id" name="task_id" value="0">
+              <input type="hidden" id="patient-work-plan-patient-id" name="patient_id" value="0">
+              <div id="patient-work-plan-template-block" class="mb-4">
+                <label class="form-label" for="patient-work-plan-template">Crea o importa tareas</label>
+                <div class="input-group">
+                  <select class="form-select" id="patient-work-plan-template">
+                    <option value="manual">Crear manualmente</option>
+                  </select>
+                  <button type="button" class="btn btn-outline-primary" id="btn-import-work-plan-template">
+                    <i class="bi bi-box-arrow-in-down"></i> Importar
+                  </button>
+                </div>
+                <div class="form-text">Crea una tarea nueva o importa una plantilla de tareas predefinida.</div>
+              </div>
+              <div class="row g-3" id="patient-work-plan-manual-block">
+                <div class="col-md-8">
+                  <label class="form-label" for="patient-work-plan-title">T&iacute;tulo</label>
+                  <input type="text" class="form-control" id="patient-work-plan-title" name="title" maxlength="180" required>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label" for="patient-work-plan-priority">Prioridad</label>
+                  <select class="form-select" id="patient-work-plan-priority" name="priority">
+                    <option value="1">Alta</option>
+                    <option value="2" selected>Normal</option>
+                    <option value="3">Baja</option>
+                  </select>
+                </div>
+                <div class="col-12">
+                  <label class="form-label" for="patient-work-plan-description">Descripci&oacute;n / actividad</label>
+                  <textarea class="form-control" id="patient-work-plan-description" name="description" rows="4"></textarea>
+                </div>
+                <div class="col-12">
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="patient-work-plan-completed">
+                    <label class="form-check-label" for="patient-work-plan-completed">Marcar como completada</label>
+                  </div>
+                </div>
+                <div class="col-12">
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="patient-work-plan-visible">
+                    <label class="form-check-label" for="patient-work-plan-visible">El paciente puede ver esta tarea desde el Portal</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline-secondary" id="btn-cancel-patient-work-plan-form" data-bs-dismiss="modal">Cancelar</button>
+              <button type="submit" class="btn btn-primary" id="btn-save-patient-work-plan">Guardar tarea</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
     <div class="modal fade" id="settingsModal" tabindex="-1" aria-hidden="true">
       <div class="modal-dialog modal-xl">
         <div class="modal-content settings-modal-content">
@@ -760,6 +1147,10 @@ if ($is_admin) {
               <li class="nav-item" role="presentation">
                 <button class="nav-link" id="booking-settings-tab" data-bs-toggle="tab" data-bs-target="#booking-settings-panel"
                   type="button" role="tab">Reservas</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="task-templates-settings-tab" data-bs-toggle="tab" data-bs-target="#task-templates-settings-panel"
+                  type="button" role="tab">Plantillas</button>
               </li>
               <li class="nav-item <?= $is_superadmin ? '' : 'd-none' ?>" role="presentation">
                 <button class="nav-link" id="payment-settings-tab" data-bs-toggle="tab" data-bs-target="#payment-settings-panel"
@@ -813,6 +1204,16 @@ if ($is_admin) {
                   </div>
                 </div>
 
+                <div class="row g-3 align-items-start mb-4">
+                  <div class="col-lg-10 offset-lg-2">
+                    <div class="form-check form-switch">
+                      <input class="form-check-input" type="checkbox" id="patient-tasks-visible-default">
+                      <label class="form-check-label" for="patient-tasks-visible-default">Tareas visibles para los pacientes</label>
+                    </div>
+                    <div class="form-text">Indica si quieres que, por defecto, las tareas que asignes a tus pacientes est&eacute;n visibles en el portal de pacientes.</div>
+                  </div>
+                </div>
+
                 <hr class="my-4">
                 <div class="row g-3 align-items-center mb-4">
                   <label class="col-lg-2 col-form-label" for="appointment-delivery-mode">Modalidades</label>
@@ -830,16 +1231,28 @@ if ($is_admin) {
                   <label class="col-lg-2 col-form-label">Servicios</label>
                   <div class="col-lg-10">
                     <div class="row g-2">
-                      <div class="col-sm-6">
+                      <div class="col-6 col-md-3">
                         <div class="form-check">
                           <input class="form-check-input available-session-type" type="checkbox" id="available-session-individual" value="individual" checked disabled>
-                          <label class="form-check-label" for="available-session-individual">Sesión individual</label>
+                          <label class="form-check-label" for="available-session-individual">Individual</label>
                         </div>
                       </div>
-                      <div class="col-sm-6">
+                      <div class="col-6 col-md-3">
                         <div class="form-check">
                           <input class="form-check-input available-session-type" type="checkbox" id="available-session-couple" value="couple">
-                          <label class="form-check-label" for="available-session-couple">Sesión de pareja</label>
+                          <label class="form-check-label" for="available-session-couple">Parejas</label>
+                        </div>
+                      </div>
+                      <div class="col-6 col-md-3">
+                        <div class="form-check">
+                          <input class="form-check-input available-session-type" type="checkbox" id="available-session-family" value="family">
+                          <label class="form-check-label" for="available-session-family">Familiar</label>
+                        </div>
+                      </div>
+                      <div class="col-6 col-md-3">
+                        <div class="form-check">
+                          <input class="form-check-input available-session-type" type="checkbox" id="available-session-group" value="group">
+                          <label class="form-check-label" for="available-session-group">Grupos</label>
                         </div>
                       </div>
                     </div>
@@ -851,22 +1264,39 @@ if ($is_admin) {
                   <label class="col-lg-2 col-form-label">Duraciones</label>
                   <div class="col-lg-10">
                     <div class="row g-2">
-                      <div class="col-sm-4">
+                      <div class="col-4 col-md-3">
                         <div class="form-check">
                           <input class="form-check-input available-session-duration" type="checkbox" id="available-duration-60" value="60" checked>
                           <label class="form-check-label" for="available-duration-60">60 minutos</label>
                         </div>
                       </div>
-                      <div class="col-sm-4">
+                      <div class="col-4 col-md-3">
                         <div class="form-check">
                           <input class="form-check-input available-session-duration" type="checkbox" id="available-duration-90" value="90">
                           <label class="form-check-label" for="available-duration-90">90 minutos</label>
                         </div>
                       </div>
-                      <div class="col-sm-4">
+                      <div class="col-4 col-md-3">
                         <div class="form-check">
                           <input class="form-check-input available-session-duration" type="checkbox" id="available-duration-120" value="120">
                           <label class="form-check-label" for="available-duration-120">120 minutos</label>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="mt-3">
+                      <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="display-effective-duration-enabled">
+                        <label class="form-check-label fw-semibold" for="display-effective-duration-enabled">Mostrar duraci&oacute;n efectiva al paciente</label>
+                      </div>
+                      <div class="row g-2 align-items-center">
+                        <div class="col-sm-4 col-md-3">
+                          <div class="input-group input-group-sm">
+                            <input type="number" class="form-control" id="display-duration-offset-minutes" min="0" max="30" step="1" value="5">
+                            <span class="input-group-text">min</span>
+                          </div>
+                        </div>
+                        <div class="col-sm-8 col-md-9">
+                          <div class="form-text mb-0">Resta estos minutos al horario mostrado. Ejemplo: un hueco real de 10:00 a 11:00 se mostrar&aacute; como 10:00 a 10:55.</div>
                         </div>
                       </div>
                     </div>
@@ -971,6 +1401,27 @@ if ($is_admin) {
                 </div>
               </div>
 
+              <div class="tab-pane fade" id="task-templates-settings-panel" role="tabpanel" aria-labelledby="task-templates-settings-tab">
+                <div id="task-templates-alert" class="alert d-none"></div>
+                <div class="alert alert-info d-flex align-items-start gap-2">
+                  <i class="bi bi-collection fs-5"></i>
+                  <div>Desde aqu&iacute; puedes crear plantillas de tareas predefinidas que suelas reutilizar habitualmente con tus pacientes.</div>
+                </div>
+                <div class="task-template-list-wrap">
+                  <div class="d-flex justify-content-between align-items-center gap-2 mb-3 flex-wrap">
+                    <h6 class="mb-0">Plantillas disponibles</h6>
+                    <div class="d-flex gap-2 flex-wrap">
+                      <button type="button" class="btn btn-primary btn-sm" id="btn-new-task-template">
+                        <i class="bi bi-plus-lg"></i> Nueva plantilla
+                      </button>
+                    </div>
+                  </div>
+                  <div id="task-templates-list" class="task-template-list">
+                    <div class="text-center text-muted py-4">Cargando plantillas...</div>
+                  </div>
+                </div>
+              </div>
+
               <div class="tab-pane fade" id="interface-settings-panel" role="tabpanel" aria-labelledby="interface-settings-tab">
                 <div id="interface-settings-alert" class="alert d-none"></div>
                 <div class="interface-settings-compact">
@@ -1039,6 +1490,22 @@ if ($is_admin) {
                         <option value="week">Semanal</option>
                       </select>
                       <div class="form-text">Se podrá alternar entre semanal y mensual, pero por defecto aparecerá el de la opción configurada.</div>
+                    </div>
+                  </div>
+                </div>
+                <hr class="my-4">
+                <div class="row g-3 align-items-start mb-4">
+                  <label class="col-lg-2 col-form-label" for="dashboard-config-mode">Dashboard</label>
+                  <div class="col-lg-10">
+                    <div class="d-flex gap-2 flex-wrap align-items-start">
+                      <select class="form-select" id="dashboard-config-mode" style="max-width: 260px;">
+                        <option value="simple">Simple</option>
+                        <option value="advanced">Completo</option>
+                        <option value="custom">Personalizado</option>
+                      </select>
+                      <button type="button" class="btn btn-outline-primary d-none" id="btn-open-dashboard-custom-config">
+                        <i class="bi bi-sliders"></i> Personalizar
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -1482,9 +1949,114 @@ if ($is_admin) {
     </div>
   <?php endif; ?>
 
+  <?php if ($is_superadmin): ?>
+    <div class="modal fade" id="dashboardCustomConfigModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Personalizar dashboard</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div id="dashboard-custom-config-alert" class="alert d-none"></div>
+            <label class="form-label" for="dashboard-custom-config-json">JSON personalizado</label>
+            <div class="form-text mb-2">Aqui podras elegir que caracteristicas quieres usar o no. Hazlo con precaucion para evitar problemas con la app.</div>
+            <textarea class="form-control dashboard-config-json-editor" id="dashboard-custom-config-json" rows="18" spellcheck="false"></textarea>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="btn-save-dashboard-custom-config">Guardar JSON</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  <?php endif; ?>
+
+  <?php if ($is_admin): ?>
+    <div class="modal fade" id="taskTemplateModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-md">
+        <div class="modal-content">
+          <form id="task-template-form">
+            <div class="modal-header">
+              <h5 class="modal-title" id="task-template-modal-title">Nueva plantilla</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+              <input type="hidden" id="task-template-id" value="0">
+              <div class="mb-3">
+                <label class="form-label" for="task-template-title">Nombre de la plantilla</label>
+                <input type="text" class="form-control" id="task-template-title" maxlength="180" placeholder="Ej. Plantilla para ansiedad" required>
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="task-template-category">Terapia / categor&iacute;a</label>
+                <input type="text" class="form-control" id="task-template-category" maxlength="120" placeholder="Ej. Ansiedad, adolescentes, seguimiento">
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="task-template-description">Descripci&oacute;n interna</label>
+                <textarea class="form-control" id="task-template-description" rows="4"></textarea>
+              </div>
+              <?php if ($is_superadmin): ?>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="task-template-global" checked>
+                  <label class="form-check-label" for="task-template-global">Disponible para todo el gabinete</label>
+                </div>
+              <?php endif; ?>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button type="submit" class="btn btn-primary" id="btn-save-task-template">Guardar plantilla</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="taskTemplateItemModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-md">
+        <div class="modal-content">
+          <form id="task-template-item-form">
+            <div class="modal-header">
+              <h5 class="modal-title" id="task-template-item-modal-title">Nueva tarea de plantilla</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+              <input type="hidden" id="task-template-item-id" value="0">
+              <div class="mb-3">
+                <label class="form-label" for="task-template-item-template-id">Plantilla</label>
+                <select class="form-select" id="task-template-item-template-id" required>
+                  <option value="">Selecciona plantilla...</option>
+                </select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="task-template-item-title">T&iacute;tulo de la tarea</label>
+                <input type="text" class="form-control" id="task-template-item-title" maxlength="180" required>
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="task-template-item-priority">Prioridad</label>
+                <select class="form-select" id="task-template-item-priority">
+                  <option value="1">Alta</option>
+                  <option value="2" selected>Normal</option>
+                  <option value="3">Baja</option>
+                </select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="task-template-item-description">Descripci&oacute;n / actividad</label>
+                <textarea class="form-control" id="task-template-item-description" rows="4"></textarea>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button type="submit" class="btn btn-primary" id="btn-save-task-template-item">Guardar tarea</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  <?php endif; ?>
+
   <?php if ($is_admin): ?>
     <div class="modal fade" id="closedDayModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-md modal-dialog-centered">
+      <div class="modal-dialog modal-md">
         <div class="modal-content">
           <div class="modal-header">
             <h5 class="modal-title">Añadir cierre</h5>
@@ -1528,7 +2100,7 @@ if ($is_admin) {
 
   <?php if ($is_superadmin): ?>
     <div class="modal fade" id="professionalEditorModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-xl modal-dialog-centered">
+      <div class="modal-dialog modal-xl">
         <div class="modal-content">
           <div class="modal-header">
             <h5 class="modal-title" id="professional-editor-title">Profesional</h5>
@@ -1536,6 +2108,7 @@ if ($is_admin) {
           </div>
           <form id="professional-editor-form">
             <div class="modal-body">
+              <div id="professional-editor-alert" class="alert d-none"></div>
               <input type="hidden" id="professional-editor-index" value="-1">
               <input type="hidden" id="professional-editor-id" value="0">
               <input type="hidden" id="professional-editor-user-id" value="0">
@@ -1627,7 +2200,7 @@ if ($is_admin) {
                     <input type="file" class="form-control" id="professional-editor-photo" accept="image/jpeg,image/png,image/webp,image/gif">
                     <div class="d-flex align-items-center gap-3 mt-2">
                       <img src="" alt="" id="professional-editor-photo-preview" class="d-none" style="width: 56px; height: 56px; border-radius: 50%; object-fit: cover;">
-                      <div class="form-text" id="professional-editor-photo-status">Formatos permitidos: JPG, PNG, WEBP o GIF. M&aacute;ximo 2 MB.</div>
+                      <div class="form-text" id="professional-editor-photo-status">Formatos permitidos: JPG, PNG, WEBP o GIF. M&aacute;ximo 5 MB.</div>
                     </div>
                   </div>
                 </div>
@@ -1653,7 +2226,7 @@ if ($is_admin) {
     </div>
 
     <div class="modal fade" id="professionalTransferModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-md modal-dialog-centered">
+      <div class="modal-dialog modal-md">
         <div class="modal-content">
           <div class="modal-header">
             <h5 class="modal-title" id="professional-delete-title">Borrar profesional</h5>
@@ -1683,7 +2256,7 @@ if ($is_admin) {
 
   <?php if (!$is_admin): ?>
     <div class="modal fade" id="patientSelfDataModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-md modal-dialog-centered">
+      <div class="modal-dialog modal-md">
         <div class="modal-content">
           <div class="modal-header">
             <h5 class="modal-title">Mis datos</h5>
@@ -1719,8 +2292,42 @@ if ($is_admin) {
     </div>
   <?php endif; ?>
 
+  <?php if (!$is_admin): ?>
+    <div class="modal fade" id="patientPortalAppointmentsModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Mis citas</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div id="patient-portal-appointments" class="patient-portal-list patient-portal-modal-list">
+              <div class="text-muted small">Cargando citas...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="patientPortalTasksModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Mis tareas</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div id="patient-portal-tasks" class="patient-portal-list patient-portal-modal-list">
+              <div class="text-muted small">Cargando tareas...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  <?php endif; ?>
+
   <div class="modal fade" id="changePasswordModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-md modal-dialog-centered">
+    <div class="modal-dialog modal-md">
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title">Cambiar contraseña</h5>
@@ -1756,6 +2363,8 @@ if ($is_admin) {
     const IS_SUPERADMIN = <?= $is_superadmin ? 'true' : 'false' ?>;
     const CURRENT_USER_ID = <?= (int) $_SESSION['user_id'] ?>;
     const INITIAL_CALENDAR_VIEW = <?= json_encode(($branding['initial_calendar_view'] ?? 'month') === 'week' ? 'week' : 'month') ?>;
+    const DASHBOARD_CONFIG_MODE = <?= json_encode($dashboard_config_mode) ?>;
+    const DASHBOARD_CONFIG = <?= json_encode($dashboard_config, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
   </script>
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>

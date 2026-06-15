@@ -20,13 +20,17 @@ let PAYMENT_SETTINGS = {
     available_weekdays: '1,2,3,4,5',
     appointment_delivery_mode: 'both',
     available_session_durations: '60',
+    display_effective_duration_enabled: 0,
+    display_duration_offset_minutes: 5,
     online_booking_enabled: 1,
+    patient_tasks_visible_default: 0,
     email_provider: 'phpmailer',
     smtp_from_email: '',
     google_connected_email: '',
     has_google_refresh_token: 0,
     bonuses_enabled: 0,
-    create_compensation_bonus_on_paid_cancel: 1
+    create_compensation_bonus_on_paid_cancel: 1,
+    allow_patient_transfer: 0
 };
 let APPOINTMENT_SERVICES = [];
 let ACTIVE_SERVICE_OPTIONS = [];
@@ -47,9 +51,11 @@ let CURRENT_UPCOMING_PLANNING = {
     settings: {},
     closedDays: []
 };
+let CURRENT_CANCELLED_APPOINTMENTS = [];
 let adminStatsModal = null;
 let bonusesModal = null;
 let selectedBonusToBuy = null;
+let patientWorkPlanTaskModal = null;
 let currentInviteLink = '';
 let currentInviteToken = '';
 let currentCancelAppointmentId = null;
@@ -61,6 +67,7 @@ let CURRENT_PATIENT_BOOKING_MODE = '';
 let CURRENT_SLOT_PROFESSIONALS = [];
 let CURRENT_SLOT_SELECTED_PROFESSIONAL_ID = 0;
 let CURRENT_BOOKING_CONSULTATION_TYPE = '';
+let CURRENT_PATIENT_EDITOR = null;
 
 function getMonday(d) {
     d = new Date(d);
@@ -86,6 +93,24 @@ function formatDisplayDate(dateStr) {
     return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : dateStr;
 }
 
+function calculateAgeFromDate(dateStr) {
+    if (!dateStr) return '';
+    const birth = new Date(`${dateStr}T00:00:00`);
+    if (Number.isNaN(birth.getTime())) return '';
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+        age--;
+    }
+    return age >= 0 && age < 130 ? String(age) : '';
+}
+
+function updatePatientAgeDisplay() {
+    const age = calculateAgeFromDate($('#patient-editor-birth-date').val());
+    $('#patient-editor-age').text(age ? `${age} años` : '-');
+}
+
 function renderWeekInfo() {
     updateCalendarNavigationLabels();
     if (currentCalendarView === 'month') {
@@ -96,6 +121,14 @@ function renderWeekInfo() {
 
 function formatMonthStart(date) {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
+function debounce(fn, wait = 250) {
+    let timeout = null;
+    return function (...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => fn.apply(this, args), wait);
+    };
 }
 
 function updateCalendarNavigationLabels() {
@@ -385,6 +418,7 @@ function loadCalendar(startDateStr) {
                     ACTIVE_SERVICE_OPTIONS = res.service_options;
                 }
                 togglePatientBonusActions();
+                loadQuickAppointmentsSummary();
                 drawCalendar(startDateStr, res.appointments, res.closed_days);
             }
         }
@@ -408,6 +442,7 @@ function loadMonthCalendar(monthStr) {
                     ACTIVE_SERVICE_OPTIONS = res.service_options;
                 }
                 togglePatientBonusActions();
+                loadQuickAppointmentsSummary();
                 currentMonthData = res;
                 selectedMonthDay = selectedMonthDay || firstAvailableMonthDay(res.month, res.appointments, res.closed_days);
                 drawMonthCalendar(res.month, res.appointments || {}, res.closed_days || {});
@@ -631,6 +666,39 @@ function minutesToTime(minutes) {
     return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
 }
 
+function displayDurationMinutes(durationMinutes) {
+    const duration = parseInt(durationMinutes || 60, 10) || 60;
+    if (PAYMENT_SETTINGS.display_effective_duration_enabled != 1) {
+        return duration;
+    }
+    const offset = Math.max(0, Math.min(30, parseInt(PAYMENT_SETTINGS.display_duration_offset_minutes || 5, 10) || 0));
+    return Math.max(1, duration - offset);
+}
+
+function displayAppointmentTimeRange(startTime, durationMinutes, endTime = '') {
+    const start = String(startTime || '').slice(0, 5);
+    if (!start) {
+        return '';
+    }
+    const displayEnd = minutesToTime(timeToMinutes(start) + displayDurationMinutes(durationMinutes));
+    return `${start} - ${displayEnd}`;
+}
+
+function displayAppointmentDurationLabel(durationMinutes) {
+    return `${displayDurationMinutes(durationMinutes)} min`;
+}
+
+function displayAppointmentServiceLabel(app = {}) {
+    const label = String(app.service_label || '');
+    if (!label) {
+        return '';
+    }
+    if (PAYMENT_SETTINGS.display_effective_duration_enabled != 1) {
+        return label;
+    }
+    return label.replace(/\((\d+)\s*min\)/i, (_match, minutes) => `(${displayDurationMinutes(app.duration_minutes || minutes)} min)`);
+}
+
 function getScheduleItems() {
     const start = timeToMinutes(PAYMENT_SETTINGS.appointment_start_time || '10:00');
     const end = timeToMinutes(PAYMENT_SETTINGS.appointment_end_time || '19:00');
@@ -729,6 +797,7 @@ function renderSlot(dateStr, timeStr, dayApps) {
         let paymentBadge = getPaymentBadge(app);
         let consultationBadge = getConsultationBadge(app.consultation_type);
         let serviceBadge = getServiceBadge(app);
+        let appDisplayRange = displayAppointmentTimeRange(timeStr, app.duration_minutes || 60);
         let cancelPayloadArg = encodeURIComponent(JSON.stringify({
             id: app.id || null,
             name: app.name || '',
@@ -744,15 +813,18 @@ function renderSlot(dateStr, timeStr, dayApps) {
             ? `<button class="btn btn-success slot-action-btn" onclick="event.stopPropagation(); openModal('${dateStr}', '${timeStr}', 'pay_own', '${app.id}', '${payPriceArg}', '${payLabelArg}');" title="Pagar cita"><i class="bi bi-credit-card"></i></button>`
             : '';
         if (IS_ADMIN) {
+            const patientButton = app.user_id
+                ? `<button class="btn btn-outline-secondary slot-action-btn" onclick="event.stopPropagation(); openPatientEditorById(${parseInt(app.user_id, 10)}, this);" title="Datos del paciente"><i class="bi bi-person-lines-fill"></i></button>`
+                : '';
             cls = 'booked';
             text = `
-                <div class="slot-content">
-                    <div class="slot-main-row">
-                        <span class="slot-label">${timeStr} - ${app.name}</span>
+                    <div class="slot-content">
+                        <div class="slot-main-row">
+                        <span class="slot-label">${appDisplayRange} - ${app.name}</span>
                     </div>
                     <div class="slot-meta-row">
                         <span class="slot-badges">${serviceBadge}${consultationBadge}${paymentBadge}</span>
-                        <span class="slot-actions"><button class="btn btn-danger slot-action-btn" onclick="event.stopPropagation(); openModal('${dateStr}', '${timeStr}', 'cancel_admin', '${cancelPayloadArg}');" title="Cancelar cita"><i class="bi bi-trash"></i></button></span>
+                        <span class="slot-actions">${patientButton}<button class="btn btn-danger slot-action-btn" onclick="event.stopPropagation(); openModal('${dateStr}', '${timeStr}', 'cancel_admin', '${cancelPayloadArg}');" title="Cancelar cita"><i class="bi bi-trash"></i></button></span>
                     </div>
                 </div>
             `;
@@ -763,7 +835,7 @@ function renderSlot(dateStr, timeStr, dayApps) {
                 text = `
                     <div class="slot-content">
                         <div class="slot-main-row">
-                            <span class="slot-label">${timeStr} - Tu reserva</span>
+                            <span class="slot-label">${appDisplayRange} - Tu reserva</span>
                         </div>
                         <div class="slot-meta-row">
                             <span class="slot-badges">${serviceBadge}${consultationBadge}${paymentBadge}</span>
@@ -786,6 +858,473 @@ function renderSlot(dateStr, timeStr, dayApps) {
     }
 
     return `<div class="slot ${cls}" ${onClick ? `onclick="${onClick}"` : ''}>${text}</div>`;
+}
+
+function loadQuickAppointmentsSummary() {
+    const $wrap = $('#quick-appointments-summary');
+    if (!$wrap.length || !IS_ADMIN) {
+        return;
+    }
+
+    $.ajax({
+        url: 'api/admin.php?action=quick_appointments',
+        method: 'GET',
+        dataType: 'json',
+        success: function (res) {
+            if (!res.success) {
+                $wrap.addClass('d-none').empty();
+                return;
+            }
+            renderQuickAppointmentsSummary(res.current || null, res.next || null);
+        },
+        error: function () {
+            $wrap.addClass('d-none').empty();
+        }
+    });
+}
+
+function renderQuickAppointmentsSummary(current, next) {
+    const $wrap = $('#quick-appointments-summary');
+    if (!$wrap.length) {
+        return;
+    }
+    const cards = [];
+    if (current) {
+        cards.push(quickAppointmentCardHtml(current, 'Cita en curso', 'current'));
+    }
+    if (next) {
+        cards.push(quickAppointmentCardHtml(next, current ? 'Siguiente cita' : 'Próxima cita', 'next'));
+    }
+    if (!cards.length) {
+        $wrap.addClass('d-none').empty();
+        return;
+    }
+    $wrap
+        .removeClass('d-none')
+        .html(`<div class="row g-3 mb-4">${cards.join('')}</div>`);
+}
+
+function quickAppointmentCardHtml(app, title, type) {
+    const start = app.appointment_time || '';
+    const end = app.appointment_end_time || '';
+    const timeText = displayAppointmentTimeRange(start, app.duration_minutes || 60, end);
+    const dateTimeText = type === 'current'
+        ? `${quickAppointmentDateLabel(app.appointment_date || '')}${timeText ? ` · ${timeText}` : ''}`
+        : quickAppointmentTimingLabel(app);
+    const contact = quickAppointmentContactHtml(app);
+    const payment = adminPaymentLabel(app);
+    const consultation = quickAppointmentConsultationBadge(app.consultation_type);
+    return `
+        <div class="col-12 col-lg-6">
+            <article class="quick-appointment-card quick-appointment-${type}">
+                <div class="quick-appointment-topline">
+                    <span>${escapeHtml(title)}</span>
+                    <button type="button" class="btn btn-primary btn-sm" onclick="openAppointmentPaymentModal(${parseInt(app.id, 10)})">
+                        <i class="bi bi-box-arrow-up-right"></i> Abrir
+                    </button>
+                </div>
+                <div class="quick-appointment-body">
+                    <div>
+                        <h5>${escapeHtml(dateTimeText)}</h5>
+                        <h5 class="quick-appointment-patient-name">${escapeHtml(app.patient_name || 'Paciente')}</h5>
+                        ${contact ? `<div class="quick-appointment-contact">${contact}</div>` : ''}
+                    </div>
+                </div>
+                <div class="quick-appointment-meta">
+                    <div class="quick-appointment-meta-main">
+                        <span>${escapeHtml(displayAppointmentServiceLabel(app))}</span>
+                    </div>
+                    <div class="quick-appointment-badges">
+                        ${consultation}
+                        ${payment}
+                    </div>
+                </div>
+            </article>
+        </div>
+    `;
+}
+
+function quickAppointmentContactText(app = {}) {
+    const email = String(app.patient_email || '').trim();
+    const phone = String(app.patient_phone || '').trim();
+    if (email && phone) {
+        return `${email} (${phone})`;
+    }
+    return email || phone;
+}
+
+function quickAppointmentContactHtml(app = {}) {
+    const email = String(app.patient_email || '').trim();
+    const phone = String(app.patient_phone || '').trim();
+    const text = email && phone ? `${escapeHtml(email)} (${escapeHtml(phone)})` : escapeHtml(email || phone);
+    if (!text) {
+        return '';
+    }
+    return `${text}${patientContactActionsHtml(phone, 'ms-2')}`;
+}
+
+function patientContactSummaryHtml(email, phone) {
+    const emailText = String(email || '').trim();
+    const phoneText = String(phone || '').trim();
+    const parts = [];
+    if (emailText) {
+        parts.push(escapeHtml(emailText));
+    }
+    if (phoneText) {
+        parts.push(`${emailText ? '(' : ''}${escapeHtml(phoneText)}${emailText ? ')' : ''}${patientContactActionsHtml(phoneText, 'ms-1')}`);
+    }
+    return parts.join(' ');
+}
+
+function patientContactActionsHtml(phone, extraClass = '') {
+    const rawPhone = String(phone || '').trim();
+    if (!rawPhone) {
+        return '';
+    }
+    const telHref = rawPhone.replace(/"/g, '');
+    const whatsappDigits = rawPhone.replace(/[^\d+]/g, '').replace(/^\+/, '');
+    const whatsappButton = whatsappDigits.length >= 6
+        ? `<a class="btn btn-outline-success btn-sm patient-contact-action${extraClass ? ` ${extraClass}` : ''}" href="https://wa.me/${escapeHtml(whatsappDigits)}" target="_blank" rel="noopener" title="WhatsApp" onclick="event.stopPropagation();"><i class="bi bi-whatsapp"></i></a>`
+        : '';
+    return `
+        <span class="patient-contact-actions">
+            <a class="btn btn-outline-secondary btn-sm patient-contact-action${extraClass ? ` ${extraClass}` : ''}" href="tel:${escapeHtml(telHref)}" title="Llamar" onclick="event.stopPropagation();"><i class="bi bi-telephone"></i></a>
+            ${whatsappButton}
+        </span>
+    `;
+}
+
+function quickAppointmentConsultationBadge(type) {
+    const isOnline = type === 'online';
+    return `<span class="badge ${isOnline ? 'text-bg-info' : 'text-bg-light'}">${consultationTypeLabel(type)}</span>`;
+}
+
+function quickAppointmentDateLabel(dateStr) {
+    if (!dateStr) {
+        return '';
+    }
+    const today = formatDate(new Date());
+    const tomorrowDate = new Date();
+    tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+    const tomorrow = formatDate(tomorrowDate);
+    if (dateStr === today) {
+        return 'Hoy';
+    }
+    if (dateStr === tomorrow) {
+        return 'Mañana';
+    }
+    return formatDisplayDate(dateStr);
+}
+
+function quickAppointmentTimingLabel(app = {}) {
+    const dateStr = app.appointment_date || '';
+    const timeStr = app.appointment_time || '';
+    if (!dateStr || !timeStr) {
+        return quickAppointmentDateLabel(dateStr);
+    }
+    const start = new Date(`${dateStr}T${timeStr}:00`);
+    if (Number.isNaN(start.getTime())) {
+        return quickAppointmentDateLabel(dateStr);
+    }
+    const now = new Date();
+    const diffMinutes = Math.round((start - now) / 60000);
+    if (diffMinutes > 0 && diffMinutes < 60) {
+        return `En ${diffMinutes} minuto${diffMinutes === 1 ? '' : 's'}`;
+    }
+    const today = formatDate(now);
+    const tomorrowDate = new Date(now);
+    tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+    const tomorrow = formatDate(tomorrowDate);
+    if (dateStr === today) {
+        return `Hoy a las ${timeStr}`;
+    }
+    if (dateStr === tomorrow) {
+        return `Mañana a las ${timeStr}`;
+    }
+    return formatDisplayDate(dateStr);
+}
+
+function loadPatientPortalSummary() {
+    if (IS_ADMIN || !$('#patient-quick-appointment-summary').length) {
+        return;
+    }
+    $.ajax({
+        url: 'api/appointments.php?action=patient_portal_summary',
+        method: 'GET',
+        dataType: 'json',
+        success: function (res) {
+            if (!res.success) {
+                $('#patient-quick-appointment-summary').addClass('d-none');
+                return;
+            }
+            CURRENT_PATIENT_PORTAL = {
+                appointments: Array.isArray(res.appointments) ? res.appointments : [],
+                tasks: Array.isArray(res.tasks) ? res.tasks : []
+            };
+            if (res.payment_settings) {
+                PAYMENT_SETTINGS = { ...PAYMENT_SETTINGS, ...res.payment_settings };
+            }
+            renderPatientQuickAppointment(CURRENT_PATIENT_PORTAL.appointments);
+            renderPatientPortalSummary(CURRENT_PATIENT_PORTAL);
+        },
+        error: function () {
+            $('#patient-quick-appointment-summary').addClass('d-none');
+        }
+    });
+}
+
+function renderPatientQuickAppointment(appointments) {
+    const $wrap = $('#patient-quick-appointment-summary');
+    if (!$wrap.length) return;
+    const now = new Date();
+    const upcoming = (Array.isArray(appointments) ? appointments : [])
+        .filter(app => app.status === 'booked')
+        .filter(app => new Date(`${app.appointment_date}T${app.appointment_time || '00:00'}:00`).getTime() + ((parseInt(app.duration_minutes || 60, 10) || 60) * 60000) >= now.getTime())
+        .sort((a, b) => new Date(`${a.appointment_date}T${a.appointment_time || '00:00'}:00`) - new Date(`${b.appointment_date}T${b.appointment_time || '00:00'}:00`));
+    const app = upcoming[0] || null;
+    if (!app) {
+        $wrap.addClass('d-none').empty();
+        return;
+    }
+    const start = new Date(`${app.appointment_date}T${app.appointment_time || '00:00'}:00`);
+    const duration = parseInt(app.duration_minutes || 60, 10) || 60;
+    const end = new Date(start.getTime() + duration * 60000);
+    const isCurrent = start <= now && end >= now;
+    app.appointment_end_time = `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`;
+    const timeText = displayAppointmentTimeRange(app.appointment_time || '', app.duration_minutes || 60, app.appointment_end_time || '');
+    const dateTimeText = `${formatDisplayDate(app.appointment_date || '')}${timeText ? ` · ${timeText}` : ''}`;
+    const consultation = quickAppointmentConsultationBadge(app.consultation_type);
+    const title = isCurrent ? 'Cita en curso' : 'Próxima cita';
+    const onlineLink = app.consultation_type === 'online' && app.online_session_url
+        ? `<a class="btn btn-outline-primary btn-sm" href="${escapeHtml(app.online_session_url)}" target="_blank" rel="noopener"><i class="bi bi-camera-video"></i> Entrar</a>`
+        : '';
+    $wrap.removeClass('d-none').html(`
+        <div class="row g-3 mb-4">
+            <div class="col-12 col-lg-6">
+                <article class="quick-appointment-card quick-appointment-next">
+                    <div class="quick-appointment-topline">
+                        <span>${escapeHtml(title)}</span>
+                        <div class="d-flex gap-2 flex-wrap justify-content-end">
+                            ${onlineLink}
+                            <button type="button" class="btn btn-outline-danger btn-sm btn-cancel-patient-quick-appointment" data-appointment-id="${parseInt(app.id, 10)}">
+                                <i class="bi bi-x-circle"></i> Cancelar
+                            </button>
+                        </div>
+                    </div>
+                    <div class="quick-appointment-body">
+                        <div>
+                            <h5>${escapeHtml(dateTimeText)}</h5>
+                            <div class="quick-appointment-contact">${escapeHtml(app.professional_name || '')}</div>
+                        </div>
+                    </div>
+                    <div class="quick-appointment-meta">
+                        <div class="quick-appointment-meta-main">
+                            <span>${escapeHtml(displayAppointmentServiceLabel(app) || 'Cita')}</span>
+                        </div>
+                        <div class="quick-appointment-badges">${consultation}</div>
+                    </div>
+                </article>
+            </div>
+        </div>
+    `);
+}
+
+function renderPatientPortalSummary(data) {
+    const appointments = Array.isArray(data.appointments) ? data.appointments : [];
+    const tasks = Array.isArray(data.tasks) ? data.tasks : [];
+    $('#patient-portal-appointments').html(renderPatientPortalAppointments(appointments));
+    $('#patient-portal-tasks').html(renderPatientPortalTasks(tasks));
+}
+
+function openPatientPortalAppointmentsModal() {
+    renderPatientPortalSummary(CURRENT_PATIENT_PORTAL);
+    if (patientPortalAppointmentsModal) {
+        patientPortalAppointmentsModal.show();
+    }
+}
+
+function openPatientPortalTasksModal() {
+    renderPatientPortalSummary(CURRENT_PATIENT_PORTAL);
+    if (patientPortalTasksModal) {
+        patientPortalTasksModal.show();
+    }
+}
+
+function renderPatientPortalAppointments(appointments) {
+    if (!appointments.length) {
+        return '<div class="text-muted small">Todavia no tienes citas registradas.</div>';
+    }
+    return appointments.slice(0, 8).map(app => {
+        const statusLabel = {
+            booked: 'Reservada',
+            cancelled: 'Cancelada',
+            completed: 'Realizada',
+            no_show: 'No asistida'
+        }[app.status] || app.status || '';
+        const paymentStatus = patientPortalAppointmentPaymentHtml(app);
+        return `
+            <div class="patient-portal-item">
+                <div class="patient-portal-item-main">
+                    <strong>${escapeHtml(formatDisplayDate(app.appointment_date || ''))} · ${escapeHtml(displayAppointmentTimeRange(app.appointment_time || '', app.duration_minutes || 60))}</strong>
+                    <div class="text-muted small">${escapeHtml(displayAppointmentServiceLabel(app))}${app.professional_name ? ` · ${escapeHtml(app.professional_name)}` : ''}</div>
+                    ${paymentStatus.meta}
+                </div>
+                <div class="patient-portal-item-actions">
+                    ${app.status === 'booked' ? '' : `<span class="badge ${app.status === 'cancelled' ? 'text-bg-danger' : 'text-bg-light'}">${escapeHtml(statusLabel)}</span>`}
+                    ${paymentStatus.action}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function patientPortalAppointmentPaymentHtml(app = {}) {
+    const hasBonus = parseInt(app.patient_bonus_id || 0, 10) > 0 || app.payment_method === 'bonus';
+    const paid = app.payment_status === 'paid';
+    const failed = app.payment_status === 'failed';
+    const canPayNow = app.status === 'booked'
+        && !paid
+        && !hasBonus
+        && PAYMENT_SETTINGS.online_payment_enabled == 1;
+    let label = 'Pendiente de pago';
+    let className = 'text-bg-warning';
+    let icon = 'bi-hourglass-split';
+    if (hasBonus) {
+        label = app.bonus_name ? `Bono usado: ${app.bonus_name}` : 'Pagada con bono';
+        className = 'text-bg-success';
+        icon = 'bi-card-checklist';
+    } else if (paid) {
+        const method = paymentMethodLabel(app.payment_method);
+        label = method ? `Pagada · ${method}` : 'Pagada';
+        className = 'text-bg-success';
+        icon = 'bi-check2-circle';
+    } else if (failed) {
+        label = 'Pago fallido';
+        className = 'text-bg-danger';
+        icon = 'bi-exclamation-triangle';
+    }
+    return {
+        meta: `<div class="patient-portal-payment small"><span class="badge ${className}"><i class="bi ${icon}"></i> ${escapeHtml(label)}</span></div>`,
+        action: canPayNow
+            ? `<button type="button" class="btn btn-success btn-sm btn-patient-portal-pay" data-appointment-id="${parseInt(app.id || 0, 10)}"><i class="bi bi-credit-card"></i> Pagar ahora</button>`
+            : ''
+    };
+}
+
+function renderPatientPortalTasks(tasks) {
+    if (!tasks.length) {
+        return '<div class="text-muted small">No tienes tareas visibles en el portal.</div>';
+    }
+    return tasks.slice(0, 8).map(task => {
+        const completed = task.status === 'completed';
+        const priority = workPlanPriorityLabel(task.priority);
+        return `
+            <div class="patient-portal-item ${completed ? 'is-completed' : ''}">
+                <div>
+                    <div class="d-flex gap-1 flex-wrap mb-1">
+                        <span class="badge ${priority.className}">${priority.label}</span>
+                        <span class="badge ${completed ? 'text-bg-success' : 'text-bg-warning'}">${completed ? 'Completada' : 'Pendiente'}</span>
+                    </div>
+                    <strong>${escapeHtml(task.title || '')}</strong>
+                    ${task.description ? `<div class="text-muted small">${escapeHtml(task.description)}</div>` : ''}
+                    ${completed && task.completed_at ? `<div class="text-muted small">Completada el ${escapeHtml(formatDateTimeLabel(task.completed_at))}</div>` : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function runGlobalSearch(query) {
+    const term = String(query || '').trim();
+    const $results = $('#global-search-results');
+    if (!$results.length) return;
+    if (term.length < 2) {
+        $results.html('<div class="text-center text-muted py-4">Escribe al menos 2 caracteres para buscar.</div>');
+        return;
+    }
+    $results.html('<div class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2"></span>Buscando...</div>');
+    $.ajax({
+        url: 'api/admin.php?action=global_search',
+        method: 'GET',
+        dataType: 'json',
+        data: { q: term },
+        success: function (res) {
+            if (!res.success) {
+                $results.html(`<div class="alert alert-danger">${escapeHtml(res.error || 'No se pudo realizar la busqueda.')}</div>`);
+                return;
+            }
+            renderGlobalSearchResults(res.results || {});
+        },
+        error: function () {
+            $results.html('<div class="alert alert-danger">Error de conexion al buscar.</div>');
+        }
+    });
+}
+
+function renderGlobalSearchResults(groups) {
+    const labels = {
+        patients: 'Pacientes',
+        professionals: 'Profesionales',
+        appointments: 'Citas',
+        files: 'Archivos',
+        tasks: 'Tareas'
+    };
+    const sections = Object.keys(labels).map(key => {
+        const rows = Array.isArray(groups[key]) ? groups[key] : [];
+        if (!rows.length) return '';
+        return `
+            <section class="global-search-section">
+                <h6>${labels[key]}</h6>
+                <div class="global-search-list">
+                    ${rows.map(renderGlobalSearchResult).join('')}
+                </div>
+            </section>
+        `;
+    }).filter(Boolean);
+    $('#global-search-results').html(sections.length ? sections.join('') : '<div class="text-center text-muted py-4">No se encontraron resultados.</div>');
+}
+
+function renderGlobalSearchResult(item) {
+    const action = item.action || {};
+    const kind = action.kind || '';
+    const id = parseInt(action.id || 0, 10);
+    const patientId = parseInt(action.patient_id || 0, 10);
+    const clickable = kind && id;
+    return `
+        <button type="button" class="global-search-result ${clickable ? '' : 'is-static'}" ${clickable ? `data-kind="${escapeHtml(kind)}" data-id="${id}" data-patient-id="${patientId || ''}"` : 'disabled'}>
+            <span class="global-search-icon"><i class="bi ${escapeHtml(item.icon || 'bi-search')}"></i></span>
+            <span class="global-search-content">
+                <strong>${escapeHtml(item.title || '')}</strong>
+                ${item.subtitle ? `<small>${escapeHtml(item.subtitle)}</small>` : ''}
+                ${item.meta ? `<em>${escapeHtml(item.meta)}</em>` : ''}
+            </span>
+        </button>
+    `;
+}
+
+function handleGlobalSearchAction(kind, id, patientId) {
+    if (globalSearchModal) {
+        globalSearchModal.hide();
+    }
+    id = parseInt(id || 0, 10);
+    patientId = parseInt(patientId || 0, 10);
+    if (kind === 'patient' && id) {
+        openPatientEditorById(id);
+    } else if (kind === 'appointment' && id) {
+        openAppointmentPaymentModal(id);
+    } else if (kind === 'file' && id) {
+        window.open(`api/admin.php?action=download_evolution_file&id=${id}`, '_blank');
+    } else if (kind === 'professional' && id && settingsModal) {
+        loadClosedDays();
+        loadPaymentSettings();
+        settingsModal.show();
+        const tabButton = document.getElementById('cabinet-settings-tab');
+        if (tabButton && window.bootstrap) {
+            bootstrap.Tab.getOrCreateInstance(tabButton).show();
+        }
+    } else if (patientId) {
+        openPatientEditorById(patientId);
+    }
 }
 
 function isPastSlot(dateStr, timeStr) {
@@ -849,11 +1388,15 @@ function getServiceBadge(app) {
         return '';
     }
     const duration = parseInt(app.duration_minutes || 60, 10);
+    const displayDuration = displayDurationMinutes(duration);
     let label = '';
-    if (app.service_type === 'couple') {
-        label = duration === 60 ? 'Pareja' : `Pareja ${duration} min`;
-    } else if (duration !== 60) {
-        label = `${duration} min`;
+    if (app.service_type && app.service_type !== 'individual') {
+        label = serviceTypeLabel(app.service_type);
+        if (displayDuration !== 60) {
+            label += ` ${displayDuration} min`;
+        }
+    } else if (displayDuration !== 60) {
+        label = `${displayDuration} min`;
     } else if (app.service_name && !/individual/i.test(app.service_name)) {
         label = app.service_name;
     }
@@ -877,6 +1420,12 @@ let professionalEditorModal = document.getElementById('professionalEditorModal')
 let professionalTransferModal = document.getElementById('professionalTransferModal') ? new bootstrap.Modal(document.getElementById('professionalTransferModal')) : null;
 let changePasswordModal = document.getElementById('changePasswordModal') ? new bootstrap.Modal(document.getElementById('changePasswordModal')) : null;
 let patientSelfDataModal = document.getElementById('patientSelfDataModal') ? new bootstrap.Modal(document.getElementById('patientSelfDataModal')) : null;
+let patientPortalAppointmentsModal = document.getElementById('patientPortalAppointmentsModal') ? new bootstrap.Modal(document.getElementById('patientPortalAppointmentsModal')) : null;
+let patientPortalTasksModal = document.getElementById('patientPortalTasksModal') ? new bootstrap.Modal(document.getElementById('patientPortalTasksModal')) : null;
+let globalSearchModal = document.getElementById('globalSearchModal') ? new bootstrap.Modal(document.getElementById('globalSearchModal')) : null;
+let dashboardCustomConfigModal = document.getElementById('dashboardCustomConfigModal') ? new bootstrap.Modal(document.getElementById('dashboardCustomConfigModal')) : null;
+let taskTemplateModal = document.getElementById('taskTemplateModal') ? new bootstrap.Modal(document.getElementById('taskTemplateModal')) : null;
+let taskTemplateItemModal = document.getElementById('taskTemplateItemModal') ? new bootstrap.Modal(document.getElementById('taskTemplateItemModal')) : null;
 inviteModal = document.getElementById('inviteModal') ? new bootstrap.Modal(document.getElementById('inviteModal')) : null;
 upcomingAppointmentsModal = document.getElementById('upcomingAppointmentsModal') ? new bootstrap.Modal(document.getElementById('upcomingAppointmentsModal')) : null;
 appointmentPaymentModal = document.getElementById('appointmentPaymentModal') ? new bootstrap.Modal(document.getElementById('appointmentPaymentModal')) : null;
@@ -884,6 +1433,7 @@ adminStatsModal = document.getElementById('adminStatsModal') ? new bootstrap.Mod
 bonusesModal = document.getElementById('bonusesModal') ? new bootstrap.Modal(document.getElementById('bonusesModal')) : null;
 let adminPatientsModal = document.getElementById('adminPatientsModal') ? new bootstrap.Modal(document.getElementById('adminPatientsModal')) : null;
 let patientEditorModal = document.getElementById('patientEditorModal') ? new bootstrap.Modal(document.getElementById('patientEditorModal')) : null;
+patientWorkPlanTaskModal = document.getElementById('patientWorkPlanTaskModal') ? new bootstrap.Modal(document.getElementById('patientWorkPlanTaskModal')) : null;
 let pendingLocalProfessionalDeleteIndex = null;
 let currentPaymentAppointmentId = null;
 let ADMIN_PATIENTS = [];
@@ -900,9 +1450,25 @@ let CURRENT_BONUS_CAN_MANAGE = false;
 let CURRENT_UPCOMING_APPOINTMENTS = [];
 let CURRENT_PATIENT_HISTORY_ID = 0;
 let CURRENT_PATIENT_BONUSES_ID = 0;
+let CURRENT_PATIENT_EVOLUTION_ID = 0;
+let CURRENT_PATIENT_FILES_ID = 0;
+let CURRENT_PATIENT_WORK_PLAN_ID = 0;
+let CURRENT_PATIENT_WORK_PLAN_ROWS = [];
+let CURRENT_PATIENT_PORTAL = { appointments: [], tasks: [] };
+let WORK_PLAN_TASK_TEMPLATES = [];
+let WORK_PLAN_TASK_TEMPLATES_LOADED = false;
+let CURRENT_PATIENT_EVOLUTION_ROWS = [];
+let CURRENT_PATIENT_EVOLUTION_APPOINTMENTS = [];
 let CURRENT_PATIENT_BONUS_CATALOG = [];
 let CURRENT_PATIENT_BONUS_CAN_MANAGE = false;
 let CURRENT_APPOINTMENT_PAYMENT_DETAIL = null;
+let CURRENT_APPOINTMENT_SESSION = {
+    appointment_id: 0,
+    patient_id: 0,
+    tasks: [],
+    notes: [],
+    files: []
+};
 
 function openModal(date, time, status, extraName = '', extraEmail = '', extraPhone = '') {
     $('#modalDate').val(date);
@@ -1014,7 +1580,7 @@ function cancelCompensationNotice(data, status) {
         ? '<div class="form-check mt-2"><input class="form-check-input" type="checkbox" id="cancel-create-compensation-bonus" checked><label class="form-check-label" for="cancel-create-compensation-bonus">Crear bono para esta cancelaci&oacute;n</label></div>'
         : '';
 
-    return '<div class="alert alert-info py-2 my-3 text-start small"><strong>Se crear&aacute; un bono canjeable para una nueva sesi&oacute;n.</strong>' + checkbox + '</div>';
+    return '<div class="alert alert-info py-2 my-3 text-start small"><strong id="cancel-compensation-bonus-text">Se crear&aacute; un bono canjeable para una nueva sesi&oacute;n.</strong>' + checkbox + '</div>';
 }
 
 function applyCancelPaymentNotice(status, payload) {
@@ -1036,7 +1602,47 @@ $(document).ready(function () {
 
     if (IS_ADMIN) {
         loadBookingPatients();
+    } else {
+        loadPatientPortalSummary();
     }
+
+    $('#btn-global-search').on('click', function () {
+        if (!globalSearchModal) return;
+        $('#global-search-input').val('');
+        $('#global-search-results').html('<div class="text-center text-muted py-4">Escribe al menos 2 caracteres para buscar.</div>');
+        globalSearchModal.show();
+        setTimeout(() => $('#global-search-input').trigger('focus'), 180);
+    });
+
+    $('#global-search-input').on('input', debounce(function () {
+        runGlobalSearch($(this).val());
+    }, 250));
+
+    $('#global-search-results').on('click', '.global-search-result', function () {
+        handleGlobalSearchAction($(this).data('kind'), $(this).data('id'), $(this).data('patient-id'));
+    });
+
+    $('#patient-quick-appointment-summary').on('click', '.btn-cancel-patient-quick-appointment', function () {
+        const appId = parseInt($(this).data('appointment-id') || 0, 10);
+        const app = CURRENT_PATIENT_PORTAL.appointments.find(item => parseInt(item.id, 10) === appId);
+        if (!app) return;
+        const payload = encodeURIComponent(JSON.stringify({
+            id: app.id,
+            payment_status: app.payment_status || 'pending',
+            payment_method: app.payment_method || ''
+        }));
+        openModal(app.appointment_date, app.appointment_time, 'cancel_own', payload);
+    });
+
+    $('#patient-portal-appointments').on('click', '.btn-patient-portal-pay', function () {
+        const appointmentId = parseInt($(this).data('appointment-id') || 0, 10);
+        if (!appointmentId) return;
+        startRedsysPayment(appointmentId, 'card', {
+            button: this,
+            hideAppointmentModalOnError: false,
+            failureMessage: 'No se pudo iniciar el pago de esta cita.'
+        });
+    });
 
     $('#btn-prev-week').click(function () {
         if (currentCalendarView === 'month') {
@@ -1090,12 +1696,28 @@ $(document).ready(function () {
         openMyBonusesModal();
     });
 
+    $('#btn-patient-portal-appointments').click(function () {
+        openPatientPortalAppointmentsModal();
+    });
+
+    $('#btn-patient-portal-tasks').click(function () {
+        openPatientPortalTasksModal();
+    });
+
     $('#btn-mobile-buy-bonus').click(function () {
         $('#btn-buy-bonus').trigger('click');
     });
 
     $('#btn-mobile-my-bonuses').click(function () {
         $('#btn-my-bonuses').trigger('click');
+    });
+
+    $('#btn-mobile-patient-portal-appointments').click(function () {
+        $('#btn-patient-portal-appointments').trigger('click');
+    });
+
+    $('#btn-mobile-patient-portal-tasks').click(function () {
+        $('#btn-patient-portal-tasks').trigger('click');
     });
 
     $('#btn-admin-bonuses').click(function () {
@@ -1155,6 +1777,10 @@ $(document).ready(function () {
         renderUpcomingAppointments(CURRENT_UPCOMING_APPOINTMENTS);
     });
 
+    $('#cancelled-appointments-search').on('input', function () {
+        renderCancelledAppointments(CURRENT_CANCELLED_APPOINTMENTS);
+    });
+
     $('#upcoming-appointments-scope').on('change', function () {
         loadUpcomingAppointments();
     });
@@ -1171,12 +1797,67 @@ $(document).ready(function () {
         setAppointmentPaymentSelection($(this).data('payment-status'), $('#appointment-payment-method').val());
     });
 
+    $('#appointmentPaymentModal').on('change', '#appointment-online-consultation-type', function () {
+        toggleAppointmentOnlineFields();
+    });
+
+    $('#appointmentPaymentModal').on('input', '#appointment-online-session-url', function () {
+        toggleAppointmentOnlineFields();
+    });
+
+    $('#appointmentPaymentModal').on('click', '#btn-save-appointment-online-details', function () {
+        saveAppointmentOnlineDetails(this);
+    });
+
+    $('#appointmentPaymentModal').on('click', '#btn-send-appointment-online-link', function () {
+        sendAppointmentOnlineLink(this);
+    });
+
+    $('#appointmentPaymentModal').on('click', '.btn-switch-appointment-modality', function () {
+        switchAppointmentModality(this);
+    });
+
     $('#btn-save-appointment-payment').on('click', function () {
         saveAppointmentPayment();
     });
 
+    $('#btn-open-patient-from-appointment-detail').on('click', function () {
+        const app = CURRENT_APPOINTMENT_PAYMENT_DETAIL || {};
+        if (app.patient_id) {
+            if (appointmentPaymentModal) {
+                appointmentPaymentModal.hide();
+            }
+            setTimeout(() => openPatientEditorById(app.patient_id), 180);
+        }
+    });
+
     $('#btn-cancel-appointment-from-detail').on('click', function () {
         cancelAppointmentFromPaymentDetail();
+    });
+
+    $('#appointmentPaymentModal').on('submit', '#appointment-session-note-form', function (e) {
+        e.preventDefault();
+        saveAppointmentSessionNote(this);
+    });
+
+    $('#appointmentPaymentModal').on('click', '.btn-toggle-session-task', function () {
+        setAppointmentSessionTaskStatus(this);
+    });
+
+    $('#appointmentPaymentModal').on('click', '#btn-toggle-appointment-session-note', function () {
+        const $formWrap = $('#appointment-session-note-form-wrap');
+        const isHidden = $formWrap.hasClass('d-none');
+        $formWrap.toggleClass('d-none', !isHidden);
+        $(this).html(isHidden
+            ? '<i class="bi bi-x-lg"></i> Cancelar nota'
+            : '<i class="bi bi-journal-plus"></i> Nueva nota / archivo');
+        if (isHidden) {
+            $('#appointment-session-note-title').trigger('focus');
+        }
+    });
+
+    $('#appointmentPaymentModal').on('click', '.btn-delete-session-note', function () {
+        deleteAppointmentSessionNote(this);
     });
 
     $('#appointmentPaymentModal').on('hidden.bs.modal', function () {
@@ -1191,6 +1872,22 @@ $(document).ready(function () {
         $('#btn-admin-stats').trigger('click');
     });
 
+    $('#admin-reports-content').on('click', '.btn-print-report-section', function () {
+        printReportSection($(this).closest('.report-section'));
+    });
+
+    $('#admin-reports-content').on('click', '.btn-export-report-section', function () {
+        exportReportSectionCsv($(this).closest('.report-section'));
+    });
+
+    $('#admin-reports-content').on('click', '.btn-export-report-section-xls', function () {
+        exportReportSectionXls($(this).closest('.report-section'));
+    });
+
+    $('.btn-export-modal-table').on('click', function () {
+        exportModalVisibleTable($(this).data('table-target'), $(this).data('export-type'));
+    });
+
     $('#btn-admin-patients').click(function () {
         openAdminPatientsModal();
     });
@@ -1201,6 +1898,29 @@ $(document).ready(function () {
 
     $('#btn-new-patient').click(function () {
         openPatientEditorModal();
+    });
+
+    $('#btn-show-patient-transfer').on('click', function () {
+        $('#patient-transfer-panel').toggleClass('d-none');
+        populatePatientTransferProfessionalSelect(CURRENT_PATIENT_EDITOR);
+    });
+
+    $('#btn-confirm-patient-transfer').on('click', function () {
+        transferCurrentPatientProfessional();
+    });
+
+    $('#patient-editor-birth-date').on('input change', function () {
+        updatePatientAgeDisplay();
+    });
+
+    $('.btn-patient-report').click(function () {
+        const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
+        if (!patientId) {
+            showPatientEditorAlert('danger', 'Guarda primero el paciente para generar el informe.');
+            return;
+        }
+        const reportType = $(this).data('report-type') === 'patient' ? 'patient' : 'internal';
+        window.open(`api/admin.php?action=patient_report&patient_id=${patientId}&type=${reportType}`, '_blank', 'noopener');
     });
 
     $('#admin-patients-body').on('click', '.btn-edit-patient', function () {
@@ -1246,9 +1966,137 @@ $(document).ready(function () {
         loadPatientAppointmentHistory(patientId);
     });
 
+    $('#patient-work-plan-tab').on('shown.bs.tab', function () {
+        const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
+        loadPatientWorkPlan(patientId);
+    });
+
+    $('#patient-evolution-tab').on('shown.bs.tab', function () {
+        const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
+        loadPatientEvolution(patientId);
+    });
+
+    $('#patient-files-tab').on('shown.bs.tab', function () {
+        const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
+        loadPatientFiles(patientId);
+    });
+
     $('#patient-bonuses-tab').on('shown.bs.tab', function () {
         const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
         loadPatientBonuses(patientId);
+    });
+
+    $('#btn-show-patient-evolution-form').on('click', function () {
+        showPatientEvolutionForm();
+    });
+
+    $('#btn-cancel-patient-evolution-form').on('click', function () {
+        hidePatientEvolutionForm();
+    });
+
+    $('#patient-evolution-form').on('submit', function (e) {
+        e.preventDefault();
+        savePatientEvolution(this);
+    });
+
+    $('#patient-evolution-list').on('click', '.btn-edit-patient-evolution', function () {
+        const noteId = parseInt($(this).data('note-id') || '0', 10);
+        const note = CURRENT_PATIENT_EVOLUTION_ROWS.find(item => parseInt(item.id, 10) === noteId) || null;
+        if (note) {
+            showPatientEvolutionForm(note);
+        }
+    });
+
+    $('#btn-show-patient-work-plan-form').on('click', function () {
+        showPatientWorkPlanForm();
+    });
+
+    $('#btn-open-work-plan-templates').on('click', function () {
+        openTaskTemplatesSettings();
+    });
+
+    $('#patient-work-plan-template').on('change', function () {
+        togglePatientWorkPlanTaskMode();
+    });
+
+    $('#btn-import-work-plan-template').on('click', function () {
+        importWorkPlanTemplateToPatient(this);
+    });
+
+    $('#btn-cancel-patient-work-plan-form').on('click', function () {
+        hidePatientWorkPlanForm();
+    });
+
+    $('#patient-work-plan-form').on('submit', function (e) {
+        e.preventDefault();
+        savePatientWorkPlanTask(this);
+    });
+
+    $('#patient-work-plan-pending, #patient-work-plan-completed-list').on('click', '.btn-edit-work-plan-task', function () {
+        const taskId = parseInt($(this).data('task-id') || '0', 10);
+        const task = CURRENT_PATIENT_WORK_PLAN_ROWS.find(item => parseInt(item.id, 10) === taskId) || null;
+        if (task) {
+            showPatientWorkPlanForm(task);
+        }
+    });
+
+    $('#patient-work-plan-pending, #patient-work-plan-completed-list').on('click', '.btn-toggle-work-plan-task', function () {
+        setPatientWorkPlanTaskStatus(this);
+    });
+
+    $('#patient-work-plan-pending, #patient-work-plan-completed-list').on('click', '.btn-delete-work-plan-task', function () {
+        deletePatientWorkPlanTask(this);
+    });
+
+    $('#task-template-form').on('submit', function (e) {
+        e.preventDefault();
+        saveWorkPlanTaskTemplate();
+    });
+
+    $('#task-template-item-form').on('submit', function (e) {
+        e.preventDefault();
+        saveWorkPlanTaskTemplateItem();
+    });
+
+    $('#btn-new-task-template').on('click', function () {
+        openTaskTemplateModal();
+    });
+
+    $('#task-templates-list').on('click', '.btn-edit-task-template', function () {
+        const templateId = parseInt($(this).data('template-id') || '0', 10);
+        const template = WORK_PLAN_TASK_TEMPLATES.find(item => parseInt(item.id, 10) === templateId) || null;
+        if (template) {
+            openTaskTemplateModal(template);
+        }
+    });
+
+    $('#task-templates-list').on('click', '.btn-delete-task-template', function () {
+        deleteWorkPlanTaskTemplate(this);
+    });
+
+    $('#task-templates-list').on('click', '.btn-edit-task-template-item', function () {
+        const templateId = parseInt($(this).data('template-id') || '0', 10);
+        const itemId = parseInt($(this).data('item-id') || '0', 10);
+        const template = WORK_PLAN_TASK_TEMPLATES.find(item => parseInt(item.id, 10) === templateId) || null;
+        const task = template && Array.isArray(template.items)
+            ? template.items.find(item => parseInt(item.id, 10) === itemId)
+            : null;
+        if (template && task) {
+            openTaskTemplateItemModal(task, templateId);
+        }
+    });
+
+    $('#task-templates-list').on('click', '.btn-delete-task-template-item', function () {
+        deleteWorkPlanTaskTemplateItem(this);
+    });
+
+    $('#task-templates-list').on('click', '.btn-add-task-template-item', function () {
+        const templateId = parseInt($(this).data('template-id') || '0', 10);
+        openTaskTemplateItemModal(null, templateId);
+    });
+
+    $('#task-templates-settings-tab').on('shown.bs.tab', function () {
+        loadWorkPlanTaskTemplates();
     });
 
     $('#btn-show-create-patient-bonus').on('click', function () {
@@ -1347,6 +2195,12 @@ $(document).ready(function () {
         refreshBookingBonusNotice();
     });
 
+    $(document).on('change', '#cancel-create-compensation-bonus', function () {
+        $('#cancel-compensation-bonus-text').html(this.checked
+            ? 'Se crear&aacute; un bono canjeable para una nueva sesi&oacute;n.'
+            : 'No se crear&aacute; un bono canjeable.');
+    });
+
     $('#service-option').change(function () {
         refreshBookingBonusNotice();
     });
@@ -1424,6 +2278,32 @@ $(document).ready(function () {
         }
     });
 
+    $('#dashboardCustomConfigModal').on('show.bs.modal', function () {
+        if ($('#settingsModal').hasClass('show')) {
+            $('body').addClass('settings-secondary-modal-open');
+        }
+    });
+
+    $('#dashboardCustomConfigModal').on('hidden.bs.modal', function () {
+        $('body').removeClass('settings-secondary-modal-open');
+        if ($('#settingsModal').hasClass('show')) {
+            document.body.classList.add('modal-open');
+        }
+    });
+
+    $('#taskTemplateModal, #taskTemplateItemModal').on('show.bs.modal', function () {
+        if ($('#settingsModal').hasClass('show')) {
+            $('body').addClass('settings-secondary-modal-open');
+        }
+    });
+
+    $('#taskTemplateModal, #taskTemplateItemModal').on('hidden.bs.modal', function () {
+        $('body').removeClass('settings-secondary-modal-open');
+        if ($('#settingsModal').hasClass('show')) {
+            document.body.classList.add('modal-open');
+        }
+    });
+
     $('#patientEditorModal').on('show.bs.modal', function () {
         if ($('#adminPatientsModal').hasClass('show')) {
             $('body').addClass('patients-secondary-modal-open');
@@ -1433,6 +2313,20 @@ $(document).ready(function () {
     $('#patientEditorModal').on('hidden.bs.modal', function () {
         $('body').removeClass('patients-secondary-modal-open');
         if ($('#adminPatientsModal').hasClass('show')) {
+            document.body.classList.add('modal-open');
+        }
+    });
+
+    $('#patientWorkPlanTaskModal').on('show.bs.modal', function () {
+        if ($('#patientEditorModal').hasClass('show')) {
+            $('body').addClass('patient-editor-secondary-modal-open');
+        }
+    });
+
+    $('#patientWorkPlanTaskModal').on('hidden.bs.modal', function () {
+        $('body').removeClass('patient-editor-secondary-modal-open');
+        resetPatientWorkPlanFormFields();
+        if ($('#patientEditorModal').hasClass('show')) {
             document.body.classList.add('modal-open');
         }
     });
@@ -1503,6 +2397,13 @@ $(document).ready(function () {
     $('#professional-editor-photo').on('change', function () {
         PROFESSIONAL_PHOTO_FILE = this.files && this.files[0] ? this.files[0] : null;
         if (PROFESSIONAL_PHOTO_FILE) {
+            if (PROFESSIONAL_PHOTO_FILE.size > 5 * 1024 * 1024) {
+                showProfessionalEditorAlert('danger', 'La foto del profesional no puede superar 5 MB.');
+                this.value = '';
+                PROFESSIONAL_PHOTO_FILE = null;
+                return;
+            }
+            $('#professional-editor-alert').addClass('d-none').text('');
             $('#professional-editor-photo-preview').attr('src', URL.createObjectURL(PROFESSIONAL_PHOTO_FILE)).removeClass('d-none');
             $('#professional-editor-photo-status').text(PROFESSIONAL_PHOTO_FILE.name);
         }
@@ -1593,6 +2494,18 @@ $(document).ready(function () {
         }
     });
 
+    $('#dashboard-config-mode').on('change', function () {
+        toggleDashboardConfigModeControls();
+    });
+
+    $('#btn-open-dashboard-custom-config').on('click', function () {
+        openDashboardCustomConfigModal();
+    });
+
+    $('#btn-save-dashboard-custom-config').on('click', function () {
+        saveDashboardCustomConfig(this);
+    });
+
     $('#btn-google-connect').click(function () {
         savePaymentSettings('#email-settings-alert', function () {
             window.location.href = 'google_oauth_start.php';
@@ -1652,6 +2565,9 @@ function bookAppointment() {
             }
 
             renderWeekInfo();
+            if (!IS_ADMIN) {
+                loadPatientPortalSummary();
+            }
             setAppointmentActionLoading(false);
 
             if (res.bonus_applied == 1) {
@@ -1706,7 +2622,7 @@ function selectedConsultationType() {
 function selectedServiceType() {
     const option = selectedServiceOption();
     if (option) {
-        return option.service_key === 'couple' ? 'couple' : 'individual';
+        return option.service_key || 'individual';
     }
     return isCoupleServiceEnabled() && $('#service-type').val() === 'couple' ? 'couple' : 'individual';
 }
@@ -1724,7 +2640,13 @@ function consultationTypeLabel(type) {
 }
 
 function serviceTypeLabel(type) {
-    return type === 'couple' ? 'Pareja' : 'Individual';
+    const labels = {
+        individual: 'Individual',
+        couple: 'Pareja',
+        family: 'Familiar',
+        group: 'Grupo'
+    };
+    return labels[type] || type || 'Individual';
 }
 
 function isCoupleServiceEnabled() {
@@ -1733,7 +2655,7 @@ function isCoupleServiceEnabled() {
 
 function appointmentPriceForType(consultationType, serviceType = 'individual') {
     let rawPrice = PAYMENT_SETTINGS.appointment_price || '70.00';
-    if (serviceType === 'couple') {
+    if (['couple', 'family', 'group'].includes(serviceType)) {
         rawPrice = consultationType === 'online'
             ? (PAYMENT_SETTINGS.online_couple_appointment_price || PAYMENT_SETTINGS.couple_appointment_price || '90.00')
             : (PAYMENT_SETTINGS.couple_appointment_price || '90.00');
@@ -1784,7 +2706,7 @@ function refreshBookingBonusNotice() {
 
     $notice.addClass('d-none').removeClass('alert-success alert-info').text('');
     const option = selectedServiceOption();
-    if (!option || option.service_key === 'couple') {
+    if (!option || option.service_key !== 'individual') {
         return;
     }
 
@@ -1833,8 +2755,22 @@ function setAvailableSessionTypes(value) {
     const activeTypes = String(value || 'individual')
         .split(',')
         .map(type => type.trim());
+    $('.available-session-type').prop('checked', false);
     $('#available-session-individual').prop('checked', true);
-    $('#available-session-couple').prop('checked', activeTypes.includes('couple'));
+    activeTypes.forEach(type => {
+        $(`.available-session-type[value="${type}"]`).prop('checked', true);
+    });
+}
+
+function selectedSessionTypes() {
+    const types = ['individual'];
+    $('.available-session-type:checked').each(function () {
+        const type = String(this.value || '').trim();
+        if (type && !types.includes(type)) {
+            types.push(type);
+        }
+    });
+    return types;
 }
 
 function setAvailableSessionDurations(value) {
@@ -1869,6 +2805,9 @@ function cancelAppointment() {
             if (res.success) {
                 appointmentModal.hide();
                 refreshAfterAppointmentPaymentUpdate();
+                if (!IS_ADMIN) {
+                    loadPatientPortalSummary();
+                }
                 setAppointmentActionLoading(false);
             } else {
                 alert(res.error);
@@ -1882,7 +2821,18 @@ function cancelAppointment() {
     });
 }
 
-function startRedsysPayment(appointmentId, paymentMethod) {
+function startRedsysPayment(appointmentId, paymentMethod, options = {}) {
+    const $button = options.button ? $(options.button) : $();
+    const originalButtonHtml = $button.length ? $button.html() : '';
+    if ($button.length) {
+        $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Conectando...');
+    }
+    const finishLoading = () => {
+        setAppointmentActionLoading(false);
+        if ($button.length) {
+            $button.prop('disabled', false).html(originalButtonHtml);
+        }
+    };
     setAppointmentActionLoading(true, paymentMethod);
     $.ajax({
         url: 'api/payments.php?action=create_redsys_form',
@@ -1894,22 +2844,27 @@ function startRedsysPayment(appointmentId, paymentMethod) {
         dataType: 'json',
         success: function (res) {
             if (!res.success) {
-                appointmentModal.hide();
+                if (options.hideAppointmentModalOnError !== false) {
+                    appointmentModal.hide();
+                }
                 renderWeekInfo();
-                alert(res.error || 'La cita se ha reservado, pero no se pudo iniciar el pago.');
+                alert(res.error || options.failureMessage || 'La cita se ha reservado, pero no se pudo iniciar el pago.');
+                finishLoading();
                 return;
             }
 
             $('#redsys-payment-form').remove();
             $('body').append(res.form_html);
             $('#redsys-payment-form').trigger('submit');
-            setAppointmentActionLoading(false);
+            finishLoading();
         },
         error: function () {
-            appointmentModal.hide();
+            if (options.hideAppointmentModalOnError !== false) {
+                appointmentModal.hide();
+            }
             renderWeekInfo();
-            alert('La cita se ha reservado, pero no se pudo conectar con Redsys.');
-            setAppointmentActionLoading(false);
+            alert(options.failureMessage || 'La cita se ha reservado, pero no se pudo conectar con Redsys.');
+            finishLoading();
         }
     });
 }
@@ -1926,7 +2881,7 @@ function togglePatientBonusActions() {
     $('#btn-my-bonuses').toggle(showBonusArea);
     $('#btn-mobile-buy-bonus').closest('li').toggle(canBuyBonuses);
     $('#btn-mobile-my-bonuses').closest('li').toggle(showBonusArea);
-    $('#patient-bonus-actions .dashboard-mobile-menu').toggleClass('d-none', !showBonusArea);
+    $('#patient-bonus-actions .dashboard-mobile-menu').removeClass('d-none');
 }
 
 function openBuyBonusModal() {
@@ -2508,6 +3463,92 @@ function populatePatientEditorProfessionalSelect(patient = null) {
     }
 }
 
+function updatePatientTransferUi(patient = null) {
+    const hasPatient = Boolean(patient && patient.id);
+    $('#patient-editor-professional-new-wrap').toggleClass('d-none', hasPatient);
+    $('#patient-editor-professional-current-wrap').toggleClass('d-none', !hasPatient);
+    $('#patient-transfer-panel').addClass('d-none');
+    if (!hasPatient) {
+        return;
+    }
+    const hasProfessional = parseInt(patient.professional_id || 0, 10) > 0;
+    const canAssignOrTransfer = IS_SUPERADMIN && (!hasProfessional || PAYMENT_SETTINGS.allow_patient_transfer == 1);
+    $('#patient-editor-current-professional').text(patient.professional_name || 'Sin profesional asignado');
+    $('#btn-show-patient-transfer')
+        .prop('disabled', !canAssignOrTransfer)
+        .html(`<i class="bi bi-arrow-left-right"></i> ${hasProfessional ? 'Traspasar paciente' : 'Asignar profesional'}`);
+    let statusText = 'Las citas pasadas conservan su profesional historico; solo se moveran las citas futuras reservadas.';
+    if (!hasProfessional) {
+        statusText = 'Este paciente todavia no tiene profesional asignado. Puedes asignarlo manualmente.';
+    } else if (!canAssignOrTransfer) {
+        statusText = 'Activa "Permitir traspaso de pacientes" en configuracion para cambiarlo desde aqui.';
+    }
+    $('#patient-editor-transfer-status').text(statusText);
+    populatePatientTransferProfessionalSelect(patient);
+}
+
+function populatePatientTransferProfessionalSelect(patient = CURRENT_PATIENT_EDITOR) {
+    const $select = $('#patient-transfer-professional');
+    if (!$select.length) return;
+    const currentId = parseInt(patient && patient.professional_id || 0, 10);
+    const options = CABINET_PROFESSIONALS
+        .filter(professional => professional.is_active != 0 && parseInt(professional.id || 0, 10) !== currentId)
+        .map(professional => `<option value="${professional.id}">${escapeHtml(professional.display_name || 'Sin nombre')}</option>`)
+        .join('');
+    $select.html(`<option value="">Selecciona profesional...</option>${options}`);
+}
+
+function transferCurrentPatientProfessional() {
+    const patientId = parseInt($('#patient-editor-id').val() || 0, 10);
+    const professionalId = parseInt($('#patient-transfer-professional').val() || 0, 10);
+    if (!patientId || !professionalId) {
+        showPatientEditorAlert('danger', 'Selecciona un profesional.');
+        return;
+    }
+    const target = bookingProfessionalById(professionalId);
+    const patient = CURRENT_PATIENT_EDITOR || {};
+    const actionText = patient.professional_id ? 'traspasar' : 'asignar';
+    if (!confirm(`¿Quieres ${actionText} este paciente a ${target ? target.display_name : 'este profesional'}? Las citas pasadas conservarán su profesional histórico y solo se moverán las futuras reservadas.`)) {
+        return;
+    }
+    const $button = $('#btn-confirm-patient-transfer');
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+    $.ajax({
+        url: 'api/admin.php?action=transfer_patient_professional',
+        method: 'POST',
+        dataType: 'json',
+        data: { patient_id: patientId, professional_id: professionalId },
+        success: function (res) {
+            if (!res.success) {
+                showPatientEditorAlert('danger', res.error || 'No se pudo completar el traspaso.');
+                return;
+            }
+            showPatientEditorAlert('success', res.message || 'Profesional actualizado.');
+            CURRENT_PATIENT_EDITOR = {
+                ...(CURRENT_PATIENT_EDITOR || {}),
+                professional_id: res.professional_id,
+                professional_name: res.professional_name
+            };
+            const patientIndex = ADMIN_PATIENTS.findIndex(item => parseInt(item.id || 0, 10) === patientId);
+            if (patientIndex >= 0) {
+                ADMIN_PATIENTS[patientIndex].professional_id = res.professional_id;
+                ADMIN_PATIENTS[patientIndex].professional_name = res.professional_name;
+            }
+            updatePatientTransferUi(CURRENT_PATIENT_EDITOR);
+            loadPatientAppointmentHistory(patientId);
+            loadAdminPatients();
+            renderWeekInfo();
+        },
+        error: function () {
+            showPatientEditorAlert('danger', 'Error de conexion al completar el traspaso.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
 function renderAdminPatients(patients) {
     const filteredPatients = filterAndSortAdminPatients(patients);
     const colspan = adminPatientsColspan();
@@ -2529,7 +3570,7 @@ function renderAdminPatients(patients) {
             : '<span class="table-avatar table-avatar-empty"><i class="bi bi-person"></i></span>';
         const contact = [
             patient.email ? `<div>${escapeHtml(patient.email)}</div>` : '',
-            patient.phone ? `<small class="text-muted">${escapeHtml(patient.phone)}</small>` : ''
+            patient.phone ? `<small class="text-muted">${escapeHtml(patient.phone)}${patientContactActionsHtml(patient.phone, 'ms-1')}</small>` : ''
         ].join('') || '<span class="text-muted">Sin contacto</span>';
         const accessBadge = parseInt(patient.has_portal_access || 0, 10) === 1
             ? '<span class="badge text-bg-success">Con acceso</span>'
@@ -2538,7 +3579,7 @@ function renderAdminPatients(patients) {
             ? ''
             : `<button class="btn btn-outline-primary btn-sm btn-send-patient-invite" type="button" data-patient-id="${patient.id}" title="Enviar invitacion de registro"><i class="bi bi-envelope"></i></button>`;
         const documentLink = patient.document_path
-            ? `<a href="${escapeHtml(patient.document_path)}" target="_blank" rel="noopener">${escapeHtml(patient.document_name || 'Documento')}</a>`
+            ? `<a href="api/admin.php?action=download_patient_document&patient_id=${patient.id}" target="_blank" rel="noopener">${escapeHtml(patient.document_name || 'Documento')}</a>`
             : '<span class="text-muted">Sin archivo</span>';
 
         return `
@@ -2555,7 +3596,7 @@ function renderAdminPatients(patients) {
                 <td>${patient.admission_date ? formatDisplayDate(patient.admission_date) : '<span class="text-muted">-</span>'}</td>
                 <td>${accessBadge}</td>
                 <td>${documentLink}</td>
-                <td class="text-end">
+                <td class="text-end no-export">
                     <div class="d-inline-flex gap-1">
                         ${inviteButton}
                         <button class="btn btn-outline-secondary btn-sm btn-edit-patient" type="button" data-patient-id="${patient.id}" title="Datos del paciente">
@@ -2610,13 +3651,23 @@ function filterAndSortAdminPatients(patients) {
 
 function openPatientEditorModal(patient = null) {
     if (!patientEditorModal) return;
+    CURRENT_PATIENT_EDITOR = patient ? { ...patient } : null;
     $('#patient-editor-alert').addClass('d-none').text('');
     $('#patient-history-alert').addClass('d-none').text('');
     $('#patient-editor-form')[0].reset();
     $('#patient-editor-title').text(patient ? 'Editar paciente' : 'Nuevo paciente');
     $('#patient-editor-id').val(patient ? patient.id : '');
+    $('.btn-patient-report').prop('disabled', !(patient && patient.id));
     $('#patient-editor-name').val(patient ? patient.name || '' : '');
     $('#patient-editor-type').val(patient ? patient.patient_type || '' : '');
+    $('#patient-editor-status').val(patient ? patient.patient_status || 'active' : 'active');
+    $('#patient-editor-birth-date').val(patient ? patient.birth_date || '' : '');
+    $('#patient-editor-referral-source').val(patient ? patient.referral_source || '' : '');
+    $('#patient-editor-emergency-name').val(patient ? patient.emergency_contact_name || '' : '');
+    $('#patient-editor-emergency-phone').val(patient ? patient.emergency_contact_phone || '' : '');
+    $('#patient-editor-emergency-relation').val(patient ? patient.emergency_contact_relation || '' : '');
+    $('#patient-editor-initial-reason').val(patient ? patient.initial_consultation_reason || '' : '');
+    updatePatientAgeDisplay();
     $('#patient-editor-email').val(patient ? patient.email || '' : '');
     $('#patient-editor-phone').val(patient ? patient.phone || '' : '');
     $('#patient-editor-photo').val('');
@@ -2630,16 +3681,23 @@ function openPatientEditorModal(patient = null) {
     populatePatientEditorProfessionalSelect(patient);
     $('#patient-editor-admission-date').val(patient ? patient.admission_date || formatDate(new Date()) : formatDate(new Date()));
     $('#patient-editor-notes').val(patient ? patient.notes || '' : '');
+    updatePatientTransferUi(patient);
     if (patient && patient.document_path) {
-        $('#patient-editor-document-status').html(`Archivo actual: <a href="${escapeHtml(patient.document_path)}" target="_blank" rel="noopener">${escapeHtml(patient.document_name || 'Documento')}</a>`);
+        $('#patient-editor-document-status').html(`Archivo actual: <a href="api/admin.php?action=download_patient_document&patient_id=${patient.id}" target="_blank" rel="noopener">${escapeHtml(patient.document_name || 'Documento')}</a>`);
     } else {
         $('#patient-editor-document-status').text('Puedes adjuntar un PDF, XLS o XLSX de hasta 12 MB.');
     }
     bootstrap.Tab.getOrCreateInstance(document.getElementById('patient-data-tab')).show();
     resetPatientAppointmentHistory(patient ? patient.id : 0);
+    resetPatientWorkPlan(patient ? patient.id : 0);
+    resetPatientEvolution(patient ? patient.id : 0);
+    resetPatientFiles(patient ? patient.id : 0);
     resetPatientBonuses(patient ? patient.id : 0);
     if (patient && patient.id) {
         loadPatientAppointmentHistory(patient.id);
+        loadPatientWorkPlan(patient.id);
+        loadPatientEvolution(patient.id);
+        loadPatientFiles(patient.id);
         loadPatientBonuses(patient.id);
     }
     patientEditorModal.show();
@@ -2695,9 +3753,9 @@ function renderPatientAppointmentHistory(appointments) {
 
     const html = rows.map(app => `
         <tr>
-            <td><strong>${formatDisplayDate(app.appointment_date || '')}</strong><br><small class="text-muted">${escapeHtml(app.appointment_time || '')}</small></td>
+            <td><strong>${formatDisplayDate(app.appointment_date || '')}</strong><br><small class="text-muted">${escapeHtml(displayAppointmentTimeRange(app.appointment_time || '', app.duration_minutes || 60))}</small></td>
             <td>${professionalCellHtml(app, 'professional_name', 'professional_photo_path')}</td>
-            <td>${escapeHtml(app.service_label || '')}<br><small class="text-muted">${parseInt(app.duration_minutes || 60, 10)} minutos</small></td>
+            <td>${escapeHtml(displayAppointmentServiceLabel(app))}<br><small class="text-muted">${displayAppointmentDurationLabel(app.duration_minutes || 60)}</small></td>
             <td>${consultationTypeLabel(app.consultation_type)}</td>
             <td>${adminPaymentLabel(app)}</td>
             <td class="text-end">${appointmentPaymentButton(app)}</td>
@@ -2707,6 +3765,905 @@ function renderPatientAppointmentHistory(appointments) {
 
     $('#patient-history-body').html(html);
     $('#patient-history-count').text(`${rows.length} ${rows.length === 1 ? 'cita' : 'citas'}`);
+}
+
+function resetPatientWorkPlan(patientId = 0) {
+    CURRENT_PATIENT_WORK_PLAN_ID = parseInt(patientId || 0, 10);
+    CURRENT_PATIENT_WORK_PLAN_ROWS = [];
+    $('#patient-work-plan-alert').addClass('d-none').text('');
+    $('#patient-work-plan-count').text('');
+    hidePatientWorkPlanForm();
+    const emptyText = patientId ? 'Cargando plan de trabajo...' : 'Guarda el paciente para ver su plan de trabajo.';
+    $('#patient-work-plan-pending').html(`<div class="text-center text-muted py-4">${emptyText}</div>`);
+    $('#patient-work-plan-completed-list').html(`<div class="text-center text-muted py-4">${emptyText}</div>`);
+}
+
+function loadPatientWorkPlan(patientId) {
+    patientId = parseInt(patientId || 0, 10);
+    if (!patientId) {
+        resetPatientWorkPlan(0);
+        return;
+    }
+    CURRENT_PATIENT_WORK_PLAN_ID = patientId;
+    $('#patient-work-plan-alert').addClass('d-none').text('');
+    $('#patient-work-plan-pending').html('<div class="text-center text-muted py-4">Cargando plan de trabajo...</div>');
+    $('#patient-work-plan-completed-list').html('<div class="text-center text-muted py-4">Cargando plan de trabajo...</div>');
+    $('#patient-work-plan-count').text('');
+    $.ajax({
+        url: 'api/admin.php?action=patient_work_plan',
+        dataType: 'json',
+        data: { patient_id: patientId },
+        success: function (res) {
+            if (!res.success) {
+                showPatientWorkPlanAlert('danger', res.error || 'No se pudo cargar el plan de trabajo.');
+                $('#patient-work-plan-pending').html('<div class="text-center text-muted py-4">No se pudo cargar el plan.</div>');
+                $('#patient-work-plan-completed-list').html('<div class="text-center text-muted py-4">No se pudo cargar el plan.</div>');
+                return;
+            }
+            CURRENT_PATIENT_WORK_PLAN_ROWS = Array.isArray(res.tasks) ? res.tasks : [];
+            renderPatientWorkPlan(CURRENT_PATIENT_WORK_PLAN_ROWS);
+        },
+        error: function () {
+            showPatientWorkPlanAlert('danger', 'Error de conexion al cargar el plan de trabajo.');
+            $('#patient-work-plan-pending').html('<div class="text-center text-muted py-4">No se pudo cargar el plan.</div>');
+            $('#patient-work-plan-completed-list').html('<div class="text-center text-muted py-4">No se pudo cargar el plan.</div>');
+        }
+    });
+}
+
+function renderPatientWorkPlan(tasks) {
+    const rows = Array.isArray(tasks) ? tasks : [];
+    const pending = rows.filter(task => task.status !== 'completed');
+    const completed = rows.filter(task => task.status === 'completed');
+    $('#patient-work-plan-pending').html(renderPatientWorkPlanList(pending, 'pending'));
+    $('#patient-work-plan-completed-list').html(renderPatientWorkPlanList(completed, 'completed'));
+    const pendingText = `${pending.length} pendiente${pending.length === 1 ? '' : 's'}`;
+    const completedText = `${completed.length} completada${completed.length === 1 ? '' : 's'}`;
+    $('#patient-work-plan-count').text(rows.length ? `${pendingText} · ${completedText}` : '');
+}
+
+function renderPatientWorkPlanList(tasks, listType) {
+    if (!tasks.length) {
+        return `<div class="text-center text-muted py-4">${listType === 'pending' ? 'No hay tareas pendientes.' : 'No hay tareas completadas.'}</div>`;
+    }
+    return tasks.map(task => renderPatientWorkPlanTask(task)).join('');
+}
+
+function renderPatientWorkPlanTask(task) {
+    const completed = task.status === 'completed';
+    const priority = workPlanPriorityLabel(task.priority);
+    const toggleTitle = completed ? 'Marcar como pendiente' : 'Marcar como completada';
+    const toggleIcon = completed ? 'bi-arrow-counterclockwise' : 'bi-check2';
+    const toggleClass = completed ? 'btn-outline-secondary' : 'btn-outline-success';
+    const completedText = completed && task.completed_at
+        ? `<div class="small text-muted mt-2">Completada el ${formatDateTimeLabel(task.completed_at)}</div>`
+        : '';
+    return `
+        <div class="patient-work-plan-task ${completed ? 'is-completed' : ''}">
+            <div class="d-flex justify-content-between align-items-start">
+                <div class="pe-2">
+                    <div class="d-flex flex-wrap align-items-center patient-work-plan-badges">
+                        <span class="badge ${priority.className}">${priority.label}</span>
+                        ${completed ? '<span class="badge text-bg-success">Completada</span>' : '<span class="badge text-bg-warning">Pendiente</span>'}
+                        ${task.visible_to_patient == 1 ? '<span class="badge text-bg-info">Visible portal</span>' : ''}
+                    </div>
+                    <h6 class="mb-1 mt-2">${escapeHtml(task.title || '')}</h6>
+                    ${task.description ? `<div class="text-muted small">${escapeHtml(task.description)}</div>` : ''}
+                    ${completedText}
+                </div>
+                <div class="patient-work-plan-actions">
+                    <button class="btn ${toggleClass} btn-sm btn-toggle-work-plan-task" type="button" data-task-id="${task.id}" data-next-status="${completed ? 'pending' : 'completed'}" title="${toggleTitle}">
+                        <i class="bi ${toggleIcon}"></i>
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm btn-edit-work-plan-task" type="button" data-task-id="${task.id}" title="Editar tarea">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-outline-danger btn-sm btn-delete-work-plan-task" type="button" data-task-id="${task.id}" title="Eliminar tarea">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function workPlanPriorityLabel(priority) {
+    const value = parseInt(priority || 2, 10);
+    if (value === 1) return { label: 'Alta', className: 'text-bg-danger' };
+    if (value === 3) return { label: 'Baja', className: 'text-bg-light' };
+    return { label: 'Normal', className: 'text-bg-primary' };
+}
+
+function showPatientWorkPlanForm(task = null) {
+    const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
+    if (!patientId) {
+        showPatientWorkPlanAlert('danger', 'Guarda primero el paciente.');
+        return;
+    }
+    if (!task) {
+        loadWorkPlanTaskTemplates();
+    }
+    $('#patient-work-plan-modal-title').text(task ? 'Editar tarea' : 'Crear o importar tareas');
+    $('#patient-work-plan-id').val(task ? task.id : 0);
+    $('#patient-work-plan-patient-id').val(patientId);
+    $('#patient-work-plan-template').val('manual');
+    $('#patient-work-plan-template-block').toggleClass('d-none', Boolean(task));
+    $('#patient-work-plan-title').val(task ? task.title || '' : '');
+    $('#patient-work-plan-description').val(task ? task.description || '' : '');
+    $('#patient-work-plan-priority').val(task ? String(task.priority || 2) : '2');
+    $('#patient-work-plan-completed').prop('checked', Boolean(task && task.status === 'completed'));
+    $('#patient-work-plan-visible').prop('checked', task ? task.visible_to_patient == 1 : PAYMENT_SETTINGS.patient_tasks_visible_default == 1);
+    togglePatientWorkPlanTaskMode();
+    if (patientWorkPlanTaskModal) {
+        patientWorkPlanTaskModal.show();
+        if (task) {
+            setTimeout(() => $('#patient-work-plan-title').trigger('focus'), 180);
+        }
+    }
+}
+
+function resetPatientWorkPlanFormFields() {
+    if ($('#patient-work-plan-form').length) {
+        $('#patient-work-plan-form')[0].reset();
+    }
+    $('#patient-work-plan-id').val(0);
+    $('#patient-work-plan-template').val('manual');
+    $('#patient-work-plan-template-block').removeClass('d-none');
+    $('#patient-work-plan-priority').val('2');
+    $('#patient-work-plan-completed').prop('checked', false);
+    $('#patient-work-plan-visible').prop('checked', false);
+    togglePatientWorkPlanTaskMode();
+}
+
+function getSelectedWorkPlanTemplateId() {
+    const value = $('#patient-work-plan-template').val();
+    if (!value || value === 'manual') return 0;
+    return parseInt(value, 10) || 0;
+}
+
+function togglePatientWorkPlanTaskMode() {
+    const isEditing = parseInt($('#patient-work-plan-id').val() || '0', 10) > 0;
+    const templateId = getSelectedWorkPlanTemplateId();
+    const isManual = isEditing || !templateId;
+    $('#patient-work-plan-manual-block').toggleClass('d-none', !isManual);
+    $('#btn-save-patient-work-plan').toggleClass('d-none', !isManual).prop('disabled', !isManual);
+    $('#btn-import-work-plan-template').toggleClass('d-none', isManual).prop('disabled', isManual || !templateId);
+    $('#patient-work-plan-template-block')
+        .toggleClass('mb-4', isManual)
+        .toggleClass('mb-0', !isManual);
+}
+
+function hidePatientWorkPlanForm() {
+    if (patientWorkPlanTaskModal && $('#patientWorkPlanTaskModal').hasClass('show')) {
+        patientWorkPlanTaskModal.hide();
+    }
+    resetPatientWorkPlanFormFields();
+}
+
+function savePatientWorkPlanTask(form) {
+    const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
+    if (!patientId) {
+        showPatientWorkPlanAlert('danger', 'Guarda primero el paciente.');
+        return;
+    }
+    const $button = $('#btn-save-patient-work-plan');
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Guardando');
+    $.ajax({
+        url: 'api/admin.php?action=save_patient_work_plan_task',
+        method: 'POST',
+        dataType: 'json',
+        data: {
+            task_id: $('#patient-work-plan-id').val() || 0,
+            patient_id: patientId,
+            title: $('#patient-work-plan-title').val() || '',
+            description: $('#patient-work-plan-description').val() || '',
+            priority: $('#patient-work-plan-priority').val() || 2,
+            status: $('#patient-work-plan-completed').is(':checked') ? 'completed' : 'pending',
+            visible_to_patient: $('#patient-work-plan-visible').is(':checked') ? 1 : 0
+        },
+        success: function (res) {
+            if (!res.success) {
+                showPatientWorkPlanAlert('danger', res.error || 'No se pudo guardar la tarea.');
+                return;
+            }
+            showPatientWorkPlanAlert('success', res.message || 'Plan de trabajo guardado correctamente.', true);
+            hidePatientWorkPlanForm();
+            loadPatientWorkPlan(patientId);
+        },
+        error: function () {
+            showPatientWorkPlanAlert('danger', 'Error de conexion al guardar la tarea.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function setPatientWorkPlanTaskStatus(button) {
+    const $button = $(button);
+    const taskId = parseInt($button.data('task-id') || 0, 10);
+    const status = $button.data('next-status') === 'completed' ? 'completed' : 'pending';
+    if (!taskId) return;
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+    $.ajax({
+        url: 'api/admin.php?action=set_patient_work_plan_task_status',
+        method: 'POST',
+        dataType: 'json',
+        data: { task_id: taskId, status },
+        success: function (res) {
+            if (!res.success) {
+                showPatientWorkPlanAlert('danger', res.error || 'No se pudo actualizar la tarea.');
+                return;
+            }
+            showPatientWorkPlanAlert('success', res.message || 'Tarea actualizada.', true);
+            loadPatientWorkPlan(CURRENT_PATIENT_WORK_PLAN_ID);
+        },
+        error: function () {
+            showPatientWorkPlanAlert('danger', 'Error de conexion al actualizar la tarea.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function deletePatientWorkPlanTask(button) {
+    const $button = $(button);
+    const taskId = parseInt($button.data('task-id') || 0, 10);
+    if (!taskId || !confirm('¿Eliminar esta tarea del plan de trabajo?')) {
+        return;
+    }
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+    $.ajax({
+        url: 'api/admin.php?action=delete_patient_work_plan_task',
+        method: 'POST',
+        dataType: 'json',
+        data: { task_id: taskId },
+        success: function (res) {
+            if (!res.success) {
+                showPatientWorkPlanAlert('danger', res.error || 'No se pudo eliminar la tarea.');
+                return;
+            }
+            showPatientWorkPlanAlert('success', res.message || 'Tarea eliminada correctamente.', true);
+            loadPatientWorkPlan(CURRENT_PATIENT_WORK_PLAN_ID);
+        },
+        error: function () {
+            showPatientWorkPlanAlert('danger', 'Error de conexion al eliminar la tarea.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function loadWorkPlanTaskTemplates(force = false) {
+    if (WORK_PLAN_TASK_TEMPLATES_LOADED && !force) {
+        populateWorkPlanTemplateSelect();
+        renderWorkPlanTaskTemplates();
+        return $.Deferred().resolve({ success: true }).promise();
+    }
+    $('#task-templates-list').html('<div class="text-center text-muted py-4">Cargando plantillas...</div>');
+    return $.ajax({
+        url: 'api/admin.php?action=work_plan_task_templates',
+        dataType: 'json',
+        success: function (res) {
+            if (!res.success) {
+                showTaskTemplatesAlert('danger', res.error || 'No se pudieron cargar las plantillas.');
+                $('#task-templates-list').html('<div class="text-center text-muted py-4">No se pudieron cargar las plantillas.</div>');
+                return;
+            }
+            WORK_PLAN_TASK_TEMPLATES = Array.isArray(res.templates) ? res.templates : [];
+            WORK_PLAN_TASK_TEMPLATES_LOADED = true;
+            populateWorkPlanTemplateSelect();
+            renderWorkPlanTaskTemplates();
+        },
+        error: function () {
+            showTaskTemplatesAlert('danger', 'Error de conexion al cargar las plantillas.');
+            $('#task-templates-list').html('<div class="text-center text-muted py-4">No se pudieron cargar las plantillas.</div>');
+        }
+    });
+}
+
+function populateWorkPlanTemplateSelect() {
+    const $select = $('#patient-work-plan-template');
+    if (!$select.length) return;
+    const previous = $select.val() || 'manual';
+    $select.empty().append('<option value="manual">Crear manualmente</option>');
+    const activeTemplates = WORK_PLAN_TASK_TEMPLATES.filter(template => parseInt(template.is_active || 1, 10) === 1);
+    const grouped = {};
+    activeTemplates.forEach(template => {
+        const category = (template.category || 'Sin categoria').trim() || 'Sin categoria';
+        if (!grouped[category]) grouped[category] = [];
+        grouped[category].push(template);
+    });
+    Object.keys(grouped).sort((a, b) => a.localeCompare(b)).forEach(category => {
+        const $group = $('<optgroup>').attr('label', category);
+        grouped[category].forEach(template => {
+            const count = parseInt(template.item_count || (Array.isArray(template.items) ? template.items.length : 0), 10);
+            $group.append(`<option value="${template.id}">${escapeHtml(template.title || '')}${count ? ` (${count})` : ''}</option>`);
+        });
+        $select.append($group);
+    });
+    if (previous && $select.find(`option[value="${previous}"]`).length) {
+        $select.val(previous);
+    } else {
+        $select.val('manual');
+    }
+    togglePatientWorkPlanTaskMode();
+}
+
+function renderWorkPlanTaskTemplates() {
+    const $list = $('#task-templates-list');
+    if (!$list.length) return;
+    if (!WORK_PLAN_TASK_TEMPLATES.length) {
+        $list.html('<div class="text-center text-muted py-4">Todavia no hay plantillas. Crea la primera para reutilizarla en los pacientes.</div>');
+        return;
+    }
+    const html = WORK_PLAN_TASK_TEMPLATES.map(template => {
+        const category = template.category || 'Sin categoria';
+        const owner = parseInt(template.is_global || 0, 10) === 1
+            ? 'Gabinete'
+            : (template.professional_name || 'Profesional');
+        const items = Array.isArray(template.items) ? template.items : [];
+        const itemHtml = items.length
+            ? items.map(item => {
+                const priority = workPlanPriorityLabel(item.priority);
+                return `
+                    <div class="task-template-subitem">
+                        <div>
+                            <span class="badge ${priority.className}">${priority.label}</span>
+                            <strong>${escapeHtml(item.title || '')}</strong>
+                            ${item.description ? `<div class="small text-muted mt-1">${escapeHtml(item.description)}</div>` : ''}
+                        </div>
+                        <div class="task-template-actions">
+                            <button type="button" class="btn btn-outline-secondary btn-sm btn-edit-task-template-item" data-template-id="${template.id}" data-item-id="${item.id}" title="Editar tarea">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button type="button" class="btn btn-outline-danger btn-sm btn-delete-task-template-item" data-item-id="${item.id}" title="Eliminar tarea">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('')
+            : '<div class="small text-muted mt-2">Esta plantilla todavia no tiene tareas.</div>';
+        return `
+            <div class="task-template-item">
+                <div class="task-template-main">
+                    <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                        <span class="badge text-bg-light">${escapeHtml(category)}</span>
+                        <span class="small text-muted">${escapeHtml(owner)}</span>
+                        <span class="small text-muted">${items.length} tarea${items.length === 1 ? '' : 's'}</span>
+                    </div>
+                    <strong>${escapeHtml(template.title || '')}</strong>
+                    ${template.description ? `<div class="small text-muted mt-1">${escapeHtml(template.description)}</div>` : ''}
+                    <div class="task-template-subitems">${itemHtml}</div>
+                </div>
+                <div class="task-template-actions">
+                    <button type="button" class="btn btn-outline-primary btn-sm btn-add-task-template-item" data-template-id="${template.id}" title="Nueva tarea en esta plantilla">
+                        <i class="bi bi-plus-lg"></i>
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm btn-edit-task-template" data-template-id="${template.id}" title="Editar plantilla">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    <button type="button" class="btn btn-outline-danger btn-sm btn-delete-task-template" data-template-id="${template.id}" title="Eliminar plantilla">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+    $list.html(html);
+}
+
+function openTaskTemplatesSettings() {
+    if (!settingsModal) return;
+    if (patientEditorModal && $('#patientEditorModal').hasClass('show')) {
+        patientEditorModal.hide();
+    }
+    settingsModal.show();
+    const tabEl = document.getElementById('task-templates-settings-tab');
+    if (tabEl) {
+        bootstrap.Tab.getOrCreateInstance(tabEl).show();
+    }
+    loadWorkPlanTaskTemplates(true);
+}
+
+function openTaskTemplateModal(template = null) {
+    resetWorkPlanTaskTemplateForm();
+    if (template) {
+        fillWorkPlanTaskTemplateForm(template);
+    }
+    $('#task-template-modal-title').text(template ? 'Editar plantilla' : 'Nueva plantilla');
+    if (taskTemplateModal) {
+        taskTemplateModal.show();
+    }
+}
+
+function resetWorkPlanTaskTemplateForm() {
+    const form = document.getElementById('task-template-form');
+    if (form) form.reset();
+    $('#task-template-id').val(0);
+    $('#task-template-global').prop('checked', true);
+}
+
+function fillWorkPlanTaskTemplateForm(template) {
+    $('#task-template-id').val(template.id || 0);
+    $('#task-template-category').val(template.category || '');
+    $('#task-template-title').val(template.title || '');
+    $('#task-template-description').val(template.description || '');
+    $('#task-template-global').prop('checked', parseInt(template.is_global || 0, 10) === 1);
+    $('#task-template-title').trigger('focus');
+}
+
+function openTaskTemplateItemModal(task = null, templateId = 0) {
+    resetWorkPlanTaskTemplateItemForm();
+    populateTaskTemplateItemTemplateSelect(templateId);
+    if (task) {
+        fillWorkPlanTaskTemplateItemForm(task, templateId);
+    }
+    $('#task-template-item-modal-title').text(task ? 'Editar tarea de plantilla' : 'Nueva tarea de plantilla');
+    if (taskTemplateItemModal) {
+        taskTemplateItemModal.show();
+    }
+}
+
+function populateTaskTemplateItemTemplateSelect(selectedTemplateId = 0) {
+    const $select = $('#task-template-item-template-id');
+    if (!$select.length) return;
+    const options = WORK_PLAN_TASK_TEMPLATES
+        .map(template => `<option value="${template.id}">${escapeHtml(template.title || '')}</option>`)
+        .join('');
+    $select.html(`<option value="">Selecciona plantilla...</option>${options}`);
+    if (selectedTemplateId && $select.find(`option[value="${selectedTemplateId}"]`).length) {
+        $select.val(String(selectedTemplateId));
+    }
+}
+
+function resetWorkPlanTaskTemplateItemForm() {
+    const form = document.getElementById('task-template-item-form');
+    if (form) form.reset();
+    $('#task-template-item-id').val(0);
+    $('#task-template-item-template-id').val('');
+    $('#task-template-item-priority').val('2');
+}
+
+function fillWorkPlanTaskTemplateItemForm(task, templateId = 0) {
+    $('#task-template-item-id').val(task.id || 0);
+    $('#task-template-item-template-id').val(String(templateId || task.template_id || ''));
+    $('#task-template-item-title').val(task.title || '');
+    $('#task-template-item-description').val(task.description || '');
+    $('#task-template-item-priority').val(String(task.priority || 2));
+    $('#task-template-item-title').trigger('focus');
+}
+
+function saveWorkPlanTaskTemplate() {
+    const $button = $('#btn-save-task-template');
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Guardando');
+    $.ajax({
+        url: 'api/admin.php?action=save_work_plan_task_template',
+        method: 'POST',
+        dataType: 'json',
+        data: {
+            template_id: $('#task-template-id').val() || 0,
+            category: $('#task-template-category').val() || '',
+            title: $('#task-template-title').val() || '',
+            description: $('#task-template-description').val() || '',
+            is_global: $('#task-template-global').is(':checked') ? '1' : '0'
+        },
+        success: function (res) {
+            if (!res.success) {
+                showTaskTemplatesAlert('danger', res.error || 'No se pudo guardar la plantilla.');
+                return;
+            }
+            showTaskTemplatesAlert('success', res.message || 'Plantilla guardada correctamente.', true);
+            if (taskTemplateModal) {
+                taskTemplateModal.hide();
+            }
+            resetWorkPlanTaskTemplateForm();
+            WORK_PLAN_TASK_TEMPLATES_LOADED = false;
+            loadWorkPlanTaskTemplates(true);
+        },
+        error: function () {
+            showTaskTemplatesAlert('danger', 'Error de conexion al guardar la plantilla.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function saveWorkPlanTaskTemplateItem() {
+    const templateId = parseInt($('#task-template-item-template-id').val() || '0', 10);
+    if (!templateId) {
+        showTaskTemplatesAlert('danger', 'Guarda primero la plantilla.');
+        return;
+    }
+    const $button = $('#btn-save-task-template-item');
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Guardando');
+    $.ajax({
+        url: 'api/admin.php?action=save_work_plan_task_template_item',
+        method: 'POST',
+        dataType: 'json',
+        data: {
+            item_id: $('#task-template-item-id').val() || 0,
+            template_id: templateId,
+            title: $('#task-template-item-title').val() || '',
+            description: $('#task-template-item-description').val() || '',
+            priority: $('#task-template-item-priority').val() || 2
+        },
+        success: function (res) {
+            if (!res.success) {
+                showTaskTemplatesAlert('danger', res.error || 'No se pudo guardar la tarea de plantilla.');
+                return;
+            }
+            showTaskTemplatesAlert('success', res.message || 'Tarea guardada correctamente.', true);
+            if (taskTemplateItemModal) {
+                taskTemplateItemModal.hide();
+            }
+            resetWorkPlanTaskTemplateItemForm();
+            WORK_PLAN_TASK_TEMPLATES_LOADED = false;
+            loadWorkPlanTaskTemplates(true);
+        },
+        error: function () {
+            showTaskTemplatesAlert('danger', 'Error de conexion al guardar la tarea de plantilla.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function deleteWorkPlanTaskTemplate(button) {
+    const $button = $(button);
+    const templateId = parseInt($button.data('template-id') || 0, 10);
+    if (!templateId || !confirm('Eliminar esta plantilla de tareas?')) {
+        return;
+    }
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+    $.ajax({
+        url: 'api/admin.php?action=delete_work_plan_task_template',
+        method: 'POST',
+        dataType: 'json',
+        data: { template_id: templateId },
+        success: function (res) {
+            if (!res.success) {
+                showTaskTemplatesAlert('danger', res.error || 'No se pudo eliminar la plantilla.');
+                return;
+            }
+            showTaskTemplatesAlert('success', res.message || 'Plantilla eliminada correctamente.', true);
+            resetWorkPlanTaskTemplateForm();
+            WORK_PLAN_TASK_TEMPLATES_LOADED = false;
+            loadWorkPlanTaskTemplates(true);
+        },
+        error: function () {
+            showTaskTemplatesAlert('danger', 'Error de conexion al eliminar la plantilla.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function deleteWorkPlanTaskTemplateItem(button) {
+    const $button = $(button);
+    const itemId = parseInt($button.data('item-id') || 0, 10);
+    if (!itemId || !confirm('Eliminar esta tarea de la plantilla?')) {
+        return;
+    }
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+    $.ajax({
+        url: 'api/admin.php?action=delete_work_plan_task_template_item',
+        method: 'POST',
+        dataType: 'json',
+        data: { item_id: itemId },
+        success: function (res) {
+            if (!res.success) {
+                showTaskTemplatesAlert('danger', res.error || 'No se pudo eliminar la tarea de plantilla.');
+                return;
+            }
+            showTaskTemplatesAlert('success', res.message || 'Tarea eliminada correctamente.', true);
+            resetWorkPlanTaskTemplateItemForm();
+            WORK_PLAN_TASK_TEMPLATES_LOADED = false;
+            loadWorkPlanTaskTemplates(true);
+        },
+        error: function () {
+            showTaskTemplatesAlert('danger', 'Error de conexion al eliminar la tarea de plantilla.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function importWorkPlanTemplateToPatient(button) {
+    const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
+    const templateId = getSelectedWorkPlanTemplateId();
+    if (!patientId) {
+        showPatientWorkPlanAlert('danger', 'Guarda primero el paciente.');
+        return;
+    }
+    if (!templateId) {
+        showPatientWorkPlanAlert('danger', 'Selecciona una plantilla.');
+        return;
+    }
+    const $button = $(button);
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Importando');
+    $.ajax({
+        url: 'api/admin.php?action=import_work_plan_task_template',
+        method: 'POST',
+        dataType: 'json',
+        data: { patient_id: patientId, template_id: templateId },
+        success: function (res) {
+            if (!res.success) {
+                showPatientWorkPlanAlert('danger', res.error || 'No se pudo importar la plantilla.');
+                return;
+            }
+            showPatientWorkPlanAlert('success', res.message || 'Plantilla importada correctamente.', true);
+            $('#patient-work-plan-template').val('manual');
+            hidePatientWorkPlanForm();
+            loadPatientWorkPlan(patientId);
+        },
+        error: function () {
+            showPatientWorkPlanAlert('danger', 'Error de conexion al importar la plantilla.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+            togglePatientWorkPlanTaskMode();
+        }
+    });
+}
+
+function showTaskTemplatesAlert(type, message, autoHide = false) {
+    const $alert = $('#task-templates-alert');
+    if (!$alert.length) return;
+    $alert.removeClass('d-none alert-success alert-danger alert-warning alert-info')
+        .addClass(`alert-${type}`)
+        .text(message || '');
+    if (autoHide) {
+        setTimeout(() => $alert.addClass('d-none').text(''), 3000);
+    }
+}
+
+function resetPatientEvolution(patientId = 0) {
+    CURRENT_PATIENT_EVOLUTION_ID = parseInt(patientId || 0, 10);
+    CURRENT_PATIENT_EVOLUTION_ROWS = [];
+    CURRENT_PATIENT_EVOLUTION_APPOINTMENTS = [];
+    $('#patient-evolution-alert').addClass('d-none').text('');
+    $('#patient-evolution-count').text('');
+    hidePatientEvolutionForm();
+    if (!patientId) {
+        $('#patient-evolution-list').html('<div class="text-center text-muted py-4">Guarda el paciente para ver su evolución.</div>');
+        return;
+    }
+    $('#patient-evolution-list').html('<div class="text-center text-muted py-4">Cargando evolución...</div>');
+}
+
+function loadPatientEvolution(patientId) {
+    patientId = parseInt(patientId || 0, 10);
+    if (!patientId) {
+        resetPatientEvolution(0);
+        return;
+    }
+    CURRENT_PATIENT_EVOLUTION_ID = patientId;
+    $('#patient-evolution-alert').addClass('d-none').text('');
+    $('#patient-evolution-list').html('<div class="text-center text-muted py-4">Cargando evolución...</div>');
+    $('#patient-evolution-count').text('');
+    $.ajax({
+        url: 'api/admin.php?action=patient_evolution',
+        dataType: 'json',
+        data: { patient_id: patientId },
+        success: function (res) {
+            if (!res.success) {
+                showPatientEvolutionAlert('danger', res.error || 'No se pudo cargar la evolución.');
+                $('#patient-evolution-list').html('<div class="text-center text-muted py-4">No se pudo cargar la evolución.</div>');
+                return;
+            }
+            CURRENT_PATIENT_EVOLUTION_ROWS = Array.isArray(res.notes) ? res.notes : [];
+            CURRENT_PATIENT_EVOLUTION_APPOINTMENTS = Array.isArray(res.appointments) ? res.appointments : [];
+            populatePatientEvolutionAppointmentSelect();
+            renderPatientEvolution(CURRENT_PATIENT_EVOLUTION_ROWS);
+        },
+        error: function () {
+            showPatientEvolutionAlert('danger', 'Error de conexión al cargar la evolución.');
+            $('#patient-evolution-list').html('<div class="text-center text-muted py-4">No se pudo cargar la evolución.</div>');
+        }
+    });
+}
+
+function populatePatientEvolutionAppointmentSelect(selected = '') {
+    const $select = $('#patient-evolution-appointment');
+    $select.html('<option value="">Nota general del paciente</option>');
+    CURRENT_PATIENT_EVOLUTION_APPOINTMENTS.forEach(app => {
+        $select.append(`<option value="${app.id}">${escapeHtml(app.label || '')}</option>`);
+    });
+    if (selected && $select.find(`option[value="${selected}"]`).length) {
+        $select.val(String(selected));
+    }
+}
+
+function renderPatientEvolution(notes) {
+    const rows = Array.isArray(notes) ? notes : [];
+    if (!rows.length) {
+        $('#patient-evolution-list').html('<div class="text-center text-muted py-4">Este paciente todavía no tiene registros de evolución.</div>');
+        $('#patient-evolution-count').text('');
+        return;
+    }
+
+    const html = rows.map(note => {
+        const appointmentText = note.appointment_id
+            ? `<span class="badge text-bg-light">Cita ${formatDisplayDate(note.appointment_date || note.note_date)} ${escapeHtml(note.appointment_time || '')}</span>`
+            : '<span class="badge text-bg-light">Nota general</span>';
+        const fileText = parseInt(note.file_count || 0, 10) > 0
+            ? `<span class="badge text-bg-secondary">${parseInt(note.file_count || 0, 10)} archivo${parseInt(note.file_count || 0, 10) === 1 ? '' : 's'}</span>`
+            : '';
+        return `
+            <div class="patient-evolution-item">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="patient-evolution-date">${formatDisplayDate(note.note_date || '')}</div>
+                        <h6 class="mb-1">${escapeHtml(note.title || '')}</h6>
+                        <div class="d-flex flex-wrap patient-evolution-badges">
+                            ${appointmentText}
+                            ${fileText}
+                        </div>
+                    </div>
+                    <button class="btn btn-outline-secondary btn-sm btn-edit-patient-evolution" type="button" data-note-id="${note.id}" title="Editar evolución">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                </div>
+                ${note.description ? `<p class="mb-2 mt-2">${escapeHtml(note.description)}</p>` : ''}
+                ${note.observations ? `<div class="small text-muted"><strong>Observaciones:</strong> ${escapeHtml(note.observations)}</div>` : ''}
+                ${note.next_steps ? `<div class="small text-muted"><strong>Pendientes:</strong> ${escapeHtml(note.next_steps)}</div>` : ''}
+            </div>
+        `;
+    }).join('');
+
+    $('#patient-evolution-list').html(html);
+    $('#patient-evolution-count').text(`${rows.length} ${rows.length === 1 ? 'registro' : 'registros'}`);
+}
+
+function showPatientEvolutionForm(note = null) {
+    const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
+    if (!patientId) {
+        showPatientEvolutionAlert('danger', 'Guarda primero el paciente.');
+        return;
+    }
+    $('#patient-evolution-form').removeClass('d-none');
+    $('#patient-evolution-id').val(note ? note.id : 0);
+    $('#patient-evolution-patient-id').val(patientId);
+    $('#patient-evolution-date').val(note ? note.note_date || formatDate(new Date()) : formatDate(new Date()));
+    $('#patient-evolution-title').val(note ? note.title || '' : '');
+    $('#patient-evolution-description').val(note ? note.description || '' : '');
+    $('#patient-evolution-observations').val(note ? note.observations || '' : '');
+    $('#patient-evolution-next-steps').val(note ? note.next_steps || '' : '');
+    $('#patient-evolution-files').val('');
+    populatePatientEvolutionAppointmentSelect(note ? note.appointment_id || '' : '');
+    $('#patient-evolution-title').trigger('focus');
+}
+
+function hidePatientEvolutionForm() {
+    $('#patient-evolution-form').addClass('d-none');
+    if ($('#patient-evolution-form').length) {
+        $('#patient-evolution-form')[0].reset();
+    }
+    $('#patient-evolution-id').val(0);
+}
+
+function savePatientEvolution(form) {
+    const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
+    if (!patientId) {
+        showPatientEvolutionAlert('danger', 'Guarda primero el paciente.');
+        return;
+    }
+    const formData = new FormData(form);
+    formData.set('patient_id', patientId);
+    const $button = $('#btn-save-patient-evolution');
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Guardando');
+    $.ajax({
+        url: 'api/admin.php?action=save_patient_evolution',
+        method: 'POST',
+        data: formData,
+        dataType: 'json',
+        processData: false,
+        contentType: false,
+        success: function (res) {
+            if (!res.success) {
+                showPatientEvolutionAlert('danger', res.error || 'No se pudo guardar la evolución.');
+                return;
+            }
+            showPatientEvolutionAlert('success', res.message || 'Evolución guardada correctamente.');
+            hidePatientEvolutionForm();
+            loadPatientEvolution(patientId);
+            loadPatientFiles(patientId);
+        },
+        error: function () {
+            showPatientEvolutionAlert('danger', 'Error de conexión al guardar la evolución.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function resetPatientFiles(patientId = 0) {
+    CURRENT_PATIENT_FILES_ID = parseInt(patientId || 0, 10);
+    $('#patient-files-alert').addClass('d-none').text('');
+    $('#patient-files-count').text('');
+    if (!patientId) {
+        $('#patient-files-body').html('<tr><td colspan="4" class="text-center text-muted py-4">Guarda el paciente para ver sus archivos.</td></tr>');
+        return;
+    }
+    $('#patient-files-body').html('<tr><td colspan="4" class="text-center text-muted py-4">Cargando archivos...</td></tr>');
+}
+
+function loadPatientFiles(patientId) {
+    patientId = parseInt(patientId || 0, 10);
+    if (!patientId) {
+        resetPatientFiles(0);
+        return;
+    }
+    CURRENT_PATIENT_FILES_ID = patientId;
+    $('#patient-files-alert').addClass('d-none').text('');
+    $('#patient-files-body').html('<tr><td colspan="4" class="text-center text-muted py-4">Cargando archivos...</td></tr>');
+    $('#patient-files-count').text('');
+    $.ajax({
+        url: 'api/admin.php?action=patient_files',
+        dataType: 'json',
+        data: { patient_id: patientId },
+        success: function (res) {
+            if (!res.success) {
+                showPatientFilesAlert('danger', res.error || 'No se pudieron cargar los archivos.');
+                $('#patient-files-body').html('<tr><td colspan="4" class="text-center text-muted py-4">No se pudieron cargar los archivos.</td></tr>');
+                return;
+            }
+            renderPatientFiles(res.files || []);
+        },
+        error: function () {
+            showPatientFilesAlert('danger', 'Error de conexión al cargar los archivos.');
+            $('#patient-files-body').html('<tr><td colspan="4" class="text-center text-muted py-4">No se pudieron cargar los archivos.</td></tr>');
+        }
+    });
+}
+
+function renderPatientFiles(files) {
+    const rows = Array.isArray(files) ? files : [];
+    if (!rows.length) {
+        $('#patient-files-body').html('<tr><td colspan="4" class="text-center text-muted py-4">Este paciente no tiene archivos.</td></tr>');
+        $('#patient-files-count').text('');
+        return;
+    }
+    const html = rows.map(file => `
+        <tr>
+            <td><strong>${escapeHtml(file.name || 'Archivo')}</strong>${file.size ? `<br><small class="text-muted">${formatFileSize(file.size)}</small>` : ''}</td>
+            <td>${escapeHtml(file.source || '')}</td>
+            <td>${file.date ? formatDateTimeLabel(file.date) : '-'}</td>
+            <td class="text-end">
+                <a class="btn btn-outline-primary btn-sm" href="${escapeHtml(file.url || '#')}" target="_blank" rel="noopener" title="Descargar archivo">
+                    <i class="bi bi-download"></i>
+                </a>
+            </td>
+        </tr>
+    `).join('');
+    $('#patient-files-body').html(html);
+    $('#patient-files-count').text(`${rows.length} ${rows.length === 1 ? 'archivo' : 'archivos'}`);
+}
+
+function formatFileSize(bytes) {
+    const size = parseInt(bytes || 0, 10);
+    if (!size) return '';
+    if (size < 1024) return `${size} B`;
+    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1).replace('.', ',')} KB`;
+    return `${(size / (1024 * 1024)).toFixed(1).replace('.', ',')} MB`;
 }
 
 function resetPatientBonuses(patientId = 0) {
@@ -2894,9 +4851,13 @@ function savePatient(form) {
     const $button = $('#btn-save-patient');
     const original = $button.html();
     const formData = new FormData(form);
-    if ($('#patient-editor-professional').length) {
+    const isExistingPatient = parseInt($('#patient-editor-id').val() || 0, 10) > 0;
+    if (isExistingPatient) {
+        formData.delete('professional_id');
+    }
+    if ($('#patient-editor-professional').length && !isExistingPatient) {
         formData.set('professional_id', $('#patient-editor-professional').val() || '');
-    } else {
+    } else if (!isExistingPatient) {
         const selectedProfessional = $('#admin-patients-professional').val() || '';
         if (selectedProfessional && selectedProfessional !== 'all') {
             formData.set('professional_id', selectedProfessional);
@@ -2920,6 +4881,7 @@ function savePatient(form) {
             showAdminPatientsAlert('success', res.message || 'Paciente guardado correctamente.');
             if (res.patient_id) {
                 $('#patient-editor-id').val(res.patient_id);
+                $('.btn-patient-report').prop('disabled', false);
                 loadPatientAppointmentHistory(res.patient_id);
             }
             patientEditorModal.hide();
@@ -3008,6 +4970,58 @@ function loadBookingPatients() {
 
 function bookingPatientById(patientId) {
     return ADMIN_BOOKING_PATIENTS.find(patient => String(patient.id) === String(patientId)) || null;
+}
+
+function openPatientEditorById(patientId, button = null) {
+    patientId = parseInt(patientId || 0, 10);
+    if (!patientId) return;
+    const $button = button ? $(button) : $();
+    const originalButtonHtml = $button.length ? $button.html() : '';
+    if ($button.length) {
+        $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+    }
+    const resetButton = function () {
+        if ($button.length) {
+            $button.prop('disabled', false).html(originalButtonHtml);
+        }
+    };
+    let patient = ADMIN_PATIENTS.find(item => parseInt(item.id, 10) === patientId) || null;
+    if (patient) {
+        openPatientEditorModal(patient);
+        resetButton();
+        return;
+    }
+
+    $.ajax({
+        url: 'api/admin.php?action=list_patients',
+        dataType: 'json',
+        data: IS_SUPERADMIN ? { professional_id: 'all' } : {},
+        success: function (res) {
+            if (!res.success) {
+                alert(res.error || 'No se pudo cargar la ficha del paciente.');
+                return;
+            }
+            if (Array.isArray(res.professionals) && res.professionals.length) {
+                CABINET_PROFESSIONALS = res.professionals.map(professional => ({
+                    ...professional,
+                    is_active: typeof professional.is_active === 'undefined' || professional.is_active === null ? 1 : professional.is_active
+                }));
+            }
+            ADMIN_PATIENTS = Array.isArray(res.patients) ? res.patients : [];
+            patient = ADMIN_PATIENTS.find(item => parseInt(item.id, 10) === patientId) || null;
+            if (!patient) {
+                alert('No se encontró la ficha del paciente.');
+                return;
+            }
+            openPatientEditorModal(patient);
+        },
+        error: function () {
+            alert('Error de conexión al cargar la ficha del paciente.');
+        },
+        complete: function () {
+            resetButton();
+        }
+    });
 }
 
 function bookingProfessionalById(professionalId) {
@@ -3147,16 +5161,52 @@ function showPatientHistoryAlert(type, message) {
         .text(message);
 }
 
+function showPatientWorkPlanAlert(type, message, autoHide = false) {
+    const $alert = $('#patient-work-plan-alert')
+        .stop(true, true)
+        .removeClass('d-none alert-success alert-danger')
+        .addClass(type === 'success' ? 'alert-success' : 'alert-danger')
+        .text(message)
+        .show();
+    if (autoHide || type === 'success') {
+        $alert.delay(4000).fadeOut(200, function () {
+            $(this).addClass('d-none').show().text('');
+        });
+    }
+}
+
+function showPatientEvolutionAlert(type, message) {
+    $('#patient-evolution-alert')
+        .removeClass('d-none alert-success alert-danger')
+        .addClass(type === 'success' ? 'alert-success' : 'alert-danger')
+        .text(message);
+    if (type === 'success') {
+        setTimeout(function () {
+            $('#patient-evolution-alert').addClass('d-none').text('');
+        }, 4000);
+    }
+}
+
+function showPatientFilesAlert(type, message) {
+    $('#patient-files-alert')
+        .removeClass('d-none alert-success alert-danger')
+        .addClass(type === 'success' ? 'alert-success' : 'alert-danger')
+        .text(message);
+}
+
 function openUpcomingAppointmentsModal() {
     if (!upcomingAppointmentsModal) return;
     $('#upcoming-appointments-alert').addClass('d-none').text('');
     $('#upcoming-appointments-search').val('');
+    $('#cancelled-appointments-search').val('');
     $('#upcoming-appointments-scope').val('limit10');
     $('#upcoming-planning-scope').val('3days');
     upcomingAppointmentsInitialLoad = true;
     populateUpcomingProfessionalsFilter();
     $('#upcoming-appointments-body').html('<tr><td colspan="7" class="text-center text-muted py-4">Cargando...</td></tr>');
     $('#upcoming-appointments-count').text('');
+    $('#cancelled-appointments-body').html('<tr><td colspan="7" class="text-center text-muted py-4">Cargando...</td></tr>');
+    $('#cancelled-appointments-count').text('');
     $('#upcoming-planning-wrap').html('<div class="text-center text-muted py-4">Cargando planning...</div>');
     upcomingAppointmentsModal.show();
     loadUpcomingAppointments();
@@ -3166,6 +5216,8 @@ function loadUpcomingAppointments() {
     $('#upcoming-appointments-alert').addClass('d-none').text('');
     $('#upcoming-appointments-body').html('<tr><td colspan="7" class="text-center text-muted py-4">Cargando...</td></tr>');
     $('#upcoming-appointments-count').text('');
+    $('#cancelled-appointments-body').html('<tr><td colspan="7" class="text-center text-muted py-4">Cargando...</td></tr>');
+    $('#cancelled-appointments-count').text('');
     $('#upcoming-planning-wrap').html('<div class="text-center text-muted py-4">Cargando planning...</div>');
     const hasProfessionalFilter = $('#upcoming-appointments-professional').length > 0;
     const professionalFilterValue = hasProfessionalFilter && upcomingAppointmentsInitialLoad
@@ -3189,12 +5241,14 @@ function loadUpcomingAppointments() {
             }
             upcomingAppointmentsInitialLoad = false;
             CURRENT_UPCOMING_APPOINTMENTS = Array.isArray(res.appointments) ? res.appointments : [];
+            CURRENT_CANCELLED_APPOINTMENTS = Array.isArray(res.cancelled_appointments) ? res.cancelled_appointments : [];
             CURRENT_UPCOMING_PLANNING = {
                 appointments: Array.isArray(res.planning_appointments) ? res.planning_appointments : [],
                 settings: res.planning_settings || {},
                 closedDays: Array.isArray(res.closed_days) ? res.closed_days : []
             };
             renderUpcomingAppointments(CURRENT_UPCOMING_APPOINTMENTS);
+            renderCancelledAppointments(CURRENT_CANCELLED_APPOINTMENTS);
             renderUpcomingPlanning();
         },
         error: function () {
@@ -3240,18 +5294,51 @@ function renderUpcomingAppointments(appointments) {
         const professional = upcomingProfessionalCell(app);
         html += `
             <tr>
-                <td><strong>${formatDisplayDate(app.appointment_date)}</strong><br><small class="text-muted">${escapeHtml(app.appointment_time || '')}</small></td>
+                <td><strong>${formatDisplayDate(app.appointment_date)}</strong><br><small class="text-muted">${escapeHtml(displayAppointmentTimeRange(app.appointment_time || '', app.duration_minutes || 60))}</small></td>
                 <td>${professional}</td>
-                <td>${escapeHtml(app.patient_name || '')}<br><small class="text-muted">${escapeHtml(app.patient_email || app.patient_phone || '')}</small></td>
-                <td>${escapeHtml(app.service_label || '')}</td>
+                <td>${escapeHtml(app.patient_name || '')}<br><small class="text-muted">${patientContactSummaryHtml(app.patient_email, app.patient_phone) || '-'}</small></td>
+                <td>${escapeHtml(displayAppointmentServiceLabel(app))}</td>
                 <td>${consultationTypeLabel(app.consultation_type)}</td>
                 <td>${adminPaymentLabel(app)}</td>
-                <td class="text-end">${appointmentPaymentButton(app)}</td>
+                <td class="text-end no-export">${appointmentPaymentButton(app)}</td>
             </tr>
         `;
     });
     $('#upcoming-appointments-body').html(html);
     $('#upcoming-appointments-count').text(`${rows.length} ${rows.length === 1 ? 'cita' : 'citas'}`);
+}
+
+function renderCancelledAppointments(appointments) {
+    const rows = filterCancelledAppointments(appointments);
+    if (!appointments.length) {
+        $('#cancelled-appointments-body').html('<tr><td colspan="7" class="text-center text-muted py-4">No hay citas canceladas.</td></tr>');
+        $('#cancelled-appointments-count').text('');
+        return;
+    }
+    if (!rows.length) {
+        $('#cancelled-appointments-body').html('<tr><td colspan="7" class="text-center text-muted py-4">No hay citas canceladas que coincidan con la busqueda.</td></tr>');
+        $('#cancelled-appointments-count').text('');
+        return;
+    }
+
+    const html = rows.map(app => {
+        const professional = upcomingProfessionalCell(app);
+        const cancelledAt = app.cancelled_at ? formatDateTimeLabel(app.cancelled_at) : '-';
+        return `
+            <tr>
+                <td><strong>${formatDisplayDate(app.appointment_date)}</strong><br><small class="text-muted">${escapeHtml(displayAppointmentTimeRange(app.appointment_time || '', app.duration_minutes || 60))}</small></td>
+                <td>${escapeHtml(cancelledAt)}</td>
+                <td>${professional}</td>
+                <td>${escapeHtml(app.patient_name || '')}<br><small class="text-muted">${patientContactSummaryHtml(app.patient_email, app.patient_phone) || '-'}</small></td>
+                <td>${escapeHtml(displayAppointmentServiceLabel(app))}</td>
+                <td>${consultationTypeLabel(app.consultation_type)}</td>
+                <td>${adminPaymentLabel(app)}</td>
+            </tr>
+        `;
+    }).join('');
+
+    $('#cancelled-appointments-body').html(html);
+    $('#cancelled-appointments-count').text(`${rows.length} ${rows.length === 1 ? 'cita cancelada' : 'citas canceladas'}`);
 }
 
 function upcomingProfessionalCell(app = {}) {
@@ -3396,7 +5483,7 @@ function renderUpcomingPlanning() {
                         <div class="planning-appointment">
                             <strong>${escapeHtml(app.patient_name || '')}</strong>
                             ${continuationText}
-                            <span>${escapeHtml(app.service_label || '')} · ${parseInt(app.duration_minutes || 60, 10)} min</span>
+                            <span>${escapeHtml(displayAppointmentServiceLabel(app))} · ${displayAppointmentDurationLabel(app.duration_minutes || 60)}</span>
                             <span>${consultationTypeLabel(app.consultation_type)} · ${adminPaymentLabel(app)}</span>
                         </div>
                     </td>
@@ -3459,6 +5546,35 @@ function filterUpcomingAppointments(appointments) {
     return rows;
 }
 
+function filterCancelledAppointments(appointments) {
+    const search = ($('#cancelled-appointments-search').val() || '').trim().toLowerCase();
+    let rows = Array.isArray(appointments) ? [...appointments] : [];
+    if (search) {
+        rows = rows.filter(app => {
+            const haystack = [
+                app.appointment_date,
+                app.appointment_time,
+                app.cancelled_at,
+                app.patient_name,
+                app.patient_email,
+                app.patient_phone,
+                app.professional_name,
+                app.service_label,
+                consultationTypeLabel(app.consultation_type),
+                app.payment_status,
+                app.payment_method
+            ].join(' ').toLowerCase();
+            return haystack.includes(search);
+        });
+    }
+    rows.sort((a, b) => {
+        const aKey = `${a.cancelled_at || ''} ${a.appointment_date || ''} ${a.appointment_time || ''}`;
+        const bKey = `${b.cancelled_at || ''} ${b.appointment_date || ''} ${b.appointment_time || ''}`;
+        return bKey.localeCompare(aKey);
+    });
+    return rows;
+}
+
 function adminPaymentLabel(app) {
     if (app.payment_status === 'paid') {
         return app.payment_method === 'bonus'
@@ -3502,6 +5618,14 @@ function showAppointmentPaymentAlert(type, message) {
         .text(message);
 }
 
+function showAppointmentModalityAlert(type, message) {
+    if ($('#appointment-session-panel').hasClass('active')) {
+        showAppointmentSessionAlert(type, message);
+    } else {
+        showAppointmentPaymentAlert(type, message);
+    }
+}
+
 function setAppointmentPaymentLoading(isLoading) {
     const $button = $('#btn-save-appointment-payment');
     if (!$button.data('original-text')) {
@@ -3526,7 +5650,7 @@ function setAppointmentPaymentSelection(status, method = '') {
 }
 
 function renderAppointmentPaymentSummary(app = {}) {
-    const contact = [app.patient_email, app.patient_phone].filter(Boolean).join(' · ');
+    const contact = patientContactSummaryHtml(app.patient_email, app.patient_phone);
     const paymentMethod = paymentMethodLabel(app.payment_method);
     const paidText = app.payment_status === 'paid'
         ? (app.payment_method === 'bonus' ? 'Pagada con bono' : `Pagada${paymentMethod ? ` · ${paymentMethod}` : ''}`)
@@ -3538,18 +5662,837 @@ function renderAppointmentPaymentSummary(app = {}) {
                 <div>
                     <span class="text-muted small">Paciente</span>
                     <h6>${escapeHtml(app.patient_name || '')}</h6>
-                    ${contact ? `<small class="text-muted">${escapeHtml(contact)}</small>` : ''}
+                    ${contact ? `<small class="text-muted">${contact}</small>` : ''}
                 </div>
                 <span class="appointment-payment-status ${statusClass}">${escapeHtml(paidText)}</span>
             </div>
             <div class="appointment-payment-grid mt-3">
-                <div><span>Fecha</span><strong>${formatDisplayDate(app.appointment_date || '')} · ${escapeHtml(app.appointment_time || '')}</strong></div>
+                <div><span>Fecha</span><strong>${formatDisplayDate(app.appointment_date || '')} · ${escapeHtml(displayAppointmentTimeRange(app.appointment_time || '', app.duration_minutes || 60))}</strong></div>
                 <div><span>Profesional</span><strong>${escapeHtml(app.professional_name || 'Sin asignar')}</strong></div>
-                <div><span>Servicio</span><strong>${escapeHtml(app.service_label || '')}</strong></div>
-                <div><span>Modalidad</span><strong>${consultationTypeLabel(app.consultation_type)}</strong></div>
+                <div><span>Servicio</span><strong>${escapeHtml(displayAppointmentServiceLabel(app))}</strong></div>
+                <div class="appointment-modality-card">${renderAppointmentModalityInline(app)}</div>
             </div>
         </div>
     `;
+}
+
+function appointmentModalitySwitchTarget(app = {}) {
+    const current = app.consultation_type === 'online' ? 'online' : 'presencial';
+    const target = current === 'online' ? 'presencial' : 'online';
+    if (target === 'online' && app.can_online_appointment != 1) {
+        return '';
+    }
+    if (target === 'presencial' && app.can_presential_appointment == 0) {
+        return '';
+    }
+    return target;
+}
+
+function renderAppointmentModalityInline(app = {}) {
+    const current = app.consultation_type === 'online' ? 'online' : 'presencial';
+    const target = appointmentModalitySwitchTarget(app);
+    return `
+        <span>Modalidad</span>
+        <div class="appointment-modality-row">
+            <strong>${consultationTypeLabel(current)}</strong>
+            ${target ? `
+                <button class="btn btn-outline-primary btn-sm btn-switch-appointment-modality" type="button" data-target-modality="${target}">
+                    <i class="bi bi-arrow-left-right"></i> Cambiar a ${consultationTypeLabel(target).toLowerCase()}
+                </button>
+            ` : ''}
+        </div>
+    `;
+}
+
+function renderAppointmentModalitySessionCard(app = {}) {
+    const current = app.consultation_type === 'online' ? 'online' : 'presencial';
+    const onlineUrl = app.online_session_url || '';
+    const target = appointmentModalitySwitchTarget(app);
+    return `
+        <section class="appointment-session-box appointment-online-session-box">
+            <div class="appointment-modality-session-main">
+                <div>
+                    <span>Modalidad actual</span>
+                    <strong>${consultationTypeLabel(current)}</strong>
+                </div>
+                ${target ? `
+                    <button class="btn btn-outline-primary btn-sm btn-switch-appointment-modality" type="button" data-target-modality="${target}">
+                        <i class="bi bi-arrow-left-right"></i> Cambiar a ${consultationTypeLabel(target).toLowerCase()}
+                    </button>
+                ` : ''}
+            </div>
+            <div class="appointment-online-link-wrap ${current === 'online' ? '' : 'd-none'} mt-3">
+                <label class="form-label" for="appointment-online-session-url">Link de la sesi&oacute;n online</label>
+                <div class="input-group">
+                    <input type="url" class="form-control" id="appointment-online-session-url" value="${escapeHtml(onlineUrl)}" placeholder="https://...">
+                    <button class="btn btn-outline-primary" type="button" id="btn-send-appointment-online-link" ${onlineUrl ? '' : 'disabled'}>
+                        <i class="bi bi-send"></i> Enviar al paciente
+                    </button>
+                </div>
+            </div>
+        </section>
+    `;
+}
+function resetAppointmentSessionPanel(message = 'Cargando sesión...') {
+    CURRENT_APPOINTMENT_SESSION = {
+        appointment_id: 0,
+        patient_id: 0,
+        tasks: [],
+        notes: [],
+        files: []
+    };
+    $('#appointment-session-alert').addClass('d-none').text('');
+    $('#appointment-session-content').html(`<div class="text-center text-muted py-4">${message}</div>`);
+}
+
+function loadAppointmentSession(app = CURRENT_APPOINTMENT_PAYMENT_DETAIL) {
+    const appointmentId = parseInt(app && app.id ? app.id : 0, 10);
+    if (!appointmentId) {
+        resetAppointmentSessionPanel('No se ha podido cargar la sesión.');
+        return;
+    }
+    $('#appointment-session-alert').addClass('d-none').text('');
+    $('#appointment-session-content').html('<div class="text-center text-muted py-4">Cargando sesión...</div>');
+    $.ajax({
+        url: 'api/admin.php?action=appointment_session',
+        dataType: 'json',
+        data: { appointment_id: appointmentId },
+        success: function (res) {
+            if (!res.success) {
+                showAppointmentSessionAlert('danger', res.error || 'No se pudo cargar la sesión.');
+                $('#appointment-session-content').html('<div class="text-center text-muted py-4">No se pudo cargar la sesión.</div>');
+                return;
+            }
+            CURRENT_APPOINTMENT_SESSION = {
+                appointment_id: parseInt(res.appointment_id || appointmentId, 10),
+                patient_id: parseInt(res.patient_id || app.patient_id || 0, 10),
+                tasks: Array.isArray(res.tasks) ? res.tasks : [],
+                notes: Array.isArray(res.notes) ? res.notes : [],
+                files: Array.isArray(res.files) ? res.files : []
+            };
+            renderAppointmentSession(app);
+        },
+        error: function () {
+            showAppointmentSessionAlert('danger', 'Error de conexión al cargar la sesión.');
+            $('#appointment-session-content').html('<div class="text-center text-muted py-4">No se pudo cargar la sesión.</div>');
+        }
+    });
+}
+
+function updateAppointmentSessionTabLabel(app = {}) {
+    const $tab = $('#appointment-session-tab');
+    if (!$tab.length) return;
+    const start = parseAppointmentDateTime(app.appointment_date, app.appointment_time);
+    const end = parseAppointmentDateTime(app.appointment_date, app.appointment_time);
+    const duration = parseInt(app.duration_minutes || 60, 10);
+    if (end) {
+        end.setMinutes(end.getMinutes() + duration);
+    }
+    const now = new Date();
+    const isFuture = start && start > now;
+    const isCurrent = start && end && start <= now && end >= now;
+    $tab.text(isFuture && !isCurrent ? 'Preparar esta sesión' : 'Sesión');
+}
+
+function parseAppointmentDateTime(dateStr, timeStr) {
+    if (!dateStr || !timeStr) return null;
+    const normalizedTime = String(timeStr).slice(0, 5);
+    const value = new Date(`${dateStr}T${normalizedTime}:00`);
+    return Number.isNaN(value.getTime()) ? null : value;
+}
+
+function renderAppointmentSession(app = CURRENT_APPOINTMENT_PAYMENT_DETAIL) {
+    const appointmentDate = app && app.appointment_date ? app.appointment_date : formatDate(new Date());
+    $('#appointment-session-content').html(`
+        <div class="row g-3">
+            <div class="col-lg-5">
+                <section class="appointment-session-box">
+                    <h6>Nueva tarea de esta sesión</h6>
+                    <form id="appointment-session-task-form">
+                        <input type="hidden" name="appointment_id" value="${CURRENT_APPOINTMENT_SESSION.appointment_id}">
+                        <input type="hidden" name="patient_id" value="${CURRENT_APPOINTMENT_SESSION.patient_id}">
+                        <div class="mb-2">
+                            <label class="form-label" for="appointment-session-task-title">Título</label>
+                            <input type="text" class="form-control" id="appointment-session-task-title" name="title" maxlength="180" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label" for="appointment-session-task-priority">Prioridad</label>
+                            <select class="form-select" id="appointment-session-task-priority" name="priority">
+                                <option value="1">Alta</option>
+                                <option value="2" selected>Normal</option>
+                                <option value="3">Baja</option>
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label" for="appointment-session-task-description">Descripción / actividad</label>
+                            <textarea class="form-control" id="appointment-session-task-description" name="description" rows="3"></textarea>
+                        </div>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="appointment-session-task-completed" name="completed">
+                            <label class="form-check-label" for="appointment-session-task-completed">Marcar como completada</label>
+                        </div>
+                        <button class="btn btn-primary btn-sm" type="submit" id="btn-save-appointment-session-task">
+                            <i class="bi bi-plus-lg"></i> Guardar tarea
+                        </button>
+                    </form>
+                </section>
+            </div>
+            <div class="col-lg-7">
+                <section class="appointment-session-box">
+                    <h6>Tareas de esta sesión</h6>
+                    <div id="appointment-session-tasks">${renderAppointmentSessionTasks(CURRENT_APPOINTMENT_SESSION.tasks)}</div>
+                </section>
+            </div>
+            <div class="col-12">
+                <section class="appointment-session-box">
+                    <h6>Nueva nota / archivo de sesión</h6>
+                    <form id="appointment-session-note-form" enctype="multipart/form-data">
+                        <input type="hidden" name="note_id" value="0">
+                        <input type="hidden" name="appointment_id" value="${CURRENT_APPOINTMENT_SESSION.appointment_id}">
+                        <input type="hidden" name="patient_id" value="${CURRENT_APPOINTMENT_SESSION.patient_id}">
+                        <input type="hidden" name="note_date" value="${escapeHtml(appointmentDate)}">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label" for="appointment-session-note-title">Título</label>
+                                <input type="text" class="form-control" id="appointment-session-note-title" name="title" maxlength="180" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="appointment-session-note-files">Archivos</label>
+                                <input type="file" class="form-control" id="appointment-session-note-files" name="evolution_files[]" accept=".pdf,.xls,.xlsx,image/jpeg,image/png,image/webp,image/gif" multiple>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="appointment-session-note-description">Descripción</label>
+                                <textarea class="form-control" id="appointment-session-note-description" name="description" rows="3"></textarea>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label" for="appointment-session-note-observations">Observaciones</label>
+                                <textarea class="form-control" id="appointment-session-note-observations" name="observations" rows="3"></textarea>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label" for="appointment-session-note-next">Pendientes</label>
+                                <textarea class="form-control" id="appointment-session-note-next" name="next_steps" rows="3"></textarea>
+                            </div>
+                        </div>
+                        <div class="text-end mt-3">
+                            <button class="btn btn-primary btn-sm" type="submit" id="btn-save-appointment-session-note">
+                                <i class="bi bi-journal-plus"></i> Guardar nota
+                            </button>
+                        </div>
+                    </form>
+                </section>
+            </div>
+            <div class="col-lg-7">
+                <section class="appointment-session-box">
+                    <h6>Notas de esta sesión</h6>
+                    <div id="appointment-session-notes">${renderAppointmentSessionNotes(CURRENT_APPOINTMENT_SESSION.notes)}</div>
+                </section>
+            </div>
+            <div class="col-lg-5">
+                <section class="appointment-session-box">
+                    <h6>Archivos de esta sesión</h6>
+                    <div id="appointment-session-files">${renderAppointmentSessionFiles(CURRENT_APPOINTMENT_SESSION.files)}</div>
+                </section>
+            </div>
+        </div>
+    `);
+}
+
+function renderAppointmentSessionTasks(tasks) {
+    const rows = Array.isArray(tasks) ? tasks : [];
+    if (!rows.length) {
+        return '<div class="text-center text-muted py-3">No hay tareas vinculadas a esta cita.</div>';
+    }
+    return rows.map(task => {
+        const completed = task.status === 'completed';
+        const priority = workPlanPriorityLabel(task.priority);
+        return `
+            <div class="appointment-session-item ${completed ? 'is-completed' : ''}">
+                <div class="d-flex justify-content-between gap-2">
+                    <div>
+                        <div class="patient-work-plan-badges mb-1">
+                            <span class="badge ${priority.className}">${priority.label}</span>
+                            ${completed ? '<span class="badge text-bg-success">Completada</span>' : '<span class="badge text-bg-warning">Pendiente</span>'}
+                        </div>
+                        <strong>${escapeHtml(task.title || '')}</strong>
+                        ${task.description ? `<div class="small text-muted mt-1">${escapeHtml(task.description)}</div>` : ''}
+                    </div>
+                    <div class="appointment-session-actions">
+                        <button class="btn btn-outline-success btn-sm btn-toggle-session-task" type="button" data-task-id="${task.id}" data-next-status="${completed ? 'pending' : 'completed'}" title="${completed ? 'Marcar pendiente' : 'Completar'}">
+                            <i class="bi ${completed ? 'bi-arrow-counterclockwise' : 'bi-check2'}"></i>
+                        </button>
+                        <button class="btn btn-outline-danger btn-sm btn-delete-session-task" type="button" data-task-id="${task.id}" title="Eliminar">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderAppointmentSessionNotes(notes) {
+    const rows = Array.isArray(notes) ? notes : [];
+    if (!rows.length) {
+        return '<div class="text-center text-muted py-3">No hay notas vinculadas a esta cita.</div>';
+    }
+    return rows.map(note => `
+        <div class="appointment-session-item">
+            <div class="d-flex justify-content-between align-items-start">
+                <strong>${escapeHtml(note.title || '')}</strong>
+                <small class="text-muted">${formatDisplayDate(note.note_date || '')}</small>
+            </div>
+            ${note.description ? `<div class="mt-2">${escapeHtml(note.description)}</div>` : ''}
+            ${note.observations ? `<div class="small text-muted mt-2"><strong>Observaciones:</strong> ${escapeHtml(note.observations)}</div>` : ''}
+            ${note.next_steps ? `<div class="small text-muted"><strong>Pendientes:</strong> ${escapeHtml(note.next_steps)}</div>` : ''}
+            ${parseInt(note.file_count || 0, 10) > 0 ? `<span class="badge text-bg-secondary mt-2">${parseInt(note.file_count || 0, 10)} archivo${parseInt(note.file_count || 0, 10) === 1 ? '' : 's'}</span>` : ''}
+        </div>
+    `).join('');
+}
+
+function renderAppointmentSessionFiles(files) {
+    const rows = Array.isArray(files) ? files : [];
+    if (!rows.length) {
+        return '<div class="text-center text-muted py-3">No hay archivos vinculados a esta cita.</div>';
+    }
+    return rows.map(file => `
+        <div class="appointment-session-file">
+            <div>
+                <strong>${escapeHtml(file.name || 'Archivo')}</strong>
+                <div class="small text-muted">${file.size ? formatFileSize(file.size) : ''}${file.date ? ` · ${formatDateTimeLabel(file.date)}` : ''}</div>
+            </div>
+            <a class="btn btn-outline-primary btn-sm" href="${escapeHtml(file.url || '#')}" target="_blank" rel="noopener" title="Descargar">
+                <i class="bi bi-download"></i>
+            </a>
+        </div>
+    `).join('');
+}
+
+function renderAppointmentSession(app = CURRENT_APPOINTMENT_PAYMENT_DETAIL) {
+    const appointmentDate = app && app.appointment_date ? app.appointment_date : formatDate(new Date());
+    $('#appointment-session-content').html(`
+        <div class="row g-3">
+            <div class="col-12">
+                <section class="appointment-session-box">
+                    <h6>Tareas del paciente</h6>
+                    <div id="appointment-session-tasks">${renderAppointmentSessionTasks(CURRENT_APPOINTMENT_SESSION.tasks)}</div>
+                </section>
+            </div>
+            <div class="col-12">
+                <section class="appointment-session-box">
+                    <h6>Nueva nota / archivo de sesi&oacute;n</h6>
+                    <form id="appointment-session-note-form" enctype="multipart/form-data">
+                        <input type="hidden" name="note_id" value="0">
+                        <input type="hidden" name="appointment_id" value="${CURRENT_APPOINTMENT_SESSION.appointment_id}">
+                        <input type="hidden" name="patient_id" value="${CURRENT_APPOINTMENT_SESSION.patient_id}">
+                        <input type="hidden" name="note_date" value="${escapeHtml(appointmentDate)}">
+                        <div class="row g-3">
+                            <div class="col-md-8">
+                                <label class="form-label" for="appointment-session-note-title">T&iacute;tulo</label>
+                                <input type="text" class="form-control" id="appointment-session-note-title" name="title" maxlength="180" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="appointment-session-note-files">Archivo</label>
+                                <input type="file" class="form-control" id="appointment-session-note-files" name="evolution_files[]" accept=".pdf,.xls,.xlsx,image/jpeg,image/png,image/webp,image/gif" multiple>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" for="appointment-session-note-description">Descripci&oacute;n</label>
+                                <textarea class="form-control" id="appointment-session-note-description" name="description" rows="4"></textarea>
+                            </div>
+                        </div>
+                        <div class="text-end mt-3">
+                            <button class="btn btn-primary btn-sm" type="submit" id="btn-save-appointment-session-note">
+                                <i class="bi bi-journal-plus"></i> Guardar nota
+                            </button>
+                        </div>
+                    </form>
+                </section>
+            </div>
+            <div class="col-lg-7">
+                <section class="appointment-session-box">
+                    <h6>Notas de esta sesi&oacute;n</h6>
+                    <div id="appointment-session-notes">${renderAppointmentSessionNotes(CURRENT_APPOINTMENT_SESSION.notes)}</div>
+                </section>
+            </div>
+            <div class="col-lg-5">
+                <section class="appointment-session-box">
+                    <h6>Archivos de esta sesi&oacute;n</h6>
+                    <div id="appointment-session-files">${renderAppointmentSessionFiles(CURRENT_APPOINTMENT_SESSION.files)}</div>
+                </section>
+            </div>
+        </div>
+    `);
+}
+
+function renderAppointmentSessionTasks(tasks) {
+    const rows = Array.isArray(tasks) ? tasks : [];
+    if (!rows.length) {
+        return '<div class="text-center text-muted py-3">No hay tareas pendientes o completadas en el plan del paciente.</div>';
+    }
+    return rows.map(task => {
+        const completed = task.status === 'completed';
+        const priority = workPlanPriorityLabel(task.priority);
+        return `
+            <div class="appointment-session-item ${completed ? 'is-completed' : ''}">
+                <div class="d-flex justify-content-between gap-2">
+                    <div>
+                        <div class="patient-work-plan-badges mb-1">
+                            <span class="badge ${priority.className}">${priority.label}</span>
+                            ${completed ? '<span class="badge text-bg-success">Completada</span>' : '<span class="badge text-bg-warning">Pendiente</span>'}
+                        </div>
+                        <strong>${escapeHtml(task.title || '')}</strong>
+                        ${task.description ? `<div class="small text-muted mt-1">${escapeHtml(task.description)}</div>` : ''}
+                    </div>
+                    <div class="appointment-session-actions">
+                        <button class="btn btn-outline-success btn-sm btn-toggle-session-task" type="button" data-task-id="${task.id}" data-next-status="${completed ? 'pending' : 'completed'}" title="${completed ? 'Marcar pendiente' : 'Completar'}">
+                            <i class="bi ${completed ? 'bi-arrow-counterclockwise' : 'bi-check2'}"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderAppointmentSessionNotes(notes) {
+    const rows = Array.isArray(notes) ? notes : [];
+    if (!rows.length) {
+        return '<div class="text-center text-muted py-3">No hay notas vinculadas a esta cita.</div>';
+    }
+    return rows.map(note => `
+        <div class="appointment-session-item">
+            <div class="d-flex justify-content-between align-items-start">
+                <strong>${escapeHtml(note.title || '')}</strong>
+                <small class="text-muted">${formatDisplayDate(note.note_date || '')}</small>
+            </div>
+            ${note.description ? `<div class="mt-2">${escapeHtml(note.description)}</div>` : ''}
+            ${parseInt(note.file_count || 0, 10) > 0 ? `<span class="badge text-bg-secondary mt-2">${parseInt(note.file_count || 0, 10)} archivo${parseInt(note.file_count || 0, 10) === 1 ? '' : 's'}</span>` : ''}
+        </div>
+    `).join('');
+}
+
+function showAppointmentSessionAlert(type, message) {
+    $('#appointment-session-alert')
+        .removeClass('d-none alert-success alert-danger')
+        .addClass(type === 'success' ? 'alert-success' : 'alert-danger')
+        .text(message);
+}
+
+function saveAppointmentSessionTask(form) {
+    const $button = $('#btn-save-appointment-session-task');
+    const original = $button.html();
+    const data = {
+        task_id: 0,
+        appointment_id: CURRENT_APPOINTMENT_SESSION.appointment_id,
+        patient_id: CURRENT_APPOINTMENT_SESSION.patient_id,
+        title: $('#appointment-session-task-title').val() || '',
+        description: $('#appointment-session-task-description').val() || '',
+        priority: $('#appointment-session-task-priority').val() || 2,
+        status: $('#appointment-session-task-completed').is(':checked') ? 'completed' : 'pending'
+    };
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Guardando');
+    $.ajax({
+        url: 'api/admin.php?action=save_patient_work_plan_task',
+        method: 'POST',
+        dataType: 'json',
+        data,
+        success: function (res) {
+            if (!res.success) {
+                showAppointmentSessionAlert('danger', res.error || 'No se pudo guardar la tarea.');
+                return;
+            }
+            showAppointmentSessionAlert('success', res.message || 'Tarea guardada.');
+            form.reset();
+            loadAppointmentSession();
+        },
+        error: function () {
+            showAppointmentSessionAlert('danger', 'Error de conexión al guardar la tarea.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function saveAppointmentSessionNote(form) {
+    const $button = $('#btn-save-appointment-session-note');
+    const original = $button.html();
+    const formData = new FormData(form);
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Guardando');
+    $.ajax({
+        url: 'api/admin.php?action=save_patient_evolution',
+        method: 'POST',
+        data: formData,
+        dataType: 'json',
+        processData: false,
+        contentType: false,
+        success: function (res) {
+            if (!res.success) {
+                showAppointmentSessionAlert('danger', res.error || 'No se pudo guardar la nota.');
+                return;
+            }
+            showAppointmentSessionAlert('success', res.message || 'Nota guardada.');
+            form.reset();
+            $('#appointment-session-note-form-wrap').addClass('d-none');
+            $('#btn-toggle-appointment-session-note').html('<i class="bi bi-journal-plus"></i> Nueva nota / archivo');
+            loadAppointmentSession();
+        },
+        error: function () {
+            showAppointmentSessionAlert('danger', 'Error de conexión al guardar la nota.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function setAppointmentSessionTaskStatus(button) {
+    const $button = $(button);
+    const taskId = parseInt($button.data('task-id') || 0, 10);
+    const status = $button.data('next-status') === 'completed' ? 'completed' : 'pending';
+    if (!taskId) return;
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+    $.ajax({
+        url: 'api/admin.php?action=set_patient_work_plan_task_status',
+        method: 'POST',
+        dataType: 'json',
+        data: { task_id: taskId, status },
+        success: function (res) {
+            if (!res.success) {
+                showAppointmentSessionAlert('danger', res.error || 'No se pudo actualizar la tarea.');
+                return;
+            }
+            showAppointmentSessionAlert('success', res.message || 'Tarea actualizada.');
+            loadAppointmentSession();
+        },
+        error: function () {
+            showAppointmentSessionAlert('danger', 'Error de conexión al actualizar la tarea.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function deleteAppointmentSessionNote(button) {
+    const $button = $(button);
+    const noteId = parseInt($button.data('note-id') || 0, 10);
+    if (!noteId || !confirm('¿Eliminar esta nota de la sesión?')) {
+        return;
+    }
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+    $.ajax({
+        url: 'api/admin.php?action=delete_patient_evolution_note',
+        method: 'POST',
+        dataType: 'json',
+        data: { note_id: noteId },
+        success: function (res) {
+            if (!res.success) {
+                showAppointmentSessionAlert('danger', res.error || 'No se pudo eliminar la nota.');
+                return;
+            }
+            showAppointmentSessionAlert('success', res.message || 'Nota eliminada.');
+            loadAppointmentSession();
+        },
+        error: function () {
+            showAppointmentSessionAlert('danger', 'Error de conexión al eliminar la nota.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function deleteAppointmentSessionTask(button) {
+    const $button = $(button);
+    const taskId = parseInt($button.data('task-id') || 0, 10);
+    if (!taskId || !confirm('¿Eliminar esta tarea de la sesión?')) {
+        return;
+    }
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+    $.ajax({
+        url: 'api/admin.php?action=delete_patient_work_plan_task',
+        method: 'POST',
+        dataType: 'json',
+        data: { task_id: taskId },
+        success: function (res) {
+            if (!res.success) {
+                showAppointmentSessionAlert('danger', res.error || 'No se pudo eliminar la tarea.');
+                return;
+            }
+            showAppointmentSessionAlert('success', res.message || 'Tarea eliminada.');
+            loadAppointmentSession();
+        },
+        error: function () {
+            showAppointmentSessionAlert('danger', 'Error de conexión al eliminar la tarea.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function renderAppointmentSession(app = CURRENT_APPOINTMENT_PAYMENT_DETAIL) {
+    const appointmentDate = app && app.appointment_date ? app.appointment_date : formatDate(new Date());
+    $('#appointment-session-content').html(`
+        <div class="row g-3">
+            <div class="col-12">
+                ${renderAppointmentModalitySessionCard(app)}
+            </div>
+            <div class="col-12">
+                <section class="appointment-session-box appointment-session-box-compact">
+                    <div class="appointment-session-section-header">
+                        <div>
+                            <h6>Tareas del paciente</h6>
+                            <p>Puedes a&ntilde;adir m&aacute;s tareas desde la ficha del paciente.</p>
+                        </div>
+                    </div>
+                    <div id="appointment-session-tasks">${renderAppointmentSessionTasks(CURRENT_APPOINTMENT_SESSION.tasks)}</div>
+                </section>
+            </div>
+            <div class="col-12">
+                <section class="appointment-session-box">
+                    <div class="appointment-session-section-header">
+                        <div>
+                            <h6>Notas y archivos de la sesi&oacute;n</h6>
+                        </div>
+                        <button class="btn btn-outline-primary btn-sm" type="button" id="btn-toggle-appointment-session-note">
+                            <i class="bi bi-journal-plus"></i> Nueva nota / archivo
+                        </button>
+                    </div>
+                    <div id="appointment-session-note-form-wrap" class="d-none">
+                        <form id="appointment-session-note-form" enctype="multipart/form-data">
+                            <input type="hidden" name="note_id" value="0">
+                            <input type="hidden" name="appointment_id" value="${CURRENT_APPOINTMENT_SESSION.appointment_id}">
+                            <input type="hidden" name="patient_id" value="${CURRENT_APPOINTMENT_SESSION.patient_id}">
+                            <input type="hidden" name="note_date" value="${escapeHtml(appointmentDate)}">
+                            <div class="row g-3">
+                                <div class="col-md-8">
+                                    <label class="form-label" for="appointment-session-note-title">T&iacute;tulo</label>
+                                    <input type="text" class="form-control" id="appointment-session-note-title" name="title" maxlength="180" required>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label" for="appointment-session-note-files">Archivo</label>
+                                    <input type="file" class="form-control" id="appointment-session-note-files" name="evolution_files[]" accept=".pdf,.xls,.xlsx,image/jpeg,image/png,image/webp,image/gif" multiple>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label" for="appointment-session-note-description">Descripci&oacute;n</label>
+                                    <textarea class="form-control" id="appointment-session-note-description" name="description" rows="3"></textarea>
+                                </div>
+                            </div>
+                            <div class="text-end mt-3">
+                                <button class="btn btn-primary btn-sm" type="submit" id="btn-save-appointment-session-note">
+                                    <i class="bi bi-journal-plus"></i> Guardar nota
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                    <div id="appointment-session-activity">${renderAppointmentSessionActivity(CURRENT_APPOINTMENT_SESSION.notes, CURRENT_APPOINTMENT_SESSION.files)}</div>
+                </section>
+            </div>
+        </div>
+    `);
+}
+
+function renderAppointmentSessionTasks(tasks) {
+    const rows = Array.isArray(tasks) ? tasks : [];
+    if (!rows.length) {
+        return '<div class="text-center text-muted py-3">No hay tareas pendientes o completadas en el plan del paciente.</div>';
+    }
+    return rows.map(task => {
+        const completed = task.status === 'completed';
+        const priority = workPlanPriorityLabel(task.priority);
+        return `
+            <div class="appointment-session-task ${completed ? 'is-completed' : ''}">
+                <div class="appointment-session-task-main">
+                    <strong>${escapeHtml(task.title || '')}</strong>
+                    ${task.description ? `<span>${escapeHtml(task.description)}</span>` : ''}
+                </div>
+                <div class="appointment-session-task-side">
+                    <span class="badge ${priority.className}">${priority.label}</span>
+                    ${completed ? '<span class="badge text-bg-success">Completada</span>' : '<span class="badge text-bg-warning">Pendiente</span>'}
+                    <button class="btn btn-outline-success btn-sm btn-toggle-session-task" type="button" data-task-id="${task.id}" data-next-status="${completed ? 'pending' : 'completed'}" title="${completed ? 'Marcar pendiente' : 'Completar'}">
+                        <i class="bi ${completed ? 'bi-arrow-counterclockwise' : 'bi-check2'}"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderAppointmentSessionActivity(notes, files) {
+    const rows = Array.isArray(notes) ? notes : [];
+    const items = rows.map(note => {
+        const noteFiles = Array.isArray(note.files) ? note.files : [];
+        const hasFiles = noteFiles.length > 0;
+        const title = note.title || (hasFiles ? 'Archivo' : 'Nota');
+        const detail = hasFiles
+            ? noteFiles.map(file => `<a href="${escapeHtml(file.url || '#')}" target="_blank" rel="noopener">${escapeHtml(file.name || 'Archivo')}</a>`).join(', ')
+            : escapeHtml(truncateText(note.description || '', 120));
+        return {
+            date: note.created_at || note.note_date || '',
+            html: `
+                <div class="appointment-session-activity-item">
+                    <i class="bi ${hasFiles ? 'bi-paperclip' : 'bi-journal-text'}"></i>
+                    <small class="appointment-session-activity-date">${formatDisplayDate(note.note_date || '')}</small>
+                    <div class="appointment-session-activity-body">
+                        <strong>${escapeHtml(title)}</strong>
+                        ${detail ? `<div class="small text-muted mt-1">${detail}</div>` : ''}
+                    </div>
+                    <div class="appointment-session-activity-actions">
+                        ${hasFiles && noteFiles[0] ? `<a class="btn btn-outline-primary btn-sm" href="${escapeHtml(noteFiles[0].url || '#')}" target="_blank" rel="noopener" title="Descargar"><i class="bi bi-download"></i></a>` : ''}
+                        <button class="btn btn-outline-danger btn-sm btn-delete-session-note" type="button" data-note-id="${note.id}" title="Eliminar nota">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `
+        };
+    });
+    if (!items.length) {
+        return '<div class="text-center text-muted py-3">No hay notas ni archivos vinculados a esta sesi&oacute;n.</div>';
+    }
+    items.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    return `<div class="appointment-session-activity-list">${items.map(item => item.html).join('')}</div>`;
+}
+
+function truncateText(value, maxLength = 120) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    if (text.length <= maxLength) return text;
+    return `${text.slice(0, Math.max(0, maxLength - 1)).trim()}…`;
+}
+
+function toggleAppointmentOnlineFields() {
+    const app = CURRENT_APPOINTMENT_PAYMENT_DETAIL || {};
+    const isOnline = app.consultation_type === 'online';
+    $('.appointment-online-link-wrap').toggleClass('d-none', !isOnline);
+    $('#btn-send-appointment-online-link').prop('disabled', !isOnline || !String($('#appointment-online-session-url').val() || '').trim());
+}
+
+function updateAppointmentOnlineDetails(consultationType, onlineUrl, button, successMessage = 'Modalidad actualizada.') {
+    const app = CURRENT_APPOINTMENT_PAYMENT_DETAIL || {};
+    const appointmentId = parseInt(app.id || $('#appointment-payment-id').val() || 0, 10);
+    if (!appointmentId) {
+        showAppointmentModalityAlert('danger', 'No se ha podido identificar la cita.');
+        return $.Deferred().reject().promise();
+    }
+    const $button = $(button);
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Guardando');
+    return $.ajax({
+        url: 'api/admin.php?action=update_appointment_online_details',
+        method: 'POST',
+        dataType: 'json',
+        data: {
+            appointment_id: appointmentId,
+            consultation_type: consultationType,
+            online_session_url: onlineUrl
+        },
+        success: function (res) {
+            if (!res.success) {
+                showAppointmentModalityAlert('danger', res.error || 'No se pudo guardar la modalidad.');
+                return;
+            }
+            CURRENT_APPOINTMENT_PAYMENT_DETAIL = {
+                ...(CURRENT_APPOINTMENT_PAYMENT_DETAIL || {}),
+                consultation_type: res.consultation_type || consultationType,
+                online_session_url: res.online_session_url || '',
+                can_online_appointment: app.can_online_appointment,
+                can_presential_appointment: app.can_presential_appointment
+            };
+            $('#appointment-payment-summary').html(renderAppointmentPaymentSummary(CURRENT_APPOINTMENT_PAYMENT_DETAIL));
+            if (successMessage !== '' && CURRENT_APPOINTMENT_SESSION && CURRENT_APPOINTMENT_SESSION.appointment_id) {
+                renderAppointmentSession(CURRENT_APPOINTMENT_PAYMENT_DETAIL);
+            } else {
+                $('#appointment-online-session-url').val(res.online_session_url || '');
+                $('#btn-send-appointment-online-link').prop('disabled', !(res.online_session_url || ''));
+            }
+            if (successMessage !== '') {
+                showAppointmentModalityAlert('success', res.message || successMessage);
+            }
+            refreshAfterAppointmentPaymentUpdate();
+        },
+        error: function () {
+            showAppointmentModalityAlert('danger', 'Error de conexion al guardar la modalidad.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function switchAppointmentModality(button) {
+    const target = $(button).data('target-modality') === 'online' ? 'online' : 'presencial';
+    const app = CURRENT_APPOINTMENT_PAYMENT_DETAIL || {};
+    if (target === 'online' && app.can_online_appointment != 1) {
+        showAppointmentModalityAlert('danger', 'Este profesional no admite citas online.');
+        return;
+    }
+    if (target === 'presencial' && app.can_presential_appointment == 0) {
+        showAppointmentModalityAlert('danger', 'Este profesional no admite citas presenciales.');
+        return;
+    }
+    const onlineUrl = target === 'online' ? String(app.online_session_url || $('#appointment-online-session-url').val() || '').trim() : '';
+    updateAppointmentOnlineDetails(target, onlineUrl, button, `Cita cambiada a ${consultationTypeLabel(target).toLowerCase()}.`);
+}
+
+function saveAppointmentOnlineDetails(button) {
+    const app = CURRENT_APPOINTMENT_PAYMENT_DETAIL || {};
+    const consultationType = app.consultation_type === 'online' ? 'online' : 'presencial';
+    const onlineUrl = consultationType === 'online' ? String($('#appointment-online-session-url').val() || '').trim() : '';
+    return updateAppointmentOnlineDetails(consultationType, onlineUrl, button);
+}
+
+function sendAppointmentOnlineLink(button) {
+    const app = CURRENT_APPOINTMENT_PAYMENT_DETAIL || {};
+    const appointmentId = parseInt(app.id || $('#appointment-payment-id').val() || 0, 10);
+    const consultationType = app.consultation_type === 'online' ? 'online' : 'presencial';
+    const onlineUrl = consultationType === 'online' ? String($('#appointment-online-session-url').val() || '').trim() : '';
+    if (!appointmentId) {
+        showAppointmentSessionAlert('danger', 'No se ha podido identificar la cita.');
+        return;
+    }
+    if (consultationType !== 'online' || !onlineUrl) {
+        showAppointmentSessionAlert('danger', 'Indica un enlace para una cita online antes de enviarlo.');
+        return;
+    }
+    const $button = $(button);
+    const original = $button.html();
+    let sendingEmail = false;
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Enviando');
+    updateAppointmentOnlineDetails(consultationType, onlineUrl, button, '')
+        .done(function (res) {
+            if (!res.success) {
+                return;
+            }
+            sendingEmail = true;
+            $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Enviando');
+            $.ajax({
+                url: 'api/admin.php?action=send_appointment_online_link',
+                method: 'POST',
+                dataType: 'json',
+                data: { appointment_id: appointmentId },
+                success: function (sendRes) {
+                    showAppointmentSessionAlert(sendRes.success ? 'success' : 'danger', sendRes.message || sendRes.error || 'No se pudo enviar el enlace.');
+                },
+                error: function () {
+                    showAppointmentSessionAlert('danger', 'Error de conexion al enviar el enlace.');
+                },
+                complete: function () {
+                    $button.prop('disabled', false).html(original);
+                }
+            });
+        })
+        .fail(function () {
+            showAppointmentSessionAlert('danger', 'Error de conexion al guardar el enlace.');
+        })
+        .always(function () {
+            if (!sendingEmail) {
+                $button.prop('disabled', false).html(original);
+            }
+        });
 }
 
 function openAppointmentPaymentModal(appointmentId) {
@@ -3558,12 +6501,14 @@ function openAppointmentPaymentModal(appointmentId) {
         return;
     }
     CURRENT_APPOINTMENT_PAYMENT_DETAIL = null;
+    resetAppointmentSessionPanel();
     $('#appointment-payment-id').val(appointmentId);
     $('#appointment-payment-alert').addClass('d-none').text('');
     $('#appointment-payment-summary').html('<div class="text-center text-muted py-4">Cargando cita...</div>');
     $('#appointment-payment-editor').removeClass('d-none');
     $('#btn-save-appointment-payment').removeClass('d-none').prop('disabled', true);
     $('#btn-cancel-appointment-from-detail').addClass('d-none').prop('disabled', true);
+    $('#btn-open-patient-from-appointment-detail').addClass('d-none').prop('disabled', true);
     $('body').toggleClass('appointment-payment-secondary-modal-open', $('.modal.show').not('#appointmentPaymentModal').length > 0);
     appointmentPaymentModal.show();
 
@@ -3580,11 +6525,15 @@ function openAppointmentPaymentModal(appointmentId) {
             const app = res.appointment || {};
             CURRENT_APPOINTMENT_PAYMENT_DETAIL = app;
             $('#appointment-payment-summary').html(renderAppointmentPaymentSummary(app));
+            updateAppointmentSessionTabLabel(app);
+            bootstrap.Tab.getOrCreateInstance(document.getElementById('appointment-detail-tab')).show();
+            loadAppointmentSession(app);
             setAppointmentPaymentSelection(app.payment_status, app.payment_method);
             const locked = app.is_bonus_payment == 1 || app.status === 'cancelled';
             $('#appointment-payment-editor').toggleClass('d-none', locked);
             $('#btn-save-appointment-payment').toggleClass('d-none', locked).prop('disabled', locked);
             $('#btn-cancel-appointment-from-detail').toggleClass('d-none', app.status !== 'booked').prop('disabled', app.status !== 'booked');
+            $('#btn-open-patient-from-appointment-detail').toggleClass('d-none', !app.patient_id).prop('disabled', !app.patient_id);
             if (locked) {
                 showAppointmentPaymentAlert('warning', app.is_bonus_payment == 1
                     ? 'Esta cita fue pagada con bono y no es posible modificarlo desde aquí.'
@@ -3595,6 +6544,7 @@ function openAppointmentPaymentModal(appointmentId) {
             showAppointmentPaymentAlert('danger', 'Error de conexión al cargar la cita.');
             $('#appointment-payment-editor').addClass('d-none');
             $('#btn-cancel-appointment-from-detail').addClass('d-none').prop('disabled', true);
+            $('#btn-open-patient-from-appointment-detail').addClass('d-none').prop('disabled', true);
         }
     });
 }
@@ -3661,6 +6611,7 @@ function saveAppointmentPayment() {
 
 function refreshAfterAppointmentPaymentUpdate() {
     renderWeekInfo();
+    loadQuickAppointmentsSummary();
     if ($('#upcomingAppointmentsModal').hasClass('show')) {
         loadUpcomingAppointments();
     }
@@ -3690,6 +6641,7 @@ function openAdminStatsModal() {
     if (!adminStatsModal) return;
     $('#admin-stats-alert').addClass('d-none').text('');
     $('#admin-stats-content').html('<div class="text-center text-muted py-4">Cargando...</div>');
+    $('#admin-reports-content').html('<div class="text-center text-muted py-4">Cargando informes...</div>');
     adminStatsModal.show();
 
     $.ajax({
@@ -3701,6 +6653,7 @@ function openAdminStatsModal() {
                 return;
             }
             renderAdminStats(res.stats || {});
+            renderAdminReports((res.stats || {}).reports || {});
         },
         error: function () {
             showAdminStatsAlert('danger', 'Error de conexion al cargar las estadisticas.');
@@ -3772,6 +6725,312 @@ function renderAdminStats(stats) {
         <h6 class="mb-3">Pacientes con m&aacute;s sesiones</h6>
         <div class="stats-bars">${bars}</div>
     `);
+}
+
+function renderAdminReports(reports) {
+    const patientsWithoutUpcoming = Array.isArray(reports.patients_without_upcoming) ? reports.patients_without_upcoming : [];
+    const recentCancellations = Array.isArray(reports.recent_cancellations) ? reports.recent_cancellations : [];
+    const pendingPayments = Array.isArray(reports.pending_payments) ? reports.pending_payments : [];
+
+    $('#admin-reports-content').html(`
+        <div class="stats-summary-grid mb-4">
+            <div class="stats-summary-card"><span>Sin pr&oacute;xima cita</span><strong>${patientsWithoutUpcoming.length}</strong><small>primeros casos</small></div>
+            <div class="stats-summary-card"><span>Canceladas</span><strong>${recentCancellations.length}</strong><small>&uacute;ltimos 30 d&iacute;as</small></div>
+            <div class="stats-summary-card"><span>Pendientes pago</span><strong>${pendingPayments.length}</strong><small>primeras citas</small></div>
+        </div>
+        ${reportTableHtml(
+            'Pacientes sin pr&oacute;xima cita',
+            ['Paciente', 'Contacto', '&Uacute;ltima cita'],
+            patientsWithoutUpcoming,
+            patient => [
+                `<strong>${escapeHtml(patient.name || '')}</strong>`,
+                patientContactSummaryHtml(patient.email, patient.phone) || '-',
+                patient.last_appointment_at ? escapeHtml(formatDateTimeLabel(patient.last_appointment_at)) : 'Sin citas previas'
+            ],
+            'No hay pacientes sin pr&oacute;xima cita.'
+        )}
+        ${reportTableHtml(
+            'Cancelaciones recientes',
+            ['Fecha cita', 'Cancelada', 'Paciente', 'Profesional', 'Servicio'],
+            recentCancellations,
+            app => [
+                `<strong>${formatDisplayDate(app.appointment_date || '')}</strong><br><small class="text-muted">${escapeHtml(displayAppointmentTimeRange(app.appointment_time || '', app.duration_minutes || 60))}</small>`,
+                app.cancelled_at ? escapeHtml(formatDateTimeLabel(app.cancelled_at)) : '-',
+                `${escapeHtml(app.patient_name || '')}<br><small class="text-muted">${patientContactSummaryHtml(app.patient_email, app.patient_phone) || '-'}</small>`,
+                escapeHtml(app.professional_name || 'Sin asignar'),
+                `${escapeHtml(displayAppointmentServiceLabel(app))}<br><small class="text-muted">${displayAppointmentDurationLabel(app.duration_minutes || 60)}</small>`
+            ],
+            'No hay cancelaciones recientes.'
+        )}
+        ${reportTableHtml(
+            'Citas pendientes de registrar pago',
+            ['Fecha', 'Paciente', 'Profesional', 'Servicio', 'Modalidad'],
+            pendingPayments,
+            app => [
+                `<strong>${formatDisplayDate(app.appointment_date || '')}</strong><br><small class="text-muted">${escapeHtml(displayAppointmentTimeRange(app.appointment_time || '', app.duration_minutes || 60))}</small>`,
+                `${escapeHtml(app.patient_name || '')}<br><small class="text-muted">${patientContactSummaryHtml(app.patient_email, app.patient_phone) || '-'}</small>`,
+                escapeHtml(app.professional_name || 'Sin asignar'),
+                escapeHtml(displayAppointmentServiceLabel(app)),
+                consultationTypeLabel(app.consultation_type)
+            ],
+            'No hay citas pendientes de registrar pago.'
+        )}
+    `);
+}
+
+function reportTableHtml(title, headers, rows, mapRow, emptyText) {
+    const reportId = slugifyReportTitle(title);
+    const body = rows.length
+        ? rows.map(row => `<tr>${mapRow(row).map(cell => `<td>${cell}</td>`).join('')}</tr>`).join('')
+        : `<tr><td colspan="${headers.length}" class="text-center text-muted py-4">${emptyText}</td></tr>`;
+    return `
+        <section class="report-section mb-4" data-report-title="${escapeHtml(title)}" data-report-id="${escapeHtml(reportId)}">
+            <div class="report-section-header">
+                <h6>${title}</h6>
+                <div class="report-section-actions">
+                    <button class="btn btn-outline-primary btn-sm btn-print-report-section" type="button">
+                        <i class="bi bi-printer"></i> Imprimir
+                    </button>
+                    <button class="btn btn-outline-primary btn-sm btn-export-report-section" type="button">
+                        <i class="bi bi-download"></i> CSV
+                    </button>
+                    <button class="btn btn-outline-primary btn-sm btn-export-report-section-xls" type="button">
+                        <i class="bi bi-file-earmark-spreadsheet"></i> XLS
+                    </button>
+                </div>
+            </div>
+            <div class="table-responsive report-table-wrap">
+                <table class="table align-middle">
+                    <thead>
+                        <tr>${headers.map(header => `<th>${header}</th>`).join('')}</tr>
+                    </thead>
+                    <tbody>${body}</tbody>
+                </table>
+            </div>
+        </section>
+    `;
+}
+
+function slugifyReportTitle(title) {
+    return String(title || 'informe')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/&[^;]+;/g, '')
+        .replace(/[^a-zA-Z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .toLowerCase() || 'informe';
+}
+
+function reportSectionTitle($section) {
+    return $section.find('h6').first().text().trim() || $section.data('report-title') || 'Informe';
+}
+
+function exportReportSectionCsv($section) {
+    if (!$section || !$section.length) return;
+    const rows = tableRowsForExport($section.find('table').first());
+    if (!rows.length) return;
+    const title = reportSectionTitle($section);
+    const filename = `${slugifyReportTitle(title)}.csv`;
+    downloadTextFile(filename, `\uFEFF${rows.map(row => row.map(csvEscapeCell).join(';')).join('\r\n')}`, 'text/csv;charset=utf-8;');
+}
+
+function exportReportSectionXls($section) {
+    if (!$section || !$section.length) return;
+    const title = reportSectionTitle($section);
+    const filename = `${slugifyReportTitle(title)}.xls`;
+    const tableHtml = tableHtmlForExport($section.find('table').first());
+    if (!tableHtml) return;
+    const html = `
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                table { border-collapse: collapse; }
+                th, td { border: 1px solid #dfe5e8; padding: 6px; vertical-align: top; }
+                th { font-weight: bold; }
+            </style>
+        </head>
+        <body>
+            <h1>${escapeHtml(title)}</h1>
+            ${tableHtml}
+        </body>
+        </html>
+    `;
+    downloadTextFile(filename, `\uFEFF${html}`, 'application/vnd.ms-excel;charset=utf-8;');
+}
+
+function exportModalVisibleTable(target, type) {
+    const $modal = $(target);
+    if (!$modal.length) return;
+    const $activePanel = $modal.find('.tab-pane.active.show, .tab-pane.active').first();
+    const $scope = $activePanel.length ? $activePanel : $modal;
+    const $table = $scope.find('table:visible').first();
+    if (!$table.length) {
+        const $alert = $modal.find('.alert').first();
+        if ($alert.length) {
+            $alert.removeClass('d-none alert-success').addClass('alert-danger').text('No hay una tabla visible para exportar.');
+        }
+        return;
+    }
+    const title = modalVisibleTableTitle($modal, $scope);
+    if (type === 'print') {
+        printTableExport($table, title);
+    } else if (type === 'xls') {
+        exportTableXls($table, title);
+    } else {
+        exportTableCsv($table, title);
+    }
+}
+
+function modalVisibleTableTitle($modal, $scope) {
+    const modalTitle = $modal.find('.modal-title').first().text().trim() || 'Listado';
+    const tabId = $scope.attr('aria-labelledby');
+    const tabTitle = tabId ? $(`#${tabId}`).text().trim() : '';
+    return tabTitle ? `${modalTitle} - ${tabTitle}` : modalTitle;
+}
+
+function tableRowsForExport($table) {
+    const rows = [];
+    $table.find('tr').each(function () {
+        const cells = [];
+        $(this).find('th, td').each(function () {
+            if ($(this).hasClass('no-export')) return;
+            const columnIndex = $(this).index();
+            const $headerCell = $table.find('thead tr').first().children().eq(columnIndex);
+            if ($headerCell.hasClass('no-export')) return;
+            cells.push($(this).text().replace(/\s+/g, ' ').trim());
+        });
+        if (cells.length) {
+            rows.push(cells);
+        }
+    });
+    return rows;
+}
+
+function csvEscapeCell(value) {
+    return `"${String(value || '').replace(/"/g, '""')}"`;
+}
+
+function tableHtmlForExport($table) {
+    const rows = tableRowsForExport($table);
+    if (!rows.length) return '';
+    const [headers, ...bodyRows] = rows;
+    return `
+        <table>
+            <thead><tr>${headers.map(cell => `<th>${escapeHtml(cell)}</th>`).join('')}</tr></thead>
+            <tbody>${bodyRows.map(row => `<tr>${row.map(cell => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('')}</tbody>
+        </table>
+    `;
+}
+
+function exportTableCsv($table, title) {
+    const rows = tableRowsForExport($table);
+    if (!rows.length) return;
+    downloadTextFile(`${slugifyReportTitle(title)}.csv`, `\uFEFF${rows.map(row => row.map(csvEscapeCell).join(';')).join('\r\n')}`, 'text/csv;charset=utf-8;');
+}
+
+function exportTableXls($table, title) {
+    const tableHtml = tableHtmlForExport($table);
+    if (!tableHtml) return;
+    const html = `
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                table { border-collapse: collapse; }
+                th, td { border: 1px solid #dfe5e8; padding: 6px; vertical-align: top; }
+                th { font-weight: bold; }
+            </style>
+        </head>
+        <body>
+            <h1>${escapeHtml(title)}</h1>
+            ${tableHtml}
+        </body>
+        </html>
+    `;
+    downloadTextFile(`${slugifyReportTitle(title)}.xls`, `\uFEFF${html}`, 'application/vnd.ms-excel;charset=utf-8;');
+}
+
+function downloadTextFile(filename, content, type) {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+}
+
+function printReportSection($section) {
+    if (!$section || !$section.length) return;
+    const title = escapeHtml(reportSectionTitle($section));
+    const tableHtml = tableHtmlForExport($section.find('table').first());
+    const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--primary-color').trim() || '#6b55a3';
+    const win = window.open('', '_blank', 'width=1024,height=720');
+    if (!win) {
+        showAdminStatsAlert('danger', 'No se pudo abrir la ventana de impresion.');
+        return;
+    }
+    win.opener = null;
+    win.document.write(`
+        <!doctype html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>${title}</title>
+            <style>
+                body { color: #263238; font-family: Arial, sans-serif; margin: 24px; }
+                h1 { color: ${primaryColor}; font-size: 20px; margin: 0 0 18px; }
+                table { border-collapse: collapse; width: 100%; }
+                th, td { border: 1px solid #dfe5e8; font-size: 12px; padding: 8px; text-align: left; vertical-align: top; }
+                th { color: ${primaryColor}; background: #f8f9fa; }
+                small { color: #66737d; }
+            </style>
+        </head>
+        <body>
+            <h1>${title}</h1>
+            ${tableHtml}
+        </body>
+        </html>
+    `);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 250);
+}
+
+function printTableExport($table, title) {
+    const tableHtml = tableHtmlForExport($table);
+    if (!tableHtml) return;
+    const escapedTitle = escapeHtml(title);
+    const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--primary-color').trim() || '#6b55a3';
+    const win = window.open('', '_blank', 'width=1024,height=720');
+    if (!win) return;
+    win.opener = null;
+    win.document.write(`
+        <!doctype html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>${escapedTitle}</title>
+            <style>
+                body { color: #263238; font-family: Arial, sans-serif; margin: 24px; }
+                h1 { color: ${primaryColor}; font-size: 20px; margin: 0 0 18px; }
+                table { border-collapse: collapse; width: 100%; }
+                th, td { border: 1px solid #dfe5e8; font-size: 12px; padding: 8px; text-align: left; vertical-align: top; }
+                th { color: ${primaryColor}; background: #f8f9fa; }
+            </style>
+        </head>
+        <body>
+            <h1>${escapedTitle}</h1>
+            ${tableHtml}
+        </body>
+        </html>
+    `);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 250);
 }
 
 function showAdminStatsAlert(type, message) {
@@ -3963,6 +7222,89 @@ function showSettingsAlert(selector, type, message) {
     }
 }
 
+function toggleDashboardConfigModeControls() {
+    const mode = $('#dashboard-config-mode').val() || 'simple';
+    $('#btn-open-dashboard-custom-config').toggleClass('d-none', mode !== 'custom');
+}
+
+function openDashboardCustomConfigModal() {
+    if (!dashboardCustomConfigModal) return;
+    $('#dashboard-custom-config-alert').addClass('d-none').text('');
+    $('#dashboard-custom-config-json').val('Cargando...');
+    dashboardCustomConfigModal.show();
+    $.ajax({
+        url: 'api/admin.php?action=get_dashboard_custom_config',
+        dataType: 'json',
+        success: function (res) {
+            if (!res.success) {
+                showDashboardCustomConfigAlert('danger', res.error || 'No se pudo cargar el JSON personalizado.');
+                $('#dashboard-custom-config-json').val('');
+                return;
+            }
+            $('#dashboard-custom-config-json').val(res.json || '');
+        },
+        error: function () {
+            showDashboardCustomConfigAlert('danger', 'Error de conexion al cargar el JSON personalizado.');
+            $('#dashboard-custom-config-json').val('');
+        }
+    });
+}
+
+function saveDashboardCustomConfig(button) {
+    const json = $('#dashboard-custom-config-json').val() || '';
+    try {
+        const parsed = JSON.parse(json);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            throw new Error('El JSON debe contener un objeto.');
+        }
+        if (!parsed.features || typeof parsed.features !== 'object' || Array.isArray(parsed.features)) {
+            throw new Error('El JSON debe incluir el objeto "features".');
+        }
+        Object.keys(parsed.features).forEach(key => {
+            if (typeof parsed.features[key] !== 'boolean') {
+                throw new Error(`La opcion "${key}" debe ser true o false.`);
+            }
+        });
+    } catch (err) {
+        showDashboardCustomConfigAlert('danger', err.message || 'JSON invalido.');
+        return;
+    }
+
+    const $button = $(button);
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Guardando');
+    $.ajax({
+        url: 'api/admin.php?action=save_dashboard_custom_config',
+        method: 'POST',
+        dataType: 'json',
+        data: { json },
+        success: function (res) {
+            if (!res.success) {
+                showDashboardCustomConfigAlert('danger', res.error || 'No se pudo guardar el JSON personalizado.');
+                return;
+            }
+            showDashboardCustomConfigAlert('success', res.message || 'Configuracion personalizada guardada. Se refrescara la ventana para cargar la nueva configuracion.');
+            setTimeout(function () {
+                window.location.reload();
+            }, 1500);
+        },
+        error: function () {
+            showDashboardCustomConfigAlert('danger', 'Error de conexion al guardar el JSON personalizado.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function showDashboardCustomConfigAlert(type, message) {
+    const $alert = $('#dashboard-custom-config-alert');
+    if (!$alert.length) return;
+    $alert.removeClass('d-none alert-success alert-danger alert-warning alert-info')
+        .addClass(`alert-${type}`)
+        .text(message || '');
+}
+
 function loadPaymentSettings() {
     $('#settings-save-alert, #payment-settings-alert, #email-settings-alert, #calendar-settings-alert, #booking-settings-alert, #general-settings-alert, #interface-settings-alert, #legal-settings-alert, #services-settings-alert, #bonuses-settings-alert, #cabinet-settings-alert').addClass('d-none');
     $('#merchant-key').val('');
@@ -4009,7 +7351,10 @@ function loadPaymentSettings() {
             $('#legal-uses-non-technical-cookies').prop('checked', settings.legal_uses_non_technical_cookies == 1);
             $('#legal-terms-notes').val(settings.legal_terms_notes || '');
             $('#initial-calendar-view').val(settings.initial_calendar_view === 'week' ? 'week' : 'month');
+            $('#dashboard-config-mode').val(['simple', 'advanced', 'custom'].includes(settings.dashboard_config_mode) ? settings.dashboard_config_mode : 'simple');
+            toggleDashboardConfigModeControls();
             $('#online-booking-enabled').prop('checked', settings.online_booking_enabled === undefined ? true : settings.online_booking_enabled == 1);
+            $('#patient-tasks-visible-default').prop('checked', settings.patient_tasks_visible_default == 1);
             $('#patient-registration-mode').val(settings.patient_registration_mode === 'open' ? 'open' : 'invite');
             $('#bonuses-enabled').prop('checked', settings.bonuses_enabled == 1);
             $('#create-compensation-bonus-on-paid-cancel').prop('checked', settings.create_compensation_bonus_on_paid_cancel === undefined ? true : settings.create_compensation_bonus_on_paid_cancel == 1);
@@ -4017,6 +7362,8 @@ function loadPaymentSettings() {
             renderBonusesSettings();
             captureBonusesSettingsSnapshot();
             setAvailableSessionDurations(settings.available_session_durations || '60');
+            $('#display-effective-duration-enabled').prop('checked', settings.display_effective_duration_enabled == 1);
+            $('#display-duration-offset-minutes').val(settings.display_duration_offset_minutes !== undefined && settings.display_duration_offset_minutes !== null ? settings.display_duration_offset_minutes : '5');
             renderServicesSettings();
             captureServicesSettingsSnapshot();
             if (settings.profile_image_path) {
@@ -4182,11 +7529,11 @@ function renderServicesSettings() {
 
     const visibleDurations = selectedSessionDurations();
     const visibleMode = $('#appointment-delivery-mode').val() || PAYMENT_SETTINGS.appointment_delivery_mode || 'both';
-    const showCouple = $('#available-session-couple').is(':checked');
+    const activeTypes = selectedSessionTypes();
     let html = '';
     APPOINTMENT_SERVICES.forEach(service => {
-        const serviceKey = service.service_key === 'couple' ? 'couple' : 'individual';
-        if (serviceKey === 'couple' && !showCouple) {
+        const serviceKey = service.service_key || 'individual';
+        if (!activeTypes.includes(serviceKey)) {
             return;
         }
         const serviceOptions = (Array.isArray(service.options) ? service.options : [])
@@ -4357,11 +7704,11 @@ function selectedSessionDurations() {
 function collectServicesSettings() {
     const visibleDurations = selectedSessionDurations();
     const visibleMode = $('#appointment-delivery-mode').val() || PAYMENT_SETTINGS.appointment_delivery_mode || 'both';
-    const showCouple = $('#available-session-couple').is(':checked');
+    const activeTypes = selectedSessionTypes();
     return APPOINTMENT_SERVICES.map(service => {
         const $serviceRow = $(`.service-group-row[data-service-id="${service.id}"]`);
-        const serviceKey = service.service_key === 'couple' ? 'couple' : 'individual';
-        const serviceVisible = serviceKey === 'individual' || showCouple;
+        const serviceKey = service.service_key || 'individual';
+        const serviceVisible = activeTypes.includes(serviceKey);
         const options = (service.options || []).map(option => {
             const $optionRow = $(`.service-option-row[data-option-id="${option.id}"]`);
             const isVisible = visibleDurations.includes(parseInt(option.duration_minutes, 10))
@@ -4561,6 +7908,13 @@ function updateProfessionalSummaryEmailUi() {
         : 'Disponible cuando haya cuenta de email del sistema y email del profesional configurados.');
 }
 
+function showProfessionalEditorAlert(type, message) {
+    $('#professional-editor-alert')
+        .removeClass('d-none alert-success alert-danger')
+        .addClass(type === 'success' ? 'alert-success' : 'alert-danger')
+        .text(message || '');
+}
+
 function renderProfessionalsSettings() {
     const $body = $('#professionals-settings-body');
     if (!$body.length) return;
@@ -4624,6 +7978,7 @@ function openProfessionalEditor(index = -1) {
         && (professional.is_current_user == 1 || (typeof CURRENT_USER_ID !== 'undefined' && parseInt(professional.user_id || 0, 10) === parseInt(CURRENT_USER_ID || 0, 10)));
 
     $('#professional-editor-title').text(index >= 0 ? 'Editar miembro' : 'Nuevo miembro');
+    $('#professional-editor-alert').addClass('d-none').removeClass('alert-success alert-danger').text('');
     $('#professional-editor-index').val(index);
     $('#professional-editor-id').val(professional.id || 0);
     $('#professional-editor-user-id').val(professional.user_id || 0);
@@ -4646,7 +8001,7 @@ function openProfessionalEditor(index = -1) {
         $('#professional-editor-photo-status').text('Foto actual. Sube una nueva solo si quieres cambiarla.');
     } else {
         $('#professional-editor-photo-preview').attr('src', '').addClass('d-none');
-        $('#professional-editor-photo-status').text('Formatos permitidos: JPG, PNG, WEBP o GIF. Máximo 2 MB.');
+        $('#professional-editor-photo-status').text('Formatos permitidos: JPG, PNG, WEBP o GIF. Maximo 5 MB.');
     }
     $('#professional-editor-role').val(professional.role || 'admin');
     $('#professional-editor-active').prop('checked', professional.is_active != 0);
@@ -4683,7 +8038,7 @@ function saveProfessionalEditor(button = null) {
     });
 
     if (!professional.display_name || !professional.email) {
-        showSettingsAlert('#cabinet-settings-alert', 'danger', 'Indica nombre y email del miembro.');
+        showProfessionalEditorAlert('danger', 'Indica nombre y email del miembro.');
         return;
     }
     if (index >= 0) {
@@ -4698,6 +8053,7 @@ function saveProfessionalEditor(button = null) {
 
     saveCabinetSettings(button, {
         closeProfessionalModal: true,
+        errorAlertSelector: '#professional-editor-alert',
         photoFile: selectedPhotoFile,
         photoIndex: index >= 0 ? index : CABINET_PROFESSIONALS.length - 1
     });
@@ -4993,7 +8349,8 @@ function performProfessionalDelete(professionalId, targetProfessionalId = 0, but
 }
 
 function saveCabinetSettings(button = null, options = {}) {
-    $('#cabinet-settings-alert').addClass('d-none');
+    const alertSelector = options.errorAlertSelector || '#cabinet-settings-alert';
+    $('#cabinet-settings-alert, #professional-editor-alert').addClass('d-none').removeClass('alert-success alert-danger').text('');
     if (!options.suppressLoading) {
         setSettingsButtonLoading(button, true);
     }
@@ -5023,6 +8380,9 @@ function saveCabinetSettings(button = null, options = {}) {
                     if (!options.silentSuccess) {
                         showSettingsAlert('#cabinet-settings-alert', 'success', res.message || 'Equipo guardado correctamente.');
                     }
+                    if (res.settings && typeof res.settings.allow_patient_transfer !== 'undefined') {
+                        PAYMENT_SETTINGS.allow_patient_transfer = res.settings.allow_patient_transfer;
+                    }
                     if (options.closeProfessionalModal && professionalEditorModal) {
                         professionalEditorModal.hide();
                     }
@@ -5036,7 +8396,11 @@ function saveCabinetSettings(button = null, options = {}) {
                 } else {
                     const message = res.error || 'No se pudo guardar el equipo profesional.';
                     if (!options.silentError) {
-                        showSettingsAlert('#cabinet-settings-alert', 'danger', message);
+                        if (alertSelector === '#professional-editor-alert') {
+                            showProfessionalEditorAlert('danger', message);
+                        } else {
+                            showSettingsAlert(alertSelector, 'danger', message);
+                        }
                     }
                     reject(new Error(message));
                 }
@@ -5044,7 +8408,11 @@ function saveCabinetSettings(button = null, options = {}) {
             error: function () {
                 const message = 'Error de conexión al guardar el equipo profesional.';
                 if (!options.silentError) {
-                    showSettingsAlert('#cabinet-settings-alert', 'danger', message);
+                    if (alertSelector === '#professional-editor-alert') {
+                        showProfessionalEditorAlert('danger', message);
+                    } else {
+                        showSettingsAlert(alertSelector, 'danger', message);
+                    }
                 }
                 reject(new Error(message));
             },
@@ -5180,18 +8548,21 @@ function savePaymentSettings(alertSelector = '#payment-settings-alert', onSucces
     formData.append('legal_terms_notes', $('#legal-terms-notes').val().trim());
     formData.append('primary_color', $('#primary-color-text').val().trim());
     formData.append('appointment_delivery_mode', $('#appointment-delivery-mode').val());
-    formData.append('available_session_types[]', 'individual');
-    if ($('#available-session-couple').is(':checked')) {
-        formData.append('available_session_types[]', 'couple');
-    }
+    selectedSessionTypes().forEach(type => {
+        formData.append('available_session_types[]', type);
+    });
     $('.available-session-duration:checked').each(function () {
         formData.append('available_session_durations[]', this.value);
     });
+    formData.append('display_effective_duration_enabled', $('#display-effective-duration-enabled').is(':checked') ? '1' : '0');
+    formData.append('display_duration_offset_minutes', $('#display-duration-offset-minutes').val().trim() || '5');
     formData.append('show_profile_image_public', $('#show-profile-image-public').is(':checked') ? '1' : '0');
     formData.append('show_prices_public', $('#show-prices-public').is(':checked') ? '1' : '0');
     formData.append('show_contact_public', $('#show-contact-public').is(':checked') ? '1' : '0');
     formData.append('initial_calendar_view', $('#initial-calendar-view').val() || 'month');
+    formData.append('dashboard_config_mode', $('#dashboard-config-mode').val() || 'simple');
     formData.append('online_booking_enabled', $('#online-booking-enabled').is(':checked') ? '1' : '0');
+    formData.append('patient_tasks_visible_default', $('#patient-tasks-visible-default').is(':checked') ? '1' : '0');
     formData.append('patient_registration_mode', $('#patient-registration-mode').val() || 'invite');
     if ($('#profile-image')[0] && $('#profile-image')[0].files[0]) {
         formData.append('profile_image', $('#profile-image')[0].files[0]);

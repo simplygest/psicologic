@@ -44,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             error_log('No se pudo eliminar evento en Google Calendar: ' . $e->getMessage());
         }
 
-        $stmt = $mysqli->prepare("DELETE FROM appointments WHERE id = ? AND cancel_token = ?");
+        $stmt = $mysqli->prepare("UPDATE appointments SET status = 'cancelled', cancelled_at = NOW() WHERE id = ? AND cancel_token = ? AND status = 'booked'");
         $stmt->bind_param("is", $appointment['id'], $token);
         $stmt->execute();
 
@@ -52,6 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $message_type = $cancelled ? 'success' : 'danger';
         $message = $cancelled ? 'Tu cita ha sido cancelada correctamente.' : 'No se pudo cancelar la cita.';
         if ($cancelled) {
+            $appointment['status'] = 'cancelled';
             if (!empty($appointment['patient_bonus_id']) && ($appointment['payment_method'] ?? '') === 'bonus') {
                 $appointment['bonus_session_restored'] = restore_patient_bonus_session($mysqli, (int) $appointment['patient_bonus_id']) ? 1 : 0;
             }

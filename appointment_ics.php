@@ -14,7 +14,7 @@ ensure_appointment_payment_columns($mysqli);
 ensure_appointment_services_tables($mysqli);
 
 $stmt = $mysqli->prepare("
-    SELECT a.appointment_date, a.appointment_time, a.consultation_type, a.service_type,
+    SELECT a.appointment_date, a.appointment_time, a.consultation_type, a.service_type, a.online_session_url,
            COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
            s.name AS service_name,
            u.name, u.email, u.phone
@@ -42,6 +42,10 @@ $description = 'Cita ' . strtolower($service_text) . ' ' . strtolower($consultat
 if ($patient_name !== '') {
     $description .= ' con ' . $patient_name;
 }
+$online_session_url = trim($appointment['online_session_url'] ?? '');
+if (($appointment['consultation_type'] ?? '') === 'online' && $online_session_url !== '') {
+    $description .= "\nEnlace de videollamada: " . $online_session_url;
+}
 
 $start = $appointment['appointment_date'] . ' ' . $appointment['appointment_time'];
 $end = (new DateTimeImmutable($start, new DateTimeZone('Atlantic/Canary')))
@@ -49,7 +53,7 @@ $end = (new DateTimeImmutable($start, new DateTimeZone('Atlantic/Canary')))
     ->format('Y-m-d H:i:s');
 
 $uid = 'appointment-' . hash('sha256', $token) . '@psicologic';
-$ics = caldav_build_ics($uid, $summary, $description, $start, $end, 'Atlantic/Canary');
+$ics = caldav_build_ics($uid, $summary, $description, $start, $end, 'Atlantic/Canary', $online_session_url);
 $filename = 'cita-' . date('Ymd-His', strtotime($start)) . '.ics';
 
 header('Content-Type: text/calendar; charset=utf-8');

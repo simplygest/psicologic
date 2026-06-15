@@ -82,6 +82,13 @@ function install_base_tables($mysqli)
     $mysqli->query("CREATE TABLE IF NOT EXISTS patient_profiles (
         user_id INT UNSIGNED NOT NULL PRIMARY KEY,
         patient_type VARCHAR(80) DEFAULT NULL,
+        patient_status VARCHAR(20) NOT NULL DEFAULT 'active',
+        birth_date DATE DEFAULT NULL,
+        referral_source VARCHAR(80) DEFAULT NULL,
+        initial_consultation_reason TEXT DEFAULT NULL,
+        emergency_contact_name VARCHAR(150) DEFAULT NULL,
+        emergency_contact_phone VARCHAR(40) DEFAULT NULL,
+        emergency_contact_relation VARCHAR(80) DEFAULT NULL,
         admission_date DATE DEFAULT NULL,
         notes LONGTEXT DEFAULT NULL,
         photo_path VARCHAR(255) DEFAULT NULL,
@@ -92,6 +99,90 @@ function install_base_tables($mysqli)
         updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_patient_profiles_type (patient_type),
         INDEX idx_patient_profiles_admission (admission_date)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $mysqli->query("CREATE TABLE IF NOT EXISTS patient_evolution_notes (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        patient_id INT UNSIGNED NOT NULL,
+        appointment_id INT UNSIGNED DEFAULT NULL,
+        professional_id INT UNSIGNED DEFAULT NULL,
+        note_date DATE NOT NULL,
+        title VARCHAR(180) NOT NULL,
+        description LONGTEXT DEFAULT NULL,
+        observations LONGTEXT DEFAULT NULL,
+        next_steps LONGTEXT DEFAULT NULL,
+        created_by INT UNSIGNED DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_evolution_patient_date (patient_id, note_date),
+        INDEX idx_evolution_appointment (appointment_id),
+        INDEX idx_evolution_professional (professional_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $mysqli->query("CREATE TABLE IF NOT EXISTS patient_evolution_files (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        evolution_note_id INT UNSIGNED NOT NULL,
+        patient_id INT UNSIGNED NOT NULL,
+        original_name VARCHAR(255) NOT NULL,
+        stored_name VARCHAR(255) NOT NULL,
+        file_path VARCHAR(500) NOT NULL,
+        mime_type VARCHAR(120) DEFAULT NULL,
+        file_size INT UNSIGNED DEFAULT NULL,
+        uploaded_by INT UNSIGNED DEFAULT NULL,
+        uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_evolution_files_note (evolution_note_id),
+        INDEX idx_evolution_files_patient (patient_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $mysqli->query("CREATE TABLE IF NOT EXISTS patient_work_plan_tasks (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        patient_id INT UNSIGNED NOT NULL,
+        appointment_id INT UNSIGNED DEFAULT NULL,
+        professional_id INT UNSIGNED DEFAULT NULL,
+        title VARCHAR(180) NOT NULL,
+        description LONGTEXT DEFAULT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+        priority TINYINT UNSIGNED NOT NULL DEFAULT 2,
+        visible_to_patient TINYINT(1) NOT NULL DEFAULT 0,
+        created_by INT UNSIGNED DEFAULT NULL,
+        completed_at DATETIME DEFAULT NULL,
+        completed_by INT UNSIGNED DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_work_plan_appointment (appointment_id),
+        INDEX idx_work_plan_patient_status (patient_id, status),
+        INDEX idx_work_plan_professional (professional_id),
+        INDEX idx_work_plan_priority (priority)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $mysqli->query("CREATE TABLE IF NOT EXISTS work_plan_task_templates (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        professional_id INT UNSIGNED DEFAULT NULL,
+        category VARCHAR(120) DEFAULT NULL,
+        title VARCHAR(180) NOT NULL,
+        description LONGTEXT DEFAULT NULL,
+        priority TINYINT UNSIGNED NOT NULL DEFAULT 2,
+        is_global TINYINT(1) NOT NULL DEFAULT 0,
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        created_by INT UNSIGNED DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_task_templates_professional (professional_id),
+        INDEX idx_task_templates_category (category),
+        INDEX idx_task_templates_active (is_active)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $mysqli->query("CREATE TABLE IF NOT EXISTS work_plan_task_template_items (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        template_id INT UNSIGNED NOT NULL,
+        title VARCHAR(180) NOT NULL,
+        description LONGTEXT DEFAULT NULL,
+        priority TINYINT UNSIGNED NOT NULL DEFAULT 2,
+        sort_order INT UNSIGNED NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_template_items_template (template_id),
+        INDEX idx_template_items_sort (template_id, sort_order, id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     $mysqli->query("CREATE TABLE IF NOT EXISTS appointments (
@@ -105,6 +196,7 @@ function install_base_tables($mysqli)
         paid_at DATETIME DEFAULT NULL,
         payment_updated_at DATETIME DEFAULT NULL,
         payment_updated_by INT UNSIGNED DEFAULT NULL,
+        online_session_url VARCHAR(500) DEFAULT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         cancelled_at DATETIME NULL,
         INDEX idx_date_time (appointment_date, appointment_time),
@@ -132,6 +224,8 @@ function install_base_tables($mysqli)
         allow_patient_transfer TINYINT(1) NOT NULL DEFAULT 0,
         online_booking_enabled TINYINT(1) NOT NULL DEFAULT 1,
         patient_registration_mode VARCHAR(16) NOT NULL DEFAULT 'invite',
+        patient_tasks_visible_default TINYINT(1) NOT NULL DEFAULT 0,
+        dashboard_config_mode VARCHAR(16) NOT NULL DEFAULT 'simple',
         legal_owner_name VARCHAR(255) NULL,
         legal_nif VARCHAR(50) NULL,
         legal_address VARCHAR(500) NULL,
@@ -160,6 +254,15 @@ function install_ensure_payment_settings_columns($mysqli)
     $mysqli->query("ALTER TABLE users MODIFY password_hash VARCHAR(255) NULL");
     $mysqli->query("ALTER TABLE users MODIFY role ENUM('superadmin','admin','patient') NOT NULL DEFAULT 'patient'");
     install_add_column_if_missing($mysqli, 'invitations', 'user_id', 'INT UNSIGNED DEFAULT NULL AFTER token');
+    install_add_column_if_missing($mysqli, 'patient_profiles', 'patient_status', "VARCHAR(20) NOT NULL DEFAULT 'active' AFTER patient_type");
+    install_add_column_if_missing($mysqli, 'patient_profiles', 'birth_date', 'DATE DEFAULT NULL AFTER patient_status');
+    install_add_column_if_missing($mysqli, 'patient_profiles', 'referral_source', 'VARCHAR(80) DEFAULT NULL AFTER birth_date');
+    install_add_column_if_missing($mysqli, 'patient_profiles', 'initial_consultation_reason', 'TEXT DEFAULT NULL AFTER referral_source');
+    install_add_column_if_missing($mysqli, 'patient_profiles', 'emergency_contact_name', 'VARCHAR(150) DEFAULT NULL AFTER initial_consultation_reason');
+    install_add_column_if_missing($mysqli, 'patient_profiles', 'emergency_contact_phone', 'VARCHAR(40) DEFAULT NULL AFTER emergency_contact_name');
+    install_add_column_if_missing($mysqli, 'patient_profiles', 'emergency_contact_relation', 'VARCHAR(80) DEFAULT NULL AFTER emergency_contact_phone');
+    install_add_column_if_missing($mysqli, 'patient_work_plan_tasks', 'appointment_id', 'INT UNSIGNED DEFAULT NULL AFTER patient_id');
+    install_add_column_if_missing($mysqli, 'patient_work_plan_tasks', 'visible_to_patient', 'TINYINT(1) NOT NULL DEFAULT 0 AFTER priority');
     install_add_column_if_missing($mysqli, 'patient_profiles', 'document_path', 'VARCHAR(255) DEFAULT NULL AFTER notes');
     install_add_column_if_missing($mysqli, 'patient_profiles', 'photo_path', 'VARCHAR(255) DEFAULT NULL AFTER notes');
     install_add_column_if_missing($mysqli, 'patient_profiles', 'document_name', 'VARCHAR(255) DEFAULT NULL AFTER document_path');
@@ -167,6 +270,7 @@ function install_ensure_payment_settings_columns($mysqli)
     install_add_column_if_missing($mysqli, 'payment_settings', 'show_team_public', 'TINYINT(1) NOT NULL DEFAULT 0');
     install_add_column_if_missing($mysqli, 'payment_settings', 'show_contact_public', 'TINYINT(1) NOT NULL DEFAULT 0');
     install_add_column_if_missing($mysqli, 'payment_settings', 'allow_patient_transfer', 'TINYINT(1) NOT NULL DEFAULT 0');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'dashboard_config_mode', 'VARCHAR(16) NOT NULL DEFAULT "simple"');
     install_add_column_if_missing($mysqli, 'payment_settings', 'site_tagline', 'VARCHAR(255) NULL AFTER app_name');
     install_add_column_if_missing($mysqli, 'payment_settings', 'site_phone', 'VARCHAR(40) NULL AFTER site_tagline');
     install_add_column_if_missing($mysqli, 'payment_settings', 'favicon_path', 'VARCHAR(255) NULL AFTER profile_image_path');
@@ -189,8 +293,11 @@ function install_ensure_payment_settings_columns($mysqli)
     install_add_column_if_missing($mysqli, 'payment_settings', 'appointment_delivery_mode', 'VARCHAR(20) NOT NULL DEFAULT "both"');
     install_add_column_if_missing($mysqli, 'payment_settings', 'available_session_types', 'VARCHAR(100) NOT NULL DEFAULT "individual"');
     install_add_column_if_missing($mysqli, 'payment_settings', 'available_session_durations', 'VARCHAR(30) NOT NULL DEFAULT "60"');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'display_effective_duration_enabled', 'TINYINT(1) NOT NULL DEFAULT 0');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'display_duration_offset_minutes', 'TINYINT UNSIGNED NOT NULL DEFAULT 5');
     install_add_column_if_missing($mysqli, 'payment_settings', 'online_booking_enabled', 'TINYINT(1) NOT NULL DEFAULT 1');
     install_add_column_if_missing($mysqli, 'payment_settings', 'patient_registration_mode', 'VARCHAR(16) NOT NULL DEFAULT "invite"');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'patient_tasks_visible_default', 'TINYINT(1) NOT NULL DEFAULT 0 AFTER patient_registration_mode');
     install_add_column_if_missing($mysqli, 'payment_settings', 'initial_calendar_view', 'VARCHAR(12) NOT NULL DEFAULT "month"');
     install_add_column_if_missing($mysqli, 'payment_settings', 'calendar_provider', 'VARCHAR(16) NOT NULL DEFAULT "none"');
     install_add_column_if_missing($mysqli, 'payment_settings', 'icloud_calendar_email', 'VARCHAR(255) NULL');

@@ -18,7 +18,7 @@ function caldav_escape_text($value)
     return str_replace([',', ';'], ['\,', '\;'], $value);
 }
 
-function caldav_build_ics($uid, $summary, $description, $start_value, $end_value, $timezone = 'Atlantic/Canary')
+function caldav_build_ics($uid, $summary, $description, $start_value, $end_value, $timezone = 'Atlantic/Canary', $location = '')
 {
     $lines = [
         'BEGIN:VCALENDAR',
@@ -32,9 +32,13 @@ function caldav_build_ics($uid, $summary, $description, $start_value, $end_value
         'DTEND:' . caldav_build_ics_datetime($end_value, $timezone),
         'SUMMARY:' . caldav_escape_text($summary),
         'DESCRIPTION:' . caldav_escape_text($description),
-        'END:VEVENT',
-        'END:VCALENDAR'
     ];
+    if (trim((string) $location) !== '') {
+        $lines[] = 'LOCATION:' . caldav_escape_text($location);
+        $lines[] = 'URL:' . trim((string) $location);
+    }
+    $lines[] = 'END:VEVENT';
+    $lines[] = 'END:VCALENDAR';
 
     return implode("\r\n", $lines) . "\r\n";
 }

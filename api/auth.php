@@ -46,6 +46,13 @@ function ensure_patient_registration_schema($mysqli)
         CREATE TABLE IF NOT EXISTS patient_profiles (
             user_id INT UNSIGNED NOT NULL PRIMARY KEY,
             patient_type VARCHAR(80) DEFAULT NULL,
+            patient_status VARCHAR(20) NOT NULL DEFAULT 'active',
+            birth_date DATE DEFAULT NULL,
+            referral_source VARCHAR(80) DEFAULT NULL,
+            initial_consultation_reason TEXT DEFAULT NULL,
+            emergency_contact_name VARCHAR(150) DEFAULT NULL,
+            emergency_contact_phone VARCHAR(40) DEFAULT NULL,
+            emergency_contact_relation VARCHAR(80) DEFAULT NULL,
             admission_date DATE DEFAULT NULL,
             notes LONGTEXT DEFAULT NULL,
             photo_path VARCHAR(255) DEFAULT NULL,
@@ -58,6 +65,13 @@ function ensure_patient_registration_schema($mysqli)
     ");
 
     $columns = [
+        'patient_status' => "ALTER TABLE patient_profiles ADD patient_status VARCHAR(20) NOT NULL DEFAULT 'active' AFTER patient_type",
+        'birth_date' => "ALTER TABLE patient_profiles ADD birth_date DATE DEFAULT NULL AFTER patient_status",
+        'referral_source' => "ALTER TABLE patient_profiles ADD referral_source VARCHAR(80) DEFAULT NULL AFTER birth_date",
+        'initial_consultation_reason' => "ALTER TABLE patient_profiles ADD initial_consultation_reason TEXT DEFAULT NULL AFTER referral_source",
+        'emergency_contact_name' => "ALTER TABLE patient_profiles ADD emergency_contact_name VARCHAR(150) DEFAULT NULL AFTER initial_consultation_reason",
+        'emergency_contact_phone' => "ALTER TABLE patient_profiles ADD emergency_contact_phone VARCHAR(40) DEFAULT NULL AFTER emergency_contact_name",
+        'emergency_contact_relation' => "ALTER TABLE patient_profiles ADD emergency_contact_relation VARCHAR(80) DEFAULT NULL AFTER emergency_contact_phone",
         'photo_path' => "ALTER TABLE patient_profiles ADD photo_path VARCHAR(255) DEFAULT NULL AFTER notes",
         'document_path' => "ALTER TABLE patient_profiles ADD document_path VARCHAR(255) DEFAULT NULL AFTER notes",
         'document_name' => "ALTER TABLE patient_profiles ADD document_name VARCHAR(255) DEFAULT NULL AFTER document_path",

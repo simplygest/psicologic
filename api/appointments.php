@@ -29,6 +29,36 @@ ensure_appointment_services_tables($mysqli);
 ensure_bonus_tables($mysqli);
 ensure_cabinet_schema($mysqli);
 
+function ensure_patient_portal_work_plan_schema($mysqli)
+{
+    $mysqli->query("
+        CREATE TABLE IF NOT EXISTS patient_work_plan_tasks (
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            patient_id INT UNSIGNED NOT NULL,
+            appointment_id INT UNSIGNED DEFAULT NULL,
+            professional_id INT UNSIGNED DEFAULT NULL,
+            title VARCHAR(180) NOT NULL,
+            description LONGTEXT DEFAULT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'pending',
+            priority TINYINT UNSIGNED NOT NULL DEFAULT 2,
+            visible_to_patient TINYINT(1) NOT NULL DEFAULT 0,
+            created_by INT UNSIGNED DEFAULT NULL,
+            completed_at DATETIME DEFAULT NULL,
+            completed_by INT UNSIGNED DEFAULT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_work_plan_appointment (appointment_id),
+            INDEX idx_work_plan_patient_status (patient_id, status),
+            INDEX idx_work_plan_professional (professional_id),
+            INDEX idx_work_plan_priority (priority)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+    $column_res = $mysqli->query("SHOW COLUMNS FROM patient_work_plan_tasks LIKE 'visible_to_patient'");
+    if ($column_res && $column_res->num_rows === 0) {
+        $mysqli->query("ALTER TABLE patient_work_plan_tasks ADD visible_to_patient TINYINT(1) NOT NULL DEFAULT 0 AFTER priority");
+    }
+}
+
 function ensure_schedule_setting_columns($mysqli)
 {
     $columns = [
@@ -65,6 +95,16 @@ function ensure_session_setting_column($mysqli)
     $column_res = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'available_session_durations'");
     if ($column_res && $column_res->num_rows === 0) {
         $mysqli->query("ALTER TABLE payment_settings ADD available_session_durations VARCHAR(16) NOT NULL DEFAULT '60' AFTER available_session_types");
+    }
+
+    $column_res = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'display_effective_duration_enabled'");
+    if ($column_res && $column_res->num_rows === 0) {
+        $mysqli->query("ALTER TABLE payment_settings ADD display_effective_duration_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER available_session_durations");
+    }
+
+    $column_res = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'display_duration_offset_minutes'");
+    if ($column_res && $column_res->num_rows === 0) {
+        $mysqli->query("ALTER TABLE payment_settings ADD display_duration_offset_minutes TINYINT UNSIGNED NOT NULL DEFAULT 5 AFTER display_effective_duration_enabled");
     }
 }
 
@@ -177,6 +217,8 @@ function default_booking_payment_settings()
         'available_weekdays' => '1,2,3,4,5',
         'appointment_delivery_mode' => 'both',
         'available_session_durations' => '60',
+        'display_effective_duration_enabled' => 0,
+        'display_duration_offset_minutes' => 5,
         'bonuses_enabled' => 0,
         'create_compensation_bonus_on_paid_cancel' => 1
     ];
@@ -203,7 +245,7 @@ function load_booking_payment_settings($mysqli)
         ensure_session_setting_column($mysqli);
         ensure_bonus_tables($mysqli);
         $settings_res = $mysqli->query("
-            SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, available_session_types, available_session_durations,
+            SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, available_session_types, available_session_durations, display_effective_duration_enabled, display_duration_offset_minutes,
                    min_booking_notice_days, max_booking_notice_days,
                    appointment_start_time, appointment_end_time, break_start_time, break_end_time,
                    available_weekdays, appointment_delivery_mode, bonuses_enabled, create_compensation_bonus_on_paid_cancel
@@ -224,7 +266,7 @@ function service_options_for_settings($mysqli, $payment_settings)
     $active_delivery_mode = $payment_settings['appointment_delivery_mode'] ?? 'both';
     $active_service_types = explode(',', $payment_settings['available_session_types'] ?? 'individual');
     foreach (fetch_appointment_services($mysqli, true) as $service) {
-        if ($service['service_key'] === 'couple' && !in_array('couple', $active_service_types, true)) {
+        if (!in_array($service['service_key'], $active_service_types, true)) {
             continue;
         }
         foreach ($service['options'] as $option) {
@@ -375,7 +417,98 @@ function professional_can_take_slot($mysqli, $professional_id, $date, $time, $du
     return true;
 }
 
-if ($action === 'booking_context') {
+if ($action === 'patient_portal_summary') {
+    if ($is_admin) {
+        echo json_encode(['success' => false, 'error' => 'Disponible solo para pacientes.']);
+        exit;
+    }
+    ensure_patient_portal_work_plan_schema($mysqli);
+
+    $stmt = $mysqli->prepare("
+        SELECT a.id, a.appointment_date, a.appointment_time, a.status, a.cancelled_at,
+               a.consultation_type, a.online_session_url,
+               COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
+               COALESCE(a.payment_status, 'pending') AS payment_status,
+               a.payment_method, a.patient_bonus_id,
+               b.name AS bonus_name,
+               s.name AS service_name,
+               p.display_name AS professional_name
+        FROM appointments a
+        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
+        LEFT JOIN appointment_services s ON s.id = so.service_id
+        LEFT JOIN professionals p ON p.id = a.professional_id
+        LEFT JOIN patient_bonuses pb ON pb.id = a.patient_bonus_id
+        LEFT JOIN appointment_bonuses b ON b.id = pb.bonus_id
+        WHERE a.user_id = ?
+        ORDER BY a.appointment_date DESC, a.appointment_time DESC, a.id DESC
+        LIMIT 80
+    ");
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $appointments = [];
+    while ($row = $res->fetch_assoc()) {
+        $appointments[] = [
+            'id' => (int) $row['id'],
+            'appointment_date' => $row['appointment_date'],
+            'appointment_time' => substr((string) $row['appointment_time'], 0, 5),
+            'status' => $row['status'] ?? '',
+            'cancelled_at' => $row['cancelled_at'] ?? '',
+            'consultation_type' => $row['consultation_type'] ?? 'presencial',
+            'online_session_url' => $row['online_session_url'] ?? '',
+            'duration_minutes' => (int) ($row['duration_minutes'] ?? 60),
+            'payment_status' => $row['payment_status'] ?? 'pending',
+            'payment_method' => $row['payment_method'] ?? '',
+            'patient_bonus_id' => (int) ($row['patient_bonus_id'] ?? 0),
+            'bonus_name' => $row['bonus_name'] ?? '',
+            'service_label' => appointment_service_option_label($row),
+            'professional_name' => $row['professional_name'] ?? ''
+        ];
+    }
+
+    $stmt = $mysqli->prepare("
+        SELECT t.id, t.title, t.description, t.status, t.priority, t.completed_at, t.created_at,
+               p.display_name AS professional_name
+        FROM patient_work_plan_tasks t
+        LEFT JOIN professionals p ON p.id = t.professional_id
+        WHERE t.patient_id = ?
+          AND t.visible_to_patient = 1
+        ORDER BY CASE WHEN t.status = 'pending' THEN 0 ELSE 1 END,
+                 t.priority ASC,
+                 t.updated_at DESC,
+                 t.id DESC
+        LIMIT 80
+    ");
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $tasks = [];
+    while ($row = $res->fetch_assoc()) {
+        $tasks[] = [
+            'id' => (int) $row['id'],
+            'title' => $row['title'] ?? '',
+            'description' => $row['description'] ?? '',
+            'status' => $row['status'] ?? 'pending',
+            'priority' => (int) ($row['priority'] ?? 2),
+            'completed_at' => $row['completed_at'] ?? '',
+            'created_at' => $row['created_at'] ?? '',
+            'professional_name' => $row['professional_name'] ?? ''
+        ];
+    }
+
+    $payment_settings = load_booking_payment_settings($mysqli);
+    echo json_encode([
+        'success' => true,
+        'appointments' => $appointments,
+        'tasks' => $tasks,
+        'payment_settings' => [
+            'online_payment_enabled' => (int) ($payment_settings['online_payment_enabled'] ?? 0),
+            'bonuses_enabled' => (int) ($payment_settings['bonuses_enabled'] ?? 0),
+            'display_effective_duration_enabled' => (int) ($payment_settings['display_effective_duration_enabled'] ?? 0),
+            'display_duration_offset_minutes' => (int) ($payment_settings['display_duration_offset_minutes'] ?? 5)
+        ]
+    ]);
+} elseif ($action === 'booking_context') {
     if (!$is_admin) {
         echo json_encode(['success' => false, 'error' => 'No autorizado']);
         exit;
@@ -523,6 +656,8 @@ if ($action === 'booking_context') {
         'available_weekdays' => '1,2,3,4,5',
         'appointment_delivery_mode' => 'both',
         'available_session_durations' => '60',
+        'display_effective_duration_enabled' => 0,
+        'display_duration_offset_minutes' => 5,
         'bonuses_enabled' => 0,
         'create_compensation_bonus_on_paid_cancel' => 1
     ];
@@ -544,7 +679,7 @@ if ($action === 'booking_context') {
         ensure_session_setting_column($mysqli);
         ensure_bonus_tables($mysqli);
         $settings_res = $mysqli->query("
-            SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, available_session_types, available_session_durations,
+            SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, available_session_types, available_session_durations, display_effective_duration_enabled, display_duration_offset_minutes,
                    min_booking_notice_days, max_booking_notice_days,
                    appointment_start_time, appointment_end_time, break_start_time, break_end_time,
                    available_weekdays, appointment_delivery_mode, bonuses_enabled, create_compensation_bonus_on_paid_cancel
@@ -564,7 +699,7 @@ if ($action === 'booking_context') {
     $active_delivery_mode = $payment_settings['appointment_delivery_mode'] ?? 'both';
     $active_service_types = explode(',', $payment_settings['available_session_types'] ?? 'individual');
     foreach (fetch_appointment_services($mysqli, true) as $service) {
-        if ($service['service_key'] === 'couple' && !in_array('couple', $active_service_types, true)) {
+        if (!in_array($service['service_key'], $active_service_types, true)) {
             continue;
         }
         foreach ($service['options'] as $option) {
@@ -688,6 +823,8 @@ if ($action === 'booking_context') {
         'available_weekdays' => '1,2,3,4,5',
         'appointment_delivery_mode' => 'both',
         'available_session_durations' => '60',
+        'display_effective_duration_enabled' => 0,
+        'display_duration_offset_minutes' => 5,
         'bonuses_enabled' => 0,
         'create_compensation_bonus_on_paid_cancel' => 1
     ];
@@ -709,7 +846,7 @@ if ($action === 'booking_context') {
         ensure_session_setting_column($mysqli);
         ensure_bonus_tables($mysqli);
         $settings_res = $mysqli->query("
-            SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, available_session_types, available_session_durations,
+            SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, available_session_types, available_session_durations, display_effective_duration_enabled, display_duration_offset_minutes,
                    min_booking_notice_days, max_booking_notice_days,
                    appointment_start_time, appointment_end_time, break_start_time, break_end_time,
                    available_weekdays, appointment_delivery_mode, bonuses_enabled, create_compensation_bonus_on_paid_cancel
@@ -729,7 +866,7 @@ if ($action === 'booking_context') {
     $active_delivery_mode = $payment_settings['appointment_delivery_mode'] ?? 'both';
     $active_service_types = explode(',', $payment_settings['available_session_types'] ?? 'individual');
     foreach (fetch_appointment_services($mysqli, true) as $service) {
-        if ($service['service_key'] === 'couple' && !in_array('couple', $active_service_types, true)) {
+        if (!in_array($service['service_key'], $active_service_types, true)) {
             continue;
         }
         foreach ($service['options'] as $option) {
@@ -802,7 +939,7 @@ if ($action === 'booking_context') {
         exit;
     }
     $consultation_type = $service_option['consultation_type'];
-    $service_type = $service_option['service_key'] === 'couple' ? 'couple' : 'individual';
+    $service_type = $service_option['service_key'];
     if ($appointment_delivery_mode !== 'both' && $consultation_type !== $appointment_delivery_mode) {
         echo json_encode(['success' => false, 'error' => 'La modalidad seleccionada no está disponible.']);
         exit;
@@ -821,10 +958,9 @@ if ($action === 'booking_context') {
         exit;
     }
 
-    $service_type = $service_type === 'couple' ? 'couple' : 'individual';
     $available_session_types = explode(',', $settings['available_session_types'] ?? 'individual');
-    if ($service_type === 'couple' && !in_array('couple', $available_session_types, true)) {
-        echo json_encode(['success' => false, 'error' => 'La sesión de pareja no está disponible.']);
+    if (!in_array($service_type, $available_session_types, true)) {
+        echo json_encode(['success' => false, 'error' => 'El servicio seleccionado no está disponible.']);
         exit;
     }
     $duration_minutes = $service_option ? (int) $service_option['duration_minutes'] : 60;
@@ -949,7 +1085,8 @@ if ($action === 'booking_context') {
             if ($calendar_link_column && $calendar_link_column->num_rows === 0) {
                 $mysqli->query("ALTER TABLE payment_settings ADD send_patient_calendar_link TINYINT(1) NOT NULL DEFAULT 1");
             }
-            $settings_res = $mysqli->query("SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, send_patient_calendar_link FROM payment_settings WHERE id = 1");
+            ensure_session_setting_column($mysqli);
+            $settings_res = $mysqli->query("SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, send_patient_calendar_link, display_effective_duration_enabled, display_duration_offset_minutes FROM payment_settings WHERE id = 1");
             $price_settings = $settings_res->fetch_assoc();
             $send_patient_calendar_link = (int) ($price_settings['send_patient_calendar_link'] ?? 1);
             if ($bonus_claim) {
@@ -958,6 +1095,10 @@ if ($action === 'booking_context') {
                 $appointment_price_text = format_appointment_price($service_option ? $service_option['price'] : appointment_price_for_type($price_settings, $consultation_type, $service_type));
             }
         }
+        $display_duration_note = ($price_settings && (int) ($price_settings['display_effective_duration_enabled'] ?? 0) === 1)
+            ? '<p><b>Duraci&oacute;n:</b> ' . (int) appointment_display_duration_minutes($duration_minutes, $price_settings) . ' minutos</p>'
+            : '';
+        $display_service_text = appointment_display_service_label($service_text, $duration_minutes, $price_settings ?: []);
 
         try {
             google_create_calendar_event($mysqli, $appointment_id);
@@ -986,7 +1127,8 @@ if ($action === 'booking_context') {
             '<p><b>Paciente:</b> ' . htmlspecialchars($patient['name'] ?? '') . '<br>' .
             $professional_line .
             '<b>Fecha:</b> ' . htmlspecialchars($appointment_text) . '<br>' .
-            '<b>Servicio:</b> ' . htmlspecialchars($service_text) . '<br>' .
+            '<b>Servicio:</b> ' . htmlspecialchars($display_service_text) . '<br>' .
+            ($display_duration_note ? '<b>Duraci&oacute;n visible:</b> ' . (int) appointment_display_duration_minutes($duration_minutes, $price_settings) . ' minutos<br>' : '') .
             '<b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '<br>' .
             ($bonus_claim ? '<b>Bono:</b> Incluida con bono (' . (int) $bonus_claim['remaining_after'] . ' sesiones restantes)<br>' : '') .
             ($appointment_price_text !== null ? '<b>Importe:</b> ' . htmlspecialchars($appointment_price_text) . ' &euro;<br>' : '') .
@@ -1011,9 +1153,10 @@ if ($action === 'booking_context') {
                 'Cita reservada',
                 '<p>Hola ' . htmlspecialchars($patient['name']) . ',</p>' .
                 ($professional ? '<p><b>Tu cita con ' . htmlspecialchars($professional['display_name']) . '</b></p>' : '') .
-                '<p>Tu cita ' . htmlspecialchars(strtolower($service_text)) . ' ' . htmlspecialchars(strtolower($consultation_text)) . ' para el ' . htmlspecialchars($appointment_text) . ' ha quedado reservada correctamente.</p>' .
-                '<p><b>Servicio:</b> ' . htmlspecialchars($service_text) . '</p>' .
+                '<p>Tu cita ' . htmlspecialchars(strtolower($display_service_text)) . ' ' . htmlspecialchars(strtolower($consultation_text)) . ' para el ' . htmlspecialchars($appointment_text) . ' ha quedado reservada correctamente.</p>' .
+                '<p><b>Servicio:</b> ' . htmlspecialchars($display_service_text) . '</p>' .
                 '<p><b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '</p>' .
+                $display_duration_note .
                 ($appointment_price_text !== null ? '<p><b>Importe:</b> ' . htmlspecialchars($appointment_price_text) . ' &euro;</p>' : '') .
                 $payment_note .
                 '<p>Por favor, si no puedes asistir te rogamos gestionar tu cita directamente en la web.</p>' .
@@ -1127,7 +1270,7 @@ if ($action === 'booking_context') {
         }
     }
 
-    $stmt = $mysqli->prepare("DELETE FROM appointments WHERE id = ? AND status = 'booked'");
+    $stmt = $mysqli->prepare("UPDATE appointments SET status = 'cancelled', cancelled_at = NOW() WHERE id = ? AND status = 'booked'");
     $cancel_id = (int) $appointment_to_cancel['id'];
     $stmt->bind_param("i", $cancel_id);
     $stmt->execute();

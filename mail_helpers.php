@@ -300,6 +300,52 @@ function appointment_label($date, $time)
     return date('d/m/Y', strtotime($date)) . ' a las ' . date('H:i', strtotime($time));
 }
 
+function appointment_display_duration_minutes($duration_minutes, $settings = [])
+{
+    $duration = max(1, (int) ($duration_minutes ?: 60));
+    if ((int) ($settings['display_effective_duration_enabled'] ?? 0) !== 1) {
+        return $duration;
+    }
+    $offset = max(0, min(30, (int) ($settings['display_duration_offset_minutes'] ?? 5)));
+    return max(1, $duration - $offset);
+}
+
+function appointment_display_time_range($time, $duration_minutes, $settings = [])
+{
+    $start = date('H:i', strtotime($time));
+    $display_duration = appointment_display_duration_minutes($duration_minutes, $settings);
+    $end = date('H:i', strtotime($time . ' +' . $display_duration . ' minutes'));
+    return $start . ' - ' . $end;
+}
+
+function appointment_display_service_label($service_text, $duration_minutes, $settings = [])
+{
+    $service_text = (string) $service_text;
+    if ((int) ($settings['display_effective_duration_enabled'] ?? 0) !== 1) {
+        return $service_text;
+    }
+    $display_duration = appointment_display_duration_minutes($duration_minutes, $settings);
+    return preg_replace('/\(\d+\s*min\)/i', '(' . $display_duration . ' min)', $service_text);
+}
+
+function appointment_display_settings($mysqli)
+{
+    if (!$mysqli) {
+        return [];
+    }
+    $table = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
+    if (!$table || $table->num_rows === 0) {
+        return [];
+    }
+    $enabled_column = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'display_effective_duration_enabled'");
+    $offset_column = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'display_duration_offset_minutes'");
+    if (!$enabled_column || $enabled_column->num_rows === 0 || !$offset_column || $offset_column->num_rows === 0) {
+        return [];
+    }
+    $res = $mysqli->query("SELECT display_effective_duration_enabled, display_duration_offset_minutes FROM payment_settings WHERE id = 1");
+    return $res ? ($res->fetch_assoc() ?: []) : [];
+}
+
 function appointment_consultation_label($consultation_type)
 {
     return $consultation_type === 'online' ? 'Online' : 'Presencial';
@@ -333,7 +379,7 @@ function professional_appointments_summary_table($mysqli, $professional_id, $sta
     $end_sql = $end->format('Y-m-d');
 
     $stmt = $mysqli->prepare("
-        SELECT a.appointment_date, a.appointment_time, a.consultation_type, a.service_type,
+        SELECT a.appointment_date, a.appointment_time, a.consultation_type, a.service_type, a.online_session_url,
                COALESCE(a.duration_minutes, 60) AS duration_minutes,
                COALESCE(a.payment_status, 'pending') AS payment_status,
                u.name AS patient_name,
@@ -354,6 +400,7 @@ function professional_appointments_summary_table($mysqli, $professional_id, $sta
     $stmt->bind_param('iss', $professional_id, $start_sql, $end_sql);
     $stmt->execute();
     $res = $stmt->get_result();
+    $display_settings = appointment_display_settings($mysqli);
 
     $rows = '';
     $row_index = 0;
@@ -362,22 +409,26 @@ function professional_appointments_summary_table($mysqli, $professional_id, $sta
         $service = function_exists('appointment_service_option_label')
             ? appointment_service_option_label($appointment)
             : (($appointment['service_name'] ?? '') ?: appointment_service_label($appointment['service_type'] ?? 'individual'));
+        $service = appointment_display_service_label($service, $appointment['duration_minutes'] ?? 60, $display_settings);
         $consultation = appointment_consultation_label($appointment['consultation_type'] ?? 'presencial');
         $payment = appointment_payment_label($appointment['payment_status'] ?? 'pending');
         $date_text = date('d/m/Y', strtotime($appointment['appointment_date']));
-        $time_text = date('H:i', strtotime($appointment['appointment_time']));
+        $time_text = appointment_display_time_range($appointment['appointment_time'], $appointment['duration_minutes'] ?? 60, $display_settings);
         $bg = $row_index % 2 === 0 ? '#fbfafc' : '#ffffff';
         $consultation_bg = ($appointment['consultation_type'] ?? '') === 'online' ? '#e8f1ff' : '#e8f7ef';
         $consultation_color = ($appointment['consultation_type'] ?? '') === 'online' ? '#1e5aa8' : '#166534';
         $payment_bg = ($appointment['payment_status'] ?? '') === 'paid' ? '#dcfce7' : '#fff7d6';
         $payment_color = ($appointment['payment_status'] ?? '') === 'paid' ? '#166534' : '#8a6d1d';
+        $online_link = (($appointment['consultation_type'] ?? '') === 'online' && !empty($appointment['online_session_url']))
+            ? '<br><a href="' . htmlspecialchars($appointment['online_session_url']) . '" style="color:#1e5aa8;font-size:12px;">Enlace videollamada</a>'
+            : '';
 
         $rows .= '<tr style="background:' . $bg . ';">' .
             '<td style="padding:10px 12px;border-bottom:1px solid #ebe7f1;color:#4b5563;white-space:nowrap;">' . htmlspecialchars($date_text) . '</td>' .
             '<td style="padding:10px 12px;border-bottom:1px solid #ebe7f1;color:#2f2642;font-weight:700;white-space:nowrap;">' . htmlspecialchars($time_text) . '</td>' .
             '<td style="padding:10px 12px;border-bottom:1px solid #ebe7f1;color:#2f2642;font-weight:600;">' . htmlspecialchars($appointment['patient_name'] ?? 'Paciente') . '</td>' .
             '<td style="padding:10px 12px;border-bottom:1px solid #ebe7f1;color:#4b5563;">' . htmlspecialchars($service) . '</td>' .
-            '<td style="padding:10px 12px;border-bottom:1px solid #ebe7f1;white-space:nowrap;"><span style="display:inline-block;padding:4px 8px;border-radius:999px;background:' . $consultation_bg . ';color:' . $consultation_color . ';font-size:12px;font-weight:700;">' . htmlspecialchars($consultation) . '</span></td>' .
+            '<td style="padding:10px 12px;border-bottom:1px solid #ebe7f1;white-space:nowrap;"><span style="display:inline-block;padding:4px 8px;border-radius:999px;background:' . $consultation_bg . ';color:' . $consultation_color . ';font-size:12px;font-weight:700;">' . htmlspecialchars($consultation) . '</span>' . $online_link . '</td>' .
             '<td style="padding:10px 12px;border-bottom:1px solid #ebe7f1;white-space:nowrap;"><span style="display:inline-block;padding:4px 8px;border-radius:999px;background:' . $payment_bg . ';color:' . $payment_color . ';font-size:12px;font-weight:700;">' . htmlspecialchars($payment) . '</span></td>' .
             '</tr>';
     }

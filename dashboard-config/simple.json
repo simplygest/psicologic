@@ -1,0 +1,33 @@
+{
+    "version": 1,
+    "features": {
+        "dashboard.quickAppointments": true,
+        "dashboard.globalSearch": true,
+        "patientPortal.quickAppointment": true,
+        "patientPortal.appointmentHistory": true,
+        "patientPortal.visibleTasks": true,
+        "appointments.upcomingModal": true,
+        "appointments.cancelledAppointments": true,
+        "appointments.sessionWorkspace": true,
+        "patients.moreData": true,
+        "patients.evolution": true,
+        "patients.workPlan": true,
+        "patients.taskTemplates": true,
+        "patients.files": true,
+        "patients.reports": true,
+        "patients.transfer": true,
+        "reports.globalReports": true,
+        "settings.services": true,
+        "settings.bonuses": true,
+        "settings.onlinePayments": true,
+        "settings.email": true,
+        "settings.calendarSync": true,
+        "settings.legal": true,
+        "settings.team": true,
+        "public.teamPage": true,
+        "public.pricesPage": true,
+        "integrations.googleCalendar": true,
+        "integrations.googleEmail": true,
+        "integrations.icloudCalendar": true
+    }
+}
