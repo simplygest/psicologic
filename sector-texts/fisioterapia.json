@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "key": "fisioterapia",
+  "name": "Fisioterapia",
+  "description": "Configuracion de textos para clinicas de fisioterapia y rehabilitacion.",
+  "labels": {
+    "patient": {
+      "singular": "paciente",
+      "plural": "pacientes",
+      "titleSingular": "Paciente",
+      "titlePlural": "Pacientes"
+    },
+    "professional": {
+      "singular": "fisioterapeuta",
+      "plural": "fisioterapeutas",
+      "titleSingular": "Fisioterapeuta",
+      "titlePlural": "Fisioterapeutas"
+    },
+    "organization": {
+      "singular": "clinica",
+      "plural": "clinicas",
+      "titleSingular": "Clinica",
+      "titlePlural": "Clinicas"
+    },
+    "appointment": {
+      "singular": "cita",
+      "plural": "citas",
+      "titleSingular": "Cita",
+      "titlePlural": "Citas"
+    },
+    "session": {
+      "singular": "sesion",
+      "plural": "sesiones",
+      "titleSingular": "Sesion",
+      "titlePlural": "Sesiones"
+    },
+    "workPlan": {
+      "singular": "plan de tratamiento",
+      "plural": "planes de tratamiento",
+      "titleSingular": "Plan de tratamiento",
+      "titlePlural": "Planes de tratamiento"
+    },
+    "task": {
+      "singular": "ejercicio",
+      "plural": "ejercicios",
+      "titleSingular": "Ejercicio",
+      "titlePlural": "Ejercicios"
+    },
+    "evolution": {
+      "singular": "evolucion",
+      "plural": "evoluciones",
+      "titleSingular": "Evolucion",
+      "titlePlural": "Evolucion"
+    }
+  },
+  "services": {
+    "individual": "Individual",
+    "couple": "Parejas",
+    "family": "Familiar",
+    "group": "Grupos"
+  },
+  "portal": {
+    "bookingCta": "Reserva tu cita",
+    "myAppointments": "Mis citas",
+    "myTasks": "Mis ejercicios"
+  },
+  "reports": {
+    "internalPatientReport": "Informe interno de paciente",
+    "patientReport": "Informe para paciente"
+  },
+  "featureHints": {
+    "workPlan": true,
+    "patientPortal": true,
+    "clinicalEvolution": true,
+    "sessionFiles": true
+  }
+}

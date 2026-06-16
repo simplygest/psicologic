@@ -21,19 +21,32 @@ function dashboard_config_advanced_defaults()
         'version' => 1,
         'features' => [
             'dashboard.quickAppointments' => true,
+            'dashboard.globalSearch' => true,
+            'patientPortal.quickAppointment' => true,
+            'patientPortal.appointmentHistory' => true,
+            'patientPortal.visibleTasks' => true,
             'appointments.upcomingModal' => true,
             'appointments.cancelledAppointments' => true,
             'appointments.sessionWorkspace' => true,
+            'appointments.sessionTasks' => true,
+            'dashboard.patientPhoto' => true,
+            'patientPortal.patientPhoto' => true,
             'patients.moreData' => true,
             'patients.evolution' => true,
+            'patients.evolutionTab' => true,
             'patients.workPlan' => true,
+            'patients.workPlanTab' => true,
+            'patients.tasks' => true,
             'patients.taskTemplates' => true,
             'patients.files' => true,
+            'patients.filesTab' => true,
+            'patients.bonusesTab' => true,
             'patients.reports' => true,
             'patients.transfer' => true,
             'reports.globalReports' => true,
             'settings.services' => true,
             'settings.bonuses' => true,
+            'settings.taskTemplates' => true,
             'settings.onlinePayments' => true,
             'settings.email' => true,
             'settings.calendarSync' => true,
@@ -50,7 +63,32 @@ function dashboard_config_advanced_defaults()
 
 function dashboard_config_simple_defaults()
 {
-    return dashboard_config_advanced_defaults();
+    $config = dashboard_config_advanced_defaults();
+    foreach (dashboard_config_simple_disabled_features() as $feature) {
+        $config['features'][$feature] = false;
+    }
+    return $config;
+}
+
+function dashboard_config_simple_disabled_features()
+{
+    return [
+        'settings.taskTemplates',
+        'settings.bonuses',
+        'settings.team',
+        'patients.workPlan',
+        'patients.workPlanTab',
+        'patients.evolution',
+        'patients.evolutionTab',
+        'patients.files',
+        'patients.filesTab',
+        'patients.bonusesTab',
+        'dashboard.patientPhoto',
+        'patientPortal.patientPhoto',
+        'patients.tasks',
+        'patientPortal.visibleTasks',
+        'appointments.sessionTasks'
+    ];
 }
 
 function dashboard_config_merge_missing($config, $defaults)

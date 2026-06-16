@@ -32,6 +32,8 @@ let PAYMENT_SETTINGS = {
     create_compensation_bonus_on_paid_cancel: 1,
     allow_patient_transfer: 0
 };
+let APP_SECTOR_TEXTS = (typeof SECTOR_TEXTS !== 'undefined' && SECTOR_TEXTS) ? SECTOR_TEXTS : {};
+let APP_SECTOR_TEXT_OPTIONS = (typeof SECTOR_TEXT_OPTIONS !== 'undefined' && Array.isArray(SECTOR_TEXT_OPTIONS)) ? SECTOR_TEXT_OPTIONS : [];
 let APPOINTMENT_SERVICES = [];
 let ACTIVE_SERVICE_OPTIONS = [];
 let APPOINTMENT_BONUSES = [];
@@ -45,6 +47,7 @@ let isAppointmentRequestInProgress = false;
 let inviteModal = null;
 let upcomingAppointmentsModal = null;
 let appointmentPaymentModal = null;
+let appointmentSessionNoteModal = null;
 let upcomingAppointmentsInitialLoad = true;
 let CURRENT_UPCOMING_PLANNING = {
     appointments: [],
@@ -59,6 +62,7 @@ let patientWorkPlanTaskModal = null;
 let currentInviteLink = '';
 let currentInviteToken = '';
 let currentCancelAppointmentId = null;
+let appointmentSessionAlertTimer = null;
 let CURRENT_PATIENT_PROFESSIONAL_CONTEXT = null;
 let CURRENT_BOOKING_PROFESSIONAL_CONTEXT = null;
 let CURRENT_PATIENT_SELECTED_PROFESSIONAL_ID = 0;
@@ -68,6 +72,23 @@ let CURRENT_SLOT_PROFESSIONALS = [];
 let CURRENT_SLOT_SELECTED_PROFESSIONAL_ID = 0;
 let CURRENT_BOOKING_CONSULTATION_TYPE = '';
 let CURRENT_PATIENT_EDITOR = null;
+const QUICK_APPOINTMENTS_REFRESH_INTERVAL_MS = 60000;
+let quickAppointmentsRefreshTimer = null;
+let quickAppointmentsSummaryLoading = false;
+let quickAppointmentsSummaryRequest = null;
+let patientPortalSummaryLoading = false;
+
+function sectorText(path, fallback = '') {
+    const parts = String(path || '').split('.').filter(Boolean);
+    let current = APP_SECTOR_TEXTS;
+    for (const part of parts) {
+        if (!current || typeof current !== 'object' || !(part in current)) {
+            return fallback;
+        }
+        current = current[part];
+    }
+    return typeof current === 'string' ? current : fallback;
+}
 
 function getMonday(d) {
     d = new Date(d);
@@ -404,23 +425,25 @@ function shouldChooseProfessionalInSlot() {
 function loadCalendar(startDateStr) {
     $('#calendar-container').html('<div class="text-center text-muted py-5"><div class="spinner-border text-secondary" role="status"></div><br>Cargando...</div>');
 
-    return $.ajax({
+    const quickSummaryRequest = IS_ADMIN ? loadQuickAppointmentsSummary() : $.Deferred().resolve().promise();
+    const calendarRequest = $.ajax({
         url: 'api/appointments.php?action=get_week',
         data: { start_date: startDateStr, ...selectedPatientProfessionalRequestData() },
         method: 'GET',
-        dataType: 'json',
-        success: function (res) {
-            if (res.success) {
-                PAYMENT_SETTINGS = res.payment_settings || PAYMENT_SETTINGS;
-                setPatientProfessionalContext(res.professional_context || null);
-                renderPatientProfessionalChoice(res.professionals || [], res.professional_context || null, res.new_patient_booking_mode || '');
-                if (Array.isArray(res.service_options)) {
-                    ACTIVE_SERVICE_OPTIONS = res.service_options;
-                }
-                togglePatientBonusActions();
-                loadQuickAppointmentsSummary();
-                drawCalendar(startDateStr, res.appointments, res.closed_days);
+        dataType: 'json'
+    });
+
+    return $.when(calendarRequest, quickSummaryRequest).done(function (calendarResponse) {
+        const res = Array.isArray(calendarResponse) ? calendarResponse[0] : calendarResponse;
+        if (res && res.success) {
+            PAYMENT_SETTINGS = res.payment_settings || PAYMENT_SETTINGS;
+            setPatientProfessionalContext(res.professional_context || null);
+            renderPatientProfessionalChoice(res.professionals || [], res.professional_context || null, res.new_patient_booking_mode || '');
+            if (Array.isArray(res.service_options)) {
+                ACTIVE_SERVICE_OPTIONS = res.service_options;
             }
+            togglePatientBonusActions();
+            drawCalendar(startDateStr, res.appointments, res.closed_days);
         }
     });
 }
@@ -428,32 +451,34 @@ function loadCalendar(startDateStr) {
 function loadMonthCalendar(monthStr) {
     $('#calendar-container').html('<div class="text-center text-muted py-5"><div class="spinner-border text-secondary" role="status"></div><br>Cargando mes...</div>');
 
-    return $.ajax({
+    const quickSummaryRequest = IS_ADMIN ? loadQuickAppointmentsSummary() : $.Deferred().resolve().promise();
+    const calendarRequest = $.ajax({
         url: 'api/appointments.php?action=get_month',
         data: { month: monthStr, ...selectedPatientProfessionalRequestData() },
         method: 'GET',
-        dataType: 'json',
-        success: function (res) {
-            if (res.success) {
-                PAYMENT_SETTINGS = res.payment_settings || PAYMENT_SETTINGS;
-                setPatientProfessionalContext(res.professional_context || null);
-                renderPatientProfessionalChoice(res.professionals || [], res.professional_context || null, res.new_patient_booking_mode || '');
-                if (Array.isArray(res.service_options)) {
-                    ACTIVE_SERVICE_OPTIONS = res.service_options;
-                }
-                togglePatientBonusActions();
-                loadQuickAppointmentsSummary();
-                currentMonthData = res;
-                selectedMonthDay = selectedMonthDay || firstAvailableMonthDay(res.month, res.appointments, res.closed_days);
-                drawMonthCalendar(res.month, res.appointments || {}, res.closed_days || {});
+        dataType: 'json'
+    });
+
+    return $.when(calendarRequest, quickSummaryRequest).done(function (calendarResponse) {
+        const res = Array.isArray(calendarResponse) ? calendarResponse[0] : calendarResponse;
+        if (res && res.success) {
+            PAYMENT_SETTINGS = res.payment_settings || PAYMENT_SETTINGS;
+            setPatientProfessionalContext(res.professional_context || null);
+            renderPatientProfessionalChoice(res.professionals || [], res.professional_context || null, res.new_patient_booking_mode || '');
+            if (Array.isArray(res.service_options)) {
+                ACTIVE_SERVICE_OPTIONS = res.service_options;
             }
+            togglePatientBonusActions();
+            currentMonthData = res;
+            selectedMonthDay = selectedMonthDay || firstAvailableMonthDay(res.month, res.appointments, res.closed_days);
+            drawMonthCalendar(res.month, res.appointments || {}, res.closed_days || {});
         }
     });
 }
 
 function drawCalendar(startDateStr, appointmentsMap, closedDays) {
     const activeDays = getActiveWeekdays();
-    let html = `<div class="calendar-grid" style="--calendar-days: ${activeDays.length};">`;
+    let html = `<div class="calendar-grid dashboard-enter" style="--calendar-days: ${activeDays.length};">`;
     let startD = new Date(startDateStr);
 
     const daysArr = {
@@ -506,7 +531,7 @@ function drawMonthCalendar(monthStr, appointmentsMap, closedDays) {
     firstGrid.setDate(first.getDate() - ((first.getDay() + 6) % 7));
 
     let html = `
-        <div class="month-calendar-layout">
+        <div class="month-calendar-layout dashboard-enter">
             <div class="month-calendar-panel">
                 <div class="month-calendar-title">${escapeHtml(monthName)}</div>
                 <div class="month-weekdays">
@@ -863,8 +888,14 @@ function renderSlot(dateStr, timeStr, dayApps) {
 function loadQuickAppointmentsSummary() {
     const $wrap = $('#quick-appointments-summary');
     if (!$wrap.length || !IS_ADMIN) {
-        return;
+        return $.Deferred().resolve().promise();
     }
+    if (quickAppointmentsSummaryLoading) {
+        return quickAppointmentsSummaryRequest || $.Deferred().resolve().promise();
+    }
+    quickAppointmentsSummaryLoading = true;
+    const deferred = $.Deferred();
+    quickAppointmentsSummaryRequest = deferred.promise();
 
     $.ajax({
         url: 'api/admin.php?action=quick_appointments',
@@ -879,8 +910,32 @@ function loadQuickAppointmentsSummary() {
         },
         error: function () {
             $wrap.addClass('d-none').empty();
+        },
+        complete: function () {
+            quickAppointmentsSummaryLoading = false;
+            quickAppointmentsSummaryRequest = null;
+            deferred.resolve();
         }
     });
+
+    return deferred.promise();
+}
+
+function refreshQuickAppointmentSummaries() {
+    if (IS_ADMIN) {
+        loadQuickAppointmentsSummary();
+        return;
+    }
+    if ($('#patient-quick-appointment-summary').length) {
+        loadPatientPortalSummary();
+    }
+}
+
+function startQuickAppointmentsAutoRefresh() {
+    if (quickAppointmentsRefreshTimer) {
+        clearInterval(quickAppointmentsRefreshTimer);
+    }
+    quickAppointmentsRefreshTimer = setInterval(refreshQuickAppointmentSummaries, QUICK_APPOINTMENTS_REFRESH_INTERVAL_MS);
 }
 
 function renderQuickAppointmentsSummary(current, next) {
@@ -888,6 +943,9 @@ function renderQuickAppointmentsSummary(current, next) {
     if (!$wrap.length) {
         return;
     }
+    const normalized = normalizeQuickAppointmentsForNow(current, next);
+    current = normalized.current;
+    next = normalized.next;
     const cards = [];
     if (current) {
         cards.push(quickAppointmentCardHtml(current, 'Cita en curso', 'current'));
@@ -901,7 +959,7 @@ function renderQuickAppointmentsSummary(current, next) {
     }
     $wrap
         .removeClass('d-none')
-        .html(`<div class="row g-3 mb-4">${cards.join('')}</div>`);
+        .html(`<div class="row g-3 mb-4 dashboard-enter">${cards.join('')}</div>`);
 }
 
 function quickAppointmentCardHtml(app, title, type) {
@@ -942,6 +1000,68 @@ function quickAppointmentCardHtml(app, title, type) {
             </article>
         </div>
     `;
+}
+
+function quickAppointmentStartDate(app = {}) {
+    const dateStr = app.appointment_date || '';
+    const timeStr = normalizeAppointmentClockTime(app.appointment_time || '');
+    if (!dateStr || !timeStr) {
+        return null;
+    }
+    const start = new Date(`${dateStr}T${timeStr}:00`);
+    return Number.isNaN(start.getTime()) ? null : start;
+}
+
+function quickAppointmentEndDate(app = {}) {
+    const start = quickAppointmentStartDate(app);
+    if (!start) {
+        return null;
+    }
+    const duration = parseInt(app.duration_minutes || 60, 10) || 60;
+    return new Date(start.getTime() + duration * 60000);
+}
+
+function isQuickAppointmentInProgress(app = {}, now = new Date()) {
+    const start = quickAppointmentStartDate(app);
+    const end = quickAppointmentEndDate(app);
+    return Boolean(start && end && start <= now && end > now);
+}
+
+function isQuickAppointmentFuture(app = {}, now = new Date()) {
+    const start = quickAppointmentStartDate(app);
+    return Boolean(start && start > now);
+}
+
+function normalizeQuickAppointmentsForNow(current, next) {
+    const now = new Date();
+    let normalizedCurrent = current || null;
+    let normalizedNext = next || null;
+
+    if (normalizedCurrent && !isQuickAppointmentInProgress(normalizedCurrent, now)) {
+        if (isQuickAppointmentFuture(normalizedCurrent, now) && !normalizedNext) {
+            normalizedNext = normalizedCurrent;
+        }
+        normalizedCurrent = null;
+    }
+
+    if (!normalizedCurrent && normalizedNext && isQuickAppointmentInProgress(normalizedNext, now)) {
+        normalizedCurrent = normalizedNext;
+        normalizedNext = null;
+    }
+
+    return {
+        current: normalizedCurrent,
+        next: normalizedNext
+    };
+}
+
+function normalizeAppointmentClockTime(value) {
+    const raw = String(value || '').trim();
+    const match = raw.match(/^(\d{1,2}):(\d{2})/);
+    if (!match) {
+        return '';
+    }
+    return `${String(match[1]).padStart(2, '0')}:${match[2]}`;
 }
 
 function quickAppointmentContactText(app = {}) {
@@ -1018,7 +1138,7 @@ function quickAppointmentDateLabel(dateStr) {
 
 function quickAppointmentTimingLabel(app = {}) {
     const dateStr = app.appointment_date || '';
-    const timeStr = app.appointment_time || '';
+    const timeStr = normalizeAppointmentClockTime(app.appointment_time || '');
     if (!dateStr || !timeStr) {
         return quickAppointmentDateLabel(dateStr);
     }
@@ -1048,6 +1168,10 @@ function loadPatientPortalSummary() {
     if (IS_ADMIN || !$('#patient-quick-appointment-summary').length) {
         return;
     }
+    if (patientPortalSummaryLoading) {
+        return;
+    }
+    patientPortalSummaryLoading = true;
     $.ajax({
         url: 'api/appointments.php?action=patient_portal_summary',
         method: 'GET',
@@ -1069,6 +1193,9 @@ function loadPatientPortalSummary() {
         },
         error: function () {
             $('#patient-quick-appointment-summary').addClass('d-none');
+        },
+        complete: function () {
+            patientPortalSummaryLoading = false;
         }
     });
 }
@@ -1099,7 +1226,7 @@ function renderPatientQuickAppointment(appointments) {
         ? `<a class="btn btn-outline-primary btn-sm" href="${escapeHtml(app.online_session_url)}" target="_blank" rel="noopener"><i class="bi bi-camera-video"></i> Entrar</a>`
         : '';
     $wrap.removeClass('d-none').html(`
-        <div class="row g-3 mb-4">
+        <div class="row g-3 mb-4 dashboard-enter">
             <div class="col-12 col-lg-6">
                 <article class="quick-appointment-card quick-appointment-next">
                     <div class="quick-appointment-topline">
@@ -1429,6 +1556,7 @@ let taskTemplateItemModal = document.getElementById('taskTemplateItemModal') ? n
 inviteModal = document.getElementById('inviteModal') ? new bootstrap.Modal(document.getElementById('inviteModal')) : null;
 upcomingAppointmentsModal = document.getElementById('upcomingAppointmentsModal') ? new bootstrap.Modal(document.getElementById('upcomingAppointmentsModal')) : null;
 appointmentPaymentModal = document.getElementById('appointmentPaymentModal') ? new bootstrap.Modal(document.getElementById('appointmentPaymentModal')) : null;
+appointmentSessionNoteModal = document.getElementById('appointmentSessionNoteModal') ? new bootstrap.Modal(document.getElementById('appointmentSessionNoteModal')) : null;
 adminStatsModal = document.getElementById('adminStatsModal') ? new bootstrap.Modal(document.getElementById('adminStatsModal')) : null;
 bonusesModal = document.getElementById('bonusesModal') ? new bootstrap.Modal(document.getElementById('bonusesModal')) : null;
 let adminPatientsModal = document.getElementById('adminPatientsModal') ? new bootstrap.Modal(document.getElementById('adminPatientsModal')) : null;
@@ -1454,6 +1582,7 @@ let CURRENT_PATIENT_EVOLUTION_ID = 0;
 let CURRENT_PATIENT_FILES_ID = 0;
 let CURRENT_PATIENT_WORK_PLAN_ID = 0;
 let CURRENT_PATIENT_WORK_PLAN_ROWS = [];
+let CURRENT_WORK_PLAN_FORM_CONTEXT = { source: 'patient', patientId: 0, appointmentId: 0 };
 let CURRENT_PATIENT_PORTAL = { appointments: [], tasks: [] };
 let WORK_PLAN_TASK_TEMPLATES = [];
 let WORK_PLAN_TASK_TEMPLATES_LOADED = false;
@@ -1599,6 +1728,7 @@ function applyCancelPaymentNotice(status, payload) {
 
 $(document).ready(function () {
     renderWeekInfo();
+    startQuickAppointmentsAutoRefresh();
 
     if (IS_ADMIN) {
         loadBookingPatients();
@@ -1835,7 +1965,7 @@ $(document).ready(function () {
         cancelAppointmentFromPaymentDetail();
     });
 
-    $('#appointmentPaymentModal').on('submit', '#appointment-session-note-form', function (e) {
+    $('#appointmentSessionNoteModal').on('submit', '#appointment-session-note-form', function (e) {
         e.preventDefault();
         saveAppointmentSessionNote(this);
     });
@@ -1845,15 +1975,11 @@ $(document).ready(function () {
     });
 
     $('#appointmentPaymentModal').on('click', '#btn-toggle-appointment-session-note', function () {
-        const $formWrap = $('#appointment-session-note-form-wrap');
-        const isHidden = $formWrap.hasClass('d-none');
-        $formWrap.toggleClass('d-none', !isHidden);
-        $(this).html(isHidden
-            ? '<i class="bi bi-x-lg"></i> Cancelar nota'
-            : '<i class="bi bi-journal-plus"></i> Nueva nota / archivo');
-        if (isHidden) {
-            $('#appointment-session-note-title').trigger('focus');
-        }
+        openAppointmentSessionNoteModal();
+    });
+
+    $('#appointmentPaymentModal').on('click', '#btn-show-appointment-session-work-plan-form', function () {
+        showAppointmentSessionWorkPlanForm();
     });
 
     $('#appointmentPaymentModal').on('click', '.btn-delete-session-note', function () {
@@ -1862,6 +1988,20 @@ $(document).ready(function () {
 
     $('#appointmentPaymentModal').on('hidden.bs.modal', function () {
         $('body').removeClass('appointment-payment-secondary-modal-open');
+    });
+
+    $('#appointmentSessionNoteModal').on('show.bs.modal', function () {
+        if ($('#appointmentPaymentModal').hasClass('show')) {
+            $('body').addClass('appointment-session-note-modal-open');
+        }
+    });
+
+    $('#appointmentSessionNoteModal').on('hidden.bs.modal', function () {
+        $('body').removeClass('appointment-session-note-modal-open');
+        resetAppointmentSessionNoteForm();
+        if ($('#appointmentPaymentModal').hasClass('show')) {
+            document.body.classList.add('modal-open');
+        }
     });
 
     $('#btn-admin-stats').click(function () {
@@ -2321,12 +2461,19 @@ $(document).ready(function () {
         if ($('#patientEditorModal').hasClass('show')) {
             $('body').addClass('patient-editor-secondary-modal-open');
         }
+        if ($('#appointmentPaymentModal').hasClass('show')) {
+            $('body').addClass('appointment-work-plan-modal-open');
+        }
     });
 
     $('#patientWorkPlanTaskModal').on('hidden.bs.modal', function () {
         $('body').removeClass('patient-editor-secondary-modal-open');
+        $('body').removeClass('appointment-work-plan-modal-open');
         resetPatientWorkPlanFormFields();
         if ($('#patientEditorModal').hasClass('show')) {
+            document.body.classList.add('modal-open');
+        }
+        if ($('#appointmentPaymentModal').hasClass('show')) {
             document.body.classList.add('modal-open');
         }
     });
@@ -3876,14 +4023,43 @@ function workPlanPriorityLabel(priority) {
 
 function showPatientWorkPlanForm(task = null) {
     const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
+    openWorkPlanTaskModal({
+        source: 'patient',
+        patientId,
+        appointmentId: 0,
+        task
+    });
+}
+
+function showAppointmentSessionWorkPlanForm() {
+    const patientId = parseInt(CURRENT_APPOINTMENT_SESSION.patient_id || (CURRENT_APPOINTMENT_PAYMENT_DETAIL && CURRENT_APPOINTMENT_PAYMENT_DETAIL.patient_id) || 0, 10);
+    const appointmentId = parseInt(CURRENT_APPOINTMENT_SESSION.appointment_id || (CURRENT_APPOINTMENT_PAYMENT_DETAIL && CURRENT_APPOINTMENT_PAYMENT_DETAIL.id) || 0, 10);
+    openWorkPlanTaskModal({
+        source: 'appointment-session',
+        patientId,
+        appointmentId,
+        task: null
+    });
+}
+
+function openWorkPlanTaskModal(options = {}) {
+    const task = options.task || null;
+    const source = options.source || 'patient';
+    const patientId = parseInt(options.patientId || 0, 10);
+    const appointmentId = parseInt(options.appointmentId || 0, 10);
     if (!patientId) {
-        showPatientWorkPlanAlert('danger', 'Guarda primero el paciente.');
+        if (source === 'appointment-session') {
+            showAppointmentSessionAlert('danger', 'No se pudo identificar el paciente de la cita.');
+        } else {
+            showPatientWorkPlanAlert('danger', 'Guarda primero el paciente.');
+        }
         return;
     }
+    CURRENT_WORK_PLAN_FORM_CONTEXT = { source, patientId, appointmentId: source === 'appointment-session' ? appointmentId : 0 };
     if (!task) {
         loadWorkPlanTaskTemplates();
     }
-    $('#patient-work-plan-modal-title').text(task ? 'Editar tarea' : 'Crear o importar tareas');
+    $('#patient-work-plan-modal-title').text(task ? 'Editar tarea' : (source === 'appointment-session' ? 'Crear o importar tareas de sesión' : 'Crear o importar tareas'));
     $('#patient-work-plan-id').val(task ? task.id : 0);
     $('#patient-work-plan-patient-id').val(patientId);
     $('#patient-work-plan-template').val('manual');
@@ -3912,6 +4088,7 @@ function resetPatientWorkPlanFormFields() {
     $('#patient-work-plan-priority').val('2');
     $('#patient-work-plan-completed').prop('checked', false);
     $('#patient-work-plan-visible').prop('checked', false);
+    CURRENT_WORK_PLAN_FORM_CONTEXT = { source: 'patient', patientId: 0, appointmentId: 0 };
     togglePatientWorkPlanTaskMode();
 }
 
@@ -3941,38 +4118,63 @@ function hidePatientWorkPlanForm() {
 }
 
 function savePatientWorkPlanTask(form) {
-    const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
+    const context = { ...CURRENT_WORK_PLAN_FORM_CONTEXT };
+    const patientId = parseInt(context.patientId || $('#patient-editor-id').val() || '0', 10);
     if (!patientId) {
-        showPatientWorkPlanAlert('danger', 'Guarda primero el paciente.');
+        if (context.source === 'appointment-session') {
+            showAppointmentSessionAlert('danger', 'No se pudo identificar el paciente de la cita.');
+        } else {
+            showPatientWorkPlanAlert('danger', 'Guarda primero el paciente.');
+        }
         return;
     }
     const $button = $('#btn-save-patient-work-plan');
     const original = $button.html();
+    const payload = {
+        task_id: $('#patient-work-plan-id').val() || 0,
+        patient_id: patientId,
+        title: $('#patient-work-plan-title').val() || '',
+        description: $('#patient-work-plan-description').val() || '',
+        priority: $('#patient-work-plan-priority').val() || 2,
+        status: $('#patient-work-plan-completed').is(':checked') ? 'completed' : 'pending',
+        visible_to_patient: $('#patient-work-plan-visible').is(':checked') ? 1 : 0
+    };
+    if (context.source === 'appointment-session' && context.appointmentId) {
+        payload.appointment_id = context.appointmentId;
+    }
     $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Guardando');
     $.ajax({
         url: 'api/admin.php?action=save_patient_work_plan_task',
         method: 'POST',
         dataType: 'json',
-        data: {
-            task_id: $('#patient-work-plan-id').val() || 0,
-            patient_id: patientId,
-            title: $('#patient-work-plan-title').val() || '',
-            description: $('#patient-work-plan-description').val() || '',
-            priority: $('#patient-work-plan-priority').val() || 2,
-            status: $('#patient-work-plan-completed').is(':checked') ? 'completed' : 'pending',
-            visible_to_patient: $('#patient-work-plan-visible').is(':checked') ? 1 : 0
-        },
+        data: payload,
         success: function (res) {
             if (!res.success) {
-                showPatientWorkPlanAlert('danger', res.error || 'No se pudo guardar la tarea.');
+                if (context.source === 'appointment-session') {
+                    showAppointmentSessionAlert('danger', res.error || 'No se pudo guardar la tarea.');
+                } else {
+                    showPatientWorkPlanAlert('danger', res.error || 'No se pudo guardar la tarea.');
+                }
                 return;
             }
-            showPatientWorkPlanAlert('success', res.message || 'Plan de trabajo guardado correctamente.', true);
+            if (context.source === 'appointment-session') {
+                showAppointmentSessionAlert('success', res.message || 'Tarea guardada.');
+            } else {
+                showPatientWorkPlanAlert('success', res.message || 'Plan de trabajo guardado correctamente.', true);
+            }
             hidePatientWorkPlanForm();
-            loadPatientWorkPlan(patientId);
+            if (context.source === 'appointment-session') {
+                loadAppointmentSession();
+            } else {
+                loadPatientWorkPlan(patientId);
+            }
         },
         error: function () {
-            showPatientWorkPlanAlert('danger', 'Error de conexion al guardar la tarea.');
+            if (context.source === 'appointment-session') {
+                showAppointmentSessionAlert('danger', 'Error de conexion al guardar la tarea.');
+            } else {
+                showPatientWorkPlanAlert('danger', 'Error de conexion al guardar la tarea.');
+            }
         },
         complete: function () {
             $button.prop('disabled', false).html(original);
@@ -4384,36 +4586,65 @@ function deleteWorkPlanTaskTemplateItem(button) {
 }
 
 function importWorkPlanTemplateToPatient(button) {
-    const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
+    const context = { ...CURRENT_WORK_PLAN_FORM_CONTEXT };
+    const patientId = parseInt(context.patientId || $('#patient-editor-id').val() || '0', 10);
     const templateId = getSelectedWorkPlanTemplateId();
     if (!patientId) {
-        showPatientWorkPlanAlert('danger', 'Guarda primero el paciente.');
+        if (context.source === 'appointment-session') {
+            showAppointmentSessionAlert('danger', 'No se pudo identificar el paciente de la cita.');
+        } else {
+            showPatientWorkPlanAlert('danger', 'Guarda primero el paciente.');
+        }
         return;
     }
     if (!templateId) {
-        showPatientWorkPlanAlert('danger', 'Selecciona una plantilla.');
+        if (context.source === 'appointment-session') {
+            showAppointmentSessionAlert('danger', 'Selecciona una plantilla.');
+        } else {
+            showPatientWorkPlanAlert('danger', 'Selecciona una plantilla.');
+        }
         return;
     }
     const $button = $(button);
     const original = $button.html();
+    const payload = { patient_id: patientId, template_id: templateId };
+    if (context.source === 'appointment-session' && context.appointmentId) {
+        payload.appointment_id = context.appointmentId;
+    }
     $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Importando');
     $.ajax({
         url: 'api/admin.php?action=import_work_plan_task_template',
         method: 'POST',
         dataType: 'json',
-        data: { patient_id: patientId, template_id: templateId },
+        data: payload,
         success: function (res) {
             if (!res.success) {
-                showPatientWorkPlanAlert('danger', res.error || 'No se pudo importar la plantilla.');
+                if (context.source === 'appointment-session') {
+                    showAppointmentSessionAlert('danger', res.error || 'No se pudo importar la plantilla.');
+                } else {
+                    showPatientWorkPlanAlert('danger', res.error || 'No se pudo importar la plantilla.');
+                }
                 return;
             }
-            showPatientWorkPlanAlert('success', res.message || 'Plantilla importada correctamente.', true);
+            if (context.source === 'appointment-session') {
+                showAppointmentSessionAlert('success', res.message || 'Plantilla importada correctamente.');
+            } else {
+                showPatientWorkPlanAlert('success', res.message || 'Plantilla importada correctamente.', true);
+            }
             $('#patient-work-plan-template').val('manual');
             hidePatientWorkPlanForm();
-            loadPatientWorkPlan(patientId);
+            if (context.source === 'appointment-session') {
+                loadAppointmentSession();
+            } else {
+                loadPatientWorkPlan(patientId);
+            }
         },
         error: function () {
-            showPatientWorkPlanAlert('danger', 'Error de conexion al importar la plantilla.');
+            if (context.source === 'appointment-session') {
+                showAppointmentSessionAlert('danger', 'Error de conexion al importar la plantilla.');
+            } else {
+                showPatientWorkPlanAlert('danger', 'Error de conexion al importar la plantilla.');
+            }
         },
         complete: function () {
             $button.prop('disabled', false).html(original);
@@ -5802,7 +6033,6 @@ function parseAppointmentDateTime(dateStr, timeStr) {
 }
 
 function renderAppointmentSession(app = CURRENT_APPOINTMENT_PAYMENT_DETAIL) {
-    const appointmentDate = app && app.appointment_date ? app.appointment_date : formatDate(new Date());
     $('#appointment-session-content').html(`
         <div class="row g-3">
             <div class="col-lg-5">
@@ -6071,10 +6301,20 @@ function renderAppointmentSessionNotes(notes) {
 }
 
 function showAppointmentSessionAlert(type, message) {
-    $('#appointment-session-alert')
+    const $alert = $('#appointment-session-alert')
         .removeClass('d-none alert-success alert-danger')
         .addClass(type === 'success' ? 'alert-success' : 'alert-danger')
         .text(message);
+    if (appointmentSessionAlertTimer) {
+        clearTimeout(appointmentSessionAlertTimer);
+        appointmentSessionAlertTimer = null;
+    }
+    if (type === 'success') {
+        appointmentSessionAlertTimer = setTimeout(function () {
+            $alert.addClass('d-none').text('');
+            appointmentSessionAlertTimer = null;
+        }, 3000);
+    }
 }
 
 function saveAppointmentSessionTask(form) {
@@ -6131,9 +6371,11 @@ function saveAppointmentSessionNote(form) {
                 return;
             }
             showAppointmentSessionAlert('success', res.message || 'Nota guardada.');
-            form.reset();
-            $('#appointment-session-note-form-wrap').addClass('d-none');
-            $('#btn-toggle-appointment-session-note').html('<i class="bi bi-journal-plus"></i> Nueva nota / archivo');
+            if (appointmentSessionNoteModal) {
+                appointmentSessionNoteModal.hide();
+            } else {
+                resetAppointmentSessionNoteForm();
+            }
             loadAppointmentSession();
         },
         error: function () {
@@ -6145,11 +6387,37 @@ function saveAppointmentSessionNote(form) {
     });
 }
 
+function resetAppointmentSessionNoteForm() {
+    const form = document.getElementById('appointment-session-note-form');
+    if (form) {
+        form.reset();
+    }
+    $('#appointment-session-note-appointment-id').val('0');
+    $('#appointment-session-note-patient-id').val('0');
+    $('#appointment-session-note-date').val('');
+    $('#btn-save-appointment-session-note').prop('disabled', false).html('<i class="bi bi-journal-plus"></i> Guardar nota');
+}
+
+function openAppointmentSessionNoteModal() {
+    if (!appointmentSessionNoteModal) {
+        return;
+    }
+    const app = CURRENT_APPOINTMENT_PAYMENT_DETAIL || {};
+    const appointmentDate = app.appointment_date || formatDate(new Date());
+    resetAppointmentSessionNoteForm();
+    $('#appointment-session-note-appointment-id').val(CURRENT_APPOINTMENT_SESSION.appointment_id || app.id || 0);
+    $('#appointment-session-note-patient-id').val(CURRENT_APPOINTMENT_SESSION.patient_id || app.patient_id || 0);
+    $('#appointment-session-note-date').val(appointmentDate);
+    appointmentSessionNoteModal.show();
+    setTimeout(() => $('#appointment-session-note-title').trigger('focus'), 180);
+}
+
 function setAppointmentSessionTaskStatus(button) {
     const $button = $(button);
     const taskId = parseInt($button.data('task-id') || 0, 10);
     const status = $button.data('next-status') === 'completed' ? 'completed' : 'pending';
     if (!taskId) return;
+    const $item = $button.closest('.appointment-session-task');
     const original = $button.html();
     $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
     $.ajax({
@@ -6163,7 +6431,7 @@ function setAppointmentSessionTaskStatus(button) {
                 return;
             }
             showAppointmentSessionAlert('success', res.message || 'Tarea actualizada.');
-            loadAppointmentSession();
+            updateAppointmentSessionTaskItem($item, taskId, status);
         },
         error: function () {
             showAppointmentSessionAlert('danger', 'Error de conexión al actualizar la tarea.');
@@ -6174,12 +6442,26 @@ function setAppointmentSessionTaskStatus(button) {
     });
 }
 
+function updateAppointmentSessionTaskItem($item, taskId, status) {
+    const tasks = Array.isArray(CURRENT_APPOINTMENT_SESSION.tasks) ? CURRENT_APPOINTMENT_SESSION.tasks : [];
+    const task = tasks.find(item => parseInt(item.id || 0, 10) === taskId);
+    if (!task || !$item || !$item.length) {
+        loadAppointmentSession();
+        return;
+    }
+    task.status = status;
+    const $newItem = $(renderAppointmentSessionTasks([task])).css('opacity', 0);
+    $item.replaceWith($newItem);
+    $newItem.animate({ opacity: 1 }, 180);
+}
+
 function deleteAppointmentSessionNote(button) {
     const $button = $(button);
     const noteId = parseInt($button.data('note-id') || 0, 10);
     if (!noteId || !confirm('¿Eliminar esta nota de la sesión?')) {
         return;
     }
+    const $item = $button.closest('.appointment-session-activity-item');
     const original = $button.html();
     $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
     $.ajax({
@@ -6193,7 +6475,7 @@ function deleteAppointmentSessionNote(button) {
                 return;
             }
             showAppointmentSessionAlert('success', res.message || 'Nota eliminada.');
-            loadAppointmentSession();
+            removeAppointmentSessionActivityItem($item, noteId);
         },
         error: function () {
             showAppointmentSessionAlert('danger', 'Error de conexión al eliminar la nota.');
@@ -6202,6 +6484,25 @@ function deleteAppointmentSessionNote(button) {
             $button.prop('disabled', false).html(original);
         }
     });
+}
+
+function removeAppointmentSessionActivityItem($item, noteId) {
+    if (Array.isArray(CURRENT_APPOINTMENT_SESSION.notes)) {
+        CURRENT_APPOINTMENT_SESSION.notes = CURRENT_APPOINTMENT_SESSION.notes.filter(note => parseInt(note.id || 0, 10) !== noteId);
+    }
+    if (!$item || !$item.length) {
+        $('#appointment-session-activity').html(renderAppointmentSessionActivity(CURRENT_APPOINTMENT_SESSION.notes, CURRENT_APPOINTMENT_SESSION.files));
+        return;
+    }
+    $item
+        .stop(true, true)
+        .animate({ opacity: 0, height: 0, marginTop: 0, marginBottom: 0, paddingTop: 0, paddingBottom: 0 }, 220, function () {
+            const $list = $(this).closest('.appointment-session-activity-list');
+            $(this).remove();
+            if (!$list.find('.appointment-session-activity-item').length) {
+                $('#appointment-session-activity').html('<div class="text-center text-muted py-3">No hay notas ni archivos vinculados a esta sesi&oacute;n.</div>');
+            }
+        });
 }
 
 function deleteAppointmentSessionTask(button) {
@@ -6246,8 +6547,11 @@ function renderAppointmentSession(app = CURRENT_APPOINTMENT_PAYMENT_DETAIL) {
                     <div class="appointment-session-section-header">
                         <div>
                             <h6>Tareas del paciente</h6>
-                            <p>Puedes a&ntilde;adir m&aacute;s tareas desde la ficha del paciente.</p>
+                            <p>Crea tareas o importa plantillas para trabajar esta sesi&oacute;n.</p>
                         </div>
+                        <button class="btn btn-outline-primary btn-sm" type="button" id="btn-show-appointment-session-work-plan-form">
+                            <i class="bi bi-list-check"></i> Crear o importar tareas
+                        </button>
                     </div>
                     <div id="appointment-session-tasks">${renderAppointmentSessionTasks(CURRENT_APPOINTMENT_SESSION.tasks)}</div>
                 </section>
@@ -6261,33 +6565,6 @@ function renderAppointmentSession(app = CURRENT_APPOINTMENT_PAYMENT_DETAIL) {
                         <button class="btn btn-outline-primary btn-sm" type="button" id="btn-toggle-appointment-session-note">
                             <i class="bi bi-journal-plus"></i> Nueva nota / archivo
                         </button>
-                    </div>
-                    <div id="appointment-session-note-form-wrap" class="d-none">
-                        <form id="appointment-session-note-form" enctype="multipart/form-data">
-                            <input type="hidden" name="note_id" value="0">
-                            <input type="hidden" name="appointment_id" value="${CURRENT_APPOINTMENT_SESSION.appointment_id}">
-                            <input type="hidden" name="patient_id" value="${CURRENT_APPOINTMENT_SESSION.patient_id}">
-                            <input type="hidden" name="note_date" value="${escapeHtml(appointmentDate)}">
-                            <div class="row g-3">
-                                <div class="col-md-8">
-                                    <label class="form-label" for="appointment-session-note-title">T&iacute;tulo</label>
-                                    <input type="text" class="form-control" id="appointment-session-note-title" name="title" maxlength="180" required>
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label" for="appointment-session-note-files">Archivo</label>
-                                    <input type="file" class="form-control" id="appointment-session-note-files" name="evolution_files[]" accept=".pdf,.xls,.xlsx,image/jpeg,image/png,image/webp,image/gif" multiple>
-                                </div>
-                                <div class="col-12">
-                                    <label class="form-label" for="appointment-session-note-description">Descripci&oacute;n</label>
-                                    <textarea class="form-control" id="appointment-session-note-description" name="description" rows="3"></textarea>
-                                </div>
-                            </div>
-                            <div class="text-end mt-3">
-                                <button class="btn btn-primary btn-sm" type="submit" id="btn-save-appointment-session-note">
-                                    <i class="bi bi-journal-plus"></i> Guardar nota
-                                </button>
-                            </div>
-                        </form>
                     </div>
                     <div id="appointment-session-activity">${renderAppointmentSessionActivity(CURRENT_APPOINTMENT_SESSION.notes, CURRENT_APPOINTMENT_SESSION.files)}</div>
                 </section>
@@ -6611,7 +6888,6 @@ function saveAppointmentPayment() {
 
 function refreshAfterAppointmentPaymentUpdate() {
     renderWeekInfo();
-    loadQuickAppointmentsSummary();
     if ($('#upcomingAppointmentsModal').hasClass('show')) {
         loadUpcomingAppointments();
     }
@@ -7328,6 +7604,8 @@ function loadPaymentSettings() {
 
             let settings = res.settings || {};
             PAYMENT_SETTINGS = Object.assign({}, PAYMENT_SETTINGS, settings);
+            APP_SECTOR_TEXTS = settings.sector_texts || APP_SECTOR_TEXTS || {};
+            APP_SECTOR_TEXT_OPTIONS = Array.isArray(settings.sector_texts_options) ? settings.sector_texts_options : APP_SECTOR_TEXT_OPTIONS;
             APPOINTMENT_SERVICES = Array.isArray(res.services) ? res.services : [];
             APPOINTMENT_BONUSES = Array.isArray(res.bonuses) ? res.bonuses : [];
             $('#app-name').val(settings.app_name || 'PsicoLogic');
@@ -7351,6 +7629,7 @@ function loadPaymentSettings() {
             $('#legal-uses-non-technical-cookies').prop('checked', settings.legal_uses_non_technical_cookies == 1);
             $('#legal-terms-notes').val(settings.legal_terms_notes || '');
             $('#initial-calendar-view').val(settings.initial_calendar_view === 'week' ? 'week' : 'month');
+            populateSectorTextsSelect(settings.sector_texts_key || 'psicologia');
             $('#dashboard-config-mode').val(['simple', 'advanced', 'custom'].includes(settings.dashboard_config_mode) ? settings.dashboard_config_mode : 'simple');
             toggleDashboardConfigModeControls();
             $('#online-booking-enabled').prop('checked', settings.online_booking_enabled === undefined ? true : settings.online_booking_enabled == 1);
@@ -7457,6 +7736,21 @@ function loadPaymentSettings() {
         }
         });
     });
+}
+
+function populateSectorTextsSelect(selectedKey = 'psicologia') {
+    const $select = $('#sector-texts-key');
+    if (!$select.length) return;
+    const options = Array.isArray(APP_SECTOR_TEXT_OPTIONS) && APP_SECTOR_TEXT_OPTIONS.length
+        ? APP_SECTOR_TEXT_OPTIONS
+        : [{ key: 'psicologia', name: 'Psicologia' }];
+    const current = selectedKey || $select.val() || 'psicologia';
+    $select.empty();
+    options.forEach(option => {
+        const key = option.key || 'psicologia';
+        $select.append(`<option value="${escapeHtml(key)}">${escapeHtml(option.name || key)}</option>`);
+    });
+    $select.val($select.find(`option[value="${current}"]`).length ? current : 'psicologia');
 }
 
 function toggleEmailProviderSettings() {
@@ -8560,6 +8854,7 @@ function savePaymentSettings(alertSelector = '#payment-settings-alert', onSucces
     formData.append('show_prices_public', $('#show-prices-public').is(':checked') ? '1' : '0');
     formData.append('show_contact_public', $('#show-contact-public').is(':checked') ? '1' : '0');
     formData.append('initial_calendar_view', $('#initial-calendar-view').val() || 'month');
+    formData.append('sector_texts_key', $('#sector-texts-key').val() || 'psicologia');
     formData.append('dashboard_config_mode', $('#dashboard-config-mode').val() || 'simple');
     formData.append('online_booking_enabled', $('#online-booking-enabled').is(':checked') ? '1' : '0');
     formData.append('patient_tasks_visible_default', $('#patient-tasks-visible-default').is(':checked') ? '1' : '0');

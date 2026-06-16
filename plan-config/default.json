@@ -1,0 +1,25 @@
+{
+    "version": 1,
+    "plan": {
+        "key": "default",
+        "label": "Plan actual",
+        "features": {
+            "onlineBooking.enabled": true,
+            "tasks.enabled": true,
+            "closures.enabled": true,
+            "bonuses.enabled": true,
+            "reports.globalReports": true,
+            "upcomingAppointments.planning": true,
+            "appointments.effectiveDuration": true,
+            "taskTemplates.enabled": true,
+            "onlinePayments.enabled": true
+        },
+        "limits": {
+            "appointmentDurations": [
+                60,
+                90,
+                120
+            ]
+        }
+    }
+}

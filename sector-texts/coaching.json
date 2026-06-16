@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "key": "coaching",
+  "name": "Coaching",
+  "description": "Configuracion de textos para coaching personal, ejecutivo o educativo.",
+  "labels": {
+    "patient": {
+      "singular": "cliente",
+      "plural": "clientes",
+      "titleSingular": "Cliente",
+      "titlePlural": "Clientes"
+    },
+    "professional": {
+      "singular": "coach",
+      "plural": "coaches",
+      "titleSingular": "Coach",
+      "titlePlural": "Coaches"
+    },
+    "organization": {
+      "singular": "consulta",
+      "plural": "consultas",
+      "titleSingular": "Consulta",
+      "titlePlural": "Consultas"
+    },
+    "appointment": {
+      "singular": "sesion",
+      "plural": "sesiones",
+      "titleSingular": "Sesion",
+      "titlePlural": "Sesiones"
+    },
+    "session": {
+      "singular": "sesion",
+      "plural": "sesiones",
+      "titleSingular": "Sesion",
+      "titlePlural": "Sesiones"
+    },
+    "workPlan": {
+      "singular": "plan de accion",
+      "plural": "planes de accion",
+      "titleSingular": "Plan de accion",
+      "titlePlural": "Planes de accion"
+    },
+    "task": {
+      "singular": "accion",
+      "plural": "acciones",
+      "titleSingular": "Accion",
+      "titlePlural": "Acciones"
+    },
+    "evolution": {
+      "singular": "seguimiento",
+      "plural": "seguimientos",
+      "titleSingular": "Seguimiento",
+      "titlePlural": "Seguimiento"
+    }
+  },
+  "services": {
+    "individual": "Individual",
+    "couple": "Parejas",
+    "family": "Familiar",
+    "group": "Grupos"
+  },
+  "portal": {
+    "bookingCta": "Reserva tu sesion",
+    "myAppointments": "Mis sesiones",
+    "myTasks": "Mis acciones"
+  },
+  "reports": {
+    "internalPatientReport": "Informe interno de cliente",
+    "patientReport": "Informe para cliente"
+  },
+  "featureHints": {
+    "workPlan": true,
+    "patientPortal": true,
+    "clinicalEvolution": false,
+    "sessionFiles": true
+  }
+}

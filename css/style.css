@@ -185,6 +185,28 @@ textarea.form-control::placeholder {
     box-shadow: 0 0 0 0.25rem color-mix(in srgb, var(--primary-color) 25%, transparent);
 }
 
+.dashboard-enter {
+    animation: dashboardFadeIn 260ms ease-out both;
+}
+
+@keyframes dashboardFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dashboard-enter {
+        animation: none;
+    }
+}
+
 /* Calendar styling */
 .calendar-grid {
     display: grid;
@@ -2742,6 +2764,20 @@ body.appointment-payment-secondary-modal-open #bonusesModal .modal-content {
     transition: opacity 0.15s ease, filter 0.15s ease;
 }
 
+body.appointment-session-note-modal-open #appointmentPaymentModal .modal-content {
+    filter: grayscale(0.2);
+    opacity: 0.42;
+    pointer-events: none;
+    transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
+body.appointment-work-plan-modal-open #appointmentPaymentModal .modal-content {
+    filter: grayscale(0.2);
+    opacity: 0.42;
+    pointer-events: none;
+    transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
 .quick-appointments-summary {
     margin-top: -4px;
 }
@@ -2966,6 +3002,19 @@ body.appointment-payment-secondary-modal-open #bonusesModal .modal-content {
 
 #appointmentPaymentModal {
     z-index: 1075;
+}
+
+#appointmentSessionNoteModal {
+    z-index: 1095;
+}
+
+#patientWorkPlanTaskModal {
+    z-index: 1095;
+}
+
+body.appointment-session-note-modal-open .modal-backdrop.show,
+body.appointment-work-plan-modal-open .modal-backdrop.show {
+    z-index: 1065;
 }
 
 @media (max-width: 768px) {

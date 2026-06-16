@@ -226,6 +226,7 @@ function install_base_tables($mysqli)
         patient_registration_mode VARCHAR(16) NOT NULL DEFAULT 'invite',
         patient_tasks_visible_default TINYINT(1) NOT NULL DEFAULT 0,
         dashboard_config_mode VARCHAR(16) NOT NULL DEFAULT 'simple',
+        sector_texts_key VARCHAR(32) NOT NULL DEFAULT 'psicologia',
         legal_owner_name VARCHAR(255) NULL,
         legal_nif VARCHAR(50) NULL,
         legal_address VARCHAR(500) NULL,
@@ -271,6 +272,7 @@ function install_ensure_payment_settings_columns($mysqli)
     install_add_column_if_missing($mysqli, 'payment_settings', 'show_contact_public', 'TINYINT(1) NOT NULL DEFAULT 0');
     install_add_column_if_missing($mysqli, 'payment_settings', 'allow_patient_transfer', 'TINYINT(1) NOT NULL DEFAULT 0');
     install_add_column_if_missing($mysqli, 'payment_settings', 'dashboard_config_mode', 'VARCHAR(16) NOT NULL DEFAULT "simple"');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'sector_texts_key', 'VARCHAR(32) NOT NULL DEFAULT "psicologia" AFTER dashboard_config_mode');
     install_add_column_if_missing($mysqli, 'payment_settings', 'site_tagline', 'VARCHAR(255) NULL AFTER app_name');
     install_add_column_if_missing($mysqli, 'payment_settings', 'site_phone', 'VARCHAR(40) NULL AFTER site_tagline');
     install_add_column_if_missing($mysqli, 'payment_settings', 'favicon_path', 'VARCHAR(255) NULL AFTER profile_image_path');

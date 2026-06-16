@@ -355,15 +355,20 @@ git config --global --add safe.directory C:/Sete/psicologic
   - La pestana muestra `Preparar esta sesion` si la cita es futura y `Sesion` si esta en curso o ya no es futura.
   - Las notas con archivo se muestran como un unico item, con icono de adjunto, fecha, titulo y nombre de archivo.
   - Desde el listado de sesion se puede eliminar una nota junto con sus adjuntos.
+  - La creacion de nuevas notas/archivos de sesion se hace en un modal secundario para no ocupar espacio dentro del detalle de la cita.
+  - Desde la pestana de sesion tambien se puede abrir el modal reutilizado `Crear o importar tareas`, crear tareas manuales o importar plantillas y vincularlas a esa cita.
 - `patient_work_plan_tasks` anade `appointment_id` para diferenciar tareas generales del paciente y tareas creadas desde una sesion concreta.
 - El plan de trabajo permite crear plantillas reutilizables desde Configuracion > Plantillas.
   - Cada plantilla tiene nombre propio, terapia/categoria y descripcion interna.
+  - Queda anotada la primera matriz de funcionalidades ocultables por dashboard (`dashboard-config/*.json`) y por plan contratado (`plan-config/default.json`).
+  - `dashboard-config/simple.json` deja desactivadas las opciones avanzadas de UI; `advanced.json` y `custom.json` parten con todo activo.
   - Dentro de cada plantilla se crean varias tareas con titulo, descripcion y prioridad.
   - La pestana muestra solo el listado/resumen de plantillas y sus tareas.
   - La creacion/edicion de plantillas y tareas se hace en modales secundarios independientes.
   - Desde la ficha del paciente se puede importar una plantilla existente y se crean todas sus tareas en el plan de trabajo del paciente.
   - El superadmin puede crear plantillas globales para todo el gabinete; cada profesional puede crear plantillas propias.
 - El resumen rapido de proxima cita muestra textos relativos: `En X minutos`, `Hoy a HH:MM`, `Manana a HH:MM` o fecha segun corresponda.
+- El resumen rapido de proxima cita se refresca automaticamente cada 60 segundos para actualizar `En X minutos` y cambiar a `Cita en curso` sin recargar la agenda.
 - El modal pasa a llamarse `Informes y estadisticas`, es scrollable y sus listados tienen scroll independiente.
 - Cada listado de la pestana `Informes` permite imprimir y exportar CSV desde la propia tabla renderizada.
 - Los listados de `Informes` tambien permiten exportar XLS simple sin dependencias externas.
@@ -378,6 +383,11 @@ git config --global --add safe.directory C:/Sete/psicologic
   - Por ahora `simple.json`, `advanced.json` y `custom.json` activan todas las opciones conocidas.
   - `custom.json` se puede editar desde un modal con validacion JSON antes de guardar.
   - `dashboard_config_helpers.php` fusiona claves nuevas del esquema avanzado en el JSON custom para que futuras funciones aparezcan aunque el archivo ya existiera.
+- Se anade una primera capa de textos por sector:
+  - Nueva carpeta `sector-texts/` con presets `psicologia`, `coaching`, `nutricion`, `fisioterapia` y `asesoria`.
+  - Nueva columna `payment_settings.sector_texts_key VARCHAR(32) NOT NULL DEFAULT 'psicologia'`.
+  - `sector_text_helpers.php` carga el JSON activo, lista sectores disponibles y usa siempre `psicologia` como fallback si falta el valor o el archivo.
+  - Configuracion > Interfaz incorpora el selector `Sector`; `get_payment_settings` devuelve `sector_texts` y `sector_texts_options` para sustituir textos por claves progresivamente.
 
 ## Pendientes sugeridos
 

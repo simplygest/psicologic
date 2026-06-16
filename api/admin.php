@@ -348,6 +348,7 @@ function ensure_payment_settings_table($mysqli)
             online_booking_enabled TINYINT(1) NOT NULL DEFAULT 1,
             patient_registration_mode VARCHAR(16) NOT NULL DEFAULT 'invite',
             dashboard_config_mode VARCHAR(16) NOT NULL DEFAULT 'simple',
+            sector_texts_key VARCHAR(32) NOT NULL DEFAULT 'psicologia',
             patient_tasks_visible_default TINYINT(1) NOT NULL DEFAULT 0,
             bonuses_enabled TINYINT(1) NOT NULL DEFAULT 0,
             create_compensation_bonus_on_paid_cancel TINYINT(1) NOT NULL DEFAULT 1,
@@ -484,7 +485,8 @@ function ensure_payment_settings_table($mysqli)
         'legal_professional_college' => "ALTER TABLE payment_settings ADD legal_professional_college VARCHAR(255) DEFAULT NULL",
         'legal_uses_non_technical_cookies' => "ALTER TABLE payment_settings ADD legal_uses_non_technical_cookies TINYINT NOT NULL DEFAULT 0",
         'legal_terms_notes' => "ALTER TABLE payment_settings ADD legal_terms_notes TEXT DEFAULT NULL",
-        'dashboard_config_mode' => "ALTER TABLE payment_settings ADD dashboard_config_mode VARCHAR(16) NOT NULL DEFAULT 'simple'"
+        'dashboard_config_mode' => "ALTER TABLE payment_settings ADD dashboard_config_mode VARCHAR(16) NOT NULL DEFAULT 'simple'",
+        'sector_texts_key' => "ALTER TABLE payment_settings ADD sector_texts_key VARCHAR(32) NOT NULL DEFAULT 'psicologia' AFTER dashboard_config_mode"
     ];
 
     foreach ($columns as $column => $sql) {
@@ -3300,11 +3302,12 @@ if ($action === 'generate_invite') {
         WHERE a.status = 'booked'
           $professional_filter
     ";
+    $now_sql = $mysqli->real_escape_string(date('Y-m-d H:i:s'));
 
     $current_res = $mysqli->query("
         $base_select
-          AND CONCAT(a.appointment_date, ' ', a.appointment_time) <= NOW()
-          AND DATE_ADD(CONCAT(a.appointment_date, ' ', a.appointment_time), INTERVAL COALESCE(a.duration_minutes, so.duration_minutes, 60) MINUTE) > NOW()
+          AND CONCAT(a.appointment_date, ' ', a.appointment_time) <= '$now_sql'
+          AND DATE_ADD(CONCAT(a.appointment_date, ' ', a.appointment_time), INTERVAL COALESCE(a.duration_minutes, so.duration_minutes, 60) MINUTE) > '$now_sql'
         ORDER BY a.appointment_date ASC, a.appointment_time ASC
         LIMIT 1
     ");
@@ -3312,7 +3315,7 @@ if ($action === 'generate_invite') {
     $exclude_current = $current ? " AND a.id <> " . (int) $current['id'] : '';
     $next_res = $mysqli->query("
         $base_select
-          AND CONCAT(a.appointment_date, ' ', a.appointment_time) > NOW()
+          AND CONCAT(a.appointment_date, ' ', a.appointment_time) > '$now_sql'
           $exclude_current
         ORDER BY a.appointment_date ASC, a.appointment_time ASC
         LIMIT 1
@@ -4426,6 +4429,7 @@ if ($action === 'generate_invite') {
     ensure_payment_settings_table($mysqli);
     ensure_cabinet_schema($mysqli);
     dashboard_config_ensure_files();
+    sector_texts_ensure_payment_column($mysqli);
 
     $res = $mysqli->query("
         SELECT app_name, site_tagline, site_phone, profile_image_path, landing_image_path, primary_color, show_profile_image_public, show_prices_public, show_contact_public, online_booking_enabled, patient_registration_mode, patient_tasks_visible_default, initial_calendar_view, bonuses_enabled, create_compensation_bonus_on_paid_cancel, online_payment_enabled, environment, merchant_code, terminal,
@@ -4439,7 +4443,7 @@ if ($action === 'generate_invite') {
                icloud_calendar_email, icloud_calendar_url, send_patient_calendar_link,
                fastcron_reminder_cron_id,
                legal_owner_name, legal_nif, legal_address, legal_email, legal_license_number, legal_professional_college, legal_uses_non_technical_cookies, legal_terms_notes,
-               allow_patient_transfer, dashboard_config_mode,
+               allow_patient_transfer, dashboard_config_mode, sector_texts_key,
                merchant_key IS NOT NULL AND merchant_key != '' AS has_merchant_key,
                smtp_password IS NOT NULL AND smtp_password != '' AS has_smtp_password,
                google_client_secret IS NOT NULL AND google_client_secret != '' AS has_google_client_secret,
@@ -4461,6 +4465,10 @@ if ($action === 'generate_invite') {
     $dashboard_config_mode = in_array(($settings['dashboard_config_mode'] ?? ''), ['simple', 'advanced', 'custom'], true) ? $settings['dashboard_config_mode'] : 'simple';
     $settings['dashboard_config_mode'] = $dashboard_config_mode;
     $settings['dashboard_config'] = dashboard_config_for_mode($dashboard_config_mode);
+    $sector_texts_key = sector_texts_validate_key($settings['sector_texts_key'] ?? '') ? $settings['sector_texts_key'] : sector_texts_default_key();
+    $settings['sector_texts_key'] = sector_texts_read_file($sector_texts_key) ? $sector_texts_key : sector_texts_default_key();
+    $settings['sector_texts'] = sector_texts_for_key($settings['sector_texts_key']);
+    $settings['sector_texts_options'] = sector_texts_available();
 
     echo json_encode(['success' => true, 'settings' => $settings, 'services' => fetch_appointment_services($mysqli), 'bonuses' => fetch_appointment_bonuses($mysqli)]);
 } elseif ($action === 'get_dashboard_custom_config') {
@@ -4650,6 +4658,10 @@ if ($action === 'generate_invite') {
     $dashboard_config_mode = $_POST['dashboard_config_mode'] ?? 'simple';
     if (!in_array($dashboard_config_mode, ['simple', 'advanced', 'custom'], true)) {
         $dashboard_config_mode = 'simple';
+    }
+    $sector_texts_key = $_POST['sector_texts_key'] ?? sector_texts_default_key();
+    if (!sector_texts_validate_key($sector_texts_key) || !sector_texts_read_file($sector_texts_key)) {
+        $sector_texts_key = sector_texts_default_key();
     }
     $initial_calendar_view = $_POST['initial_calendar_view'] ?? 'month';
     $environment = $_POST['environment'] ?? 'sandbox';
@@ -5002,8 +5014,8 @@ if ($action === 'generate_invite') {
     $stmt->bind_param("s", $primary_color);
     $stmt->execute();
 
-    $stmt = $mysqli->prepare("UPDATE payment_settings SET dashboard_config_mode = ? WHERE id = 1");
-    $stmt->bind_param("s", $dashboard_config_mode);
+    $stmt = $mysqli->prepare("UPDATE payment_settings SET dashboard_config_mode = ?, sector_texts_key = ? WHERE id = 1");
+    $stmt->bind_param("ss", $dashboard_config_mode, $sector_texts_key);
     $stmt->execute();
 
     $stmt = $mysqli->prepare("

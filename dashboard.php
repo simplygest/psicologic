@@ -17,6 +17,8 @@ if (!$is_admin && (int) ($branding['online_booking_enabled'] ?? 1) !== 1) {
 }
 $dashboard_config_mode = $is_admin ? dashboard_config_mode_from_db($mysqli) : 'simple';
 $dashboard_config = dashboard_config_for_mode($dashboard_config_mode);
+$sector_texts = sector_texts_for_key($branding['sector_texts_key'] ?? sector_texts_default_key());
+$sector_texts_options = sector_texts_available();
 $app_name = $branding['app_name'];
 $profile_image_path = $branding['profile_image_path'];
 $navbar_image_path = $profile_image_path;
@@ -292,7 +294,7 @@ if ($is_admin) {
 
   <?php if ($is_admin): ?>
     <div class="modal fade" id="appointmentPaymentModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-lg">
+      <div class="modal-dialog modal-xl">
         <div class="modal-content">
           <div class="modal-header">
             <h5 class="modal-title">Detalle de la cita</h5>
@@ -359,6 +361,45 @@ if ($is_admin) {
             </button>
             <button type="button" class="btn btn-primary" id="btn-save-appointment-payment">Guardar cambios</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="appointmentSessionNoteModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <form id="appointment-session-note-form" enctype="multipart/form-data">
+            <div class="modal-header">
+              <h5 class="modal-title">Nueva nota / archivo</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+              <input type="hidden" name="note_id" value="0">
+              <input type="hidden" name="appointment_id" id="appointment-session-note-appointment-id" value="0">
+              <input type="hidden" name="patient_id" id="appointment-session-note-patient-id" value="0">
+              <input type="hidden" name="note_date" id="appointment-session-note-date" value="">
+              <div class="row g-3">
+                <div class="col-md-8">
+                  <label class="form-label" for="appointment-session-note-title">T&iacute;tulo</label>
+                  <input type="text" class="form-control" id="appointment-session-note-title" name="title" maxlength="180" required>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label" for="appointment-session-note-files">Archivo</label>
+                  <input type="file" class="form-control" id="appointment-session-note-files" name="evolution_files[]" accept=".pdf,.xls,.xlsx,image/jpeg,image/png,image/webp,image/gif" multiple>
+                </div>
+                <div class="col-12">
+                  <label class="form-label" for="appointment-session-note-description">Descripci&oacute;n</label>
+                  <textarea class="form-control" id="appointment-session-note-description" name="description" rows="3"></textarea>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button class="btn btn-primary" type="submit" id="btn-save-appointment-session-note">
+                <i class="bi bi-journal-plus"></i> Guardar nota
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     </div>
@@ -586,10 +627,6 @@ if ($is_admin) {
                       <input type="file" class="form-control" id="patient-editor-document" name="patient_document" accept=".pdf,.xls,.xlsx">
                       <div class="form-text" id="patient-editor-document-status"></div>
                     </div>
-                    <div class="col-12">
-                      <label class="form-label" for="patient-editor-notes">Notas internas</label>
-                      <textarea class="form-control" id="patient-editor-notes" name="notes" rows="6"></textarea>
-                    </div>
                   </div>
                 </form>
               </div>
@@ -630,7 +667,11 @@ if ($is_admin) {
                   </div>
                   <div class="col-12">
                     <label class="form-label" for="patient-editor-initial-reason">Motivo inicial de consulta</label>
-                    <textarea class="form-control" id="patient-editor-initial-reason" name="initial_consultation_reason" rows="4" form="patient-editor-form"></textarea>
+                    <textarea class="form-control" id="patient-editor-initial-reason" name="initial_consultation_reason" rows="3" form="patient-editor-form"></textarea>
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label" for="patient-editor-notes">Notas internas</label>
+                    <textarea class="form-control" id="patient-editor-notes" name="notes" rows="3" form="patient-editor-form"></textarea>
                   </div>
                 </div>
               </div>
@@ -1453,6 +1494,17 @@ if ($is_admin) {
                         <input type="text" class="form-control" id="primary-color-text" value="#8f7fba" maxlength="7" style="max-width: 120px;">
                       </div>
                       <div class="form-text">Se aplicará a botones, enlaces destacados y elementos principales de la interfaz.</div>
+                    </div>
+                  </div>
+                  <div class="row g-3 align-items-start mb-4">
+                    <label class="col-lg-2 col-form-label" for="sector-texts-key">Sector</label>
+                    <div class="col-lg-10">
+                      <select class="form-select" id="sector-texts-key" style="max-width: 320px;">
+                        <?php foreach ($sector_texts_options as $sector_option): ?>
+                          <option value="<?= htmlspecialchars($sector_option['key']) ?>"><?= htmlspecialchars($sector_option['name']) ?></option>
+                        <?php endforeach; ?>
+                      </select>
+                      <div class="form-text">Define el vocabulario base de la app: paciente/cliente, profesional/asesor, gabinete/consulta, citas/sesiones, etc.</div>
                     </div>
                   </div>
                   <div class="row g-3 align-items-start mb-3">
@@ -2365,6 +2417,8 @@ if ($is_admin) {
     const INITIAL_CALENDAR_VIEW = <?= json_encode(($branding['initial_calendar_view'] ?? 'month') === 'week' ? 'week' : 'month') ?>;
     const DASHBOARD_CONFIG_MODE = <?= json_encode($dashboard_config_mode) ?>;
     const DASHBOARD_CONFIG = <?= json_encode($dashboard_config, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+    const SECTOR_TEXTS = <?= json_encode($sector_texts, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+    const SECTOR_TEXT_OPTIONS = <?= json_encode($sector_texts_options, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
   </script>
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>

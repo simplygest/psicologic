@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "key": "asesoria",
+  "name": "Asesoria",
+  "description": "Configuracion de textos para asesorias, consultorias y servicios profesionales.",
+  "labels": {
+    "patient": {
+      "singular": "cliente",
+      "plural": "clientes",
+      "titleSingular": "Cliente",
+      "titlePlural": "Clientes"
+    },
+    "professional": {
+      "singular": "asesor",
+      "plural": "asesores",
+      "titleSingular": "Asesor",
+      "titlePlural": "Asesores"
+    },
+    "organization": {
+      "singular": "asesoria",
+      "plural": "asesorias",
+      "titleSingular": "Asesoria",
+      "titlePlural": "Asesorias"
+    },
+    "appointment": {
+      "singular": "reunion",
+      "plural": "reuniones",
+      "titleSingular": "Reunion",
+      "titlePlural": "Reuniones"
+    },
+    "session": {
+      "singular": "reunion",
+      "plural": "reuniones",
+      "titleSingular": "Reunion",
+      "titlePlural": "Reuniones"
+    },
+    "workPlan": {
+      "singular": "plan de trabajo",
+      "plural": "planes de trabajo",
+      "titleSingular": "Plan de trabajo",
+      "titlePlural": "Planes de trabajo"
+    },
+    "task": {
+      "singular": "tarea",
+      "plural": "tareas",
+      "titleSingular": "Tarea",
+      "titlePlural": "Tareas"
+    },
+    "evolution": {
+      "singular": "seguimiento",
+      "plural": "seguimientos",
+      "titleSingular": "Seguimiento",
+      "titlePlural": "Seguimiento"
+    }
+  },
+  "services": {
+    "individual": "Individual",
+    "couple": "Parejas",
+    "family": "Familiar",
+    "group": "Grupos"
+  },
+  "portal": {
+    "bookingCta": "Reserva tu reunion",
+    "myAppointments": "Mis reuniones",
+    "myTasks": "Mis tareas"
+  },
+  "reports": {
+    "internalPatientReport": "Informe interno de cliente",
+    "patientReport": "Informe para cliente"
+  },
+  "featureHints": {
+    "workPlan": true,
+    "patientPortal": true,
+    "clinicalEvolution": false,
+    "sessionFiles": true
+  }
+}

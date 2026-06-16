@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/sector_text_helpers.php';
 
 function ensure_branding_columns($mysqli)
 {
@@ -19,6 +20,7 @@ function ensure_branding_columns($mysqli)
         'show_prices_public' => "ALTER TABLE payment_settings ADD show_prices_public TINYINT(1) NOT NULL DEFAULT 0 AFTER show_profile_image_public",
         'show_contact_public' => "ALTER TABLE payment_settings ADD show_contact_public TINYINT(1) NOT NULL DEFAULT 0 AFTER show_prices_public",
         'dashboard_config_mode' => "ALTER TABLE payment_settings ADD dashboard_config_mode VARCHAR(16) NOT NULL DEFAULT 'simple'",
+        'sector_texts_key' => "ALTER TABLE payment_settings ADD sector_texts_key VARCHAR(32) NOT NULL DEFAULT 'psicologia' AFTER dashboard_config_mode",
         'online_booking_enabled' => "ALTER TABLE payment_settings ADD online_booking_enabled TINYINT(1) NOT NULL DEFAULT 1 AFTER show_contact_public",
         'patient_registration_mode' => "ALTER TABLE payment_settings ADD patient_registration_mode VARCHAR(16) NOT NULL DEFAULT 'invite' AFTER online_booking_enabled",
         'initial_calendar_view' => "ALTER TABLE payment_settings ADD initial_calendar_view VARCHAR(12) NOT NULL DEFAULT 'month' AFTER online_booking_enabled",
@@ -56,6 +58,7 @@ function get_public_branding_settings($mysqli)
         'online_booking_enabled' => 1,
         'patient_registration_mode' => 'invite',
         'initial_calendar_view' => 'month',
+        'sector_texts_key' => 'psicologia',
         'legal_owner_name' => '',
         'legal_nif' => '',
         'legal_address' => '',
@@ -74,7 +77,7 @@ function get_public_branding_settings($mysqli)
     ensure_branding_columns($mysqli);
 
     $res = $mysqli->query("
-        SELECT app_name, site_tagline, site_phone, profile_image_path, landing_image_path, favicon_path, primary_color, show_profile_image_public, show_prices_public, show_contact_public, online_booking_enabled, patient_registration_mode, initial_calendar_view,
+        SELECT app_name, site_tagline, site_phone, profile_image_path, landing_image_path, favicon_path, primary_color, show_profile_image_public, show_prices_public, show_contact_public, online_booking_enabled, patient_registration_mode, initial_calendar_view, sector_texts_key,
                legal_owner_name, legal_nif, legal_address, legal_email, legal_license_number, legal_professional_college, legal_uses_non_technical_cookies, legal_terms_notes
         FROM payment_settings
         WHERE id = 1
@@ -94,6 +97,7 @@ function get_public_branding_settings($mysqli)
         $settings['online_booking_enabled'] = (int) ($row['online_booking_enabled'] ?? 1);
         $settings['patient_registration_mode'] = in_array(($row['patient_registration_mode'] ?? ''), ['invite', 'open'], true) ? $row['patient_registration_mode'] : 'invite';
         $settings['initial_calendar_view'] = in_array(($row['initial_calendar_view'] ?? ''), ['week', 'month'], true) ? $row['initial_calendar_view'] : 'month';
+        $settings['sector_texts_key'] = sector_texts_validate_key($row['sector_texts_key'] ?? '') ? $row['sector_texts_key'] : sector_texts_default_key();
         $settings['legal_owner_name'] = trim($row['legal_owner_name'] ?? '');
         $settings['legal_nif'] = trim($row['legal_nif'] ?? '');
         $settings['legal_address'] = trim($row['legal_address'] ?? '');
