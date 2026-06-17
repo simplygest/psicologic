@@ -6,8 +6,8 @@ $configPath = $rootDir . '/config.local.php';
 $isInstalled = file_exists($configPath);
 
 $branding = [
-    'app_name' => 'PsicoLogic',
-    'primary_color' => '#8f7fba',
+    'app_name' => 'SimplyGest Praxis',
+    'primary_color' => '#4285f4',
     'profile_image_path' => '',
 ];
 
@@ -28,7 +28,7 @@ if ($isInstalled) {
     $branding = get_public_branding_settings($mysqli);
 }
 
-$app_name = $branding['app_name'] ?: 'PsicoLogic';
+$app_name = $branding['app_name'] ?: 'SimplyGest Praxis';
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -169,7 +169,7 @@ $app_name = $branding['app_name'] ?: 'PsicoLogic';
                     puede recibir el paciente por email.
                 </p>
                 <ul>
-                    <li><strong>No sincronizar:</strong> las citas quedan solo en PsicoLogic.</li>
+                    <li><strong>No sincronizar:</strong> las citas quedan solo en SimplyGest Praxis.</li>
                     <li><strong>Google Calendar:</strong> crea eventos automáticamente usando la conexión OAuth de Google.</li>
                     <li><strong>iCloud Calendar:</strong> crea y elimina eventos usando CalDAV, el Apple ID y una contraseña de aplicación.</li>
                 </ul>
@@ -182,7 +182,7 @@ $app_name = $branding['app_name'] ?: 'PsicoLogic';
                 <ol>
                     <li>Entra en <a href="https://account.apple.com/sign-in" target="_blank" rel="noopener">account.apple.com</a> con tu cuenta de Apple.</li>
                     <li>Busca la sección <strong>Contraseñas de aplicación</strong>.</li>
-                    <li>Genera una nueva contraseña y ponle un nombre identificativo, por ejemplo <strong>PsicoLogic</strong>.</li>
+                    <li>Genera una nueva contraseña y ponle un nombre identificativo, por ejemplo <strong>SimplyGest Praxis</strong>.</li>
                     <li>Copia la contraseña generada y pégala en <strong>Configuración &gt; Calendario online</strong>, junto al email/Apple ID.</li>
                 </ol>
                 <div class="help-grid">
@@ -227,7 +227,7 @@ $app_name = $branding['app_name'] ?: 'PsicoLogic';
             <article class="help-section" id="pacientes">
                 <h2>Pacientes</h2>
                 <p>
-                    El bot&oacute;n <strong>Mis pacientes</strong> permite usar PsicoLogic como registro interno de pacientes,
+                    El bot&oacute;n <strong>Mis pacientes</strong> permite usar SimplyGest Praxis como registro interno de pacientes,
                     incluso cuando un paciente todav&iacute;a no tiene acceso a la web.
                 </p>
                 <ul>

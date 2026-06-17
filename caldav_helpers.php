@@ -23,7 +23,7 @@ function caldav_build_ics($uid, $summary, $description, $start_value, $end_value
     $lines = [
         'BEGIN:VCALENDAR',
         'VERSION:2.0',
-        'PRODID:-//PsicoLogic//CalDAV//ES',
+        'PRODID:-//SimplyGest Praxis//CalDAV//ES',
         'CALSCALE:GREGORIAN',
         'BEGIN:VEVENT',
         'UID:' . $uid,

@@ -7,7 +7,7 @@ function ensure_admin_notification_email_column($mysqli)
         $mysqli->query("
             CREATE TABLE IF NOT EXISTS payment_settings (
                 id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
-                app_name VARCHAR(255) DEFAULT 'PsicoLogic',
+                app_name VARCHAR(255) DEFAULT 'SimplyGest Praxis',
                 online_payment_enabled TINYINT(1) NOT NULL DEFAULT 0,
                 environment ENUM('sandbox', 'real') NOT NULL DEFAULT 'sandbox',
                 merchant_code VARCHAR(32) DEFAULT NULL,
@@ -41,7 +41,7 @@ function ensure_admin_notification_email_column($mysqli)
     }
 
     $columns = [
-        'app_name' => "ALTER TABLE payment_settings ADD app_name VARCHAR(255) DEFAULT 'PsicoLogic' AFTER id",
+        'app_name' => "ALTER TABLE payment_settings ADD app_name VARCHAR(255) DEFAULT 'SimplyGest Praxis' AFTER id",
         'email_provider' => "ALTER TABLE payment_settings ADD email_provider ENUM('phpmailer', 'google') NOT NULL DEFAULT 'phpmailer' AFTER admin_notification_email",
         'smtp_host' => "ALTER TABLE payment_settings ADD smtp_host VARCHAR(255) DEFAULT NULL AFTER email_provider",
         'smtp_port' => "ALTER TABLE payment_settings ADD smtp_port INT UNSIGNED DEFAULT 587 AFTER smtp_host",
@@ -114,7 +114,7 @@ function get_app_name($mysqli)
     ensure_admin_notification_email_column($mysqli);
     $res = $mysqli->query("SELECT app_name FROM payment_settings WHERE id = 1");
     $row = $res->fetch_assoc();
-    return trim($row['app_name'] ?? '') ?: 'PsicoLogic';
+    return trim($row['app_name'] ?? '') ?: 'SimplyGest Praxis';
 }
 
 function load_phpmailer()
@@ -209,7 +209,7 @@ function send_app_email($to, $subject, $html_body, $reply_to = null, $mysqli = n
         }
 
         $from_email = $settings['smtp_from_email'] ?: default_from_email();
-        $from_name = $settings['smtp_from_name'] ?: ($settings['app_name'] ?? 'PsicoLogic');
+        $from_name = $settings['smtp_from_name'] ?: ($settings['app_name'] ?? 'SimplyGest Praxis');
         $mail->setFrom($from_email, $from_name);
         $mail->addAddress($to);
 
@@ -445,7 +445,7 @@ function professional_appointments_summary_table($mysqli, $professional_id, $sta
         '<h3 style="margin:0 0 6px 0;color:#2f2642;font-size:18px;">Planning de pr&oacute;ximas citas</h3>' .
         '<p style="margin:0 0 12px 0;color:#6b7280;font-size:14px;">Aqu&iacute; tienes el resumen de citas ' . htmlspecialchars($period_text) . '.</p>' .
         '<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;border:1px solid #e5e1ed;border-radius:8px;overflow:hidden;background:#ffffff;">' .
-        '<thead><tr style="background:#8f7fba;color:#ffffff;">' .
+        '<thead><tr style="background:#4285f4;color:#ffffff;">' .
         '<th align="left" style="padding:10px 12px;font-size:13px;">Fecha</th>' .
         '<th align="left" style="padding:10px 12px;font-size:13px;">Hora</th>' .
         '<th align="left" style="padding:10px 12px;font-size:13px;">Paciente</th>' .

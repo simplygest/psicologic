@@ -305,7 +305,7 @@ if ($action === 'login') {
         $stmt->bind_param("is", $user['id'], $token_hash);
         $stmt->execute();
 
-        $reset_link = urlme_shorten_url(app_public_base_url() . 'reset_password.php?t=' . urlencode($token), 'Restablecer contrasena PsicoLogic', date('Y-m-d H:i:s', strtotime('+1 hour')));
+        $reset_link = urlme_shorten_url(app_public_base_url() . 'reset_password.php?t=' . urlencode($token), 'Restablecer contrasena SimplyGest Praxis', date('Y-m-d H:i:s', strtotime('+1 hour')));
         send_app_email(
             $user['email'],
             'Restablecer contraseña',

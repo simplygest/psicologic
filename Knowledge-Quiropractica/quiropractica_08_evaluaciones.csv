@@ -1,4 +1,0 @@
-﻿evaluacion_id;problema_id;nombre;tipo;notas;fuente_ids
-QUI_E001;QUI_P001;Escala dolor 0-10;Seguimiento;Herramienta simple;QUI_SRC001
-QUI_E002;QUI_P003;Neck Disability Index;Cuestionario;Revisar licencia antes de integrar;QUI_SRC003
-QUI_E003;QUI_P001;Oswestry Disability Index;Cuestionario;Revisar licencia antes de integrar;QUI_SRC002

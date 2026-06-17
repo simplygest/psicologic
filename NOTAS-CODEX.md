@@ -1,4 +1,4 @@
-# Notas Codex - PsicoLogic
+﻿# Notas Codex - SimplyGest Praxis
 
 Ultima revision: 2026-06-15
 
@@ -6,7 +6,7 @@ Este archivo sirve como historial compartido entre PCs para retomar el trabajo c
 
 ## Estado general de la app
 
-PsicoLogic es una app PHP/jQuery/Bootstrap para la web publica y la gestion de citas de una consulta. Usa sesiones PHP, MySQL remoto en Azure y vistas principales en `index.php`, `login.php`, `register.php`, `dashboard.php` y `cancelar_cita.php`.
+SimplyGest Praxis es una app PHP/jQuery/Bootstrap para la web publica y la gestion de citas de una consulta. Usa sesiones PHP, MySQL remoto en Azure y vistas principales en `index.php`, `login.php`, `register.php`, `dashboard.php` y `cancelar_cita.php`.
 
 La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`. Actualmente la zona horaria esta en `Atlantic/Canary`.
 
@@ -126,7 +126,7 @@ La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`.
 - Se creo la pestana `Interfaz` dentro del modal de configuracion.
 - Se movieron a `Interfaz` el titulo de la web, la imagen de dashboard/login/registro y la opcion de mostrarla en login/registro.
 - Se anadio imagen independiente para la pagina principal/landing (`landing_image_path`).
-- Se anadio color principal configurable (`primary_color`) con valor por defecto violeta `#8f7fba`.
+- Se anadio color principal configurable (`primary_color`) con valor por defecto SimplyGest `#4285f4`.
 - Se anadio configuracion de dias disponibles para consulta (`available_weekdays`), que controla las columnas visibles del calendario y valida reservas en backend.
 - Se anadio precio independiente para sesiones online (`online_appointment_price`), usado en Redsys, emails y pagina publica de gestion de reserva.
 - Se anadio selector de servicios ofrecidos (`available_session_types`) con individual por defecto y pareja opcional.
@@ -166,7 +166,7 @@ La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`.
 - `payment_settings.appointment_delivery_mode ENUM('both', 'presencial', 'online') NOT NULL DEFAULT 'both'`
 - `appointments.consultation_type VARCHAR(16) NOT NULL DEFAULT 'presencial'`
 - `payment_settings.landing_image_path VARCHAR(255) DEFAULT NULL`
-- `payment_settings.primary_color VARCHAR(7) NOT NULL DEFAULT '#8f7fba'`
+- `payment_settings.primary_color VARCHAR(7) NOT NULL DEFAULT '#4285f4'`
 - `payment_settings.available_weekdays VARCHAR(32) NOT NULL DEFAULT '1,2,3,4,5'`
 - `payment_settings.online_appointment_price DECIMAL(10,2) NOT NULL DEFAULT 70.00`
 - `payment_settings.couple_appointment_price DECIMAL(10,2) NOT NULL DEFAULT 90.00`
@@ -408,5 +408,5 @@ git config --global --add safe.directory C:/Sete/psicologic
 
 1. Hacer `git pull`.
 2. Abrir este archivo.
-3. Pedir a Codex: "Lee NOTAS-CODEX.md y seguimos con PsicoLogic".
+3. Pedir a Codex: "Lee NOTAS-CODEX.md y seguimos con SimplyGest Praxis".
 4. Si Git bloquea el repo por ownership, ejecutar el comando `safe.directory` indicado arriba.

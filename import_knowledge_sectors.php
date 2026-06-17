@@ -1,14 +1,10 @@
 <?php
-require_once __DIR__ . '/db.php';
 
-header('Content-Type: text/html; charset=utf-8');
-set_time_limit(300);
-ini_set('output_buffering', 'off');
-ini_set('zlib.output_compression', '0');
-
-$sectors = [
+function knowledge_sector_import_configs(string $base_dir): array
+{
+    return [
     'fisioterapia' => [
-        'dir' => __DIR__ . '/Knowledge-Fisioterapia',
+        'dir' => rtrim($base_dir, '/\\') . '/Knowledge-Fisioterapia',
         'prefix' => 'fisioterapia',
         'files' => [
             'sources' => 'fisioterapia_01_fuentes.csv',
@@ -22,7 +18,7 @@ $sectors = [
         ]
     ],
     'nutricion' => [
-        'dir' => __DIR__ . '/Knowledge-Nutricion',
+        'dir' => rtrim($base_dir, '/\\') . '/Knowledge-Nutricion',
         'prefix' => 'nutricion',
         'files' => [
             'sources' => 'nutricion_01_fuentes.csv',
@@ -36,7 +32,7 @@ $sectors = [
         ]
     ],
     'osteopatia' => [
-        'dir' => __DIR__ . '/Knowledge-Osteopatia',
+        'dir' => rtrim($base_dir, '/\\') . '/Knowledge-Osteopatia',
         'prefix' => 'osteopatia',
         'files' => [
             'sources' => 'osteopatia_01_fuentes.csv',
@@ -50,7 +46,7 @@ $sectors = [
         ]
     ],
     'logopedia' => [
-        'dir' => __DIR__ . '/Knowledge-Logopedia',
+        'dir' => rtrim($base_dir, '/\\') . '/Knowledge-Logopedia',
         'prefix' => 'logopedia',
         'files' => [
             'sources' => 'logopedia_01_fuentes.csv',
@@ -64,7 +60,7 @@ $sectors = [
         ]
     ],
     'quiropractica' => [
-        'dir' => __DIR__ . '/Knowledge-Quiropractica',
+        'dir' => rtrim($base_dir, '/\\') . '/Knowledge-Quiropractica',
         'prefix' => 'quiropractica',
         'files' => [
             'sources' => 'quiropractica_01_fuentes.csv',
@@ -75,8 +71,37 @@ $sectors = [
             'recommendations' => 'quiropractica_07_recomendaciones_tareas.csv',
             'questionnaires' => 'quiropractica_08_evaluaciones.csv'
         ]
+    ],
+    'psicologia' => [
+        'dir' => rtrim($base_dir, '/\\') . '/Knowledge-Psico',
+        'prefix' => 'psicologia',
+        'files' => [
+            'sources' => '01_fuentes.csv',
+            'areas' => '02_areas.csv',
+            'problems' => '03_problemas.csv',
+            'techniques' => '04_tecnicas.csv',
+            'tasks' => '05_tareas.csv',
+            'problem_techniques' => '06_problema_tecnica.csv',
+            'recommendations' => '07_recomendaciones_tareas.csv',
+            'questionnaires' => '08_cuestionarios.csv'
+        ]
     ]
-];
+    ];
+}
+
+function knowledge_default_import_base_dir(string $tenant_root): string
+{
+    foreach ([
+        dirname($tenant_root) . '/globalknowledgebase',
+        $tenant_root . '/globalknowledgebase',
+        $tenant_root
+    ] as $candidate) {
+        if (is_dir($candidate)) {
+            return $candidate;
+        }
+    }
+    return $tenant_root;
+}
 
 function table_exists(mysqli $mysqli, string $table): bool
 {
@@ -296,6 +321,9 @@ function ensure_knowledge_schema(mysqli $mysqli): void
 
 function keep_alive(string $message): void
 {
+    if (defined('KNOWLEDGE_IMPORT_SILENT') && KNOWLEDGE_IMPORT_SILENT) {
+        return;
+    }
     echo '<div>[' . date('H:i:s') . '] ' . htmlspecialchars($message, ENT_QUOTES, 'UTF-8') . '</div>' . PHP_EOL;
     @ob_flush();
     @flush();
@@ -659,6 +687,19 @@ function import_sector(mysqli $mysqli, string $sector_key, array $config): array
 
     return $stats;
 }
+
+if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') !== __FILE__) {
+    return;
+}
+
+require_once __DIR__ . '/db.php';
+
+header('Content-Type: text/html; charset=utf-8');
+set_time_limit(300);
+ini_set('output_buffering', 'off');
+ini_set('zlib.output_compression', '0');
+
+$sectors = knowledge_sector_import_configs(knowledge_default_import_base_dir(__DIR__));
 
 if (($_GET['run'] ?? '') !== '1') {
     echo '<h1>Importador Knowledge por sector</h1>';

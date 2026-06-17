@@ -76,7 +76,7 @@ foreach ($appointments as $appointment) {
         $update_token->execute();
     }
 
-    $manage_link = urlme_shorten_url($base_url . 'cancelar_cita.php?t=' . urlencode($cancel_token), 'Recordatorio cita PsicoLogic');
+    $manage_link = urlme_shorten_url($base_url . 'cancelar_cita.php?t=' . urlencode($cancel_token), 'Recordatorio cita SimplyGest Praxis');
     $date = date('d/m/Y', strtotime($appointment['appointment_date']));
     $time = date('H:i', strtotime($appointment['appointment_time']));
     $consultation_text = appointment_consultation_label($appointment['consultation_type'] ?? 'presencial');

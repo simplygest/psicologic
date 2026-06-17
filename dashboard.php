@@ -1,5 +1,6 @@
 <?php
 session_start();
+header('Content-Type: text/html; charset=UTF-8');
 if (!isset($_SESSION['user_id'])) {
   header('Location: login.php');
   exit;
@@ -10,6 +11,9 @@ require_once 'cabinet_helpers.php';
 require_once 'dashboard_config_helpers.php';
 $is_superadmin = ($_SESSION['role'] === 'superadmin');
 $is_admin = in_array($_SESSION['role'], ['admin', 'superadmin'], true);
+if ($is_admin) {
+  ensure_cabinet_schema($mysqli);
+}
 $branding = get_public_branding_settings($mysqli);
 if (!$is_admin && (int) ($branding['online_booking_enabled'] ?? 1) !== 1) {
   header('Location: index.php');
@@ -47,7 +51,6 @@ if (!$is_admin) {
   }
 }
 if ($is_admin) {
-  ensure_cabinet_schema($mysqli);
   $team_count_res = $mysqli->query("SELECT COUNT(*) AS total FROM professionals WHERE is_active = 1");
   $team_count = $team_count_res ? (int) ($team_count_res->fetch_assoc()['total'] ?? 0) : 0;
   $has_team_members = $team_count > 1;
@@ -467,8 +470,7 @@ if ($is_admin) {
           </div>
           <div class="modal-body">
             <div id="admin-patients-alert" class="alert d-none"></div>
-            <div class="d-flex justify-content-between align-items-center gap-2 mb-3 flex-wrap">
-              <div class="text-muted small">Pacientes registrados y pacientes sin acceso web.</div>
+            <div class="d-flex justify-content-end align-items-center gap-2 mb-3 flex-wrap">
               <button class="btn btn-primary btn-sm" type="button" id="btn-new-patient"><i class="bi bi-person-plus"></i> Nuevo paciente</button>
             </div>
             <div class="row g-2 mb-3">
@@ -514,8 +516,7 @@ if ($is_admin) {
             </div>
             <div class="text-end text-muted small mt-2" id="admin-patients-count"></div>
           </div>
-          <div class="modal-footer justify-content-between flex-wrap gap-2">
-            <div class="text-muted small">Exporta el listado con el filtro y orden actuales.</div>
+          <div class="modal-footer justify-content-end flex-wrap gap-2">
             <div class="d-flex gap-2 flex-wrap">
               <button class="btn btn-outline-primary btn-sm btn-export-modal-table" type="button" data-table-target="#adminPatientsModal" data-export-type="print">
                 <i class="bi bi-printer"></i> Imprimir
@@ -1504,7 +1505,7 @@ if ($is_admin) {
                   <div class="row g-3 align-items-center mb-3">
                     <label class="col-lg-2 col-form-label" for="app-name">Título</label>
                     <div class="col-lg-10">
-                      <input type="text" class="form-control" id="app-name" placeholder="PsicoLogic">
+                      <input type="text" class="form-control" id="app-name" placeholder="SimplyGest Praxis">
                     </div>
                   </div>
                   <div class="row g-3 align-items-start mb-3">
@@ -1525,8 +1526,8 @@ if ($is_admin) {
                     <label class="col-lg-2 col-form-label" for="primary-color">Color principal</label>
                     <div class="col-lg-10">
                       <div class="d-flex gap-2 align-items-center">
-                        <input type="color" class="form-control form-control-color" id="primary-color" value="#8f7fba" title="Elige el color principal">
-                        <input type="text" class="form-control" id="primary-color-text" value="#8f7fba" maxlength="7" style="max-width: 120px;">
+                        <input type="color" class="form-control form-control-color" id="primary-color" value="#4285f4" title="Elige el color principal">
+                        <input type="text" class="form-control" id="primary-color-text" value="#4285f4" maxlength="7" style="max-width: 120px;">
                       </div>
                       <div class="form-text">Se aplicará a botones, enlaces destacados y elementos principales de la interfaz.</div>
                     </div>
@@ -1734,7 +1735,7 @@ if ($is_admin) {
                 <div class="row g-3 align-items-center mb-3">
                   <label class="col-lg-2 col-form-label" for="smtp-from-name">Remitente</label>
                   <div class="col-lg-10">
-                    <input type="text" class="form-control" id="smtp-from-name" placeholder="PsicoLogic">
+                    <input type="text" class="form-control" id="smtp-from-name" placeholder="SimplyGest Praxis">
                   </div>
                 </div>
 

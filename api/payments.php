@@ -205,7 +205,7 @@ $redsys->setParameter('DS_MERCHANT_TERMINAL', $settings['terminal']);
 $redsys->setParameter('DS_MERCHANT_URLOK', $url_ok);
 $redsys->setParameter('DS_MERCHANT_URLKO', $url_ko);
 $redsys->setParameter('Ds_Merchant_ProductDescription', $description);
-$merchant_name = trim($settings['app_name'] ?? '') ?: 'PsicoLogic';
+$merchant_name = trim($settings['app_name'] ?? '') ?: 'SimplyGest Praxis';
 $merchant_name = function_exists('mb_substr') ? mb_substr($merchant_name, 0, 25, 'UTF-8') : substr($merchant_name, 0, 25);
 $redsys->setParameter('Ds_Merchant_MerchantName', $merchant_name);
 $redsys->setParameter('Ds_Merchant_MerchantData', $token);

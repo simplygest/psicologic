@@ -1,30 +1,79 @@
 <?php
 session_start();
+header('Content-Type: text/html; charset=UTF-8');
+if (function_exists('set_time_limit')) {
+    @set_time_limit(600);
+}
 
 $rootDir = dirname(__DIR__);
 require_once $rootDir . '/config.php';
 require_once $rootDir . '/cabinet_helpers.php';
 require_once $rootDir . '/sector_text_helpers.php';
+define('KNOWLEDGE_IMPORT_SILENT', true);
+require_once $rootDir . '/import_knowledge_sectors.php';
 
 $configPath = $rootDir . '/config.local.php';
 $installed = file_exists($configPath);
+$requestMethod = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $errors = [];
 $success = false;
 $sectorTextOptions = sector_texts_available();
 
+function install_tenant_config_paths($rootDir)
+{
+    $tenantKey = basename($rootDir);
+    $parentDir = dirname($rootDir);
+
+    return [
+        $parentDir . '/tenant-install/' . $tenantKey . '.php',
+        $parentDir . '/tenant-install.php',
+        $rootDir . '/tenant-install.php',
+        __DIR__ . '/tenant-install.php'
+    ];
+}
+
+function install_read_tenant_config($rootDir, &$error = '')
+{
+    foreach (install_tenant_config_paths($rootDir) as $path) {
+        if (!is_file($path)) {
+            continue;
+        }
+        $decoded = require $path;
+        if (!is_array($decoded)) {
+            $error = 'tenant-install.php debe devolver un array de configuración válido.';
+            return [];
+        }
+        $decoded['_path'] = $path;
+        return $decoded;
+    }
+    $error = 'No se encuentra la información para la instalación.';
+    return [];
+}
+
+$tenantConfigError = '';
+$tenantConfig = install_read_tenant_config($rootDir, $tenantConfigError);
+$tenantDatabaseConfig = is_array($tenantConfig['database'] ?? null) ? $tenantConfig['database'] : [];
+$tenantInstallerConfig = is_array($tenantConfig['installation'] ?? null) ? $tenantConfig['installation'] : [];
+$hasTenantConfig = !empty($tenantConfig);
+$configuredSectorTextsKey = trim((string) ($tenantInstallerConfig['sector_texts_key'] ?? ''));
+$sectorIsPreconfigured = $configuredSectorTextsKey !== '';
+$defaultSectorTextsKey = $sectorIsPreconfigured ? $configuredSectorTextsKey : sector_texts_default_key();
+$configuredDbName = trim((string) ($tenantDatabaseConfig['name'] ?? ''));
+$defaultDbName = $configuredDbName !== '' ? $configuredDbName : install_default_database_name($rootDir, $defaultSectorTextsKey);
+
 $defaults = [
-    'app_name' => defined('DEFAULT_APP_NAME') ? DEFAULT_APP_NAME : 'PsicoLogic',
-    'timezone' => defined('APP_TIMEZONE') ? APP_TIMEZONE : 'Atlantic/Canary',
+    'app_name' => $tenantInstallerConfig['app_name'] ?? (defined('DEFAULT_APP_NAME') ? DEFAULT_APP_NAME : 'SimplyGest Praxis'),
+    'timezone' => $tenantInstallerConfig['timezone'] ?? (defined('APP_TIMEZONE') ? APP_TIMEZONE : 'Atlantic/Canary'),
     'admin_name' => 'Administrador',
     'admin_email' => '',
     'admin_password' => '',
-    'db_host' => defined('DB_HOST') ? DB_HOST : 'localhost',
-    'db_port' => defined('DB_PORT') ? (string) DB_PORT : '3306',
-    'db_name' => defined('DB_NAME') ? DB_NAME : 'psicologic',
-    'db_user' => defined('DB_USER') ? DB_USER : '',
-    'db_password' => '',
-    'db_ssl' => defined('DB_SSL') && DB_SSL ? '1' : '0',
-    'sector_texts_key' => sector_texts_default_key(),
+    'db_host' => $tenantDatabaseConfig['host'] ?? (defined('DB_HOST') ? DB_HOST : 'localhost'),
+    'db_port' => (string) ($tenantDatabaseConfig['port'] ?? (defined('DB_PORT') ? DB_PORT : '3306')),
+    'db_name' => $hasTenantConfig ? $defaultDbName : (defined('DB_NAME') ? DB_NAME : 'psicologic'),
+    'db_user' => $tenantDatabaseConfig['user'] ?? (defined('DB_USER') ? DB_USER : ''),
+    'db_password' => $tenantDatabaseConfig['password'] ?? '',
+    'db_ssl' => array_key_exists('ssl', $tenantDatabaseConfig) ? ((bool) $tenantDatabaseConfig['ssl'] ? '1' : '0') : (defined('DB_SSL') && DB_SSL ? '1' : '0'),
+    'sector_texts_key' => $defaultSectorTextsKey,
 ];
 
 function install_value($key, $defaults)
@@ -58,6 +107,94 @@ function install_add_column_if_missing($mysqli, $table, $column, $definition)
     if (!install_column_exists($mysqli, $table, $column)) {
         $mysqli->query("ALTER TABLE `$table` ADD COLUMN `$column` $definition");
     }
+}
+
+function install_validate_database_name($name)
+{
+    return is_string($name) && preg_match('/^[A-Za-z0-9_]{1,64}$/', $name);
+}
+
+function install_slug_part($value, $fallback = 'tenant')
+{
+    $value = strtolower(trim((string) $value));
+    $value = strtr($value, [
+        'á' => 'a',
+        'à' => 'a',
+        'ä' => 'a',
+        'â' => 'a',
+        'é' => 'e',
+        'è' => 'e',
+        'ë' => 'e',
+        'ê' => 'e',
+        'í' => 'i',
+        'ì' => 'i',
+        'ï' => 'i',
+        'î' => 'i',
+        'ó' => 'o',
+        'ò' => 'o',
+        'ö' => 'o',
+        'ô' => 'o',
+        'ú' => 'u',
+        'ù' => 'u',
+        'ü' => 'u',
+        'û' => 'u',
+        'ñ' => 'n',
+        'ç' => 'c',
+    ]);
+    $value = preg_replace('/[^a-z0-9]+/', '_', $value);
+    $value = trim((string) $value, '_');
+
+    return $value !== '' ? $value : $fallback;
+}
+
+function install_default_database_name($rootDir, $sectorKey)
+{
+    $tenantKey = install_slug_part(basename($rootDir), 'tenant');
+    $sectorKey = install_slug_part($sectorKey, sector_texts_default_key());
+    return substr($tenantKey . '_' . $sectorKey, 0, 64);
+}
+
+function install_global_knowledge_base_dirs($rootDir)
+{
+    $parentDir = dirname($rootDir);
+    $documentRoot = rtrim((string) ($_SERVER['DOCUMENT_ROOT'] ?? ''), '/\\');
+
+    return array_values(array_unique(array_filter([
+        $parentDir . '/globalknowledgebase',
+        $documentRoot ? $documentRoot . '/globalknowledgebase' : '',
+        $rootDir . '/globalknowledgebase',
+    ])));
+}
+
+function install_import_knowledge_sector_if_available($mysqli, $rootDir, $sectorKey)
+{
+    ensure_knowledge_schema($mysqli);
+    foreach (install_global_knowledge_base_dirs($rootDir) as $baseDir) {
+        if (!is_dir($baseDir)) {
+            continue;
+        }
+        $configs = knowledge_sector_import_configs($baseDir);
+        if (!isset($configs[$sectorKey]) || !is_dir($configs[$sectorKey]['dir'])) {
+            continue;
+        }
+        return import_sector($mysqli, $sectorKey, $configs[$sectorKey]);
+    }
+    return null;
+}
+
+function install_quote_identifier($name)
+{
+    return '`' . str_replace('`', '``', $name) . '`';
+}
+
+function install_database_exists($mysqli, $dbName)
+{
+    $stmt = $mysqli->prepare("SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = ? LIMIT 1");
+    $stmt->bind_param('s', $dbName);
+    $stmt->execute();
+    $exists = (bool) $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    return $exists;
 }
 
 function install_base_tables($mysqli)
@@ -217,12 +354,13 @@ function install_base_tables($mysqli)
 
     $mysqli->query("CREATE TABLE IF NOT EXISTS payment_settings (
         id INT PRIMARY KEY DEFAULT 1,
-        app_name VARCHAR(150) NOT NULL DEFAULT 'PsicoLogic',
+        app_name VARCHAR(150) NOT NULL DEFAULT 'SimplyGest Praxis',
         site_tagline VARCHAR(255) NULL,
         site_phone VARCHAR(40) NULL,
         admin_notification_email VARCHAR(150) NULL,
         favicon_path VARCHAR(255) NULL,
         show_team_public TINYINT(1) NOT NULL DEFAULT 0,
+        public_site_enabled TINYINT(1) NOT NULL DEFAULT 0,
         show_contact_public TINYINT(1) NOT NULL DEFAULT 0,
         allow_patient_transfer TINYINT(1) NOT NULL DEFAULT 0,
         online_booking_enabled TINYINT(1) NOT NULL DEFAULT 1,
@@ -248,7 +386,7 @@ function install_base_tables($mysqli)
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
-    $mysqli->query("INSERT IGNORE INTO payment_settings (id, app_name, site_tagline, appointment_price) VALUES (1, 'PsicoLogic', 'Psicología sanitaria y neuropsicología en Santa Cruz de Tenerife', 70.00)");
+    $mysqli->query("INSERT IGNORE INTO payment_settings (id, app_name, site_tagline, appointment_price) VALUES (1, 'SimplyGest Praxis', 'Psicología sanitaria y neuropsicología en Santa Cruz de Tenerife', 70.00)");
 
     ensure_cabinet_schema($mysqli);
 }
@@ -273,6 +411,7 @@ function install_ensure_payment_settings_columns($mysqli)
     install_add_column_if_missing($mysqli, 'patient_profiles', 'document_name', 'VARCHAR(255) DEFAULT NULL AFTER document_path');
     install_add_column_if_missing($mysqli, 'closed_days', 'is_global', 'TINYINT(1) NOT NULL DEFAULT 0 AFTER reason');
     install_add_column_if_missing($mysqli, 'payment_settings', 'show_team_public', 'TINYINT(1) NOT NULL DEFAULT 0');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'public_site_enabled', 'TINYINT(1) NOT NULL DEFAULT 0 AFTER show_team_public');
     install_add_column_if_missing($mysqli, 'payment_settings', 'show_contact_public', 'TINYINT(1) NOT NULL DEFAULT 0');
     install_add_column_if_missing($mysqli, 'payment_settings', 'allow_patient_transfer', 'TINYINT(1) NOT NULL DEFAULT 0');
     install_add_column_if_missing($mysqli, 'payment_settings', 'dashboard_config_mode', 'VARCHAR(16) NOT NULL DEFAULT "simple"');
@@ -341,15 +480,37 @@ function install_mysql_ssl_cert_path($rootDir)
     return null;
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+function install_dashboard_config_mode($value)
+{
+    $value = strtolower(trim((string) $value));
+    $aliases = [
+        'simple' => 'simple',
+        'sencillo' => 'simple',
+        'advanced' => 'advanced',
+        'avanzado' => 'advanced',
+        'completo' => 'advanced',
+        'custom' => 'custom',
+        'personalizado' => 'custom',
+    ];
+
+    return $aliases[$value] ?? 'advanced';
+}
+
+if ($requestMethod === 'POST') {
+    $sectorTextsKey = $sectorIsPreconfigured ? $defaultSectorTextsKey : ($_POST['sector_texts_key'] ?? sector_texts_default_key());
+    $dashboardConfigMode = install_dashboard_config_mode($tenantInstallerConfig['dashboard_config_mode'] ?? 'advanced');
+    $publicSiteEnabled = !empty($tenantInstallerConfig['public_site_enabled']) ? 1 : 0;
+    $tenantDbName = trim((string) ($tenantDatabaseConfig['name'] ?? ''));
+    $resolvedDbName = $tenantDbName !== '' ? $tenantDbName : install_default_database_name($rootDir, $sectorTextsKey);
+
     $settings = [
-        'db_host' => trim($_POST['db_host'] ?? ''),
-        'db_port' => (int) ($_POST['db_port'] ?? 3306),
-        'db_user' => trim($_POST['db_user'] ?? ''),
-        'db_password' => (string) ($_POST['db_password'] ?? ''),
-        'db_name' => trim($_POST['db_name'] ?? ''),
-        'db_ssl' => !empty($_POST['db_ssl']),
-        'db_ssl_cert' => defined('DB_SSL_CERT') ? DB_SSL_CERT : 'mysql.pem',
+        'db_host' => trim((string) ($hasTenantConfig ? $defaults['db_host'] : ($_POST['db_host'] ?? ''))),
+        'db_port' => (int) ($hasTenantConfig ? $defaults['db_port'] : ($_POST['db_port'] ?? 3306)),
+        'db_user' => trim((string) ($hasTenantConfig ? $defaults['db_user'] : ($_POST['db_user'] ?? ''))),
+        'db_password' => (string) ($hasTenantConfig ? $defaults['db_password'] : ($_POST['db_password'] ?? '')),
+        'db_name' => $resolvedDbName,
+        'db_ssl' => $hasTenantConfig ? $defaults['db_ssl'] === '1' : !empty($_POST['db_ssl']),
+        'db_ssl_cert' => $tenantDatabaseConfig['ssl_cert'] ?? (defined('DB_SSL_CERT') ? DB_SSL_CERT : 'mysql.pem'),
         'timezone' => trim($_POST['timezone'] ?? 'Atlantic/Canary'),
         'max_booking_days' => defined('MAX_BOOKING_DAYS') ? MAX_BOOKING_DAYS : 40,
         'cron_webhook_token' => defined('CRON_WEBHOOK_TOKEN') && CRON_WEBHOOK_TOKEN !== '' ? CRON_WEBHOOK_TOKEN : bin2hex(random_bytes(32)),
@@ -360,7 +521,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $adminName = trim($_POST['admin_name'] ?? '');
     $adminEmail = trim($_POST['admin_email'] ?? '');
     $adminPassword = (string) ($_POST['admin_password'] ?? '');
-    $sectorTextsKey = $_POST['sector_texts_key'] ?? sector_texts_default_key();
+
+    if ($tenantConfigError !== '') {
+        $errors[] = $tenantConfigError;
+    }
 
     if ($appName === '') {
         $errors[] = 'Indica el nombre o título del sitio.';
@@ -375,10 +539,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = 'La contraseña del administrador debe tener al menos 6 caracteres.';
     }
     if (!sector_texts_validate_key($sectorTextsKey) || !sector_texts_read_file($sectorTextsKey)) {
-        $errors[] = 'Selecciona un sector valido para esta instalacion.';
+        $errors[] = 'Selecciona un sector válido para esta instalación.';
     }
     if ($settings['db_host'] === '' || $settings['db_user'] === '' || $settings['db_name'] === '') {
         $errors[] = 'Indica host, usuario y nombre de la base de datos.';
+    }
+    if ($settings['db_name'] !== '' && !install_validate_database_name($settings['db_name'])) {
+        $errors[] = 'El nombre de la base de datos solo puede contener letras, números y guiones bajos.';
     }
     if ($settings['db_port'] <= 0) {
         $settings['db_port'] = 3306;
@@ -402,13 +569,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $settings['db_host'],
                 $settings['db_user'],
                 $settings['db_password'],
-                $settings['db_name'],
+                null,
                 $settings['db_port'],
                 null,
                 $flags
             );
 
             $test->set_charset('utf8mb4');
+            if (install_database_exists($test, $settings['db_name'])) {
+                throw new RuntimeException('La base de datos "' . $settings['db_name'] . '" ya existe. Por seguridad, el instalador solo puede crear instalaciones nuevas en una base de datos vacía e inexistente.');
+            }
+            $test->query("CREATE DATABASE " . install_quote_identifier($settings['db_name']) . " CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+            $test->select_db($settings['db_name']);
 
             install_base_tables($test);
 
@@ -424,10 +596,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ensure_payment_attempts_table($test);
             ensure_payment_settings_price_columns($test);
             install_ensure_payment_settings_columns($test);
+            install_import_knowledge_sector_if_available($test, $rootDir, $sectorTextsKey);
 
             $defaultTagline = 'Psicología sanitaria y neuropsicología en Santa Cruz de Tenerife';
-            $stmt = $test->prepare("UPDATE payment_settings SET app_name = ?, site_tagline = COALESCE(NULLIF(site_tagline, ''), ?), admin_notification_email = ?, sector_texts_key = ? WHERE id = 1");
-            $stmt->bind_param('ssss', $appName, $defaultTagline, $adminEmail, $sectorTextsKey);
+            $stmt = $test->prepare("UPDATE payment_settings SET app_name = ?, site_tagline = COALESCE(NULLIF(site_tagline, ''), ?), admin_notification_email = ?, sector_texts_key = ?, dashboard_config_mode = ?, public_site_enabled = ? WHERE id = 1");
+            $stmt->bind_param('sssssi', $appName, $defaultTagline, $adminEmail, $sectorTextsKey, $dashboardConfigMode, $publicSiteEnabled);
             $stmt->execute();
             $stmt->close();
 
@@ -462,7 +635,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
-    <title>Instalación - PsicoLogic</title>
+    <title>Instalación - SimplyGest Praxis</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="../css/style.css">
     <style>
@@ -496,8 +669,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-weight: 600;
         }
         .install-step.active {
-            border-color: var(--primary-color, #8f7bc0);
-            color: var(--primary-color, #8f7bc0);
+            border-color: var(--primary-color, #4285f4);
+            color: var(--primary-color, #4285f4);
             background: rgba(143, 123, 192, .08);
         }
         .install-step-panel[hidden] { display: none; }
@@ -506,6 +679,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             justify-content: space-between;
             gap: 12px;
             margin-top: 24px;
+        }
+        .install-progress-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 1080;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(20, 24, 32, .56);
+            backdrop-filter: blur(2px);
+            padding: 20px;
+        }
+        .install-progress-overlay.show {
+            display: flex;
+        }
+        .install-progress-box {
+            width: min(420px, 100%);
+            border-radius: 12px;
+            background: #fff;
+            border: 1px solid #e1e5ec;
+            box-shadow: 0 18px 45px rgba(15, 20, 30, .18);
+            padding: 28px;
+            text-align: center;
         }
         @media (max-width: 576px) {
             .install-card { padding: 20px; }
@@ -517,7 +713,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <body>
     <main class="install-shell">
         <div class="install-card">
-            <h1 class="h3 mb-2">Instalación de PsicoLogic</h1>
+            <h1 class="h3 mb-2">Instalación de SimplyGest Praxis</h1>
             <p class="text-muted mb-0">Configura los datos básicos para dejar lista esta instalación.</p>
 
             <?php if ($success): ?>
@@ -525,11 +721,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     Instalación completada correctamente. Ya puedes entrar al dashboard con el usuario administrador.
                 </div>
                 <a class="btn btn-primary" href="../login.php">Ir al login</a>
-            <?php elseif ($installed && $_SERVER['REQUEST_METHOD'] !== 'POST'): ?>
+            <?php elseif ($installed && $requestMethod !== 'POST'): ?>
                 <div class="alert alert-info mt-4">
                     Esta instalación ya tiene configuración local. Para repetir el asistente, elimina manualmente el archivo <strong>config.local.php</strong>.
                 </div>
                 <a class="btn btn-primary" href="../login.php">Ir al login</a>
+            <?php elseif ($tenantConfigError !== '' && $requestMethod !== 'POST'): ?>
+                <div class="alert alert-danger mt-4">
+                    <?php echo htmlspecialchars($tenantConfigError, ENT_QUOTES, 'UTF-8'); ?>
+                </div>
             <?php else: ?>
                 <?php if ($errors): ?>
                     <div class="alert alert-danger mt-4">
@@ -538,19 +738,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <?php endforeach; ?>
                     </div>
                 <?php endif; ?>
+                <?php if ($tenantConfigError !== '' && !$errors): ?>
+                    <div class="alert alert-danger mt-4">
+                        <?php echo htmlspecialchars($tenantConfigError, ENT_QUOTES, 'UTF-8'); ?>
+                    </div>
+                <?php endif; ?>
 
                 <div class="install-steps" aria-label="Pasos de instalación">
                     <div class="install-step active" data-step-label="1">1. Datos generales</div>
-                    <div class="install-step" data-step-label="2">2. Base de datos</div>
+                    <div class="install-step" data-step-label="2">2. Instalación</div>
                 </div>
 
                 <form method="post" id="installForm">
                     <section class="install-step-panel" data-step-panel="1">
                         <div class="row g-3">
+                            <?php if ($hasTenantConfig): ?>
+                                <div class="col-12">
+                                    <div class="alert alert-info mb-0">
+                                        Esta instalación tiene la configuración técnica predefinida por SimplyGest.
+                                    </div>
+                                </div>
+                            <?php endif; ?>
                             <div class="col-12">
-                                <label class="form-label" for="app_name">Titulo de la web</label>
+                                <label class="form-label" for="app_name">Título de la web</label>
                                 <input class="form-control" type="text" id="app_name" name="app_name" value="<?php echo install_value('app_name', $defaults); ?>" required>
                             </div>
+                            <?php if ($sectorIsPreconfigured): ?>
+                                <input type="hidden" id="sector_texts_key" name="sector_texts_key" value="<?php echo htmlspecialchars($defaultSectorTextsKey, ENT_QUOTES, 'UTF-8'); ?>">
+                            <?php else: ?>
                             <div class="col-md-6">
                                 <label class="form-label" for="sector_texts_key">Sector</label>
                                 <select class="form-select" id="sector_texts_key" name="sector_texts_key" required>
@@ -564,8 +779,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
-                                <div class="form-text">Define el vocabulario y la base de conocimiento inicial de la instalacion.</div>
                             </div>
+                            <?php endif; ?>
                             <div class="col-md-6">
                                 <label class="form-label" for="timezone">Zona horaria</label>
                                 <select class="form-select" id="timezone" name="timezone" required>
@@ -598,6 +813,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     <section class="install-step-panel" data-step-panel="2" hidden>
                         <div class="row g-3">
+                            <?php if ($hasTenantConfig): ?>
+                                <div class="col-12">
+                                    <div class="alert alert-light border mb-0">
+                                        Se usará la conexión de Azure preconfigurada para esta instalación.
+                                    </div>
+                                </div>
+                            <?php else: ?>
                             <div class="col-md-8">
                                 <label class="form-label" for="db_host">Servidor de base de datos</label>
                                 <input class="form-control" type="text" id="db_host" name="db_host" value="<?php echo install_value('db_host', $defaults); ?>" required>
@@ -606,10 +828,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <label class="form-label" for="db_port">Puerto</label>
                                 <input class="form-control" type="number" id="db_port" name="db_port" value="<?php echo install_value('db_port', $defaults); ?>" min="1" required>
                             </div>
-                            <div class="col-12">
-                                <label class="form-label" for="db_name">Nombre de la base de datos</label>
-                                <input class="form-control" type="text" id="db_name" name="db_name" value="<?php echo install_value('db_name', $defaults); ?>" required>
-                            </div>
+                            <?php endif; ?>
+                            <input type="hidden" id="db_name" value="<?php echo install_value('db_name', $defaults); ?>" data-derived-db-name="<?php echo empty($tenantDatabaseConfig['name']) ? '1' : '0'; ?>">
+                            <?php if (!$hasTenantConfig): ?>
                             <div class="col-md-6">
                                 <label class="form-label" for="db_user">Usuario</label>
                                 <input class="form-control" type="text" id="db_user" name="db_user" value="<?php echo install_value('db_user', $defaults); ?>" required>
@@ -624,6 +845,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <label class="form-check-label" for="db_ssl">Usar conexión SSL con MySQL</label>
                                 </div>
                             </div>
+                            <?php endif; ?>
                         </div>
                         <div class="install-actions">
                             <button class="btn btn-outline-secondary" type="button" data-prev-step>Volver</button>
@@ -634,6 +856,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php endif; ?>
         </div>
     </main>
+    <div class="install-progress-overlay" id="installProgressOverlay" aria-live="polite" aria-modal="true" role="dialog">
+        <div class="install-progress-box">
+            <div class="spinner-border text-primary mb-3" role="status" aria-hidden="true"></div>
+            <h2 class="h5 mb-2">Preparando tu entorno</h2>
+            <p class="text-muted mb-0">Estamos creando la base de datos e importando la base de conocimiento. Espera unos segundos, por favor.</p>
+        </div>
+    </div>
 
     <script>
         (() => {
@@ -641,6 +870,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             const panels = document.querySelectorAll('[data-step-panel]');
             const nextButton = document.querySelector('[data-next-step]');
             const prevButton = document.querySelector('[data-prev-step]');
+            const sectorSelect = document.getElementById('sector_texts_key');
+            const dbNameInput = document.getElementById('db_name');
+            const installForm = document.getElementById('installForm');
+            const installOverlay = document.getElementById('installProgressOverlay');
+            const tenantKey = <?php echo json_encode(install_slug_part(basename($rootDir), 'tenant')); ?>;
+
+            function slugPart(value, fallback) {
+                return String(value || '')
+                    .normalize('NFD')
+                    .replace(/[\u0300-\u036f]/g, '')
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]+/g, '_')
+                    .replace(/^_+|_+$/g, '') || fallback;
+            }
+
+            function updateDerivedDbName() {
+                if (!sectorSelect || !dbNameInput || dbNameInput.dataset.derivedDbName !== '1') {
+                    return;
+                }
+                dbNameInput.value = `${tenantKey}_${slugPart(sectorSelect.value, 'psicologia')}`.slice(0, 64);
+            }
 
             function showStep(step) {
                 labels.forEach(label => label.classList.toggle('active', label.dataset.stepLabel === String(step)));
@@ -662,6 +912,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             });
 
             prevButton?.addEventListener('click', () => showStep(1));
+            sectorSelect?.addEventListener('change', updateDerivedDbName);
+            installForm?.addEventListener('submit', () => {
+                const submitButton = installForm.querySelector('button[type="submit"]');
+                if (submitButton) {
+                    submitButton.disabled = true;
+                    submitButton.innerHTML = '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Instalando...';
+                }
+                installOverlay?.classList.add('show');
+            });
+            updateDerivedDbName();
         })();
     </script>
 </body>

@@ -9,14 +9,15 @@ function ensure_branding_columns($mysqli)
     }
 
     $columns = [
-        'app_name' => "ALTER TABLE payment_settings ADD app_name VARCHAR(255) DEFAULT 'PsicoLogic' AFTER id",
+        'app_name' => "ALTER TABLE payment_settings ADD app_name VARCHAR(255) DEFAULT 'SimplyGest Praxis' AFTER id",
         'site_tagline' => "ALTER TABLE payment_settings ADD site_tagline VARCHAR(255) DEFAULT NULL AFTER app_name",
         'site_phone' => "ALTER TABLE payment_settings ADD site_phone VARCHAR(40) DEFAULT NULL AFTER site_tagline",
         'profile_image_path' => "ALTER TABLE payment_settings ADD profile_image_path VARCHAR(255) DEFAULT NULL AFTER app_name",
         'landing_image_path' => "ALTER TABLE payment_settings ADD landing_image_path VARCHAR(255) DEFAULT NULL AFTER profile_image_path",
         'favicon_path' => "ALTER TABLE payment_settings ADD favicon_path VARCHAR(255) DEFAULT NULL AFTER profile_image_path",
-        'primary_color' => "ALTER TABLE payment_settings ADD primary_color VARCHAR(7) NOT NULL DEFAULT '#8f7fba' AFTER landing_image_path",
+        'primary_color' => "ALTER TABLE payment_settings ADD primary_color VARCHAR(7) NOT NULL DEFAULT '#4285f4' AFTER landing_image_path",
         'show_profile_image_public' => "ALTER TABLE payment_settings ADD show_profile_image_public TINYINT(1) NOT NULL DEFAULT 0 AFTER profile_image_path",
+        'public_site_enabled' => "ALTER TABLE payment_settings ADD public_site_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER show_profile_image_public",
         'show_prices_public' => "ALTER TABLE payment_settings ADD show_prices_public TINYINT(1) NOT NULL DEFAULT 0 AFTER show_profile_image_public",
         'show_contact_public' => "ALTER TABLE payment_settings ADD show_contact_public TINYINT(1) NOT NULL DEFAULT 0 AFTER show_prices_public",
         'dashboard_config_mode' => "ALTER TABLE payment_settings ADD dashboard_config_mode VARCHAR(16) NOT NULL DEFAULT 'simple'",
@@ -45,14 +46,15 @@ function ensure_branding_columns($mysqli)
 function get_public_branding_settings($mysqli)
 {
     $settings = [
-        'app_name' => 'PsicoLogic',
+        'app_name' => 'SimplyGest Praxis',
         'site_tagline' => 'Psicología sanitaria y neuropsicología en Santa Cruz de Tenerife',
         'site_phone' => '',
         'profile_image_path' => '',
         'landing_image_path' => '',
         'favicon_path' => '',
-        'primary_color' => '#8f7fba',
+        'primary_color' => '#4285f4',
         'show_profile_image_public' => 0,
+        'public_site_enabled' => 0,
         'show_prices_public' => 0,
         'show_contact_public' => 0,
         'online_booking_enabled' => 1,
@@ -77,21 +79,22 @@ function get_public_branding_settings($mysqli)
     ensure_branding_columns($mysqli);
 
     $res = $mysqli->query("
-        SELECT app_name, site_tagline, site_phone, profile_image_path, landing_image_path, favicon_path, primary_color, show_profile_image_public, show_prices_public, show_contact_public, online_booking_enabled, patient_registration_mode, initial_calendar_view, sector_texts_key,
+        SELECT app_name, site_tagline, site_phone, profile_image_path, landing_image_path, favicon_path, primary_color, show_profile_image_public, public_site_enabled, show_prices_public, show_contact_public, online_booking_enabled, patient_registration_mode, initial_calendar_view, sector_texts_key,
                legal_owner_name, legal_nif, legal_address, legal_email, legal_license_number, legal_professional_college, legal_uses_non_technical_cookies, legal_terms_notes
         FROM payment_settings
         WHERE id = 1
     ");
 
     if ($row = $res->fetch_assoc()) {
-        $settings['app_name'] = trim($row['app_name'] ?? '') ?: 'PsicoLogic';
+        $settings['app_name'] = trim($row['app_name'] ?? '') ?: 'SimplyGest Praxis';
         $settings['site_tagline'] = trim($row['site_tagline'] ?? '') ?: 'Psicología sanitaria y neuropsicología en Santa Cruz de Tenerife';
         $settings['site_phone'] = trim($row['site_phone'] ?? '');
         $settings['profile_image_path'] = $row['profile_image_path'] ?? '';
         $settings['landing_image_path'] = $row['landing_image_path'] ?? '';
         $settings['favicon_path'] = $row['favicon_path'] ?? '';
-        $settings['primary_color'] = preg_match('/^#[0-9a-fA-F]{6}$/', $row['primary_color'] ?? '') ? strtolower($row['primary_color']) : '#8f7fba';
+        $settings['primary_color'] = preg_match('/^#[0-9a-fA-F]{6}$/', $row['primary_color'] ?? '') ? strtolower($row['primary_color']) : '#4285f4';
         $settings['show_profile_image_public'] = (int) ($row['show_profile_image_public'] ?? 0);
+        $settings['public_site_enabled'] = (int) ($row['public_site_enabled'] ?? 0);
         $settings['show_prices_public'] = (int) ($row['show_prices_public'] ?? 0);
         $settings['show_contact_public'] = (int) ($row['show_contact_public'] ?? 0);
         $settings['online_booking_enabled'] = (int) ($row['online_booking_enabled'] ?? 1);

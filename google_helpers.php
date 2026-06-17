@@ -209,7 +209,7 @@ function google_send_email($mysqli, $to, $subject, $html_body, $reply_to = null)
         throw new \Exception('No hay cuenta Google conectada');
     }
 
-    $display_name = trim($settings['smtp_from_name'] ?? '') ?: (trim($settings['app_name'] ?? '') ?: 'PsicoLogic');
+    $display_name = trim($settings['smtp_from_name'] ?? '') ?: (trim($settings['app_name'] ?? '') ?: 'SimplyGest Praxis');
     $from_name = '=?UTF-8?B?' . base64_encode($display_name) . '?=';
     $headers = [
         'From: ' . $from_name . ' <' . $from . '>',

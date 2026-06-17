@@ -1,4 +1,5 @@
 <?php
+header('Content-Type: text/html; charset=UTF-8');
 require_once 'db.php';
 require_once 'settings_helpers.php';
 $token = $_GET['token'] ?? '';
@@ -117,6 +118,15 @@ if (!$can_register) {
                     $('#register-alert').removeClass('d-none alert-success').addClass('alert-danger').text("Debes proporcionar un email.");
                     return;
                 }
+                const $button = $(this).find('button[type="submit"]');
+                if (!$button.data('original-html')) {
+                    $button.data('original-html', $button.html());
+                }
+                $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Registrando...');
+
+                function resetRegisterButton() {
+                    $button.prop('disabled', false).html($button.data('original-html') || 'Completar Registro');
+                }
 
                 $.ajax({
                     url: 'api/auth.php?action=register',
@@ -131,10 +141,12 @@ if (!$can_register) {
                             $('#register-alert').removeClass('d-none alert-danger').addClass('alert-success').text("Registro completado con éxito. Ya puedes iniciar sesión.");
                         } else {
                             $('#register-alert').removeClass('d-none alert-success').addClass('alert-danger').text(res.error);
+                            resetRegisterButton();
                         }
                     },
                     error: function () {
                         $('#register-alert').removeClass('d-none alert-success').addClass('alert-danger').text("Error de conexión");
+                        resetRegisterButton();
                     }
                 });
             });

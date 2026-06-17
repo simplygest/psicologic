@@ -1,5 +1,6 @@
 <?php
 session_start();
+header('Content-Type: text/html; charset=UTF-8');
 require_once 'db.php';
 require_once 'settings_helpers.php';
 if (isset($_SESSION['user_id'])) {
@@ -99,6 +100,15 @@ $remembered_login_id = $_COOKIE['psicologic_login_id'] ?? '';
             $('#login-form').on('submit', function (e) {
                 e.preventDefault();
                 $('#login-alert').addClass('d-none');
+                const $button = $(this).find('button[type="submit"]');
+                if (!$button.data('original-html')) {
+                    $button.data('original-html', $button.html());
+                }
+                $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Entrando...');
+
+                function resetLoginButton() {
+                    $button.prop('disabled', false).html($button.data('original-html') || 'Entrar');
+                }
 
                 $.ajax({
                     url: 'api/auth.php?action=login',
@@ -115,10 +125,12 @@ $remembered_login_id = $_COOKIE['psicologic_login_id'] ?? '';
                             window.location.href = 'dashboard.php';
                         } else {
                             $('#login-alert').removeClass('d-none alert-success').addClass('alert-danger').text(res.error);
+                            resetLoginButton();
                         }
                     },
                     error: function () {
                         $('#login-alert').removeClass('d-none alert-success').addClass('alert-danger').text("Error de conexión");
+                        resetLoginButton();
                     }
                 });
             });

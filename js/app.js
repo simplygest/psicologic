@@ -1,9 +1,10 @@
-let currentStartDate = getMonday(new Date());
+﻿let currentStartDate = getMonday(new Date());
 let currentMonthDate = new Date();
 let currentCalendarView = (typeof INITIAL_CALENDAR_VIEW !== 'undefined' && INITIAL_CALENDAR_VIEW === 'week') ? 'week' : 'month';
 let currentMonthData = null;
 let selectedMonthDay = null;
 let selectedMonthDayAnimationClass = '';
+let calendarInitialAnimationPending = true;
 let PAYMENT_SETTINGS = {
     online_payment_enabled: 0,
     appointment_price: '70.00',
@@ -38,6 +39,7 @@ let APP_DASHBOARD_CONFIG = (typeof DASHBOARD_CONFIG !== 'undefined' && DASHBOARD
 let APP_PLAN_CONFIG = (typeof PLAN_CONFIG !== 'undefined' && PLAN_CONFIG) ? PLAN_CONFIG : { plan: { features: {} } };
 let APP_KNOWLEDGE_BASE_ENABLED = typeof KNOWLEDGE_BASE_ENABLED !== 'undefined' ? Boolean(KNOWLEDGE_BASE_ENABLED) : false;
 let APP_KNOWLEDGE_BASE_HAS_SECTOR_DATA = APP_KNOWLEDGE_BASE_ENABLED;
+let LOADED_DASHBOARD_CONFIG_MODE = (typeof DASHBOARD_CONFIG_MODE !== 'undefined' && DASHBOARD_CONFIG_MODE) ? DASHBOARD_CONFIG_MODE : 'simple';
 let APPOINTMENT_SERVICES = [];
 let ACTIVE_SERVICE_OPTIONS = [];
 let APPOINTMENT_BONUSES = [];
@@ -525,9 +527,17 @@ function loadMonthCalendar(monthStr) {
     });
 }
 
+function consumeCalendarInitialAnimationClass() {
+    if (!calendarInitialAnimationPending) {
+        return '';
+    }
+    calendarInitialAnimationPending = false;
+    return ' dashboard-enter';
+}
+
 function drawCalendar(startDateStr, appointmentsMap, closedDays) {
     const activeDays = getActiveWeekdays();
-    let html = `<div class="calendar-grid dashboard-enter" style="--calendar-days: ${activeDays.length};">`;
+    let html = `<div class="calendar-grid${consumeCalendarInitialAnimationClass()}" style="--calendar-days: ${activeDays.length};">`;
     let startD = new Date(startDateStr);
 
     const daysArr = {
@@ -580,7 +590,7 @@ function drawMonthCalendar(monthStr, appointmentsMap, closedDays) {
     firstGrid.setDate(first.getDate() - ((first.getDay() + 6) % 7));
 
     let html = `
-        <div class="month-calendar-layout dashboard-enter">
+        <div class="month-calendar-layout${consumeCalendarInitialAnimationClass()}">
             <div class="month-calendar-panel">
                 <div class="month-calendar-title">${escapeHtml(monthName)}</div>
                 <div class="month-weekdays">
@@ -690,10 +700,13 @@ function firstAvailableMonthDay(monthStr, appointmentsMap, closedDays) {
 
 function selectMonthDay(dateStr) {
     const previousDay = selectedMonthDay;
+    if (previousDay === dateStr) {
+        return;
+    }
     if (previousDay && previousDay !== dateStr) {
         selectedMonthDayAnimationClass = dateStr > previousDay ? 'month-day-panel-enter-right' : 'month-day-panel-enter-left';
     } else {
-        selectedMonthDayAnimationClass = 'month-day-panel-fade';
+        selectedMonthDayAnimationClass = '';
     }
     selectedMonthDay = dateStr;
     if (!currentMonthData) return;
@@ -7840,7 +7853,7 @@ function printReportSection($section) {
     if (!$section || !$section.length) return;
     const title = escapeHtml(reportSectionTitle($section));
     const tableHtml = tableHtmlForExport($section.find('table').first());
-    const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--primary-color').trim() || '#6b55a3';
+    const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--primary-color').trim() || '#4285f4';
     const win = window.open('', '_blank', 'width=1024,height=720');
     if (!win) {
         showAdminStatsAlert('danger', 'No se pudo abrir la ventana de impresion.');
@@ -7877,7 +7890,7 @@ function printTableExport($table, title) {
     const tableHtml = tableHtmlForExport($table);
     if (!tableHtml) return;
     const escapedTitle = escapeHtml(title);
-    const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--primary-color').trim() || '#6b55a3';
+    const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--primary-color').trim() || '#4285f4';
     const win = window.open('', '_blank', 'width=1024,height=720');
     if (!win) return;
     win.opener = null;
@@ -8210,15 +8223,15 @@ function loadPaymentSettings() {
             APP_SECTOR_TEXT_OPTIONS = Array.isArray(settings.sector_texts_options) ? settings.sector_texts_options : APP_SECTOR_TEXT_OPTIONS;
             APPOINTMENT_SERVICES = Array.isArray(res.services) ? res.services : [];
             APPOINTMENT_BONUSES = Array.isArray(res.bonuses) ? res.bonuses : [];
-            $('#app-name').val(settings.app_name || 'PsicoLogic');
+            $('#app-name').val(settings.app_name || 'SimplyGest Praxis');
             $('#site-tagline').val(settings.site_tagline || '');
             $('#site-phone').val(settings.site_phone || '');
-            const primaryColor = settings.primary_color || '#8f7fba';
+            const primaryColor = settings.primary_color || '#4285f4';
             $('#primary-color').val(primaryColor);
             $('#primary-color-text').val(primaryColor);
             document.documentElement.style.setProperty('--primary-color', primaryColor);
             $('#appointment-delivery-mode').val(settings.appointment_delivery_mode || 'both');
-            document.title = `Dashboard - ${settings.app_name || 'PsicoLogic'}`;
+            document.title = `Dashboard - ${settings.app_name || 'SimplyGest Praxis'}`;
             $('#show-profile-image-public').prop('checked', settings.show_profile_image_public == 1);
             $('#show-prices-public').prop('checked', settings.show_prices_public == 1);
             $('#show-contact-public').prop('checked', settings.show_contact_public == 1);
@@ -8231,7 +8244,8 @@ function loadPaymentSettings() {
             $('#legal-uses-non-technical-cookies').prop('checked', settings.legal_uses_non_technical_cookies == 1);
             $('#legal-terms-notes').val(settings.legal_terms_notes || '');
             $('#initial-calendar-view').val(settings.initial_calendar_view === 'week' ? 'week' : 'month');
-            $('#dashboard-config-mode').val(['simple', 'advanced', 'custom'].includes(settings.dashboard_config_mode) ? settings.dashboard_config_mode : 'simple');
+            LOADED_DASHBOARD_CONFIG_MODE = ['simple', 'advanced', 'custom'].includes(settings.dashboard_config_mode) ? settings.dashboard_config_mode : 'simple';
+            $('#dashboard-config-mode').val(LOADED_DASHBOARD_CONFIG_MODE);
             toggleDashboardConfigModeControls();
             $('#online-booking-enabled').prop('checked', settings.online_booking_enabled === undefined ? true : settings.online_booking_enabled == 1);
             $('#patient-tasks-visible-default').prop('checked', settings.patient_tasks_visible_default == 1);
@@ -9352,6 +9366,8 @@ async function saveAllSettings(button = null) {
     const alertSelector = '#settings-save-alert';
     $('#settings-save-alert, #payment-settings-alert, #email-settings-alert, #calendar-settings-alert, #booking-settings-alert, #general-settings-alert, #interface-settings-alert, #legal-settings-alert, #services-settings-alert, #bonuses-settings-alert, #cabinet-settings-alert').addClass('d-none');
     setSettingsButtonLoading(button, true);
+    const previousDashboardConfigMode = LOADED_DASHBOARD_CONFIG_MODE || 'simple';
+    const selectedDashboardConfigMode = $('#dashboard-config-mode').val() || 'simple';
 
     try {
         const settingsSection = (typeof IS_SUPERADMIN !== 'undefined' && IS_SUPERADMIN) ? 'all' : 'general';
@@ -9390,6 +9406,11 @@ async function saveAllSettings(button = null) {
         }
 
         await loadPaymentSettings();
+        if (previousDashboardConfigMode !== selectedDashboardConfigMode) {
+            showSettingsAlert(alertSelector, 'success', 'Cambios guardados. Recargando dashboard...');
+            window.location.reload();
+            return;
+        }
         await renderWeekInfo();
         showSettingsAlert(alertSelector, 'success', 'Cambios guardados');
         await delay(300);

@@ -1,6 +1,6 @@
 :root {
-    --primary-color: #8f7fba;
-    /* Soft relaxing violet */
+    --primary-color: #4285f4;
+    /* SimplyGest blue */
     --primary-light: #d6d1e6;
     --primary-light: color-mix(in srgb, var(--primary-color) 25%, white);
     --background-color: #f7f9f9;

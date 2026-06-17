@@ -105,6 +105,128 @@ function ensure_knowledge_sector_code_unique($mysqli, $table_name, $code_column)
 
 function ensure_knowledge_base_sector_schema($mysqli)
 {
+    $mysqli->query("
+        CREATE TABLE IF NOT EXISTS knowledge_areas (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            sector_key VARCHAR(32) NOT NULL DEFAULT 'psicologia',
+            area_code VARCHAR(64) NOT NULL,
+            name VARCHAR(180) NOT NULL,
+            description TEXT DEFAULT NULL,
+            UNIQUE uniq_knowledge_areas_sector_code (sector_key, area_code),
+            INDEX idx_knowledge_areas_sector (sector_key)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+    $mysqli->query("
+        CREATE TABLE IF NOT EXISTS knowledge_sources (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            sector_key VARCHAR(32) NOT NULL DEFAULT 'psicologia',
+            source_code VARCHAR(64) NOT NULL,
+            name VARCHAR(180) DEFAULT NULL,
+            organization VARCHAR(180) DEFAULT NULL,
+            title VARCHAR(255) DEFAULT NULL,
+            url VARCHAR(500) DEFAULT NULL,
+            notes TEXT DEFAULT NULL,
+            UNIQUE uniq_knowledge_sources_sector_code (sector_key, source_code),
+            INDEX idx_knowledge_sources_sector (sector_key)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+    $mysqli->query("
+        CREATE TABLE IF NOT EXISTS knowledge_techniques (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            sector_key VARCHAR(32) NOT NULL DEFAULT 'psicologia',
+            technique_code VARCHAR(64) NOT NULL,
+            name VARCHAR(180) NOT NULL,
+            description TEXT DEFAULT NULL,
+            risk_level VARCHAR(32) DEFAULT NULL,
+            UNIQUE uniq_knowledge_techniques_sector_code (sector_key, technique_code),
+            INDEX idx_knowledge_techniques_sector (sector_key)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+    $mysqli->query("
+        CREATE TABLE IF NOT EXISTS knowledge_problems (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            sector_key VARCHAR(32) NOT NULL DEFAULT 'psicologia',
+            problem_code VARCHAR(64) NOT NULL,
+            area_id INT UNSIGNED NOT NULL,
+            name VARCHAR(180) NOT NULL,
+            alias VARCHAR(180) DEFAULT NULL,
+            description TEXT DEFAULT NULL,
+            population VARCHAR(120) DEFAULT NULL,
+            risk_level VARCHAR(32) DEFAULT NULL,
+            UNIQUE uniq_knowledge_problems_sector_code (sector_key, problem_code),
+            INDEX idx_knowledge_problems_sector (sector_key),
+            INDEX idx_knowledge_problems_area (area_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+    $mysqli->query("
+        CREATE TABLE IF NOT EXISTS knowledge_tasks (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            sector_key VARCHAR(32) NOT NULL DEFAULT 'psicologia',
+            task_code VARCHAR(64) NOT NULL,
+            technique_id INT UNSIGNED DEFAULT NULL,
+            title VARCHAR(220) NOT NULL,
+            description TEXT DEFAULT NULL,
+            objective TEXT DEFAULT NULL,
+            risk_level VARCHAR(32) DEFAULT NULL,
+            estimated_duration VARCHAR(120) DEFAULT NULL,
+            UNIQUE uniq_knowledge_tasks_sector_code (sector_key, task_code),
+            INDEX idx_knowledge_tasks_sector (sector_key),
+            INDEX idx_knowledge_tasks_technique (technique_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+    $mysqli->query("
+        CREATE TABLE IF NOT EXISTS knowledge_problem_techniques (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            sector_key VARCHAR(32) NOT NULL DEFAULT 'psicologia',
+            problem_id INT UNSIGNED NOT NULL,
+            technique_id INT UNSIGNED NOT NULL,
+            UNIQUE uniq_knowledge_problem_techniques (sector_key, problem_id, technique_id),
+            INDEX idx_knowledge_problem_techniques_sector (sector_key)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+    $mysqli->query("
+        CREATE TABLE IF NOT EXISTS knowledge_recommendations (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            sector_key VARCHAR(32) NOT NULL DEFAULT 'psicologia',
+            recommendation_code VARCHAR(64) DEFAULT NULL,
+            problem_id INT UNSIGNED NOT NULL,
+            technique_id INT UNSIGNED NOT NULL,
+            task_id INT UNSIGNED NOT NULL,
+            priority VARCHAR(32) DEFAULT NULL,
+            clinical_note TEXT DEFAULT NULL,
+            UNIQUE uniq_knowledge_recommendations_sector_code (sector_key, recommendation_code),
+            INDEX idx_knowledge_recommendations_sector (sector_key),
+            INDEX idx_knowledge_recommendations_problem (problem_id),
+            INDEX idx_knowledge_recommendations_technique (technique_id),
+            INDEX idx_knowledge_recommendations_task (task_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+    $mysqli->query("
+        CREATE TABLE IF NOT EXISTS knowledge_questionnaires (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            sector_key VARCHAR(32) NOT NULL DEFAULT 'psicologia',
+            questionnaire_code VARCHAR(64) NOT NULL,
+            problem_id INT UNSIGNED NOT NULL,
+            name VARCHAR(220) NOT NULL,
+            use_area VARCHAR(180) DEFAULT NULL,
+            questionnaire_type VARCHAR(120) DEFAULT NULL,
+            notes TEXT DEFAULT NULL,
+            UNIQUE uniq_knowledge_questionnaires_sector_code (sector_key, questionnaire_code),
+            INDEX idx_knowledge_questionnaires_sector (sector_key),
+            INDEX idx_knowledge_questionnaires_problem (problem_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+    $mysqli->query("
+        CREATE TABLE IF NOT EXISTS knowledge_problem_sources (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            sector_key VARCHAR(32) NOT NULL DEFAULT 'psicologia',
+            problem_id INT UNSIGNED NOT NULL,
+            source_id INT UNSIGNED NOT NULL,
+            UNIQUE uniq_knowledge_problem_sources (sector_key, problem_id, source_id),
+            INDEX idx_knowledge_problem_sources_sector (sector_key)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+
     foreach ([
         'knowledge_areas',
         'knowledge_problems',
@@ -502,7 +624,7 @@ function send_professional_password_setup_email($mysqli, $user_id, $name, $email
 
     $reset_link = urlme_shorten_url(
         app_public_base_url() . 'reset_password.php?t=' . urlencode($token),
-        'Crear contrasena profesional PsicoLogic',
+        'Crear contrasena profesional SimplyGest Praxis',
         date('Y-m-d H:i:s', strtotime('+24 hours'))
     );
 
@@ -524,14 +646,15 @@ function ensure_payment_settings_table($mysqli)
     $mysqli->query("
         CREATE TABLE IF NOT EXISTS payment_settings (
             id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
-            app_name VARCHAR(255) DEFAULT 'PsicoLogic',
+            app_name VARCHAR(255) DEFAULT 'SimplyGest Praxis',
             site_tagline VARCHAR(255) DEFAULT NULL,
             site_phone VARCHAR(40) DEFAULT NULL,
             profile_image_path VARCHAR(255) DEFAULT NULL,
             landing_image_path VARCHAR(255) DEFAULT NULL,
             favicon_path VARCHAR(255) DEFAULT NULL,
-            primary_color VARCHAR(7) NOT NULL DEFAULT '#8f7fba',
+            primary_color VARCHAR(7) NOT NULL DEFAULT '#4285f4',
             show_profile_image_public TINYINT(1) NOT NULL DEFAULT 0,
+            public_site_enabled TINYINT(1) NOT NULL DEFAULT 0,
             show_prices_public TINYINT(1) NOT NULL DEFAULT 0,
             show_contact_public TINYINT(1) NOT NULL DEFAULT 0,
             online_booking_enabled TINYINT(1) NOT NULL DEFAULT 1,
@@ -615,14 +738,15 @@ function ensure_payment_settings_table($mysqli)
 
     $columns = [
         'email_provider' => "ALTER TABLE payment_settings ADD email_provider ENUM('phpmailer', 'google') NOT NULL DEFAULT 'phpmailer' AFTER admin_notification_email",
-        'app_name' => "ALTER TABLE payment_settings ADD app_name VARCHAR(255) DEFAULT 'PsicoLogic' AFTER id",
+        'app_name' => "ALTER TABLE payment_settings ADD app_name VARCHAR(255) DEFAULT 'SimplyGest Praxis' AFTER id",
         'site_tagline' => "ALTER TABLE payment_settings ADD site_tagline VARCHAR(255) DEFAULT NULL AFTER app_name",
         'site_phone' => "ALTER TABLE payment_settings ADD site_phone VARCHAR(40) DEFAULT NULL AFTER site_tagline",
         'profile_image_path' => "ALTER TABLE payment_settings ADD profile_image_path VARCHAR(255) DEFAULT NULL AFTER app_name",
         'landing_image_path' => "ALTER TABLE payment_settings ADD landing_image_path VARCHAR(255) DEFAULT NULL AFTER profile_image_path",
         'favicon_path' => "ALTER TABLE payment_settings ADD favicon_path VARCHAR(255) DEFAULT NULL AFTER profile_image_path",
-        'primary_color' => "ALTER TABLE payment_settings ADD primary_color VARCHAR(7) NOT NULL DEFAULT '#8f7fba' AFTER landing_image_path",
+        'primary_color' => "ALTER TABLE payment_settings ADD primary_color VARCHAR(7) NOT NULL DEFAULT '#4285f4' AFTER landing_image_path",
         'show_profile_image_public' => "ALTER TABLE payment_settings ADD show_profile_image_public TINYINT(1) NOT NULL DEFAULT 0 AFTER profile_image_path",
+        'public_site_enabled' => "ALTER TABLE payment_settings ADD public_site_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER show_profile_image_public",
         'show_prices_public' => "ALTER TABLE payment_settings ADD show_prices_public TINYINT(1) NOT NULL DEFAULT 0 AFTER show_profile_image_public",
         'show_contact_public' => "ALTER TABLE payment_settings ADD show_contact_public TINYINT(1) NOT NULL DEFAULT 0 AFTER show_prices_public",
         'online_booking_enabled' => "ALTER TABLE payment_settings ADD online_booking_enabled TINYINT(1) NOT NULL DEFAULT 1 AFTER show_contact_public",
@@ -1290,7 +1414,7 @@ if ($action === 'generate_invite') {
         $path = rtrim($path, '/');
 
         $link = $protocol . $domainName . $path . '/register.php?token=' . $token;
-        $link = urlme_shorten_url($link, 'Invitacion registro PsicoLogic');
+        $link = urlme_shorten_url($link, 'Invitacion registro SimplyGest Praxis');
         echo json_encode(['success' => true, 'link' => $link, 'token' => $token]);
     } else {
         echo json_encode(['success' => false, 'error' => 'Error generando invitación']);
@@ -3713,7 +3837,7 @@ if ($action === 'generate_invite') {
     $stmt = $mysqli->prepare("INSERT INTO invitations (token, user_id) VALUES (?, ?)");
     $stmt->bind_param("si", $token, $patient_id);
     $stmt->execute();
-    $link = urlme_shorten_url(app_public_base_url() . 'register.php?token=' . urlencode($token), 'Invitacion registro PsicoLogic');
+    $link = urlme_shorten_url(app_public_base_url() . 'register.php?token=' . urlencode($token), 'Invitacion registro SimplyGest Praxis');
 
     $sent = send_app_email(
         $patient['email'],
@@ -3754,7 +3878,7 @@ if ($action === 'generate_invite') {
         exit;
     }
 
-    $link = urlme_shorten_url(app_public_base_url() . 'register.php?token=' . urlencode($token), 'Invitacion registro PsicoLogic');
+    $link = urlme_shorten_url(app_public_base_url() . 'register.php?token=' . urlencode($token), 'Invitacion registro SimplyGest Praxis');
     $sent = send_app_email(
         $email,
         'Invitacion para crear tu cuenta',
@@ -5153,7 +5277,7 @@ if ($action === 'generate_invite') {
     $legal_professional_college = trim($_POST['legal_professional_college'] ?? '');
     $legal_uses_non_technical_cookies = isset($_POST['legal_uses_non_technical_cookies']) && $_POST['legal_uses_non_technical_cookies'] === '1' ? 1 : 0;
     $legal_terms_notes = trim($_POST['legal_terms_notes'] ?? '');
-    $primary_color = trim($_POST['primary_color'] ?? '#8f7fba');
+    $primary_color = trim($_POST['primary_color'] ?? '#4285f4');
     $dashboard_config_mode = $_POST['dashboard_config_mode'] ?? 'simple';
     if (!in_array($dashboard_config_mode, ['simple', 'advanced', 'custom'], true)) {
         $dashboard_config_mode = 'simple';
@@ -5236,7 +5360,7 @@ if ($action === 'generate_invite') {
     $uploaded_favicon_path = null;
 
     if ($app_name === '') {
-        $app_name = 'PsicoLogic';
+        $app_name = 'SimplyGest Praxis';
     }
 
     if (!preg_match('/^#[0-9a-fA-F]{6}$/', $primary_color)) {

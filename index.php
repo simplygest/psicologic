@@ -1,5 +1,6 @@
 <?php
 session_start();
+header('Content-Type: text/html; charset=UTF-8');
 require_once 'db.php';
 require_once 'settings_helpers.php';
 require_once 'cabinet_helpers.php';
@@ -14,6 +15,10 @@ $show_contact_public = (int) ($branding['show_contact_public'] ?? 0) === 1;
 $show_team_public = cabinet_public_team_enabled($mysqli);
 $is_logged_in = isset($_SESSION['user_id']);
 $is_admin = in_array($_SESSION['role'] ?? '', ['admin', 'superadmin'], true);
+if ((int) ($branding['public_site_enabled'] ?? 0) !== 1) {
+    header('Location: login.php');
+    exit;
+}
 $online_booking_enabled = (int) ($branding['online_booking_enabled'] ?? 1) === 1;
 $show_patient_area = $online_booking_enabled || $is_admin;
 $appointment_delivery_mode = 'both';

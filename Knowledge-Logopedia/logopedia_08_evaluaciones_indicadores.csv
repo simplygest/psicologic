@@ -1,7 +1,0 @@
-﻿evaluacion_id;problema_id;nombre;area_uso;tipo;notas;fuente_ids
-LOG_E001;LOG_P001;Muestra de habla espontánea;Articulación;Observación/registro;"Herramienta clínica propia; registrar inteligibilidad y fonemas afectados.";LOG_SRC002
-LOG_E002;LOG_P004;Inventario de vocabulario/comprensión;Lenguaje infantil;Evaluación;Usar pruebas validadas solo si se dispone de licencia/permiso.;LOG_SRC002
-LOG_E003;LOG_P006;Registro de frecuencia de disfluencias;Fluidez;Seguimiento;Autorregistro/observación adaptada, no sustituye evaluación clínica.;LOG_SRC002
-LOG_E004;LOG_P007;Escala perceptiva de voz;Voz;Evaluación;"Requiere criterio profesional; revisar herramientas específicas y licencias.";LOG_SRC002
-LOG_E005;LOG_P009;Cribado de deglución;Deglución;Cribado;"Alto riesgo; requiere profesional cualificado y coordinación sanitaria si procede.";"LOG_SRC002;LOG_SRC004"
-LOG_E006;LOG_P012;Registro de lectura;Lectoescritura;Seguimiento;Registrar precisión, fluidez, comprensión y fatiga.;LOG_SRC002

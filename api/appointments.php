@@ -1139,8 +1139,8 @@ if ($action === 'patient_portal_summary') {
         );
 
         if (!empty($patient['email'])) {
-            $manage_link = urlme_shorten_url(app_public_base_url() . 'cancelar_cita.php?t=' . $cancel_token, 'Gestionar reserva PsicoLogic');
-            $calendar_link = urlme_shorten_url(app_public_base_url() . 'appointment_ics.php?t=' . $cancel_token, 'Anadir cita al calendario PsicoLogic');
+            $manage_link = urlme_shorten_url(app_public_base_url() . 'cancelar_cita.php?t=' . $cancel_token, 'Gestionar reserva SimplyGest Praxis');
+            $calendar_link = urlme_shorten_url(app_public_base_url() . 'appointment_ics.php?t=' . $cancel_token, 'Anadir cita al calendario SimplyGest Praxis');
             $payment_note = '<p>Recuerda que puedes pagar directamente en la consulta.</p>';
             if ($bonus_claim) {
                 $payment_note = '<p><b>Bono:</b> esta cita queda incluida en tu bono. Te quedan ' . (int) $bonus_claim['remaining_after'] . ' sesiones.</p>';
