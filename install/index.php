@@ -4,11 +4,13 @@ session_start();
 $rootDir = dirname(__DIR__);
 require_once $rootDir . '/config.php';
 require_once $rootDir . '/cabinet_helpers.php';
+require_once $rootDir . '/sector_text_helpers.php';
 
 $configPath = $rootDir . '/config.local.php';
 $installed = file_exists($configPath);
 $errors = [];
 $success = false;
+$sectorTextOptions = sector_texts_available();
 
 $defaults = [
     'app_name' => defined('DEFAULT_APP_NAME') ? DEFAULT_APP_NAME : 'PsicoLogic',
@@ -22,6 +24,7 @@ $defaults = [
     'db_user' => defined('DB_USER') ? DB_USER : '',
     'db_password' => '',
     'db_ssl' => defined('DB_SSL') && DB_SSL ? '1' : '0',
+    'sector_texts_key' => sector_texts_default_key(),
 ];
 
 function install_value($key, $defaults)
@@ -258,6 +261,7 @@ function install_ensure_payment_settings_columns($mysqli)
     install_add_column_if_missing($mysqli, 'patient_profiles', 'patient_status', "VARCHAR(20) NOT NULL DEFAULT 'active' AFTER patient_type");
     install_add_column_if_missing($mysqli, 'patient_profiles', 'birth_date', 'DATE DEFAULT NULL AFTER patient_status');
     install_add_column_if_missing($mysqli, 'patient_profiles', 'referral_source', 'VARCHAR(80) DEFAULT NULL AFTER birth_date');
+    install_add_column_if_missing($mysqli, 'patient_profiles', 'knowledge_problem_id', 'INT UNSIGNED DEFAULT NULL AFTER referral_source');
     install_add_column_if_missing($mysqli, 'patient_profiles', 'initial_consultation_reason', 'TEXT DEFAULT NULL AFTER referral_source');
     install_add_column_if_missing($mysqli, 'patient_profiles', 'emergency_contact_name', 'VARCHAR(150) DEFAULT NULL AFTER initial_consultation_reason');
     install_add_column_if_missing($mysqli, 'patient_profiles', 'emergency_contact_phone', 'VARCHAR(40) DEFAULT NULL AFTER emergency_contact_name');
@@ -356,6 +360,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $adminName = trim($_POST['admin_name'] ?? '');
     $adminEmail = trim($_POST['admin_email'] ?? '');
     $adminPassword = (string) ($_POST['admin_password'] ?? '');
+    $sectorTextsKey = $_POST['sector_texts_key'] ?? sector_texts_default_key();
 
     if ($appName === '') {
         $errors[] = 'Indica el nombre o título del sitio.';
@@ -368,6 +373,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     if (strlen($adminPassword) < 6) {
         $errors[] = 'La contraseña del administrador debe tener al menos 6 caracteres.';
+    }
+    if (!sector_texts_validate_key($sectorTextsKey) || !sector_texts_read_file($sectorTextsKey)) {
+        $errors[] = 'Selecciona un sector valido para esta instalacion.';
     }
     if ($settings['db_host'] === '' || $settings['db_user'] === '' || $settings['db_name'] === '') {
         $errors[] = 'Indica host, usuario y nombre de la base de datos.';
@@ -418,8 +426,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             install_ensure_payment_settings_columns($test);
 
             $defaultTagline = 'Psicología sanitaria y neuropsicología en Santa Cruz de Tenerife';
-            $stmt = $test->prepare("UPDATE payment_settings SET app_name = ?, site_tagline = COALESCE(NULLIF(site_tagline, ''), ?), admin_notification_email = ? WHERE id = 1");
-            $stmt->bind_param('sss', $appName, $defaultTagline, $adminEmail);
+            $stmt = $test->prepare("UPDATE payment_settings SET app_name = ?, site_tagline = COALESCE(NULLIF(site_tagline, ''), ?), admin_notification_email = ?, sector_texts_key = ? WHERE id = 1");
+            $stmt->bind_param('ssss', $appName, $defaultTagline, $adminEmail, $sectorTextsKey);
             $stmt->execute();
             $stmt->close();
 
@@ -542,6 +550,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <div class="col-12">
                                 <label class="form-label" for="app_name">Titulo de la web</label>
                                 <input class="form-control" type="text" id="app_name" name="app_name" value="<?php echo install_value('app_name', $defaults); ?>" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="sector_texts_key">Sector</label>
+                                <select class="form-select" id="sector_texts_key" name="sector_texts_key" required>
+                                    <?php
+                                    $selectedSector = $_POST['sector_texts_key'] ?? $defaults['sector_texts_key'];
+                                    foreach ($sectorTextOptions as $sectorOption):
+                                        $sectorKey = $sectorOption['key'] ?? sector_texts_default_key();
+                                    ?>
+                                        <option value="<?php echo htmlspecialchars($sectorKey, ENT_QUOTES, 'UTF-8'); ?>" <?php echo $selectedSector === $sectorKey ? 'selected' : ''; ?>>
+                                            <?php echo htmlspecialchars($sectorOption['name'] ?? $sectorKey, ENT_QUOTES, 'UTF-8'); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <div class="form-text">Define el vocabulario y la base de conocimiento inicial de la instalacion.</div>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label" for="timezone">Zona horaria</label>

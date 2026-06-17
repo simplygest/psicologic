@@ -2595,6 +2595,13 @@ body:not(.is-admin) .slot.booked {
     border-radius: 8px;
     margin-bottom: 10px;
     padding: 12px;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.patient-work-plan-task.is-removing,
+.patient-work-plan-task.is-moving {
+    opacity: 0;
+    transform: translateY(-6px);
 }
 
 .patient-work-plan-task.is-completed {
@@ -2776,6 +2783,188 @@ body.appointment-work-plan-modal-open #appointmentPaymentModal .modal-content {
     opacity: 0.42;
     pointer-events: none;
     transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
+.knowledge-problem-summary,
+.knowledge-technique-toggle,
+.knowledge-recommendation-item,
+.knowledge-recommendation-title,
+.knowledge-summary-badges,
+.knowledge-recommendation-meta {
+    display: flex;
+    gap: 10px;
+}
+
+.knowledge-problem-summary,
+.knowledge-technique-toggle,
+.knowledge-recommendation-item {
+    justify-content: space-between;
+}
+
+.knowledge-section h6 {
+    color: var(--primary-color);
+    font-weight: 700;
+    margin: 0;
+}
+
+.knowledge-technique-toggle p,
+.knowledge-recommendation-item p,
+.knowledge-description {
+    color: #66737d;
+    margin: 4px 0 0;
+}
+
+.knowledge-problem-summary,
+.knowledge-technique,
+.knowledge-compact-item,
+.knowledge-recommendation-item {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px;
+}
+
+.knowledge-problem-summary {
+    align-items: flex-start;
+    background: #fbfcfd;
+}
+
+.knowledge-summary-side {
+    align-items: flex-end;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.knowledge-eyebrow {
+    color: var(--primary-color);
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.knowledge-problem-summary h5 {
+    font-size: 1.08rem;
+    margin: 3px 0 0;
+}
+
+.knowledge-summary-badges,
+.knowledge-recommendation-title,
+.knowledge-recommendation-meta {
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.knowledge-section {
+    margin-top: 16px;
+}
+
+.knowledge-section h6 {
+    margin-bottom: 10px;
+}
+
+.knowledge-section-help {
+    color: #66737d;
+    font-size: 0.9rem;
+    margin: -4px 0 10px;
+}
+
+.knowledge-technique + .knowledge-technique,
+.knowledge-recommendation-item + .knowledge-recommendation-item,
+.knowledge-compact-item + .knowledge-compact-item {
+    margin-top: 10px;
+}
+
+.knowledge-technique {
+    padding: 0;
+    overflow: hidden;
+}
+
+.knowledge-technique-toggle {
+    align-items: flex-start;
+    background: #fff;
+    border: 0;
+    color: inherit;
+    padding: 12px;
+    text-align: left;
+    width: 100%;
+}
+
+.knowledge-technique-toggle strong {
+    display: block;
+}
+
+.knowledge-technique-side {
+    align-items: center;
+    display: flex;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.knowledge-technique-side .bi {
+    color: var(--primary-color);
+    transition: transform 0.16s ease;
+}
+
+.knowledge-technique-toggle:not(.collapsed) .knowledge-technique-side .bi {
+    transform: rotate(180deg);
+}
+
+.knowledge-recommendation-list {
+    background: #fbfcfd;
+    border-top: 1px solid var(--border-color);
+    padding: 12px;
+}
+
+.knowledge-technique-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 12px;
+}
+
+.knowledge-recommendation-item {
+    align-items: flex-start;
+    background: #fff;
+}
+
+.knowledge-recommendation-item > div {
+    min-width: 0;
+}
+
+.knowledge-recommendation-meta {
+    color: #66737d;
+    font-size: 0.82rem;
+    margin-top: 5px;
+}
+
+.knowledge-compact-item {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.knowledge-source-item {
+    align-items: flex-start;
+    flex-direction: row;
+    justify-content: space-between;
+}
+
+.knowledge-source-item > div {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.knowledge-source-link {
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+.knowledge-compact-item span,
+.knowledge-compact-item small {
+    color: #66737d;
 }
 
 .quick-appointments-summary {
@@ -3149,6 +3338,15 @@ body.appointment-work-plan-modal-open .modal-backdrop.show {
 
     .quick-appointment-badges {
         justify-content: flex-end;
+    }
+
+    .knowledge-problem-summary {
+        flex-direction: column;
+    }
+
+    .knowledge-summary-side {
+        align-items: flex-start;
+        width: 100%;
     }
 
     .patient-portal-item {

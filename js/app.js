@@ -34,6 +34,10 @@ let PAYMENT_SETTINGS = {
 };
 let APP_SECTOR_TEXTS = (typeof SECTOR_TEXTS !== 'undefined' && SECTOR_TEXTS) ? SECTOR_TEXTS : {};
 let APP_SECTOR_TEXT_OPTIONS = (typeof SECTOR_TEXT_OPTIONS !== 'undefined' && Array.isArray(SECTOR_TEXT_OPTIONS)) ? SECTOR_TEXT_OPTIONS : [];
+let APP_DASHBOARD_CONFIG = (typeof DASHBOARD_CONFIG !== 'undefined' && DASHBOARD_CONFIG) ? DASHBOARD_CONFIG : { features: {} };
+let APP_PLAN_CONFIG = (typeof PLAN_CONFIG !== 'undefined' && PLAN_CONFIG) ? PLAN_CONFIG : { plan: { features: {} } };
+let APP_KNOWLEDGE_BASE_ENABLED = typeof KNOWLEDGE_BASE_ENABLED !== 'undefined' ? Boolean(KNOWLEDGE_BASE_ENABLED) : false;
+let APP_KNOWLEDGE_BASE_HAS_SECTOR_DATA = APP_KNOWLEDGE_BASE_ENABLED;
 let APPOINTMENT_SERVICES = [];
 let ACTIVE_SERVICE_OPTIONS = [];
 let APPOINTMENT_BONUSES = [];
@@ -76,6 +80,7 @@ const QUICK_APPOINTMENTS_REFRESH_INTERVAL_MS = 60000;
 let quickAppointmentsRefreshTimer = null;
 let quickAppointmentsSummaryLoading = false;
 let quickAppointmentsSummaryRequest = null;
+let quickAppointmentsSummaryRendered = false;
 let patientPortalSummaryLoading = false;
 
 function sectorText(path, fallback = '') {
@@ -88,6 +93,50 @@ function sectorText(path, fallback = '') {
         current = current[part];
     }
     return typeof current === 'string' ? current : fallback;
+}
+
+function sectorLabel(entity, form = 'singular', fallback = '') {
+    return sectorText(`labels.${entity}.${form}`, fallback);
+}
+
+function capitalizeFirst(value) {
+    value = String(value || '');
+    return value ? value.charAt(0).toUpperCase() + value.slice(1) : '';
+}
+
+function dashboardFeatureEnabled(feature, fallback = false) {
+    return APP_DASHBOARD_CONFIG && APP_DASHBOARD_CONFIG.features && typeof APP_DASHBOARD_CONFIG.features[feature] === 'boolean'
+        ? APP_DASHBOARD_CONFIG.features[feature]
+        : fallback;
+}
+
+function planFeatureEnabled(feature, fallback = false) {
+    return APP_PLAN_CONFIG && APP_PLAN_CONFIG.plan && APP_PLAN_CONFIG.plan.features && typeof APP_PLAN_CONFIG.plan.features[feature] === 'boolean'
+        ? APP_PLAN_CONFIG.plan.features[feature]
+        : fallback;
+}
+
+function appFeatureEnabled(feature, fallback = false) {
+    return dashboardFeatureEnabled(feature, fallback) && planFeatureEnabled(feature, fallback);
+}
+
+function knowledgeBaseEnabled() {
+    return APP_KNOWLEDGE_BASE_ENABLED && APP_KNOWLEDGE_BASE_HAS_SECTOR_DATA && appFeatureEnabled('knowledgeBase.enabled', false);
+}
+
+function applyKnowledgeBaseVisibility() {
+    const enabled = knowledgeBaseEnabled();
+    const $tab = $('#patient-diagnosis-tab');
+    const $panel = $('#patient-diagnosis-panel');
+    if (!$tab.length || !$panel.length) return;
+    $tab.closest('.nav-item').toggleClass('d-none', !enabled);
+    $panel.toggleClass('d-none', !enabled);
+    if (!enabled && $tab.hasClass('active')) {
+        const fallback = document.getElementById('patient-data-tab');
+        if (fallback) {
+            bootstrap.Tab.getOrCreateInstance(fallback).show();
+        }
+    }
 }
 
 function getMonday(d) {
@@ -885,7 +934,7 @@ function renderSlot(dateStr, timeStr, dayApps) {
     return `<div class="slot ${cls}" ${onClick ? `onclick="${onClick}"` : ''}>${text}</div>`;
 }
 
-function loadQuickAppointmentsSummary() {
+function loadQuickAppointmentsSummary(animate = !quickAppointmentsSummaryRendered) {
     const $wrap = $('#quick-appointments-summary');
     if (!$wrap.length || !IS_ADMIN) {
         return $.Deferred().resolve().promise();
@@ -906,7 +955,7 @@ function loadQuickAppointmentsSummary() {
                 $wrap.addClass('d-none').empty();
                 return;
             }
-            renderQuickAppointmentsSummary(res.current || null, res.next || null);
+            renderQuickAppointmentsSummary(res.current || null, res.next || null, animate);
         },
         error: function () {
             $wrap.addClass('d-none').empty();
@@ -923,7 +972,7 @@ function loadQuickAppointmentsSummary() {
 
 function refreshQuickAppointmentSummaries() {
     if (IS_ADMIN) {
-        loadQuickAppointmentsSummary();
+        loadQuickAppointmentsSummary(false);
         return;
     }
     if ($('#patient-quick-appointment-summary').length) {
@@ -938,7 +987,7 @@ function startQuickAppointmentsAutoRefresh() {
     quickAppointmentsRefreshTimer = setInterval(refreshQuickAppointmentSummaries, QUICK_APPOINTMENTS_REFRESH_INTERVAL_MS);
 }
 
-function renderQuickAppointmentsSummary(current, next) {
+function renderQuickAppointmentsSummary(current, next, animate = false) {
     const $wrap = $('#quick-appointments-summary');
     if (!$wrap.length) {
         return;
@@ -959,7 +1008,8 @@ function renderQuickAppointmentsSummary(current, next) {
     }
     $wrap
         .removeClass('d-none')
-        .html(`<div class="row g-3 mb-4 dashboard-enter">${cards.join('')}</div>`);
+        .html(`<div class="row g-3 mb-4${animate ? ' dashboard-enter' : ''}">${cards.join('')}</div>`);
+    quickAppointmentsSummaryRendered = true;
 }
 
 function quickAppointmentCardHtml(app, title, type) {
@@ -972,6 +1022,8 @@ function quickAppointmentCardHtml(app, title, type) {
     const contact = quickAppointmentContactHtml(app);
     const payment = adminPaymentLabel(app);
     const consultation = quickAppointmentConsultationBadge(app.consultation_type);
+    const patientName = app.patient_name || 'Paciente';
+    const mainTitle = `${dateTimeText} con ${patientName}`;
     return `
         <div class="col-12 col-lg-6">
             <article class="quick-appointment-card quick-appointment-${type}">
@@ -983,8 +1035,7 @@ function quickAppointmentCardHtml(app, title, type) {
                 </div>
                 <div class="quick-appointment-body">
                     <div>
-                        <h5>${escapeHtml(dateTimeText)}</h5>
-                        <h5 class="quick-appointment-patient-name">${escapeHtml(app.patient_name || 'Paciente')}</h5>
+                        <h5>${escapeHtml(mainTitle)}</h5>
                         ${contact ? `<div class="quick-appointment-contact">${contact}</div>` : ''}
                     </div>
                 </div>
@@ -1583,9 +1634,15 @@ let CURRENT_PATIENT_FILES_ID = 0;
 let CURRENT_PATIENT_WORK_PLAN_ID = 0;
 let CURRENT_PATIENT_WORK_PLAN_ROWS = [];
 let CURRENT_WORK_PLAN_FORM_CONTEXT = { source: 'patient', patientId: 0, appointmentId: 0 };
+let KNOWLEDGE_PROBLEMS = [];
+let KNOWLEDGE_PROBLEMS_LOADED = false;
+let CURRENT_KNOWLEDGE_PROBLEM_DETAIL = null;
 let CURRENT_PATIENT_PORTAL = { appointments: [], tasks: [] };
 let WORK_PLAN_TASK_TEMPLATES = [];
 let WORK_PLAN_TASK_TEMPLATES_LOADED = false;
+let WORK_PLAN_KNOWLEDGE_IMPORT_OPTIONS = [];
+let WORK_PLAN_KNOWLEDGE_IMPORT_OPTIONS_LOADED = false;
+let WORK_PLAN_IMPORT_LOADING = false;
 let CURRENT_PATIENT_EVOLUTION_ROWS = [];
 let CURRENT_PATIENT_EVOLUTION_APPOINTMENTS = [];
 let CURRENT_PATIENT_BONUS_CATALOG = [];
@@ -1727,6 +1784,7 @@ function applyCancelPaymentNotice(status, payload) {
 }
 
 $(document).ready(function () {
+    applyKnowledgeBaseVisibility();
     renderWeekInfo();
     startQuickAppointmentsAutoRefresh();
 
@@ -1741,7 +1799,10 @@ $(document).ready(function () {
         $('#global-search-input').val('');
         $('#global-search-results').html('<div class="text-center text-muted py-4">Escribe al menos 2 caracteres para buscar.</div>');
         globalSearchModal.show();
-        setTimeout(() => $('#global-search-input').trigger('focus'), 180);
+    });
+
+    $('#globalSearchModal').on('shown.bs.modal', function () {
+        setTimeout(() => $('#global-search-input').trigger('focus').trigger('select'), 40);
     });
 
     $('#global-search-input').on('input', debounce(function () {
@@ -2051,6 +2112,33 @@ $(document).ready(function () {
 
     $('#patient-editor-birth-date').on('input change', function () {
         updatePatientAgeDisplay();
+    });
+
+    $('#patient-diagnosis-tab').on('shown.bs.tab', function () {
+        if (!knowledgeBaseEnabled()) return;
+        loadKnowledgeProblems(function () {
+            loadSelectedPatientKnowledgeProblem();
+        });
+    });
+
+    $('#patient-editor-knowledge-problem').on('change', function () {
+        if (!knowledgeBaseEnabled()) return;
+        loadSelectedPatientKnowledgeProblem();
+    });
+
+    $('#patient-knowledge-content').on('click', '.btn-add-knowledge-recommendation', function () {
+        if (!knowledgeBaseEnabled()) return;
+        importKnowledgeRecommendationTask(this);
+    });
+
+    $('#patient-knowledge-content').on('click', '.btn-import-knowledge-technique-tasks', function () {
+        if (!knowledgeBaseEnabled()) return;
+        importKnowledgeTechniqueTasks(this);
+    });
+
+    $('#btn-import-knowledge-problem-tasks').on('click', function () {
+        if (!knowledgeBaseEnabled()) return;
+        importKnowledgeProblemTasks(this);
     });
 
     $('.btn-patient-report').click(function () {
@@ -3796,6 +3884,353 @@ function filterAndSortAdminPatients(patients) {
     return rows;
 }
 
+function loadKnowledgeProblems(callback) {
+    const done = typeof callback === 'function' ? callback : function () {};
+    if (!knowledgeBaseEnabled()) {
+        KNOWLEDGE_PROBLEMS = [];
+        KNOWLEDGE_PROBLEMS_LOADED = true;
+        done();
+        return;
+    }
+    if (KNOWLEDGE_PROBLEMS_LOADED) {
+        populateKnowledgeProblemSelect();
+        done();
+        return;
+    }
+    $('#patient-editor-knowledge-problem').prop('disabled', true).html('<option value="">Cargando diagn&oacute;sticos...</option>');
+    $.ajax({
+        url: 'api/admin.php?action=knowledge_problems',
+        method: 'GET',
+        dataType: 'json',
+        success: function (res) {
+            if (!res.success) {
+                showPatientKnowledgeAlert('danger', res.error || 'No se pudo cargar la base de conocimiento.');
+                $('#patient-editor-knowledge-problem').html('<option value="">No disponible</option>');
+                return;
+            }
+            KNOWLEDGE_PROBLEMS = Array.isArray(res.problems) ? res.problems : [];
+            KNOWLEDGE_PROBLEMS_LOADED = true;
+            populateKnowledgeProblemSelect();
+            done();
+        },
+        error: function () {
+            showPatientKnowledgeAlert('danger', 'Error de conexion al cargar la base de conocimiento.');
+            $('#patient-editor-knowledge-problem').html('<option value="">No disponible</option>');
+        },
+        complete: function () {
+            $('#patient-editor-knowledge-problem').prop('disabled', false);
+        }
+    });
+}
+
+function populateKnowledgeProblemSelect() {
+    const selected = String($('#patient-editor-knowledge-problem').val() || (CURRENT_PATIENT_EDITOR ? CURRENT_PATIENT_EDITOR.knowledge_problem_id || '' : ''));
+    const diagnosisLabel = sectorText('clinicalTerms.diagnosis', 'diagnostico');
+    const groups = {};
+    KNOWLEDGE_PROBLEMS.forEach(problem => {
+        const area = problem.area_name || 'Sin area';
+        if (!groups[area]) groups[area] = [];
+        groups[area].push(problem);
+    });
+    let html = `<option value="">Sin ${escapeHtml(diagnosisLabel)} asociado</option>`;
+    Object.keys(groups).sort().forEach(area => {
+        html += `<optgroup label="${escapeHtml(area)}">`;
+        groups[area].forEach(problem => {
+            const label = `${problem.name || ''}${problem.alias ? ` (${problem.alias})` : ''}`;
+            html += `<option value="${parseInt(problem.id, 10)}">${escapeHtml(label)}</option>`;
+        });
+        html += '</optgroup>';
+    });
+    $('#patient-editor-knowledge-problem').html(html).val(selected);
+}
+
+function loadSelectedPatientKnowledgeProblem() {
+    const problemId = parseInt($('#patient-editor-knowledge-problem').val() || 0, 10);
+    const diagnosisLabel = sectorText('clinicalTerms.diagnosis', 'diagnostico');
+    CURRENT_KNOWLEDGE_PROBLEM_DETAIL = null;
+    $('#patient-knowledge-alert').addClass('d-none').text('');
+    if (!problemId) {
+        $('#patient-knowledge-content').html(`<div class="text-center text-muted py-4">No hay ${escapeHtml(diagnosisLabel)} seleccionado.</div>`);
+        return;
+    }
+    $('#patient-knowledge-content').html('<div class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2"></span>Cargando base de conocimiento...</div>');
+    $.ajax({
+        url: 'api/admin.php?action=knowledge_problem_detail',
+        method: 'GET',
+        dataType: 'json',
+        data: { problem_id: problemId },
+        success: function (res) {
+            if (!res.success) {
+                showPatientKnowledgeAlert('danger', res.error || `No se pudo cargar el ${diagnosisLabel}.`);
+                $('#patient-knowledge-content').html('<div class="text-center text-muted py-4">No se pudo cargar la base de conocimiento.</div>');
+                return;
+            }
+            CURRENT_KNOWLEDGE_PROBLEM_DETAIL = res;
+            $('#patient-knowledge-content').html(renderKnowledgeProblemDetail(res));
+        },
+        error: function () {
+            showPatientKnowledgeAlert('danger', `Error de conexion al cargar el ${diagnosisLabel}.`);
+            $('#patient-knowledge-content').html('<div class="text-center text-muted py-4">No se pudo cargar la base de conocimiento.</div>');
+        }
+    });
+}
+
+function knowledgeRiskBadge(risk, label = 'Riesgo') {
+    const value = String(risk || '').toLowerCase();
+    const cls = value === 'alto' ? 'text-bg-danger' : (value === 'medio' ? 'text-bg-warning' : 'text-bg-success');
+    return risk ? `<span class="badge ${cls}">${escapeHtml(label)}: ${escapeHtml(risk)}</span>` : '';
+}
+
+function knowledgePriorityBadge(priority) {
+    const value = String(priority || '').toLowerCase();
+    const cls = value === 'alta' ? 'text-bg-danger' : (value === 'media' ? 'text-bg-warning' : 'text-bg-secondary');
+    return priority ? `<span class="badge ${cls}">Prioridad: ${escapeHtml(priority)}</span>` : '';
+}
+
+function renderKnowledgeProblemDetail(data) {
+    const problem = data.problem || {};
+    const techniques = Array.isArray(data.techniques) ? data.techniques : [];
+    const questionnaires = Array.isArray(data.questionnaires) ? data.questionnaires : [];
+    const sources = Array.isArray(data.sources) ? data.sources : [];
+    const taskSingular = sectorLabel('task', 'singular', 'tarea');
+    const taskPlural = sectorLabel('task', 'plural', 'tareas');
+    const techniqueSingular = sectorLabel('technique', 'singular', 'tecnica');
+    const techniquePlural = sectorLabel('technique', 'plural', 'tecnicas');
+    const techniqueTitlePlural = sectorLabel('technique', 'titlePlural', 'Tecnicas');
+    const evaluationTitlePlural = sectorLabel('evaluation', 'titlePlural', 'Cuestionarios');
+    const goalTitleSingular = sectorLabel('goal', 'titleSingular', 'Objetivo');
+    const techniquesHtml = techniques.length ? techniques.map((technique, index) => {
+        const collapseId = `knowledge-technique-${parseInt(technique.id, 10) || index}`;
+        const recommendations = Array.isArray(technique.recommendations) ? technique.recommendations : [];
+        return `
+        <article class="knowledge-technique">
+            <button class="knowledge-technique-toggle collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#${collapseId}" aria-expanded="false" aria-controls="${collapseId}">
+                <span>
+                    <strong>${escapeHtml(technique.name || '')}</strong>
+                    ${technique.description ? `<p>${escapeHtml(technique.description)}</p>` : ''}
+                </span>
+                <span class="knowledge-technique-side">
+                    <span class="badge text-bg-light">${recommendations.length} ${recommendations.length === 1 ? escapeHtml(taskSingular) : escapeHtml(taskPlural)}</span>
+                    ${knowledgeRiskBadge(technique.risk_level, 'Riesgo')}
+                    <i class="bi bi-chevron-down"></i>
+                </span>
+            </button>
+            <div class="collapse" id="${collapseId}">
+                <div class="knowledge-recommendation-list">
+                    ${recommendations.map(rec => {
+                        const task = rec.task || {};
+                        return `
+                            <div class="knowledge-recommendation-item">
+                                <div>
+                                    <div class="knowledge-recommendation-title">
+                                        <strong>${escapeHtml(task.title || '')}</strong>
+                                        ${knowledgePriorityBadge(rec.priority)}
+                                        ${knowledgeRiskBadge(task.risk_level, 'Riesgo tarea')}
+                                    </div>
+                                    ${task.description ? `<p>${escapeHtml(task.description)}</p>` : ''}
+                                    <div class="knowledge-recommendation-meta">
+                                        ${task.objective ? `<span>${escapeHtml(goalTitleSingular)}: ${escapeHtml(task.objective)}</span>` : ''}
+                                        ${task.estimated_duration ? `<span>Duraci&oacute;n: ${escapeHtml(task.estimated_duration)}</span>` : ''}
+                                    </div>
+                                </div>
+                                <button class="btn btn-outline-primary btn-sm btn-add-knowledge-recommendation" type="button" data-recommendation-id="${parseInt(rec.id, 10)}">
+                                    <i class="bi bi-plus-circle"></i> A&ntilde;adir ${escapeHtml(taskSingular)}
+                                </button>
+                            </div>
+                        `;
+                    }).join('')}
+                    <div class="knowledge-technique-actions">
+                        <button class="btn btn-outline-primary btn-sm btn-import-knowledge-technique-tasks" type="button" data-technique-id="${parseInt(technique.id, 10)}">
+                            <i class="bi bi-list-check"></i> Importar ${recommendations.length === 1 ? 'el' : 'las'} ${recommendations.length} ${recommendations.length === 1 ? escapeHtml(taskSingular) : escapeHtml(taskPlural)}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </article>
+    `;
+    }).join('') : `<div class="text-muted">No hay ${escapeHtml(techniquePlural)} recomendadas.</div>`;
+    const questionnairesHtml = questionnaires.length ? questionnaires.map(item => `
+        <div class="knowledge-compact-item">
+            <strong>${escapeHtml(item.name || '')}</strong>
+            <span>${escapeHtml([item.type, item.use_area].filter(Boolean).join(' · '))}</span>
+            ${item.notes ? `<small>${escapeHtml(item.notes)}</small>` : ''}
+        </div>
+    `).join('') : `<div class="text-muted">No hay ${escapeHtml(evaluationTitlePlural.toLowerCase())} disponibles.</div>`;
+    const sourcesHtml = sources.length ? sources.map(source => `
+        <div class="knowledge-compact-item knowledge-source-item">
+            <div>
+                <strong>${escapeHtml(source.name || source.code || '')}</strong>
+                <span>${escapeHtml([source.organization, source.title].filter(Boolean).join(' · '))}</span>
+            </div>
+            ${source.url ? `
+                <a class="btn btn-outline-primary btn-sm knowledge-source-link" href="${escapeHtml(source.url)}" target="_blank" rel="noopener" title="Abrir fuente">
+                    <i class="bi bi-link-45deg"></i>
+                </a>
+            ` : ''}
+        </div>
+    `).join('') : '<div class="text-muted">No hay fuentes vinculadas.</div>';
+    return `
+        <div class="knowledge-problem-summary">
+            <div>
+                <div class="knowledge-eyebrow">${escapeHtml(problem.area_name || '')}</div>
+                <h5>${escapeHtml(problem.name || '')}</h5>
+                ${problem.alias ? `<div class="text-muted">${escapeHtml(problem.alias)}</div>` : ''}
+                ${problem.description ? `<p class="knowledge-description">${escapeHtml(problem.description)}</p>` : ''}
+            </div>
+            <div class="knowledge-summary-side">
+                <div class="knowledge-summary-badges">
+                    ${knowledgeRiskBadge(problem.risk_level, 'Riesgo')}
+                    ${problem.population ? `<span class="badge text-bg-light">${escapeHtml(problem.population)}</span>` : ''}
+                </div>
+                <button class="btn btn-outline-primary btn-sm" type="button" id="btn-import-knowledge-problem-tasks" title="Importa ${escapeHtml(taskPlural)} recomendadas de todas las ${escapeHtml(techniquePlural)}">
+                    <i class="bi bi-list-check"></i> Importar ${escapeHtml(taskPlural)}
+                </button>
+            </div>
+        </div>
+        <div class="knowledge-section">
+            <h6>${escapeHtml(techniqueTitlePlural)} y ${escapeHtml(taskPlural)} recomendadas</h6>
+            <p class="knowledge-section-help">Haz click en ${escapeHtml(techniqueSingular)} para desplegar las ${escapeHtml(taskPlural)} recomendadas.</p>
+            ${techniquesHtml}
+        </div>
+        <div class="row g-3">
+            <div class="col-12">
+                <div class="knowledge-section">
+                    <h6>${escapeHtml(evaluationTitlePlural)} sugeridos</h6>
+                    ${questionnairesHtml}
+                </div>
+            </div>
+            <div class="col-12">
+                <div class="knowledge-section">
+                    <h6>Fuentes</h6>
+                    ${sourcesHtml}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function showPatientKnowledgeAlert(type, message, autoHide = false) {
+    const $alert = $('#patient-knowledge-alert')
+        .removeClass('d-none alert-success alert-danger')
+        .addClass(type === 'success' ? 'alert-success' : 'alert-danger')
+        .text(message);
+    if (autoHide || type === 'success') {
+        setTimeout(() => $alert.addClass('d-none').text(''), 3000);
+    }
+}
+
+function importKnowledgeRecommendationTask(button) {
+    const patientId = parseInt($('#patient-editor-id').val() || 0, 10);
+    const recommendationId = parseInt($(button).data('recommendation-id') || 0, 10);
+    const taskSingular = sectorLabel('task', 'singular', 'tarea');
+    if (!patientId) {
+        showPatientKnowledgeAlert('danger', 'Guarda primero el paciente.');
+        return;
+    }
+    const $button = $(button);
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+    $.ajax({
+        url: 'api/admin.php?action=import_knowledge_recommendation_task',
+        method: 'POST',
+        dataType: 'json',
+        data: { patient_id: patientId, recommendation_id: recommendationId },
+        success: function (res) {
+            if (!res.success) {
+                showPatientKnowledgeAlert('danger', res.error || `No se pudo anadir ${taskSingular}.`);
+                return;
+            }
+            showPatientKnowledgeAlert('success', `${capitalizeFirst(taskSingular)} anadida al plan de trabajo.`);
+            loadPatientWorkPlan(patientId);
+        },
+        error: function () {
+            showPatientKnowledgeAlert('danger', `Error de conexion al anadir ${taskSingular}.`);
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function importKnowledgeProblemTasks(button) {
+    const patientId = parseInt($('#patient-editor-id').val() || 0, 10);
+    const problemId = parseInt($('#patient-editor-knowledge-problem').val() || 0, 10);
+    const diagnosisLabel = sectorText('clinicalTerms.diagnosis', 'diagnostico');
+    const taskPlural = sectorLabel('task', 'plural', 'tareas');
+    if (!patientId) {
+        showPatientKnowledgeAlert('danger', 'Guarda primero el paciente.');
+        return;
+    }
+    if (!problemId) {
+        showPatientKnowledgeAlert('danger', `Selecciona ${diagnosisLabel}.`);
+        return;
+    }
+    const $button = $(button);
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Importando');
+    $.ajax({
+        url: 'api/admin.php?action=import_knowledge_problem_tasks',
+        method: 'POST',
+        dataType: 'json',
+        data: { patient_id: patientId, problem_id: problemId },
+        success: function (res) {
+            if (!res.success) {
+                showPatientKnowledgeAlert('danger', res.error || 'No se pudieron importar las tareas.');
+                return;
+            }
+            const count = parseInt(res.count || 0, 10);
+            showPatientKnowledgeAlert('success', `${count || ''} ${taskPlural} importadas.`.trim());
+            loadPatientWorkPlan(patientId);
+        },
+        error: function () {
+            showPatientKnowledgeAlert('danger', 'Error de conexion al importar las tareas.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function importKnowledgeTechniqueTasks(button) {
+    const patientId = parseInt($('#patient-editor-id').val() || 0, 10);
+    const problemId = parseInt($('#patient-editor-knowledge-problem').val() || 0, 10);
+    const techniqueId = parseInt($(button).data('technique-id') || 0, 10);
+    const techniqueSingular = sectorLabel('technique', 'singular', 'tecnica');
+    const taskPlural = sectorLabel('task', 'plural', 'tareas');
+    if (!patientId) {
+        showPatientKnowledgeAlert('danger', 'Guarda primero el paciente.');
+        return;
+    }
+    if (!problemId || !techniqueId) {
+        showPatientKnowledgeAlert('danger', `No se pudo identificar ${techniqueSingular} seleccionada.`);
+        return;
+    }
+    const $button = $(button);
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Importando');
+    $.ajax({
+        url: 'api/admin.php?action=import_knowledge_technique_tasks',
+        method: 'POST',
+        dataType: 'json',
+        data: { patient_id: patientId, problem_id: problemId, technique_id: techniqueId },
+        success: function (res) {
+            if (!res.success) {
+                showPatientKnowledgeAlert('danger', res.error || `No se pudieron importar ${taskPlural}.`);
+                return;
+            }
+            const count = parseInt(res.count || 0, 10);
+            showPatientKnowledgeAlert('success', `${count || ''} ${taskPlural} importadas.`.trim());
+            loadPatientWorkPlan(patientId);
+        },
+        error: function () {
+            showPatientKnowledgeAlert('danger', `Error de conexion al importar ${taskPlural}.`);
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
 function openPatientEditorModal(patient = null) {
     if (!patientEditorModal) return;
     CURRENT_PATIENT_EDITOR = patient ? { ...patient } : null;
@@ -3810,6 +4245,13 @@ function openPatientEditorModal(patient = null) {
     $('#patient-editor-status').val(patient ? patient.patient_status || 'active' : 'active');
     $('#patient-editor-birth-date').val(patient ? patient.birth_date || '' : '');
     $('#patient-editor-referral-source').val(patient ? patient.referral_source || '' : '');
+    $('#patient-editor-knowledge-problem').val(patient ? patient.knowledge_problem_id || '' : '');
+    CURRENT_KNOWLEDGE_PROBLEM_DETAIL = null;
+    $('#patient-knowledge-alert').addClass('d-none').text('');
+    $('#patient-knowledge-content').html('<div class="text-center text-muted py-4">No hay diagn&oacute;stico seleccionado.</div>');
+    loadKnowledgeProblems(function () {
+        $('#patient-editor-knowledge-problem').val(patient ? patient.knowledge_problem_id || '' : '');
+    });
     $('#patient-editor-emergency-name').val(patient ? patient.emergency_contact_name || '' : '');
     $('#patient-editor-emergency-phone').val(patient ? patient.emergency_contact_phone || '' : '');
     $('#patient-editor-emergency-relation').val(patient ? patient.emergency_contact_relation || '' : '');
@@ -3986,7 +4428,7 @@ function renderPatientWorkPlanTask(task) {
         ? `<div class="small text-muted mt-2">Completada el ${formatDateTimeLabel(task.completed_at)}</div>`
         : '';
     return `
-        <div class="patient-work-plan-task ${completed ? 'is-completed' : ''}">
+        <div class="patient-work-plan-task ${completed ? 'is-completed' : ''}" data-task-id="${task.id}">
             <div class="d-flex justify-content-between align-items-start">
                 <div class="pe-2">
                     <div class="d-flex flex-wrap align-items-center patient-work-plan-badges">
@@ -4056,9 +4498,6 @@ function openWorkPlanTaskModal(options = {}) {
         return;
     }
     CURRENT_WORK_PLAN_FORM_CONTEXT = { source, patientId, appointmentId: source === 'appointment-session' ? appointmentId : 0 };
-    if (!task) {
-        loadWorkPlanTaskTemplates();
-    }
     $('#patient-work-plan-modal-title').text(task ? 'Editar tarea' : (source === 'appointment-session' ? 'Crear o importar tareas de sesión' : 'Crear o importar tareas'));
     $('#patient-work-plan-id').val(task ? task.id : 0);
     $('#patient-work-plan-patient-id').val(patientId);
@@ -4074,8 +4513,43 @@ function openWorkPlanTaskModal(options = {}) {
         patientWorkPlanTaskModal.show();
         if (task) {
             setTimeout(() => $('#patient-work-plan-title').trigger('focus'), 180);
+        } else {
+            prepareWorkPlanImportOptions();
         }
     }
+}
+
+function setWorkPlanImportLoading(loading) {
+    WORK_PLAN_IMPORT_LOADING = Boolean(loading);
+    const $select = $('#patient-work-plan-template');
+    $('#patient-work-plan-loading').toggleClass('d-none', !WORK_PLAN_IMPORT_LOADING);
+    $select.prop('disabled', WORK_PLAN_IMPORT_LOADING);
+    $('#patient-work-plan-manual-block').find('input, select, textarea').prop('disabled', WORK_PLAN_IMPORT_LOADING);
+    if (WORK_PLAN_IMPORT_LOADING) {
+        $select.html('<option value="manual">Cargando plantillas...</option>').val('manual');
+        $('#btn-import-work-plan-template, #btn-save-patient-work-plan').prop('disabled', true);
+        return;
+    }
+    togglePatientWorkPlanTaskMode();
+}
+
+function prepareWorkPlanImportOptions() {
+    setWorkPlanImportLoading(true);
+    const waitFor = function (promise) {
+        const deferred = $.Deferred();
+        promise.always(function () {
+            deferred.resolve();
+        });
+        return deferred.promise();
+    };
+    const knowledgePromise = knowledgeBaseEnabled()
+        ? loadWorkPlanKnowledgeImportOptions()
+        : $.Deferred().resolve({ success: true }).promise();
+    $.when(waitFor(loadWorkPlanTaskTemplates()), waitFor(knowledgePromise))
+        .done(function () {
+            populateWorkPlanTemplateSelect();
+            setWorkPlanImportLoading(false);
+        });
 }
 
 function resetPatientWorkPlanFormFields() {
@@ -4084,6 +4558,8 @@ function resetPatientWorkPlanFormFields() {
     }
     $('#patient-work-plan-id').val(0);
     $('#patient-work-plan-template').val('manual');
+    $('#patient-work-plan-loading').addClass('d-none');
+    WORK_PLAN_IMPORT_LOADING = false;
     $('#patient-work-plan-template-block').removeClass('d-none');
     $('#patient-work-plan-priority').val('2');
     $('#patient-work-plan-completed').prop('checked', false);
@@ -4093,18 +4569,51 @@ function resetPatientWorkPlanFormFields() {
 }
 
 function getSelectedWorkPlanTemplateId() {
+    const selection = getSelectedWorkPlanImportSelection();
+    return selection.type === 'template' ? selection.templateId : 0;
+}
+
+function getSelectedWorkPlanImportSelection() {
     const value = $('#patient-work-plan-template').val();
-    if (!value || value === 'manual') return 0;
-    return parseInt(value, 10) || 0;
+    if (!value || value === 'manual') {
+        return { type: 'manual' };
+    }
+    if (String(value).startsWith('template:')) {
+        return { type: 'template', templateId: parseInt(String(value).replace('template:', ''), 10) || 0 };
+    }
+    if (String(value).startsWith('knowledge:')) {
+        const parts = String(value).split(':');
+        return {
+            type: 'knowledge',
+            problemId: parseInt(parts[1] || '0', 10) || 0,
+            techniqueId: parseInt(parts[2] || '0', 10) || 0
+        };
+    }
+    return { type: 'template', templateId: parseInt(value, 10) || 0 };
 }
 
 function togglePatientWorkPlanTaskMode() {
+    if (WORK_PLAN_IMPORT_LOADING) {
+        $('#patient-work-plan-manual-block').removeClass('d-none').find('input, select, textarea').prop('disabled', true);
+        $('#btn-save-patient-work-plan').removeClass('d-none').prop('disabled', true);
+        $('#btn-import-work-plan-template').addClass('d-none').prop('disabled', true);
+        $('#patient-work-plan-template-block')
+            .addClass('mb-4')
+            .removeClass('mb-0');
+        return;
+    }
     const isEditing = parseInt($('#patient-work-plan-id').val() || '0', 10) > 0;
-    const templateId = getSelectedWorkPlanTemplateId();
-    const isManual = isEditing || !templateId;
-    $('#patient-work-plan-manual-block').toggleClass('d-none', !isManual);
+    const selection = getSelectedWorkPlanImportSelection();
+    const isImportable = selection.type === 'template'
+        ? selection.templateId > 0
+        : (selection.type === 'knowledge' && selection.problemId > 0 && selection.techniqueId > 0);
+    const isManual = isEditing || selection.type === 'manual' || !isImportable;
+    $('#patient-work-plan-manual-block')
+        .toggleClass('d-none', !isManual)
+        .find('input, select, textarea')
+        .prop('disabled', false);
     $('#btn-save-patient-work-plan').toggleClass('d-none', !isManual).prop('disabled', !isManual);
-    $('#btn-import-work-plan-template').toggleClass('d-none', isManual).prop('disabled', isManual || !templateId);
+    $('#btn-import-work-plan-template').toggleClass('d-none', isManual).prop('disabled', isManual || !isImportable);
     $('#patient-work-plan-template-block')
         .toggleClass('mb-4', isManual)
         .toggleClass('mb-0', !isManual);
@@ -4188,6 +4697,7 @@ function setPatientWorkPlanTaskStatus(button) {
     const status = $button.data('next-status') === 'completed' ? 'completed' : 'pending';
     if (!taskId) return;
     const original = $button.html();
+    const $card = $button.closest('.patient-work-plan-task');
     $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
     $.ajax({
         url: 'api/admin.php?action=set_patient_work_plan_task_status',
@@ -4200,7 +4710,20 @@ function setPatientWorkPlanTaskStatus(button) {
                 return;
             }
             showPatientWorkPlanAlert('success', res.message || 'Tarea actualizada.', true);
-            loadPatientWorkPlan(CURRENT_PATIENT_WORK_PLAN_ID);
+            $card.addClass('is-moving');
+            setTimeout(() => {
+                CURRENT_PATIENT_WORK_PLAN_ROWS = CURRENT_PATIENT_WORK_PLAN_ROWS.map(task => {
+                    if (parseInt(task.id || 0, 10) !== taskId) return task;
+                    return {
+                        ...task,
+                        status,
+                        completed_at: status === 'completed'
+                            ? (res.completed_at || new Date().toISOString().slice(0, 19).replace('T', ' '))
+                            : null
+                    };
+                });
+                renderPatientWorkPlan(CURRENT_PATIENT_WORK_PLAN_ROWS);
+            }, 180);
         },
         error: function () {
             showPatientWorkPlanAlert('danger', 'Error de conexion al actualizar la tarea.');
@@ -4218,6 +4741,7 @@ function deletePatientWorkPlanTask(button) {
         return;
     }
     const original = $button.html();
+    const $card = $button.closest('.patient-work-plan-task');
     $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
     $.ajax({
         url: 'api/admin.php?action=delete_patient_work_plan_task',
@@ -4230,7 +4754,11 @@ function deletePatientWorkPlanTask(button) {
                 return;
             }
             showPatientWorkPlanAlert('success', res.message || 'Tarea eliminada correctamente.', true);
-            loadPatientWorkPlan(CURRENT_PATIENT_WORK_PLAN_ID);
+            $card.addClass('is-removing');
+            setTimeout(() => {
+                CURRENT_PATIENT_WORK_PLAN_ROWS = CURRENT_PATIENT_WORK_PLAN_ROWS.filter(task => parseInt(task.id || 0, 10) !== taskId);
+                renderPatientWorkPlan(CURRENT_PATIENT_WORK_PLAN_ROWS);
+            }, 180);
         },
         error: function () {
             showPatientWorkPlanAlert('danger', 'Error de conexion al eliminar la tarea.');
@@ -4269,6 +4797,35 @@ function loadWorkPlanTaskTemplates(force = false) {
     });
 }
 
+function loadWorkPlanKnowledgeImportOptions(force = false) {
+    if (!knowledgeBaseEnabled()) {
+        WORK_PLAN_KNOWLEDGE_IMPORT_OPTIONS = [];
+        WORK_PLAN_KNOWLEDGE_IMPORT_OPTIONS_LOADED = true;
+        populateWorkPlanTemplateSelect();
+        return $.Deferred().resolve({ success: true }).promise();
+    }
+    if (WORK_PLAN_KNOWLEDGE_IMPORT_OPTIONS_LOADED && !force) {
+        populateWorkPlanTemplateSelect();
+        return $.Deferred().resolve({ success: true }).promise();
+    }
+    return $.ajax({
+        url: 'api/admin.php?action=knowledge_import_options',
+        dataType: 'json',
+        success: function (res) {
+            if (!res.success) {
+                WORK_PLAN_KNOWLEDGE_IMPORT_OPTIONS = [];
+                return;
+            }
+            WORK_PLAN_KNOWLEDGE_IMPORT_OPTIONS = Array.isArray(res.options) ? res.options : [];
+            WORK_PLAN_KNOWLEDGE_IMPORT_OPTIONS_LOADED = true;
+            populateWorkPlanTemplateSelect();
+        },
+        error: function () {
+            WORK_PLAN_KNOWLEDGE_IMPORT_OPTIONS = [];
+        }
+    });
+}
+
 function populateWorkPlanTemplateSelect() {
     const $select = $('#patient-work-plan-template');
     if (!$select.length) return;
@@ -4285,11 +4842,35 @@ function populateWorkPlanTemplateSelect() {
         const $group = $('<optgroup>').attr('label', category);
         grouped[category].forEach(template => {
             const count = parseInt(template.item_count || (Array.isArray(template.items) ? template.items.length : 0), 10);
-            $group.append(`<option value="${template.id}">${escapeHtml(template.title || '')}${count ? ` (${count})` : ''}</option>`);
+            $group.append(`<option value="template:${template.id}">${escapeHtml(template.title || '')}${count ? ` (${count})` : ''}</option>`);
         });
         $select.append($group);
     });
-    if (previous && $select.find(`option[value="${previous}"]`).length) {
+    if (knowledgeBaseEnabled()) {
+        const knowledgeGrouped = {};
+        const knowledgeBaseLabel = 'Base de conocimiento';
+        const diagnosisFallback = capitalizeFirst(sectorText('clinicalTerms.diagnosis', 'Diagnostico'));
+        const taskSingular = sectorLabel('task', 'singular', 'tarea');
+        const taskPlural = sectorLabel('task', 'plural', 'tareas');
+        WORK_PLAN_KNOWLEDGE_IMPORT_OPTIONS.forEach(option => {
+            const key = `${option.area_name || knowledgeBaseLabel} · ${option.problem_name || diagnosisFallback}`;
+            if (!knowledgeGrouped[key]) knowledgeGrouped[key] = [];
+            knowledgeGrouped[key].push(option);
+        });
+        Object.keys(knowledgeGrouped).sort((a, b) => a.localeCompare(b)).forEach(groupName => {
+            const $group = $('<optgroup>').attr('label', `${knowledgeBaseLabel}: ${groupName}`);
+            knowledgeGrouped[groupName].forEach(option => {
+                const count = parseInt(option.task_count || 0, 10);
+                const value = `knowledge:${parseInt(option.problem_id || 0, 10)}:${parseInt(option.technique_id || 0, 10)}`;
+                $group.append(`<option value="${value}">${escapeHtml(option.technique_name || '')}${count ? ` (${count} ${escapeHtml(count === 1 ? taskSingular : taskPlural)})` : ''}</option>`);
+            });
+            $select.append($group);
+        });
+    }
+    const hasPrevious = previous && $select.find('option').filter(function () {
+        return $(this).val() === previous;
+    }).length > 0;
+    if (hasPrevious) {
         $select.val(previous);
     } else {
         $select.val('manual');
@@ -4588,7 +5169,7 @@ function deleteWorkPlanTaskTemplateItem(button) {
 function importWorkPlanTemplateToPatient(button) {
     const context = { ...CURRENT_WORK_PLAN_FORM_CONTEXT };
     const patientId = parseInt(context.patientId || $('#patient-editor-id').val() || '0', 10);
-    const templateId = getSelectedWorkPlanTemplateId();
+    const selection = getSelectedWorkPlanImportSelection();
     if (!patientId) {
         if (context.source === 'appointment-session') {
             showAppointmentSessionAlert('danger', 'No se pudo identificar el paciente de la cita.');
@@ -4597,39 +5178,55 @@ function importWorkPlanTemplateToPatient(button) {
         }
         return;
     }
-    if (!templateId) {
+    const isTemplate = selection.type === 'template' && selection.templateId > 0;
+    const isKnowledge = selection.type === 'knowledge' && selection.problemId > 0 && selection.techniqueId > 0;
+    if (selection.type === 'knowledge' && !knowledgeBaseEnabled()) {
         if (context.source === 'appointment-session') {
-            showAppointmentSessionAlert('danger', 'Selecciona una plantilla.');
+            showAppointmentSessionAlert('danger', 'La base de conocimiento no esta disponible en este plan.');
         } else {
-            showPatientWorkPlanAlert('danger', 'Selecciona una plantilla.');
+            showPatientWorkPlanAlert('danger', 'La base de conocimiento no esta disponible en este plan.');
+        }
+        return;
+    }
+    if (!isTemplate && !isKnowledge) {
+        if (context.source === 'appointment-session') {
+            showAppointmentSessionAlert('danger', `Selecciona una plantilla o una ${sectorLabel('technique', 'singular', 'tecnica')} de la base de conocimiento.`);
+        } else {
+            showPatientWorkPlanAlert('danger', `Selecciona una plantilla o una ${sectorLabel('technique', 'singular', 'tecnica')} de la base de conocimiento.`);
         }
         return;
     }
     const $button = $(button);
     const original = $button.html();
-    const payload = { patient_id: patientId, template_id: templateId };
+    const payload = { patient_id: patientId };
+    if (isTemplate) {
+        payload.template_id = selection.templateId;
+    } else {
+        payload.problem_id = selection.problemId;
+        payload.technique_id = selection.techniqueId;
+    }
     if (context.source === 'appointment-session' && context.appointmentId) {
         payload.appointment_id = context.appointmentId;
     }
     $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Importando');
     $.ajax({
-        url: 'api/admin.php?action=import_work_plan_task_template',
+        url: isTemplate ? 'api/admin.php?action=import_work_plan_task_template' : 'api/admin.php?action=import_knowledge_technique_tasks',
         method: 'POST',
         dataType: 'json',
         data: payload,
         success: function (res) {
             if (!res.success) {
                 if (context.source === 'appointment-session') {
-                    showAppointmentSessionAlert('danger', res.error || 'No se pudo importar la plantilla.');
+                    showAppointmentSessionAlert('danger', res.error || 'No se pudieron importar las tareas.');
                 } else {
-                    showPatientWorkPlanAlert('danger', res.error || 'No se pudo importar la plantilla.');
+                    showPatientWorkPlanAlert('danger', res.error || 'No se pudieron importar las tareas.');
                 }
                 return;
             }
             if (context.source === 'appointment-session') {
-                showAppointmentSessionAlert('success', res.message || 'Plantilla importada correctamente.');
+                showAppointmentSessionAlert('success', res.message || 'Tareas importadas correctamente.');
             } else {
-                showPatientWorkPlanAlert('success', res.message || 'Plantilla importada correctamente.', true);
+                showPatientWorkPlanAlert('success', res.message || 'Tareas importadas correctamente.', true);
             }
             $('#patient-work-plan-template').val('manual');
             hidePatientWorkPlanForm();
@@ -4641,9 +5238,9 @@ function importWorkPlanTemplateToPatient(button) {
         },
         error: function () {
             if (context.source === 'appointment-session') {
-                showAppointmentSessionAlert('danger', 'Error de conexion al importar la plantilla.');
+                showAppointmentSessionAlert('danger', 'Error de conexion al importar las tareas.');
             } else {
-                showPatientWorkPlanAlert('danger', 'Error de conexion al importar la plantilla.');
+                showPatientWorkPlanAlert('danger', 'Error de conexion al importar las tareas.');
             }
         },
         complete: function () {
@@ -7604,6 +8201,11 @@ function loadPaymentSettings() {
 
             let settings = res.settings || {};
             PAYMENT_SETTINGS = Object.assign({}, PAYMENT_SETTINGS, settings);
+            APP_DASHBOARD_CONFIG = settings.dashboard_config || APP_DASHBOARD_CONFIG || { features: {} };
+            APP_PLAN_CONFIG = settings.plan_config || APP_PLAN_CONFIG || { plan: { features: {} } };
+            APP_KNOWLEDGE_BASE_ENABLED = appFeatureEnabled('knowledgeBase.enabled', false);
+            APP_KNOWLEDGE_BASE_HAS_SECTOR_DATA = settings.knowledge_base_has_sector_data == 1;
+            applyKnowledgeBaseVisibility();
             APP_SECTOR_TEXTS = settings.sector_texts || APP_SECTOR_TEXTS || {};
             APP_SECTOR_TEXT_OPTIONS = Array.isArray(settings.sector_texts_options) ? settings.sector_texts_options : APP_SECTOR_TEXT_OPTIONS;
             APPOINTMENT_SERVICES = Array.isArray(res.services) ? res.services : [];
@@ -7629,7 +8231,6 @@ function loadPaymentSettings() {
             $('#legal-uses-non-technical-cookies').prop('checked', settings.legal_uses_non_technical_cookies == 1);
             $('#legal-terms-notes').val(settings.legal_terms_notes || '');
             $('#initial-calendar-view').val(settings.initial_calendar_view === 'week' ? 'week' : 'month');
-            populateSectorTextsSelect(settings.sector_texts_key || 'psicologia');
             $('#dashboard-config-mode').val(['simple', 'advanced', 'custom'].includes(settings.dashboard_config_mode) ? settings.dashboard_config_mode : 'simple');
             toggleDashboardConfigModeControls();
             $('#online-booking-enabled').prop('checked', settings.online_booking_enabled === undefined ? true : settings.online_booking_enabled == 1);
@@ -7736,21 +8337,6 @@ function loadPaymentSettings() {
         }
         });
     });
-}
-
-function populateSectorTextsSelect(selectedKey = 'psicologia') {
-    const $select = $('#sector-texts-key');
-    if (!$select.length) return;
-    const options = Array.isArray(APP_SECTOR_TEXT_OPTIONS) && APP_SECTOR_TEXT_OPTIONS.length
-        ? APP_SECTOR_TEXT_OPTIONS
-        : [{ key: 'psicologia', name: 'Psicologia' }];
-    const current = selectedKey || $select.val() || 'psicologia';
-    $select.empty();
-    options.forEach(option => {
-        const key = option.key || 'psicologia';
-        $select.append(`<option value="${escapeHtml(key)}">${escapeHtml(option.name || key)}</option>`);
-    });
-    $select.val($select.find(`option[value="${current}"]`).length ? current : 'psicologia');
 }
 
 function toggleEmailProviderSettings() {
@@ -8854,7 +9440,6 @@ function savePaymentSettings(alertSelector = '#payment-settings-alert', onSucces
     formData.append('show_prices_public', $('#show-prices-public').is(':checked') ? '1' : '0');
     formData.append('show_contact_public', $('#show-contact-public').is(':checked') ? '1' : '0');
     formData.append('initial_calendar_view', $('#initial-calendar-view').val() || 'month');
-    formData.append('sector_texts_key', $('#sector-texts-key').val() || 'psicologia');
     formData.append('dashboard_config_mode', $('#dashboard-config-mode').val() || 'simple');
     formData.append('online_booking_enabled', $('#online-booking-enabled').is(':checked') ? '1' : '0');
     formData.append('patient_tasks_visible_default', $('#patient-tasks-visible-default').is(':checked') ? '1' : '0');

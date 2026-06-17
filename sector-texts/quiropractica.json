@@ -1,0 +1,114 @@
+{
+  "version": 1,
+  "key": "quiropractica",
+  "name": "Quiropráctica",
+  "description": "Configuración de textos para centros de quiropráctica.",
+  "labels": {
+    "patient": {
+      "singular": "paciente",
+      "plural": "pacientes",
+      "titleSingular": "Paciente",
+      "titlePlural": "Pacientes"
+    },
+    "professional": {
+      "singular": "quiropráctico",
+      "plural": "quiroprácticos",
+      "titleSingular": "Quiropráctico",
+      "titlePlural": "Quiroprácticos"
+    },
+    "organization": {
+      "singular": "centro",
+      "plural": "centros",
+      "titleSingular": "Centro",
+      "titlePlural": "Centros"
+    },
+    "appointment": {
+      "singular": "cita",
+      "plural": "citas",
+      "titleSingular": "Cita",
+      "titlePlural": "Citas"
+    },
+    "session": {
+      "singular": "sesión",
+      "plural": "sesiones",
+      "titleSingular": "Sesión",
+      "titlePlural": "Sesiones"
+    },
+    "workPlan": {
+      "singular": "plan de cuidado",
+      "plural": "planes de cuidado",
+      "titleSingular": "Plan de cuidado",
+      "titlePlural": "Planes de cuidado"
+    },
+    "task": {
+      "singular": "pauta",
+      "plural": "pautas",
+      "titleSingular": "Pauta",
+      "titlePlural": "Pautas"
+    },
+    "evolution": {
+      "singular": "evolución",
+      "plural": "evoluciones",
+      "titleSingular": "Evolución",
+      "titlePlural": "Evolución"
+    },
+    "problem": {
+      "singular": "problema musculoesquelético",
+      "plural": "problemas musculoesqueléticos",
+      "titleSingular": "Problema musculoesquelético",
+      "titlePlural": "Problemas musculoesqueléticos"
+    },
+    "evaluation": {
+      "singular": "valoración",
+      "plural": "valoraciones",
+      "titleSingular": "Valoración",
+      "titlePlural": "Valoraciones"
+    },
+    "technique": {
+      "singular": "técnica",
+      "plural": "técnicas",
+      "titleSingular": "Técnica",
+      "titlePlural": "Técnicas"
+    },
+    "resource": {
+      "singular": "recurso",
+      "plural": "recursos",
+      "titleSingular": "Recurso",
+      "titlePlural": "Recursos"
+    },
+    "goal": {
+      "singular": "objetivo",
+      "plural": "objetivos",
+      "titleSingular": "Objetivo",
+      "titlePlural": "Objetivos"
+    }
+  },
+  "clinicalTerms": {
+    "diagnosis": "valoración quiropráctica",
+    "treatment": "ajuste o tratamiento",
+    "exercise": "pauta de autocuidado",
+    "followUp": "seguimiento",
+    "discharge": "alta"
+  },
+  "services": {
+    "individual": "Individual",
+    "couple": "Parejas",
+    "family": "Familiar",
+    "group": "Grupos"
+  },
+  "portal": {
+    "bookingCta": "Reserva tu cita",
+    "myAppointments": "Mis citas",
+    "myTasks": "Mis pautas"
+  },
+  "reports": {
+    "internalPatientReport": "Informe interno de paciente",
+    "patientReport": "Informe para paciente"
+  },
+  "featureHints": {
+    "workPlan": true,
+    "patientPortal": true,
+    "clinicalEvolution": true,
+    "sessionFiles": true
+  }
+}

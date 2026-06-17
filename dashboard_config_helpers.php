@@ -43,6 +43,7 @@ function dashboard_config_advanced_defaults()
             'patients.bonusesTab' => true,
             'patients.reports' => true,
             'patients.transfer' => true,
+            'knowledgeBase.enabled' => true,
             'reports.globalReports' => true,
             'settings.services' => true,
             'settings.bonuses' => true,
@@ -87,8 +88,76 @@ function dashboard_config_simple_disabled_features()
         'patientPortal.patientPhoto',
         'patients.tasks',
         'patientPortal.visibleTasks',
-        'appointments.sessionTasks'
+        'appointments.sessionTasks',
+        'knowledgeBase.enabled'
     ];
+}
+
+function plan_config_dir()
+{
+    return __DIR__ . '/plan-config';
+}
+
+function plan_config_file()
+{
+    return plan_config_dir() . '/default.json';
+}
+
+function plan_config_defaults()
+{
+    return [
+        'version' => 1,
+        'plan' => [
+            'key' => 'default',
+            'label' => 'Plan actual',
+            'features' => [
+                'onlineBooking.enabled' => true,
+                'tasks.enabled' => true,
+                'closures.enabled' => true,
+                'bonuses.enabled' => true,
+                'reports.globalReports' => true,
+                'upcomingAppointments.planning' => true,
+                'appointments.effectiveDuration' => true,
+                'taskTemplates.enabled' => true,
+                'onlinePayments.enabled' => true,
+                'knowledgeBase.enabled' => true
+            ],
+            'limits' => [
+                'appointmentDurations' => [60, 90, 120]
+            ]
+        ]
+    ];
+}
+
+function plan_config_for_current()
+{
+    $defaults = plan_config_defaults();
+    $path = plan_config_file();
+    $config = dashboard_config_read_file($path);
+    $config = dashboard_config_merge_missing($config, $defaults);
+    return is_array($config) ? $config : $defaults;
+}
+
+function dashboard_config_feature_enabled($config, $feature, $default = false)
+{
+    return isset($config['features'][$feature]) ? (bool) $config['features'][$feature] : (bool) $default;
+}
+
+function plan_config_feature_enabled($config, $feature, $default = false)
+{
+    return isset($config['plan']['features'][$feature]) ? (bool) $config['plan']['features'][$feature] : (bool) $default;
+}
+
+function app_feature_enabled($dashboard_config, $plan_config, $feature, $default = false)
+{
+    return dashboard_config_feature_enabled($dashboard_config, $feature, $default)
+        && plan_config_feature_enabled($plan_config, $feature, $default);
+}
+
+function app_feature_enabled_from_db($mysqli, $feature, $default = false)
+{
+    $mode = dashboard_config_mode_from_db($mysqli);
+    return app_feature_enabled(dashboard_config_for_mode($mode), plan_config_for_current(), $feature, $default);
 }
 
 function dashboard_config_merge_missing($config, $defaults)

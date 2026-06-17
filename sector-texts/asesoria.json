@@ -1,8 +1,8 @@
 {
   "version": 1,
   "key": "asesoria",
-  "name": "Asesoria",
-  "description": "Configuracion de textos para asesorias, consultorias y servicios profesionales.",
+  "name": "Asesoría",
+  "description": "Configuración de textos para asesorías y servicios profesionales.",
   "labels": {
     "patient": {
       "singular": "cliente",
@@ -17,28 +17,28 @@
       "titlePlural": "Asesores"
     },
     "organization": {
-      "singular": "asesoria",
-      "plural": "asesorias",
-      "titleSingular": "Asesoria",
-      "titlePlural": "Asesorias"
+      "singular": "asesoría",
+      "plural": "asesorías",
+      "titleSingular": "Asesoría",
+      "titlePlural": "Asesorías"
     },
     "appointment": {
-      "singular": "reunion",
-      "plural": "reuniones",
-      "titleSingular": "Reunion",
-      "titlePlural": "Reuniones"
+      "singular": "cita",
+      "plural": "citas",
+      "titleSingular": "Cita",
+      "titlePlural": "Citas"
     },
     "session": {
-      "singular": "reunion",
+      "singular": "reunión",
       "plural": "reuniones",
-      "titleSingular": "Reunion",
+      "titleSingular": "Reunión",
       "titlePlural": "Reuniones"
     },
     "workPlan": {
-      "singular": "plan de trabajo",
-      "plural": "planes de trabajo",
-      "titleSingular": "Plan de trabajo",
-      "titlePlural": "Planes de trabajo"
+      "singular": "plan de seguimiento",
+      "plural": "planes de seguimiento",
+      "titleSingular": "Plan de seguimiento",
+      "titlePlural": "Planes de seguimiento"
     },
     "task": {
       "singular": "tarea",
@@ -51,7 +51,44 @@
       "plural": "seguimientos",
       "titleSingular": "Seguimiento",
       "titlePlural": "Seguimiento"
+    },
+    "problem": {
+      "singular": "necesidad",
+      "plural": "necesidades",
+      "titleSingular": "Necesidad",
+      "titlePlural": "Necesidades"
+    },
+    "evaluation": {
+      "singular": "análisis",
+      "plural": "análisis",
+      "titleSingular": "Análisis",
+      "titlePlural": "Análisis"
+    },
+    "technique": {
+      "singular": "procedimiento",
+      "plural": "procedimientos",
+      "titleSingular": "Procedimiento",
+      "titlePlural": "Procedimientos"
+    },
+    "resource": {
+      "singular": "documento",
+      "plural": "documentos",
+      "titleSingular": "Documento",
+      "titlePlural": "Documentos"
+    },
+    "goal": {
+      "singular": "objetivo",
+      "plural": "objetivos",
+      "titleSingular": "Objetivo",
+      "titlePlural": "Objetivos"
     }
+  },
+  "clinicalTerms": {
+    "diagnosis": "necesidad detectada",
+    "treatment": "servicio",
+    "exercise": "acción recomendada",
+    "followUp": "seguimiento",
+    "discharge": "cierre"
   },
   "services": {
     "individual": "Individual",
@@ -60,18 +97,18 @@
     "group": "Grupos"
   },
   "portal": {
-    "bookingCta": "Reserva tu reunion",
-    "myAppointments": "Mis reuniones",
+    "bookingCta": "Reserva tu cita",
+    "myAppointments": "Mis citas",
     "myTasks": "Mis tareas"
   },
   "reports": {
-    "internalPatientReport": "Informe interno de cliente",
-    "patientReport": "Informe para cliente"
+    "internalPatientReport": "Informe interno de paciente",
+    "patientReport": "Informe para paciente"
   },
   "featureHints": {
     "workPlan": true,
     "patientPortal": true,
-    "clinicalEvolution": false,
+    "clinicalEvolution": true,
     "sessionFiles": true
   }
 }

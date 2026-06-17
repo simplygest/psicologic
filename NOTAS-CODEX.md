@@ -365,6 +365,7 @@ git config --global --add safe.directory C:/Sete/psicologic
   - Dentro de cada plantilla se crean varias tareas con titulo, descripcion y prioridad.
   - La pestana muestra solo el listado/resumen de plantillas y sus tareas.
   - La creacion/edicion de plantillas y tareas se hace en modales secundarios independientes.
+- `import_knowledge_psico.php` es un importador temporal para crear/importar la base de conocimiento clinica desde `Knowledge-Psico/*.csv`; debe borrarse del servidor despues de ejecutarlo.
   - Desde la ficha del paciente se puede importar una plantilla existente y se crean todas sus tareas en el plan de trabajo del paciente.
   - El superadmin puede crear plantillas globales para todo el gabinete; cada profesional puede crear plantillas propias.
 - El resumen rapido de proxima cita muestra textos relativos: `En X minutos`, `Hoy a HH:MM`, `Manana a HH:MM` o fecha segun corresponda.

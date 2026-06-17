@@ -12,7 +12,8 @@
             "upcomingAppointments.planning": true,
             "appointments.effectiveDuration": true,
             "taskTemplates.enabled": true,
-            "onlinePayments.enabled": true
+            "onlinePayments.enabled": true,
+            "knowledgeBase.enabled": true
         },
         "limits": {
             "appointmentDurations": [

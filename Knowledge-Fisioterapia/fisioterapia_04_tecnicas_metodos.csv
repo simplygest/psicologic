@@ -1,0 +1,19 @@
+﻿tecnica_id;nombre;descripcion;nivel_riesgo
+FIS_T001;Valoración funcional;Evaluación de dolor, movilidad, fuerza, función, objetivos y banderas rojas.;medio
+FIS_T002;Educación terapéutica;Información sobre dolor, pronóstico, carga, actividad y autocuidado.;bajo
+FIS_T003;Ejercicio terapéutico;Prescripción progresiva de ejercicio orientado a función y objetivos.;medio
+FIS_T004;Movilidad articular activa;Ejercicios activos de movilidad y rango de movimiento.;bajo
+FIS_T005;Fortalecimiento progresivo;Progresión de fuerza con carga, repeticiones y tolerancia.;medio
+FIS_T006;Control motor;Ejercicios de coordinación, estabilidad y patrón de movimiento.;bajo
+FIS_T007;Equilibrio y propiocepción;Entrenamiento de control postural y respuesta ante perturbaciones.;medio
+FIS_T008;Marcha y función;Trabajo de caminar, transferencias, escaleras y actividades funcionales.;medio
+FIS_T009;Control de carga;Ajuste de volumen, intensidad, frecuencia y recuperación.;medio
+FIS_T010;Exposición gradual al movimiento;Reintroducción progresiva de movimientos temidos o evitados.;medio
+FIS_T011;Ejercicio aeróbico;Actividad cardiovascular adaptada a capacidad y objetivos.;bajo
+FIS_T012;Estiramientos / flexibilidad;Trabajo de movilidad y tolerancia de tejidos cuando proceda.;bajo
+FIS_T013;Terapia manual como complemento;Técnicas manuales complementarias al ejercicio y educación.;medio
+FIS_T014;Autogestión del dolor;Pautas de manejo de síntomas, ritmo, descanso y actividad.;bajo
+FIS_T015;Prevención de recaídas;Plan de mantenimiento y señales tempranas.;bajo
+FIS_T016;Retorno al deporte;Progresión específica, criterios funcionales y control de riesgo.;medio
+FIS_T017;Ergonomía y actividad diaria;Adaptación de tareas, pausas y entorno sin fomentar miedo al movimiento.;bajo
+FIS_T018;Coordinación / derivación;Identificación de banderas rojas y coordinación con otros profesionales.;alto

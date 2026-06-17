@@ -1,0 +1,31 @@
+﻿tecnica_id;nombre;descripcion;nivel_riesgo
+T001;Psicoeducación;Explicación estructurada del problema, sus mecanismos y estrategias de afrontamiento.;bajo
+T002;Autorregistro;Registro sistemático de síntomas, emociones, pensamientos, conductas y contexto.;bajo
+T003;Respiración diafragmática;Entrenamiento de respiración lenta y abdominal para reducir activación fisiológica.;bajo
+T004;Relajación muscular progresiva;Entrenamiento de tensión-distensión muscular para reducir tensión corporal.;bajo
+T005;Reestructuración cognitiva;Identificación y cuestionamiento de pensamientos automáticos y creencias disfuncionales.;medio
+T006;Resolución de problemas;Método estructurado para definir problemas, generar alternativas y elegir acciones.;bajo
+T007;Exposición gradual;Afrontamiento progresivo y planificado de estímulos o situaciones evitadas.;medio
+T008;Exposición interoceptiva;Exposición controlada a sensaciones físicas temidas, usada especialmente en pánico.;alto
+T009;Exposición con prevención de respuesta;Exposición a obsesiones/disparadores evitando compulsiones o rituales.;alto
+T010;Activación conductual;Incremento planificado de actividades valiosas, agradables o de dominio.;medio
+T011;Planificación de actividades;Organización de actividades semanales con objetivos concretos y seguimiento.;bajo
+T012;Higiene del sueño;Ajustes conductuales y ambientales para favorecer sueño saludable.;bajo
+T013;Control de estímulos del sueño;Reasociar cama/dormitorio con dormir y reducir conductas incompatibles.;medio
+T014;Mindfulness / atención plena;Entrenamiento de observación no reactiva de experiencias internas.;bajo
+T015;Grounding;Técnicas de anclaje al presente para reducir disociación o activación intensa.;bajo
+T016;Asertividad;Entrenamiento para expresar necesidades, límites y derechos de forma respetuosa.;bajo
+T017;Habilidades sociales;Entrenamiento de comunicación, escucha, conversación y manejo de situaciones sociales.;bajo
+T018;Autocompasión;Trabajo de trato interno amable, realista y no punitivo.;bajo
+T019;Trabajo con valores;Clarificación de valores personales para orientar decisiones y objetivos.;bajo
+T020;Prevención de recaídas;Identificación de señales tempranas, factores de riesgo y plan de mantenimiento.;bajo
+T021;TCC centrada en trauma;Intervención estructurada centrada en procesamiento de recuerdos traumáticos.;alto
+T022;EMDR;Desensibilización y reprocesamiento por movimientos oculares u otros estímulos bilaterales.;alto
+T023;Organización y funciones ejecutivas;Estrategias de agenda, planificación, priorización y reducción de distractores.;bajo
+T024;Manejo de impulsos;Pautas para retrasar respuestas, crear pausas y elegir conductas alternativas.;medio
+T025;Límites personales;Definición y práctica de límites emocionales, relacionales y conductuales.;bajo
+T026;Autocuidado;Planificación de conductas protectoras de bienestar físico, emocional y social.;bajo
+T027;Red de apoyo;Identificación y activación de apoyos sociales seguros.;bajo
+T028;Análisis funcional;Relación entre antecedentes, conducta, consecuencias y función del síntoma.;medio
+T029;Tolerancia a la incertidumbre;Ejercicios para reducir necesidad de certeza y comprobación.;medio
+T030;Comunicación emocional;Identificación, expresión y validación de emociones propias y ajenas.;bajo

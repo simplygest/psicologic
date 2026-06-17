@@ -1,8 +1,8 @@
 {
   "version": 1,
   "key": "psicologia",
-  "name": "Psicologia",
-  "description": "Configuracion de textos para gabinetes de psicologia, terapia y salud mental.",
+  "name": "Psicología",
+  "description": "Configuración de textos para gabinetes de psicología, terapia y salud mental.",
   "labels": {
     "patient": {
       "singular": "paciente",
@@ -29,9 +29,9 @@
       "titlePlural": "Citas"
     },
     "session": {
-      "singular": "sesion",
+      "singular": "sesión",
       "plural": "sesiones",
-      "titleSingular": "Sesion",
+      "titleSingular": "Sesión",
       "titlePlural": "Sesiones"
     },
     "workPlan": {
@@ -47,11 +47,48 @@
       "titlePlural": "Tareas"
     },
     "evolution": {
-      "singular": "evolucion",
+      "singular": "evolución",
       "plural": "evoluciones",
-      "titleSingular": "Evolucion",
-      "titlePlural": "Evolucion"
+      "titleSingular": "Evolución",
+      "titlePlural": "Evolución"
+    },
+    "problem": {
+      "singular": "problema o diagnóstico",
+      "plural": "problemas o diagnósticos",
+      "titleSingular": "Problema o diagnóstico",
+      "titlePlural": "Problemas o diagnósticos"
+    },
+    "evaluation": {
+      "singular": "cuestionario",
+      "plural": "cuestionarios",
+      "titleSingular": "Cuestionario",
+      "titlePlural": "Cuestionarios"
+    },
+    "technique": {
+      "singular": "técnica",
+      "plural": "técnicas",
+      "titleSingular": "Técnica",
+      "titlePlural": "Técnicas"
+    },
+    "resource": {
+      "singular": "recurso",
+      "plural": "recursos",
+      "titleSingular": "Recurso",
+      "titlePlural": "Recursos"
+    },
+    "goal": {
+      "singular": "objetivo terapéutico",
+      "plural": "objetivos terapéuticos",
+      "titleSingular": "Objetivo terapéutico",
+      "titlePlural": "Objetivos terapéuticos"
     }
+  },
+  "clinicalTerms": {
+    "diagnosis": "diagnóstico clínico",
+    "treatment": "intervención terapéutica",
+    "exercise": "tarea terapéutica",
+    "followUp": "seguimiento",
+    "discharge": "alta"
   },
   "services": {
     "individual": "Individual",

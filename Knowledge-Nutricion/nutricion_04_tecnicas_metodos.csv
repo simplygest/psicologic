@@ -1,0 +1,21 @@
+﻿tecnica_id;nombre;descripcion;nivel_riesgo
+NUT_T001;Historia dietética;Recogida estructurada de hábitos, horarios, preferencias, contexto y antecedentes.;bajo
+NUT_T002;Registro alimentario;Registro de ingestas, cantidades aproximadas, horarios y contexto.;bajo
+NUT_T003;Registro síntomas-alimentos;Relación entre ingesta, síntomas, horario, estrés y otros factores.;medio
+NUT_T004;Educación nutricional;Explicación práctica de nutrientes, alimentos, porciones y patrones saludables.;bajo
+NUT_T005;Método del plato;Distribución visual de grupos de alimentos en el plato.;bajo
+NUT_T006;Planificación de menús;Organización semanal de comidas y compra.;bajo
+NUT_T007;Objetivos SMART;Definición de objetivos concretos, medibles y revisables.;bajo
+NUT_T008;Control de porciones;Trabajo con raciones, medidas caseras y señales de saciedad.;bajo
+NUT_T009;Distribución de proteína;Planificación de proteína por comida según objetivo y contexto.;bajo
+NUT_T010;Fibra y calidad de carbohidratos;Incremento progresivo de fibra, legumbres, fruta, verdura y cereales integrales.;bajo
+NUT_T011;Grasas saludables;Ajuste de grasas saturadas, insaturadas y patrón mediterráneo.;bajo
+NUT_T012;Reducción de sodio;Identificación de fuentes de sal y estrategias de reducción.;bajo
+NUT_T013;Hidratación;Planificación y seguimiento de ingesta hídrica.;bajo
+NUT_T014;Entorno alimentario;Modificación de disponibilidad, compra y estímulos alimentarios.;bajo
+NUT_T015;Mindful eating;Atención a hambre, saciedad, velocidad y experiencia de la comida.;bajo
+NUT_T016;Plan de comidas para diabetes;Distribución de carbohidratos y composición de comidas individualizada.;medio
+NUT_T017;Actividad física coordinada;Integración nutrición-actividad física según objetivos y estado clínico.;medio
+NUT_T018;Seguimiento antropométrico;Peso, perímetros, composición y evolución contextualizada.;bajo
+NUT_T019;Prevención de recaídas;Plan ante viajes, eventos, estrés, cambios de rutina o estancamientos.;bajo
+NUT_T020;Derivación / coordinación sanitaria;Identificación de signos de alarma y coordinación con médico/psicólogo/fisio.;alto

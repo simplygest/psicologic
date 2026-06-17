@@ -2,7 +2,7 @@
   "version": 1,
   "key": "fisioterapia",
   "name": "Fisioterapia",
-  "description": "Configuracion de textos para clinicas de fisioterapia y rehabilitacion.",
+  "description": "Configuración de textos para clínicas de fisioterapia y rehabilitación.",
   "labels": {
     "patient": {
       "singular": "paciente",
@@ -17,10 +17,10 @@
       "titlePlural": "Fisioterapeutas"
     },
     "organization": {
-      "singular": "clinica",
-      "plural": "clinicas",
-      "titleSingular": "Clinica",
-      "titlePlural": "Clinicas"
+      "singular": "clínica",
+      "plural": "clínicas",
+      "titleSingular": "Clínica",
+      "titlePlural": "Clínicas"
     },
     "appointment": {
       "singular": "cita",
@@ -29,9 +29,9 @@
       "titlePlural": "Citas"
     },
     "session": {
-      "singular": "sesion",
+      "singular": "sesión",
       "plural": "sesiones",
-      "titleSingular": "Sesion",
+      "titleSingular": "Sesión",
       "titlePlural": "Sesiones"
     },
     "workPlan": {
@@ -47,11 +47,48 @@
       "titlePlural": "Ejercicios"
     },
     "evolution": {
-      "singular": "evolucion",
+      "singular": "evolución",
       "plural": "evoluciones",
-      "titleSingular": "Evolucion",
-      "titlePlural": "Evolucion"
+      "titleSingular": "Evolución",
+      "titlePlural": "Evolución"
+    },
+    "problem": {
+      "singular": "problema funcional",
+      "plural": "problemas funcionales",
+      "titleSingular": "Problema funcional",
+      "titlePlural": "Problemas funcionales"
+    },
+    "evaluation": {
+      "singular": "valoración",
+      "plural": "valoraciones",
+      "titleSingular": "Valoración",
+      "titlePlural": "Valoraciones"
+    },
+    "technique": {
+      "singular": "técnica",
+      "plural": "técnicas",
+      "titleSingular": "Técnica",
+      "titlePlural": "Técnicas"
+    },
+    "resource": {
+      "singular": "recurso",
+      "plural": "recursos",
+      "titleSingular": "Recurso",
+      "titlePlural": "Recursos"
+    },
+    "goal": {
+      "singular": "objetivo",
+      "plural": "objetivos",
+      "titleSingular": "Objetivo",
+      "titlePlural": "Objetivos"
     }
+  },
+  "clinicalTerms": {
+    "diagnosis": "diagnóstico fisioterapéutico",
+    "treatment": "tratamiento",
+    "exercise": "ejercicio terapéutico",
+    "followUp": "seguimiento",
+    "discharge": "alta"
   },
   "services": {
     "individual": "Individual",

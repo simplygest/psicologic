@@ -2,7 +2,7 @@
   "version": 1,
   "key": "coaching",
   "name": "Coaching",
-  "description": "Configuracion de textos para coaching personal, ejecutivo o educativo.",
+  "description": "Configuración de textos para profesionales de coaching y acompañamiento.",
   "labels": {
     "patient": {
       "singular": "cliente",
@@ -23,35 +23,72 @@
       "titlePlural": "Consultas"
     },
     "appointment": {
-      "singular": "sesion",
-      "plural": "sesiones",
-      "titleSingular": "Sesion",
-      "titlePlural": "Sesiones"
+      "singular": "cita",
+      "plural": "citas",
+      "titleSingular": "Cita",
+      "titlePlural": "Citas"
     },
     "session": {
-      "singular": "sesion",
+      "singular": "sesión",
       "plural": "sesiones",
-      "titleSingular": "Sesion",
+      "titleSingular": "Sesión",
       "titlePlural": "Sesiones"
     },
     "workPlan": {
-      "singular": "plan de accion",
-      "plural": "planes de accion",
-      "titleSingular": "Plan de accion",
-      "titlePlural": "Planes de accion"
+      "singular": "plan de acción",
+      "plural": "planes de acción",
+      "titleSingular": "Plan de acción",
+      "titlePlural": "Planes de acción"
     },
     "task": {
-      "singular": "accion",
+      "singular": "acción",
       "plural": "acciones",
-      "titleSingular": "Accion",
+      "titleSingular": "Acción",
       "titlePlural": "Acciones"
     },
     "evolution": {
-      "singular": "seguimiento",
-      "plural": "seguimientos",
-      "titleSingular": "Seguimiento",
-      "titlePlural": "Seguimiento"
+      "singular": "progreso",
+      "plural": "progresos",
+      "titleSingular": "Progreso",
+      "titlePlural": "Progreso"
+    },
+    "problem": {
+      "singular": "objetivo o reto",
+      "plural": "objetivos o retos",
+      "titleSingular": "Objetivo o reto",
+      "titlePlural": "Objetivos o retos"
+    },
+    "evaluation": {
+      "singular": "evaluación",
+      "plural": "evaluaciones",
+      "titleSingular": "Evaluación",
+      "titlePlural": "Evaluaciones"
+    },
+    "technique": {
+      "singular": "herramienta",
+      "plural": "herramientas",
+      "titleSingular": "Herramienta",
+      "titlePlural": "Herramientas"
+    },
+    "resource": {
+      "singular": "recurso",
+      "plural": "recursos",
+      "titleSingular": "Recurso",
+      "titlePlural": "Recursos"
+    },
+    "goal": {
+      "singular": "objetivo",
+      "plural": "objetivos",
+      "titleSingular": "Objetivo",
+      "titlePlural": "Objetivos"
     }
+  },
+  "clinicalTerms": {
+    "diagnosis": "objetivo de coaching",
+    "treatment": "proceso de coaching",
+    "exercise": "acción práctica",
+    "followUp": "seguimiento",
+    "discharge": "cierre"
   },
   "services": {
     "individual": "Individual",
@@ -60,18 +97,18 @@
     "group": "Grupos"
   },
   "portal": {
-    "bookingCta": "Reserva tu sesion",
+    "bookingCta": "Reserva tu sesión",
     "myAppointments": "Mis sesiones",
     "myTasks": "Mis acciones"
   },
   "reports": {
-    "internalPatientReport": "Informe interno de cliente",
-    "patientReport": "Informe para cliente"
+    "internalPatientReport": "Informe interno de paciente",
+    "patientReport": "Informe para paciente"
   },
   "featureHints": {
     "workPlan": true,
     "patientPortal": true,
-    "clinicalEvolution": false,
+    "clinicalEvolution": true,
     "sessionFiles": true
   }
 }

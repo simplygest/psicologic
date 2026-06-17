@@ -24,6 +24,7 @@
         "patients.bonusesTab": false,
         "patients.reports": true,
         "patients.transfer": true,
+        "knowledgeBase.enabled": false,
         "reports.globalReports": true,
         "settings.services": true,
         "settings.bonuses": false,

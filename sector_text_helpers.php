@@ -15,17 +15,29 @@ function sector_texts_builtin_psychology()
     return [
         'version' => 1,
         'key' => 'psicologia',
-        'name' => 'Psicologia',
-        'description' => 'Configuracion de textos para gabinetes de psicologia y terapia.',
+        'name' => 'Psicología',
+        'description' => 'Configuración de textos para gabinetes de psicología y terapia.',
         'labels' => [
             'patient' => ['singular' => 'paciente', 'plural' => 'pacientes', 'titleSingular' => 'Paciente', 'titlePlural' => 'Pacientes'],
             'professional' => ['singular' => 'profesional', 'plural' => 'profesionales', 'titleSingular' => 'Profesional', 'titlePlural' => 'Profesionales'],
             'organization' => ['singular' => 'gabinete', 'plural' => 'gabinetes', 'titleSingular' => 'Gabinete', 'titlePlural' => 'Gabinetes'],
             'appointment' => ['singular' => 'cita', 'plural' => 'citas', 'titleSingular' => 'Cita', 'titlePlural' => 'Citas'],
-            'session' => ['singular' => 'sesion', 'plural' => 'sesiones', 'titleSingular' => 'Sesion', 'titlePlural' => 'Sesiones'],
+            'session' => ['singular' => 'sesión', 'plural' => 'sesiones', 'titleSingular' => 'Sesión', 'titlePlural' => 'Sesiones'],
             'workPlan' => ['singular' => 'plan de trabajo', 'plural' => 'planes de trabajo', 'titleSingular' => 'Plan de trabajo', 'titlePlural' => 'Planes de trabajo'],
             'task' => ['singular' => 'tarea', 'plural' => 'tareas', 'titleSingular' => 'Tarea', 'titlePlural' => 'Tareas'],
-            'evolution' => ['singular' => 'evolucion', 'plural' => 'evoluciones', 'titleSingular' => 'Evolucion', 'titlePlural' => 'Evolucion']
+            'evolution' => ['singular' => 'evolución', 'plural' => 'evoluciones', 'titleSingular' => 'Evolución', 'titlePlural' => 'Evolución'],
+            'problem' => ['singular' => 'problema o diagnóstico', 'plural' => 'problemas o diagnósticos', 'titleSingular' => 'Problema o diagnóstico', 'titlePlural' => 'Problemas o diagnósticos'],
+            'evaluation' => ['singular' => 'cuestionario', 'plural' => 'cuestionarios', 'titleSingular' => 'Cuestionario', 'titlePlural' => 'Cuestionarios'],
+            'technique' => ['singular' => 'técnica', 'plural' => 'técnicas', 'titleSingular' => 'Técnica', 'titlePlural' => 'Técnicas'],
+            'resource' => ['singular' => 'recurso', 'plural' => 'recursos', 'titleSingular' => 'Recurso', 'titlePlural' => 'Recursos'],
+            'goal' => ['singular' => 'objetivo terapéutico', 'plural' => 'objetivos terapéuticos', 'titleSingular' => 'Objetivo terapéutico', 'titlePlural' => 'Objetivos terapéuticos']
+        ],
+        'clinicalTerms' => [
+            'diagnosis' => 'diagnóstico clínico',
+            'treatment' => 'intervención terapéutica',
+            'exercise' => 'tarea terapéutica',
+            'followUp' => 'seguimiento',
+            'discharge' => 'alta'
         ],
         'services' => [
             'individual' => 'Individual',
@@ -156,4 +168,24 @@ function sector_texts_key_from_db($mysqli)
 function sector_texts_for_db($mysqli)
 {
     return sector_texts_for_key(sector_texts_key_from_db($mysqli));
+}
+
+function knowledge_base_sector_has_data($mysqli, $sector_key = null)
+{
+    $sector_key = $sector_key ?: sector_texts_key_from_db($mysqli);
+    if (!sector_texts_validate_key($sector_key)) {
+        return false;
+    }
+    $table_res = $mysqli->query("SHOW TABLES LIKE 'knowledge_problems'");
+    if (!$table_res || $table_res->num_rows === 0) {
+        return false;
+    }
+    $column_res = $mysqli->query("SHOW COLUMNS FROM knowledge_problems LIKE 'sector_key'");
+    if (!$column_res || $column_res->num_rows === 0) {
+        return $sector_key === sector_texts_default_key();
+    }
+    $stmt = $mysqli->prepare("SELECT id FROM knowledge_problems WHERE sector_key = ? LIMIT 1");
+    $stmt->bind_param("s", $sector_key);
+    $stmt->execute();
+    return (bool) $stmt->get_result()->fetch_assoc();
 }

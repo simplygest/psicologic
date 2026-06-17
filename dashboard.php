@@ -17,7 +17,12 @@ if (!$is_admin && (int) ($branding['online_booking_enabled'] ?? 1) !== 1) {
 }
 $dashboard_config_mode = $is_admin ? dashboard_config_mode_from_db($mysqli) : 'simple';
 $dashboard_config = dashboard_config_for_mode($dashboard_config_mode);
-$sector_texts = sector_texts_for_key($branding['sector_texts_key'] ?? sector_texts_default_key());
+$plan_config = plan_config_for_current();
+$sector_key = $branding['sector_texts_key'] ?? sector_texts_default_key();
+$knowledge_base_enabled = $is_admin
+  && app_feature_enabled($dashboard_config, $plan_config, 'knowledgeBase.enabled', false)
+  && knowledge_base_sector_has_data($mysqli, $sector_key);
+$sector_texts = sector_texts_for_key($sector_key);
 $sector_texts_options = sector_texts_available();
 $app_name = $branding['app_name'];
 $profile_image_path = $branding['profile_image_path'];
@@ -543,6 +548,11 @@ if ($is_admin) {
               <li class="nav-item" role="presentation">
                 <button class="nav-link" id="patient-more-data-tab" data-bs-toggle="tab" data-bs-target="#patient-more-data-panel" type="button" role="tab">M&aacute;s datos</button>
               </li>
+              <?php if ($knowledge_base_enabled): ?>
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link" id="patient-diagnosis-tab" data-bs-toggle="tab" data-bs-target="#patient-diagnosis-panel" type="button" role="tab"><?= htmlspecialchars(ucfirst($sector_texts['clinicalTerms']['diagnosis'] ?? 'Diagnóstico')) ?></button>
+                </li>
+              <?php endif; ?>
               <li class="nav-item" role="presentation">
                 <button class="nav-link" id="patient-history-tab" data-bs-toggle="tab" data-bs-target="#patient-history-panel" type="button" role="tab">Historial de citas</button>
               </li>
@@ -675,6 +685,28 @@ if ($is_admin) {
                   </div>
                 </div>
               </div>
+              <?php if ($knowledge_base_enabled): ?>
+                <div class="tab-pane fade" id="patient-diagnosis-panel" role="tabpanel" aria-labelledby="patient-diagnosis-tab">
+                  <div class="alert alert-info mb-3">
+                    Las recomendaciones mostradas son material de apoyo documental. No constituyen diagn&oacute;stico, prescripci&oacute;n cl&iacute;nica autom&aacute;tica ni sustituyen el criterio profesional del terapeuta.
+                  </div>
+                  <div id="patient-knowledge-alert" class="alert d-none"></div>
+                  <div class="row g-3">
+                    <div class="col-12">
+                      <label class="form-label" for="patient-editor-knowledge-problem"><?= htmlspecialchars($sector_texts['labels']['problem']['titleSingular'] ?? 'Problema o diagnóstico') ?></label>
+                      <div class="form-text mb-2">Selecciona <?= htmlspecialchars($sector_texts['labels']['problem']['singular'] ?? 'un problema o diagnóstico') ?> para consultar <?= htmlspecialchars($sector_texts['labels']['technique']['plural'] ?? 'técnicas') ?>, <?= htmlspecialchars($sector_texts['labels']['task']['plural'] ?? 'tareas') ?>, <?= htmlspecialchars($sector_texts['labels']['evaluation']['plural'] ?? 'cuestionarios') ?> y fuentes.</div>
+                      <select class="form-select" id="patient-editor-knowledge-problem" name="knowledge_problem_id" form="patient-editor-form">
+                        <option value="">Sin <?= htmlspecialchars($sector_texts['clinicalTerms']['diagnosis'] ?? 'diagnóstico') ?> asociado</option>
+                      </select>
+                    </div>
+                    <div class="col-12">
+                      <div id="patient-knowledge-content" class="patient-knowledge-content">
+                        <div class="text-center text-muted py-4">No hay <?= htmlspecialchars($sector_texts['clinicalTerms']['diagnosis'] ?? 'diagnóstico') ?> seleccionado.</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              <?php endif; ?>
               <div class="tab-pane fade" id="patient-history-panel" role="tabpanel" aria-labelledby="patient-history-tab">
                 <div id="patient-history-alert" class="alert d-none"></div>
                 <div class="table-responsive patient-history-table-wrap">
@@ -1122,7 +1154,10 @@ if ($is_admin) {
                     <i class="bi bi-box-arrow-in-down"></i> Importar
                   </button>
                 </div>
-                <div class="form-text">Crea una tarea nueva o importa una plantilla de tareas predefinida.</div>
+                <div class="form-text">Crea una tarea nueva o importa tareas desde tus plantillas o desde la base de conocimiento.</div>
+                <div class="alert alert-info py-2 px-3 mt-3 mb-0 d-none" id="patient-work-plan-loading">
+                  <span class="spinner-border spinner-border-sm me-2"></span>Espera mientras se cargan las plantillas.
+                </div>
               </div>
               <div class="row g-3" id="patient-work-plan-manual-block">
                 <div class="col-md-8">
@@ -1494,17 +1529,6 @@ if ($is_admin) {
                         <input type="text" class="form-control" id="primary-color-text" value="#8f7fba" maxlength="7" style="max-width: 120px;">
                       </div>
                       <div class="form-text">Se aplicará a botones, enlaces destacados y elementos principales de la interfaz.</div>
-                    </div>
-                  </div>
-                  <div class="row g-3 align-items-start mb-4">
-                    <label class="col-lg-2 col-form-label" for="sector-texts-key">Sector</label>
-                    <div class="col-lg-10">
-                      <select class="form-select" id="sector-texts-key" style="max-width: 320px;">
-                        <?php foreach ($sector_texts_options as $sector_option): ?>
-                          <option value="<?= htmlspecialchars($sector_option['key']) ?>"><?= htmlspecialchars($sector_option['name']) ?></option>
-                        <?php endforeach; ?>
-                      </select>
-                      <div class="form-text">Define el vocabulario base de la app: paciente/cliente, profesional/asesor, gabinete/consulta, citas/sesiones, etc.</div>
                     </div>
                   </div>
                   <div class="row g-3 align-items-start mb-3">
@@ -2417,6 +2441,8 @@ if ($is_admin) {
     const INITIAL_CALENDAR_VIEW = <?= json_encode(($branding['initial_calendar_view'] ?? 'month') === 'week' ? 'week' : 'month') ?>;
     const DASHBOARD_CONFIG_MODE = <?= json_encode($dashboard_config_mode) ?>;
     const DASHBOARD_CONFIG = <?= json_encode($dashboard_config, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+    const PLAN_CONFIG = <?= json_encode($plan_config, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+    const KNOWLEDGE_BASE_ENABLED = <?= $knowledge_base_enabled ? 'true' : 'false' ?>;
     const SECTOR_TEXTS = <?= json_encode($sector_texts, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
     const SECTOR_TEXT_OPTIONS = <?= json_encode($sector_texts_options, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
   </script>

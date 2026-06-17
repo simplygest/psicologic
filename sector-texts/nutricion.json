@@ -1,8 +1,8 @@
 {
   "version": 1,
   "key": "nutricion",
-  "name": "Nutricion",
-  "description": "Configuracion de textos para consultas de nutricion y dietetica.",
+  "name": "Nutrición",
+  "description": "Configuración de textos para consultas de nutrición y dietética.",
   "labels": {
     "patient": {
       "singular": "paciente",
@@ -29,10 +29,10 @@
       "titlePlural": "Citas"
     },
     "session": {
-      "singular": "consulta",
-      "plural": "consultas",
-      "titleSingular": "Consulta",
-      "titlePlural": "Consultas"
+      "singular": "sesión",
+      "plural": "sesiones",
+      "titleSingular": "Sesión",
+      "titlePlural": "Sesiones"
     },
     "workPlan": {
       "singular": "plan nutricional",
@@ -47,11 +47,48 @@
       "titlePlural": "Pautas"
     },
     "evolution": {
-      "singular": "evolucion",
+      "singular": "evolución",
       "plural": "evoluciones",
-      "titleSingular": "Evolucion",
-      "titlePlural": "Evolucion"
+      "titleSingular": "Evolución",
+      "titlePlural": "Evolución"
+    },
+    "problem": {
+      "singular": "problema u objetivo nutricional",
+      "plural": "problemas u objetivos nutricionales",
+      "titleSingular": "Problema u objetivo nutricional",
+      "titlePlural": "Problemas u objetivos nutricionales"
+    },
+    "evaluation": {
+      "singular": "valoración nutricional",
+      "plural": "valoraciones nutricionales",
+      "titleSingular": "Valoración nutricional",
+      "titlePlural": "Valoraciones nutricionales"
+    },
+    "technique": {
+      "singular": "estrategia",
+      "plural": "estrategias",
+      "titleSingular": "Estrategia",
+      "titlePlural": "Estrategias"
+    },
+    "resource": {
+      "singular": "recurso",
+      "plural": "recursos",
+      "titleSingular": "Recurso",
+      "titlePlural": "Recursos"
+    },
+    "goal": {
+      "singular": "objetivo nutricional",
+      "plural": "objetivos nutricionales",
+      "titleSingular": "Objetivo nutricional",
+      "titlePlural": "Objetivos nutricionales"
     }
+  },
+  "clinicalTerms": {
+    "diagnosis": "objetivo nutricional",
+    "treatment": "plan nutricional",
+    "exercise": "pauta nutricional",
+    "followUp": "seguimiento",
+    "discharge": "alta"
   },
   "services": {
     "individual": "Individual",

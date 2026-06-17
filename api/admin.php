@@ -25,8 +25,111 @@ ensure_appointment_services_tables($mysqli);
 ensure_bonus_tables($mysqli);
 ensure_payment_attempts_table($mysqli);
 ensure_cabinet_schema($mysqli);
+ensure_knowledge_base_sector_schema($mysqli);
 
 $action = $_GET['action'] ?? '';
+
+function table_exists($mysqli, $table_name)
+{
+    $table_name = $mysqli->real_escape_string($table_name);
+    $res = $mysqli->query("SHOW TABLES LIKE '$table_name'");
+    return $res && $res->num_rows > 0;
+}
+
+function column_exists($mysqli, $table_name, $column_name)
+{
+    $table_name = $mysqli->real_escape_string($table_name);
+    $column_name = $mysqli->real_escape_string($column_name);
+    $res = $mysqli->query("SHOW COLUMNS FROM `$table_name` LIKE '$column_name'");
+    return $res && $res->num_rows > 0;
+}
+
+function index_exists($mysqli, $table_name, $index_name)
+{
+    $table_name = $mysqli->real_escape_string($table_name);
+    $index_name = $mysqli->real_escape_string($index_name);
+    $res = $mysqli->query("SHOW INDEX FROM `$table_name` WHERE Key_name = '$index_name'");
+    return $res && $res->num_rows > 0;
+}
+
+function ensure_knowledge_table_sector_key($mysqli, $table_name)
+{
+    if (!table_exists($mysqli, $table_name)) {
+        return;
+    }
+    if (!column_exists($mysqli, $table_name, 'sector_key')) {
+        $position = column_exists($mysqli, $table_name, 'id') ? ' AFTER id' : ' FIRST';
+        $mysqli->query("ALTER TABLE `$table_name` ADD sector_key VARCHAR(32) NOT NULL DEFAULT 'psicologia'$position");
+    }
+    $mysqli->query("UPDATE `$table_name` SET sector_key = 'psicologia' WHERE sector_key IS NULL OR sector_key = ''");
+    $index_name = 'idx_' . $table_name . '_sector';
+    if (!index_exists($mysqli, $table_name, $index_name)) {
+        $mysqli->query("ALTER TABLE `$table_name` ADD INDEX `$index_name` (sector_key)");
+    }
+}
+
+function ensure_knowledge_sector_code_unique($mysqli, $table_name, $code_column)
+{
+    if (!table_exists($mysqli, $table_name) || !column_exists($mysqli, $table_name, $code_column)) {
+        return;
+    }
+    $table_sql = $mysqli->real_escape_string($table_name);
+    $indexes_res = $mysqli->query("SHOW INDEX FROM `$table_sql`");
+    if (!$indexes_res) {
+        return;
+    }
+    $indexes = [];
+    while ($row = $indexes_res->fetch_assoc()) {
+        $key = $row['Key_name'] ?? '';
+        if ($key === '' || $key === 'PRIMARY' || (int) ($row['Non_unique'] ?? 1) !== 0) {
+            continue;
+        }
+        $indexes[$key][] = [
+            'column' => $row['Column_name'] ?? '',
+            'seq' => (int) ($row['Seq_in_index'] ?? 0)
+        ];
+    }
+    foreach ($indexes as $key => $columns) {
+        usort($columns, fn($a, $b) => $a['seq'] <=> $b['seq']);
+        $column_names = array_map(fn($item) => $item['column'], $columns);
+        if ($column_names === [$code_column]) {
+            $key_sql = str_replace('`', '``', $key);
+            $mysqli->query("ALTER TABLE `$table_name` DROP INDEX `$key_sql`");
+        }
+    }
+    $sector_index = 'uniq_' . $table_name . '_sector_code';
+    if (!index_exists($mysqli, $table_name, $sector_index)) {
+        $mysqli->query("ALTER TABLE `$table_name` ADD UNIQUE `$sector_index` (sector_key, `$code_column`)");
+    }
+}
+
+function ensure_knowledge_base_sector_schema($mysqli)
+{
+    foreach ([
+        'knowledge_areas',
+        'knowledge_problems',
+        'knowledge_techniques',
+        'knowledge_tasks',
+        'knowledge_sources',
+        'knowledge_questionnaires',
+        'knowledge_recommendations',
+        'knowledge_problem_sources'
+    ] as $table_name) {
+        ensure_knowledge_table_sector_key($mysqli, $table_name);
+    }
+    ensure_knowledge_sector_code_unique($mysqli, 'knowledge_areas', 'area_code');
+    ensure_knowledge_sector_code_unique($mysqli, 'knowledge_problems', 'problem_code');
+    ensure_knowledge_sector_code_unique($mysqli, 'knowledge_techniques', 'technique_code');
+    ensure_knowledge_sector_code_unique($mysqli, 'knowledge_tasks', 'task_code');
+    ensure_knowledge_sector_code_unique($mysqli, 'knowledge_sources', 'source_code');
+    ensure_knowledge_sector_code_unique($mysqli, 'knowledge_questionnaires', 'questionnaire_code');
+}
+
+function current_knowledge_sector_key($mysqli)
+{
+    $sector_key = sector_texts_key_from_db($mysqli);
+    return sector_texts_validate_key($sector_key) ? $sector_key : sector_texts_default_key();
+}
 
 function current_professional_id_for_user($mysqli, $user_id)
 {
@@ -254,6 +357,92 @@ function admin_can_access_patient($mysqli, $patient_id)
     $stmt->bind_param("ii", $patient_id, $professional_id);
     $stmt->execute();
     return (bool) $stmt->get_result()->fetch_assoc();
+}
+
+function knowledge_priority_to_work_plan($priority)
+{
+    $priority = strtolower(trim((string) $priority));
+    if ($priority === 'alta') {
+        return 1;
+    }
+    if ($priority === 'baja') {
+        return 3;
+    }
+    return 2;
+}
+
+function import_knowledge_recommendation_task($mysqli, $patient_id, $recommendation_id, $appointment_id = 0)
+{
+    $sector_key = current_knowledge_sector_key($mysqli);
+    $stmt = $mysqli->prepare("
+        SELECT r.id, r.priority, r.clinical_note,
+               t.title, t.description, t.objective, t.estimated_duration,
+               te.name AS technique_name
+        FROM knowledge_recommendations r
+        INNER JOIN knowledge_tasks t ON t.id = r.task_id
+        INNER JOIN knowledge_techniques te ON te.id = r.technique_id
+        WHERE r.id = ? AND r.sector_key = ?
+        LIMIT 1
+    ");
+    $stmt->bind_param("is", $recommendation_id, $sector_key);
+    $stmt->execute();
+    $rec = $stmt->get_result()->fetch_assoc();
+    if (!$rec) {
+        return 0;
+    }
+
+    $description_parts = [];
+    if (!empty($rec['description'])) {
+        $description_parts[] = $rec['description'];
+    }
+    if (!empty($rec['objective'])) {
+        $description_parts[] = 'Objetivo: ' . $rec['objective'];
+    }
+    if (!empty($rec['technique_name'])) {
+        $description_parts[] = 'Tecnica: ' . $rec['technique_name'];
+    }
+    if (!empty($rec['estimated_duration'])) {
+        $description_parts[] = 'Duracion estimada: ' . $rec['estimated_duration'];
+    }
+    if (!empty($rec['clinical_note'])) {
+        $description_parts[] = 'Nota clinica: ' . $rec['clinical_note'];
+    }
+
+    $title = $rec['title'];
+    $description = implode("\n\n", $description_parts);
+    $priority = knowledge_priority_to_work_plan($rec['priority'] ?? '');
+    $status = 'pending';
+    $visible_to_patient = 0;
+    $session_user_id = (int) ($_SESSION['user_id'] ?? 0);
+    $professional_id = current_professional_id_for_user($mysqli, $session_user_id);
+    if ($professional_id <= 0) {
+        $professional_id = null;
+    }
+    $settings_res = $mysqli->query("SELECT patient_tasks_visible_default FROM payment_settings WHERE id = 1");
+    if ($settings_res && ($settings_row = $settings_res->fetch_assoc())) {
+        $visible_to_patient = (int) ($settings_row['patient_tasks_visible_default'] ?? 0) === 1 ? 1 : 0;
+    }
+    $appointment_id_db = null;
+    if ((int) $appointment_id > 0) {
+        $appointment_manage_result = admin_can_manage_appointment_payment($mysqli, (int) $appointment_id);
+        if (!$appointment_manage_result[0] || (int) ($appointment_manage_result[1]['user_id'] ?? 0) !== (int) $patient_id) {
+            return -1;
+        }
+        $appointment_id_db = (int) $appointment_id;
+        if (!empty($appointment_manage_result[1]['professional_id'])) {
+            $professional_id = (int) $appointment_manage_result[1]['professional_id'];
+        }
+    }
+    $completed_at = null;
+    $completed_by = null;
+
+    $stmt = $mysqli->prepare("
+        INSERT INTO patient_work_plan_tasks (patient_id, appointment_id, professional_id, title, description, status, priority, visible_to_patient, created_by, completed_at, completed_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ");
+    $stmt->bind_param("iiisssiiisi", $patient_id, $appointment_id_db, $professional_id, $title, $description, $status, $priority, $visible_to_patient, $session_user_id, $completed_at, $completed_by);
+    $stmt->execute();
+    return (int) $mysqli->insert_id;
 }
 
 function global_search_like_term($term)
@@ -551,6 +740,7 @@ function ensure_patient_management_tables($mysqli)
             patient_status VARCHAR(20) NOT NULL DEFAULT 'active',
             birth_date DATE DEFAULT NULL,
             referral_source VARCHAR(80) DEFAULT NULL,
+            knowledge_problem_id INT UNSIGNED DEFAULT NULL,
             initial_consultation_reason TEXT DEFAULT NULL,
             emergency_contact_name VARCHAR(150) DEFAULT NULL,
             emergency_contact_phone VARCHAR(40) DEFAULT NULL,
@@ -572,6 +762,7 @@ function ensure_patient_management_tables($mysqli)
         'patient_status' => "ALTER TABLE patient_profiles ADD patient_status VARCHAR(20) NOT NULL DEFAULT 'active' AFTER patient_type",
         'birth_date' => "ALTER TABLE patient_profiles ADD birth_date DATE DEFAULT NULL AFTER patient_status",
         'referral_source' => "ALTER TABLE patient_profiles ADD referral_source VARCHAR(80) DEFAULT NULL AFTER birth_date",
+        'knowledge_problem_id' => "ALTER TABLE patient_profiles ADD knowledge_problem_id INT UNSIGNED DEFAULT NULL AFTER referral_source",
         'initial_consultation_reason' => "ALTER TABLE patient_profiles ADD initial_consultation_reason TEXT DEFAULT NULL AFTER referral_source",
         'emergency_contact_name' => "ALTER TABLE patient_profiles ADD emergency_contact_name VARCHAR(150) DEFAULT NULL AFTER initial_consultation_reason",
         'emergency_contact_phone' => "ALTER TABLE patient_profiles ADD emergency_contact_phone VARCHAR(40) DEFAULT NULL AFTER emergency_contact_name",
@@ -585,6 +776,10 @@ function ensure_patient_management_tables($mysqli)
         if ($res && $res->num_rows === 0) {
             $mysqli->query($sql);
         }
+    }
+    $index_res = $mysqli->query("SHOW INDEX FROM patient_profiles WHERE Key_name = 'idx_patient_profiles_knowledge_problem'");
+    if ($index_res && $index_res->num_rows === 0) {
+        $mysqli->query("ALTER TABLE patient_profiles ADD INDEX idx_patient_profiles_knowledge_problem (knowledge_problem_id)");
     }
 }
 
@@ -1145,7 +1340,7 @@ if ($action === 'generate_invite') {
     $professional_where = $professional_id > 0 ? " AND COALESCE(ppf.professional_id, pp.professional_id) = " . (int) $professional_id : ($professional_id < 0 ? " AND 1 = 0" : "");
     $res = $mysqli->query("
         SELECT u.id, u.name, u.email, u.phone, u.created_at, u.password_hash,
-               pp.patient_type, pp.patient_status, pp.birth_date, pp.referral_source, pp.initial_consultation_reason,
+               pp.patient_type, pp.patient_status, pp.birth_date, pp.referral_source, pp.knowledge_problem_id, pp.initial_consultation_reason,
                pp.emergency_contact_name, pp.emergency_contact_phone, pp.emergency_contact_relation,
                pp.admission_date, pp.notes, pp.photo_path, pp.document_path, pp.document_name, pp.created_by_admin,
                COALESCE(ppf.professional_id, pp.professional_id) AS professional_id,
@@ -1172,6 +1367,7 @@ if ($action === 'generate_invite') {
             'patient_status' => $row['patient_status'] ?? 'active',
             'birth_date' => $row['birth_date'] ?? '',
             'referral_source' => $row['referral_source'] ?? '',
+            'knowledge_problem_id' => (int) ($row['knowledge_problem_id'] ?? 0),
             'initial_consultation_reason' => $row['initial_consultation_reason'] ?? '',
             'emergency_contact_name' => $row['emergency_contact_name'] ?? '',
             'emergency_contact_phone' => $row['emergency_contact_phone'] ?? '',
@@ -2411,6 +2607,272 @@ if ($action === 'generate_invite') {
     }
     usort($files, fn($a, $b) => strcmp($b['date'] ?? '', $a['date'] ?? ''));
     echo json_encode(['success' => true, 'files' => $files]);
+} elseif ($action === 'knowledge_problems') {
+    if (!app_feature_enabled_from_db($mysqli, 'knowledgeBase.enabled', false)) {
+        echo json_encode(['success' => false, 'error' => 'La base de conocimiento no esta disponible en este plan.']);
+        exit;
+    }
+    $sector_key = current_knowledge_sector_key($mysqli);
+    $stmt = $mysqli->prepare("
+        SELECT p.id, p.problem_code, p.name, p.alias, p.risk_level,
+               a.id AS area_id, a.name AS area_name
+        FROM knowledge_problems p
+        INNER JOIN knowledge_areas a ON a.id = p.area_id
+        WHERE p.sector_key = ?
+        ORDER BY a.name ASC, p.name ASC
+    ");
+    $stmt->bind_param("s", $sector_key);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $problems = [];
+    while ($row = $res->fetch_assoc()) {
+        $problems[] = [
+            'id' => (int) $row['id'],
+            'code' => $row['problem_code'],
+            'name' => $row['name'],
+            'alias' => $row['alias'] ?? '',
+            'risk_level' => $row['risk_level'] ?? '',
+            'area_id' => (int) $row['area_id'],
+            'area_name' => $row['area_name']
+        ];
+    }
+    echo json_encode(['success' => true, 'problems' => $problems]);
+} elseif ($action === 'knowledge_import_options') {
+    if (!app_feature_enabled_from_db($mysqli, 'knowledgeBase.enabled', false)) {
+        echo json_encode(['success' => true, 'options' => []]);
+        exit;
+    }
+    $sector_key = current_knowledge_sector_key($mysqli);
+    $stmt = $mysqli->prepare("
+        SELECT p.id AS problem_id, p.name AS problem_name,
+               a.name AS area_name,
+               te.id AS technique_id, te.name AS technique_name,
+               COUNT(r.id) AS task_count
+        FROM knowledge_recommendations r
+        INNER JOIN knowledge_problems p ON p.id = r.problem_id
+        INNER JOIN knowledge_areas a ON a.id = p.area_id
+        INNER JOIN knowledge_techniques te ON te.id = r.technique_id
+        WHERE r.sector_key = ?
+        GROUP BY p.id, p.name, a.name, te.id, te.name
+        HAVING task_count > 0
+        ORDER BY a.name ASC, p.name ASC, te.name ASC
+    ");
+    $stmt->bind_param("s", $sector_key);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $options = [];
+    while ($row = $res->fetch_assoc()) {
+        $options[] = [
+            'problem_id' => (int) $row['problem_id'],
+            'problem_name' => $row['problem_name'],
+            'area_name' => $row['area_name'] ?? '',
+            'technique_id' => (int) $row['technique_id'],
+            'technique_name' => $row['technique_name'],
+            'task_count' => (int) $row['task_count']
+        ];
+    }
+    echo json_encode(['success' => true, 'options' => $options]);
+} elseif ($action === 'knowledge_problem_detail') {
+    if (!app_feature_enabled_from_db($mysqli, 'knowledgeBase.enabled', false)) {
+        echo json_encode(['success' => false, 'error' => 'La base de conocimiento no esta disponible en este plan.']);
+        exit;
+    }
+    $problem_id = (int) ($_GET['problem_id'] ?? 0);
+    $sector_key = current_knowledge_sector_key($mysqli);
+    $stmt = $mysqli->prepare("
+        SELECT p.id, p.problem_code, p.name, p.alias, p.description, p.population, p.risk_level,
+               a.name AS area_name
+        FROM knowledge_problems p
+        INNER JOIN knowledge_areas a ON a.id = p.area_id
+        WHERE p.id = ? AND p.sector_key = ?
+        LIMIT 1
+    ");
+    $stmt->bind_param("is", $problem_id, $sector_key);
+    $stmt->execute();
+    $problem = $stmt->get_result()->fetch_assoc();
+    if (!$problem) {
+        echo json_encode(['success' => false, 'error' => 'No se encontro el problema o diagnostico.']);
+        exit;
+    }
+
+    $stmt = $mysqli->prepare("
+        SELECT r.id AS recommendation_id, r.priority, r.clinical_note,
+               te.id AS technique_id, te.technique_code, te.name AS technique_name, te.description AS technique_description, te.risk_level AS technique_risk,
+               t.id AS task_id, t.task_code, t.title AS task_title, t.description AS task_description, t.objective, t.risk_level AS task_risk, t.estimated_duration
+        FROM knowledge_recommendations r
+        INNER JOIN knowledge_techniques te ON te.id = r.technique_id
+        INNER JOIN knowledge_tasks t ON t.id = r.task_id
+        WHERE r.problem_id = ? AND r.sector_key = ?
+        ORDER BY te.name ASC,
+                 FIELD(r.priority, 'alta', 'media', 'baja') ASC,
+                 t.title ASC
+    ");
+    $stmt->bind_param("is", $problem_id, $sector_key);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $techniques = [];
+    while ($row = $res->fetch_assoc()) {
+        $technique_id = (int) $row['technique_id'];
+        if (!isset($techniques[$technique_id])) {
+            $techniques[$technique_id] = [
+                'id' => $technique_id,
+                'code' => $row['technique_code'],
+                'name' => $row['technique_name'],
+                'description' => $row['technique_description'] ?? '',
+                'risk_level' => $row['technique_risk'] ?? '',
+                'recommendations' => []
+            ];
+        }
+        $techniques[$technique_id]['recommendations'][] = [
+            'id' => (int) $row['recommendation_id'],
+            'priority' => $row['priority'] ?? '',
+            'clinical_note' => $row['clinical_note'] ?? '',
+            'task' => [
+                'id' => (int) $row['task_id'],
+                'code' => $row['task_code'],
+                'title' => $row['task_title'],
+                'description' => $row['task_description'] ?? '',
+                'objective' => $row['objective'] ?? '',
+                'risk_level' => $row['task_risk'] ?? '',
+                'estimated_duration' => $row['estimated_duration'] ?? ''
+            ]
+        ];
+    }
+
+    $stmt = $mysqli->prepare("
+        SELECT q.id, q.questionnaire_code, q.name, q.use_area, q.questionnaire_type, q.notes
+        FROM knowledge_questionnaires q
+        WHERE q.problem_id = ? AND q.sector_key = ?
+        ORDER BY q.name ASC
+    ");
+    $stmt->bind_param("is", $problem_id, $sector_key);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $questionnaires = [];
+    while ($row = $res->fetch_assoc()) {
+        $questionnaires[] = [
+            'id' => (int) $row['id'],
+            'code' => $row['questionnaire_code'],
+            'name' => $row['name'],
+            'use_area' => $row['use_area'] ?? '',
+            'type' => $row['questionnaire_type'] ?? '',
+            'notes' => $row['notes'] ?? ''
+        ];
+    }
+
+    $stmt = $mysqli->prepare("
+        SELECT s.source_code, s.name, s.organization, s.title, s.url, s.notes
+        FROM knowledge_problem_sources ps
+        INNER JOIN knowledge_sources s ON s.id = ps.source_id
+        WHERE ps.problem_id = ? AND ps.sector_key = ?
+        ORDER BY s.name ASC
+    ");
+    $stmt->bind_param("is", $problem_id, $sector_key);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $sources = [];
+    while ($row = $res->fetch_assoc()) {
+        $sources[] = [
+            'code' => $row['source_code'],
+            'name' => $row['name'],
+            'organization' => $row['organization'] ?? '',
+            'title' => $row['title'] ?? '',
+            'url' => $row['url'] ?? '',
+            'notes' => $row['notes'] ?? ''
+        ];
+    }
+
+    echo json_encode([
+        'success' => true,
+        'problem' => [
+            'id' => (int) $problem['id'],
+            'code' => $problem['problem_code'],
+            'name' => $problem['name'],
+            'alias' => $problem['alias'] ?? '',
+            'description' => $problem['description'] ?? '',
+            'population' => $problem['population'] ?? '',
+            'risk_level' => $problem['risk_level'] ?? '',
+            'area_name' => $problem['area_name'] ?? ''
+        ],
+        'techniques' => array_values($techniques),
+        'questionnaires' => $questionnaires,
+        'sources' => $sources
+    ]);
+} elseif ($action === 'import_knowledge_recommendation_task') {
+    if (!app_feature_enabled_from_db($mysqli, 'knowledgeBase.enabled', false)) {
+        echo json_encode(['success' => false, 'error' => 'La base de conocimiento no esta disponible en este plan.']);
+        exit;
+    }
+    $patient_id = (int) ($_POST['patient_id'] ?? 0);
+    $recommendation_id = (int) ($_POST['recommendation_id'] ?? 0);
+    $appointment_id = (int) ($_POST['appointment_id'] ?? 0);
+    if (!admin_can_access_patient($mysqli, $patient_id)) {
+        echo json_encode(['success' => false, 'error' => 'No autorizado para modificar este paciente.']);
+        exit;
+    }
+    ensure_patient_work_plan_tables($mysqli);
+    $task_id = import_knowledge_recommendation_task($mysqli, $patient_id, $recommendation_id, $appointment_id);
+    if ($task_id <= 0) {
+        echo json_encode(['success' => false, 'error' => 'No se pudo importar la tarea recomendada.']);
+        exit;
+    }
+    echo json_encode(['success' => true, 'message' => 'Tarea añadida al plan de trabajo.', 'task_id' => $task_id]);
+} elseif ($action === 'import_knowledge_problem_tasks') {
+    if (!app_feature_enabled_from_db($mysqli, 'knowledgeBase.enabled', false)) {
+        echo json_encode(['success' => false, 'error' => 'La base de conocimiento no esta disponible en este plan.']);
+        exit;
+    }
+    $patient_id = (int) ($_POST['patient_id'] ?? 0);
+    $problem_id = (int) ($_POST['problem_id'] ?? 0);
+    $appointment_id = (int) ($_POST['appointment_id'] ?? 0);
+    if (!admin_can_access_patient($mysqli, $patient_id)) {
+        echo json_encode(['success' => false, 'error' => 'No autorizado para modificar este paciente.']);
+        exit;
+    }
+    ensure_patient_work_plan_tables($mysqli);
+    $sector_key = current_knowledge_sector_key($mysqli);
+    $stmt = $mysqli->prepare("SELECT id FROM knowledge_recommendations WHERE problem_id = ? AND sector_key = ? ORDER BY FIELD(priority, 'alta', 'media', 'baja') ASC, id ASC");
+    $stmt->bind_param("is", $problem_id, $sector_key);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $count = 0;
+    while ($row = $res->fetch_assoc()) {
+        if (import_knowledge_recommendation_task($mysqli, $patient_id, (int) $row['id'], $appointment_id) > 0) {
+            $count++;
+        }
+    }
+    echo json_encode(['success' => true, 'message' => $count . ' tareas añadidas al plan de trabajo.', 'count' => $count]);
+} elseif ($action === 'import_knowledge_technique_tasks') {
+    if (!app_feature_enabled_from_db($mysqli, 'knowledgeBase.enabled', false)) {
+        echo json_encode(['success' => false, 'error' => 'La base de conocimiento no esta disponible en este plan.']);
+        exit;
+    }
+    $patient_id = (int) ($_POST['patient_id'] ?? 0);
+    $problem_id = (int) ($_POST['problem_id'] ?? 0);
+    $technique_id = (int) ($_POST['technique_id'] ?? 0);
+    $appointment_id = (int) ($_POST['appointment_id'] ?? 0);
+    if (!admin_can_access_patient($mysqli, $patient_id)) {
+        echo json_encode(['success' => false, 'error' => 'No autorizado para modificar este paciente.']);
+        exit;
+    }
+    ensure_patient_work_plan_tables($mysqli);
+    $sector_key = current_knowledge_sector_key($mysqli);
+    $stmt = $mysqli->prepare("
+        SELECT id
+        FROM knowledge_recommendations
+        WHERE problem_id = ? AND technique_id = ? AND sector_key = ?
+        ORDER BY FIELD(priority, 'alta', 'media', 'baja') ASC, id ASC
+    ");
+    $stmt->bind_param("iis", $problem_id, $technique_id, $sector_key);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $count = 0;
+    while ($row = $res->fetch_assoc()) {
+        if (import_knowledge_recommendation_task($mysqli, $patient_id, (int) $row['id'], $appointment_id) > 0) {
+            $count++;
+        }
+    }
+    echo json_encode(['success' => true, 'message' => $count . ' tareas de la tecnica anadidas al plan de trabajo.', 'count' => $count]);
 } elseif ($action === 'patient_work_plan') {
     $patient_id = (int) ($_GET['patient_id'] ?? 0);
     if (!admin_can_access_patient($mysqli, $patient_id)) {
@@ -2555,14 +3017,20 @@ if ($action === 'generate_invite') {
 
     if ($status === 'completed') {
         $session_user_id = (int) ($_SESSION['user_id'] ?? 0);
-        $stmt = $mysqli->prepare("UPDATE patient_work_plan_tasks SET status = 'completed', completed_at = NOW(), completed_by = ? WHERE id = ?");
-        $stmt->bind_param("ii", $session_user_id, $task_id);
+        $completed_at_response = date('Y-m-d H:i:s');
+        $stmt = $mysqli->prepare("UPDATE patient_work_plan_tasks SET status = 'completed', completed_at = ?, completed_by = ? WHERE id = ?");
+        $stmt->bind_param("sii", $completed_at_response, $session_user_id, $task_id);
     } else {
+        $completed_at_response = null;
         $stmt = $mysqli->prepare("UPDATE patient_work_plan_tasks SET status = 'pending', completed_at = NULL, completed_by = NULL WHERE id = ?");
         $stmt->bind_param("i", $task_id);
     }
     $stmt->execute();
-    echo json_encode(['success' => true, 'message' => $status === 'completed' ? 'Tarea completada.' : 'Tarea marcada como pendiente.']);
+    echo json_encode([
+        'success' => true,
+        'message' => $status === 'completed' ? 'Tarea completada.' : 'Tarea marcada como pendiente.',
+        'completed_at' => $completed_at_response
+    ]);
 } elseif ($action === 'delete_patient_work_plan_task') {
     $task_id = (int) ($_POST['task_id'] ?? 0);
     $stmt = $mysqli->prepare("SELECT patient_id FROM patient_work_plan_tasks WHERE id = ? LIMIT 1");
@@ -2946,6 +3414,8 @@ if ($action === 'generate_invite') {
     $patient_status = trim($_POST['patient_status'] ?? 'active');
     $birth_date = trim($_POST['birth_date'] ?? '');
     $referral_source = trim($_POST['referral_source'] ?? '');
+    $knowledge_problem_was_posted = array_key_exists('knowledge_problem_id', $_POST);
+    $knowledge_problem_id = max(0, (int) ($_POST['knowledge_problem_id'] ?? 0));
     $initial_consultation_reason = trim($_POST['initial_consultation_reason'] ?? '');
     $emergency_contact_name = trim($_POST['emergency_contact_name'] ?? '');
     $emergency_contact_phone = trim($_POST['emergency_contact_phone'] ?? '');
@@ -2973,6 +3443,31 @@ if ($action === 'generate_invite') {
     }
     $birth_date = $birth_date !== '' ? $birth_date : null;
     $referral_source = $referral_source !== '' ? $referral_source : null;
+    $knowledge_base_available = app_feature_enabled_from_db($mysqli, 'knowledgeBase.enabled', false);
+    if (!$knowledge_base_available) {
+        $knowledge_problem_was_posted = false;
+    }
+    if (!$knowledge_problem_was_posted && $patient_id > 0) {
+        $stmt = $mysqli->prepare("SELECT knowledge_problem_id FROM patient_profiles WHERE user_id = ? LIMIT 1");
+        $stmt->bind_param("i", $patient_id);
+        $stmt->execute();
+        $existing_knowledge = $stmt->get_result()->fetch_assoc();
+        $knowledge_problem_id = !empty($existing_knowledge['knowledge_problem_id']) ? (int) $existing_knowledge['knowledge_problem_id'] : 0;
+    } elseif (!$knowledge_base_available) {
+        $knowledge_problem_id = 0;
+    }
+    if ($knowledge_problem_id > 0) {
+        $sector_key = current_knowledge_sector_key($mysqli);
+        $stmt = $mysqli->prepare("SELECT id FROM knowledge_problems WHERE id = ? AND sector_key = ? LIMIT 1");
+        $stmt->bind_param("is", $knowledge_problem_id, $sector_key);
+        $stmt->execute();
+        if (!$stmt->get_result()->fetch_assoc()) {
+            echo json_encode(['success' => false, 'error' => 'El problema o diagnostico seleccionado no existe.']);
+            exit;
+        }
+    } else {
+        $knowledge_problem_id = null;
+    }
     $initial_consultation_reason = $initial_consultation_reason !== '' ? $initial_consultation_reason : null;
     $emergency_contact_name = $emergency_contact_name !== '' ? $emergency_contact_name : null;
     $emergency_contact_phone = $emergency_contact_phone !== '' ? $emergency_contact_phone : null;
@@ -3040,17 +3535,18 @@ if ($action === 'generate_invite') {
         $profile_professional_id = $selected_professional_id > 0 ? $selected_professional_id : null;
         $stmt = $mysqli->prepare("
             INSERT INTO patient_profiles (
-                user_id, professional_id, patient_type, patient_status, birth_date, referral_source,
+                user_id, professional_id, patient_type, patient_status, birth_date, referral_source, knowledge_problem_id,
                 initial_consultation_reason, emergency_contact_name, emergency_contact_phone, emergency_contact_relation,
                 admission_date, notes, created_by_admin
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
             ON DUPLICATE KEY UPDATE
                 professional_id = VALUES(professional_id),
                 patient_type = VALUES(patient_type),
                 patient_status = VALUES(patient_status),
                 birth_date = VALUES(birth_date),
                 referral_source = VALUES(referral_source),
+                knowledge_problem_id = VALUES(knowledge_problem_id),
                 initial_consultation_reason = VALUES(initial_consultation_reason),
                 emergency_contact_name = VALUES(emergency_contact_name),
                 emergency_contact_phone = VALUES(emergency_contact_phone),
@@ -3059,13 +3555,14 @@ if ($action === 'generate_invite') {
                 notes = VALUES(notes)
         ");
         $stmt->bind_param(
-            "iissssssssss",
+            "iissssissssss",
             $patient_id,
             $profile_professional_id,
             $patient_type,
             $patient_status,
             $birth_date,
             $referral_source,
+            $knowledge_problem_id,
             $initial_consultation_reason,
             $emergency_contact_name,
             $emergency_contact_phone,
@@ -4465,8 +4962,10 @@ if ($action === 'generate_invite') {
     $dashboard_config_mode = in_array(($settings['dashboard_config_mode'] ?? ''), ['simple', 'advanced', 'custom'], true) ? $settings['dashboard_config_mode'] : 'simple';
     $settings['dashboard_config_mode'] = $dashboard_config_mode;
     $settings['dashboard_config'] = dashboard_config_for_mode($dashboard_config_mode);
+    $settings['plan_config'] = plan_config_for_current();
     $sector_texts_key = sector_texts_validate_key($settings['sector_texts_key'] ?? '') ? $settings['sector_texts_key'] : sector_texts_default_key();
     $settings['sector_texts_key'] = sector_texts_read_file($sector_texts_key) ? $sector_texts_key : sector_texts_default_key();
+    $settings['knowledge_base_has_sector_data'] = knowledge_base_sector_has_data($mysqli, $settings['sector_texts_key']) ? 1 : 0;
     $settings['sector_texts'] = sector_texts_for_key($settings['sector_texts_key']);
     $settings['sector_texts_options'] = sector_texts_available();
 
@@ -4659,9 +5158,12 @@ if ($action === 'generate_invite') {
     if (!in_array($dashboard_config_mode, ['simple', 'advanced', 'custom'], true)) {
         $dashboard_config_mode = 'simple';
     }
-    $sector_texts_key = $_POST['sector_texts_key'] ?? sector_texts_default_key();
-    if (!sector_texts_validate_key($sector_texts_key) || !sector_texts_read_file($sector_texts_key)) {
-        $sector_texts_key = sector_texts_default_key();
+    $sector_texts_key = sector_texts_key_from_db($mysqli);
+    if (isset($_POST['sector_texts_key'])) {
+        $posted_sector_texts_key = $_POST['sector_texts_key'];
+        if (sector_texts_validate_key($posted_sector_texts_key) && sector_texts_read_file($posted_sector_texts_key)) {
+            $sector_texts_key = $posted_sector_texts_key;
+        }
     }
     $initial_calendar_view = $_POST['initial_calendar_view'] ?? 'month';
     $environment = $_POST['environment'] ?? 'sandbox';

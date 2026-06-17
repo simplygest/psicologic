@@ -1,0 +1,114 @@
+{
+  "version": 1,
+  "key": "osteopatia",
+  "name": "Osteopatía",
+  "description": "Configuración de textos para clínicas y consultas de osteopatía.",
+  "labels": {
+    "patient": {
+      "singular": "paciente",
+      "plural": "pacientes",
+      "titleSingular": "Paciente",
+      "titlePlural": "Pacientes"
+    },
+    "professional": {
+      "singular": "osteópata",
+      "plural": "osteópatas",
+      "titleSingular": "Osteópata",
+      "titlePlural": "Osteópatas"
+    },
+    "organization": {
+      "singular": "consulta",
+      "plural": "consultas",
+      "titleSingular": "Consulta",
+      "titlePlural": "Consultas"
+    },
+    "appointment": {
+      "singular": "cita",
+      "plural": "citas",
+      "titleSingular": "Cita",
+      "titlePlural": "Citas"
+    },
+    "session": {
+      "singular": "sesión",
+      "plural": "sesiones",
+      "titleSingular": "Sesión",
+      "titlePlural": "Sesiones"
+    },
+    "workPlan": {
+      "singular": "plan terapéutico",
+      "plural": "planes terapéuticos",
+      "titleSingular": "Plan terapéutico",
+      "titlePlural": "Planes terapéuticos"
+    },
+    "task": {
+      "singular": "pauta",
+      "plural": "pautas",
+      "titleSingular": "Pauta",
+      "titlePlural": "Pautas"
+    },
+    "evolution": {
+      "singular": "evolución",
+      "plural": "evoluciones",
+      "titleSingular": "Evolución",
+      "titlePlural": "Evolución"
+    },
+    "problem": {
+      "singular": "problema funcional",
+      "plural": "problemas funcionales",
+      "titleSingular": "Problema funcional",
+      "titlePlural": "Problemas funcionales"
+    },
+    "evaluation": {
+      "singular": "valoración",
+      "plural": "valoraciones",
+      "titleSingular": "Valoración",
+      "titlePlural": "Valoraciones"
+    },
+    "technique": {
+      "singular": "técnica osteopática",
+      "plural": "técnicas osteopáticas",
+      "titleSingular": "Técnica osteopática",
+      "titlePlural": "Técnicas osteopáticas"
+    },
+    "resource": {
+      "singular": "recurso",
+      "plural": "recursos",
+      "titleSingular": "Recurso",
+      "titlePlural": "Recursos"
+    },
+    "goal": {
+      "singular": "objetivo",
+      "plural": "objetivos",
+      "titleSingular": "Objetivo",
+      "titlePlural": "Objetivos"
+    }
+  },
+  "clinicalTerms": {
+    "diagnosis": "valoración osteopática",
+    "treatment": "tratamiento osteopático",
+    "exercise": "pauta terapéutica",
+    "followUp": "seguimiento",
+    "discharge": "alta"
+  },
+  "services": {
+    "individual": "Individual",
+    "couple": "Parejas",
+    "family": "Familiar",
+    "group": "Grupos"
+  },
+  "portal": {
+    "bookingCta": "Reserva tu cita",
+    "myAppointments": "Mis citas",
+    "myTasks": "Mis pautas"
+  },
+  "reports": {
+    "internalPatientReport": "Informe interno de paciente",
+    "patientReport": "Informe para paciente"
+  },
+  "featureHints": {
+    "workPlan": true,
+    "patientPortal": true,
+    "clinicalEvolution": true,
+    "sessionFiles": true
+  }
+}

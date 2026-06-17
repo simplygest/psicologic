@@ -1,0 +1,114 @@
+{
+  "version": 1,
+  "key": "entrenamiento_personal",
+  "name": "Entrenamiento personal",
+  "description": "Configuración de textos para entrenadores personales y centros deportivos.",
+  "labels": {
+    "patient": {
+      "singular": "cliente",
+      "plural": "clientes",
+      "titleSingular": "Cliente",
+      "titlePlural": "Clientes"
+    },
+    "professional": {
+      "singular": "entrenador",
+      "plural": "entrenadores",
+      "titleSingular": "Entrenador",
+      "titlePlural": "Entrenadores"
+    },
+    "organization": {
+      "singular": "centro",
+      "plural": "centros",
+      "titleSingular": "Centro",
+      "titlePlural": "Centros"
+    },
+    "appointment": {
+      "singular": "cita",
+      "plural": "citas",
+      "titleSingular": "Cita",
+      "titlePlural": "Citas"
+    },
+    "session": {
+      "singular": "entrenamiento",
+      "plural": "entrenamientos",
+      "titleSingular": "Entrenamiento",
+      "titlePlural": "Entrenamientos"
+    },
+    "workPlan": {
+      "singular": "plan de entrenamiento",
+      "plural": "planes de entrenamiento",
+      "titleSingular": "Plan de entrenamiento",
+      "titlePlural": "Planes de entrenamiento"
+    },
+    "task": {
+      "singular": "ejercicio",
+      "plural": "ejercicios",
+      "titleSingular": "Ejercicio",
+      "titlePlural": "Ejercicios"
+    },
+    "evolution": {
+      "singular": "progreso",
+      "plural": "progresos",
+      "titleSingular": "Progreso",
+      "titlePlural": "Progreso"
+    },
+    "problem": {
+      "singular": "objetivo o limitación",
+      "plural": "objetivos o limitaciones",
+      "titleSingular": "Objetivo o limitación",
+      "titlePlural": "Objetivos o limitaciones"
+    },
+    "evaluation": {
+      "singular": "valoración física",
+      "plural": "valoraciones físicas",
+      "titleSingular": "Valoración física",
+      "titlePlural": "Valoraciones físicas"
+    },
+    "technique": {
+      "singular": "método",
+      "plural": "métodos",
+      "titleSingular": "Método",
+      "titlePlural": "Métodos"
+    },
+    "resource": {
+      "singular": "recurso",
+      "plural": "recursos",
+      "titleSingular": "Recurso",
+      "titlePlural": "Recursos"
+    },
+    "goal": {
+      "singular": "objetivo físico",
+      "plural": "objetivos físicos",
+      "titleSingular": "Objetivo físico",
+      "titlePlural": "Objetivos físicos"
+    }
+  },
+  "clinicalTerms": {
+    "diagnosis": "objetivo físico",
+    "treatment": "plan de entrenamiento",
+    "exercise": "ejercicio",
+    "followUp": "seguimiento",
+    "discharge": "alta"
+  },
+  "services": {
+    "individual": "Individual",
+    "couple": "Parejas",
+    "family": "Familiar",
+    "group": "Grupos"
+  },
+  "portal": {
+    "bookingCta": "Reserva tu sesión",
+    "myAppointments": "Mis entrenamientos",
+    "myTasks": "Mis ejercicios"
+  },
+  "reports": {
+    "internalPatientReport": "Informe interno de paciente",
+    "patientReport": "Informe para paciente"
+  },
+  "featureHints": {
+    "workPlan": true,
+    "patientPortal": true,
+    "clinicalEvolution": true,
+    "sessionFiles": true
+  }
+}

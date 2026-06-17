@@ -1,0 +1,16 @@
+﻿problema_id;area_id;nombre;alias;descripcion;poblacion;nivel_riesgo;fuente_ids
+LOG_P001;LOG_A001;Dislalia / trastorno de los sonidos del habla;Dificultad articulatoria;Dificultad para producir fonemas o combinaciones de sonidos de forma adecuada para la edad.;Infantil;bajo;"LOG_SRC001;LOG_SRC002"
+LOG_P002;LOG_A001;Retraso fonológico;Procesos fonológicos persistentes;Uso de patrones fonológicos inmaduros que afectan a la inteligibilidad.;Infantil;medio;"LOG_SRC001;LOG_SRC002"
+LOG_P003;LOG_A001;Disartria;Alteración motora del habla;Dificultad de habla por alteración neuromotora, fuerza, coordinación o control motor.;Adultos;alto;"LOG_SRC002;LOG_SRC005"
+LOG_P004;LOG_A002;Retraso del lenguaje;Desarrollo lingüístico lento;Dificultades en vocabulario, frases, comprensión o expresión respecto al desarrollo esperado.;Infantil;medio;"LOG_SRC001;LOG_SRC002"
+LOG_P005;LOG_A002;Trastorno del desarrollo del lenguaje;TDL;Dificultades persistentes de lenguaje que afectan aprendizaje, comunicación y participación.;Infantil;medio;"LOG_SRC002;LOG_SRC005"
+LOG_P006;LOG_A003;Tartamudez;Disfluencia;Repeticiones, prolongaciones o bloqueos que afectan fluidez y comunicación.;Infantil/Adultos;medio;"LOG_SRC001;LOG_SRC002"
+LOG_P007;LOG_A004;Disfonía funcional;Alteración de voz;Cambios de calidad vocal asociados a uso vocal, tensión, fatiga o hábitos vocales.;Adultos;medio;"LOG_SRC002;LOG_SRC004"
+LOG_P008;LOG_A004;Sobrecarga vocal profesional;Fatiga vocal;Uso intensivo de voz con fatiga, ronquera o pérdida de eficiencia vocal.;Adultos;medio;LOG_SRC002
+LOG_P009;LOG_A005;Disfagia leve / seguimiento de deglución;Dificultad deglutoria;Dificultades para tragar con posible impacto en seguridad o eficiencia alimentaria.;Adultos/Mayores;alto;"LOG_SRC002;LOG_SRC004"
+LOG_P010;LOG_A005;Alteraciones orofaciales funcionales;Funciones orales;Dificultades en praxias, tono, movilidad orofacial o hábitos orales.;Infantil/Adultos;medio;LOG_SRC002
+LOG_P011;LOG_A006;Dificultades de conciencia fonológica;Base lectoescritura;Dificultad para identificar, segmentar o manipular sonidos del habla.;Infantil;bajo;LOG_SRC002
+LOG_P012;LOG_A006;Dificultades de lectura y escritura;Lectoescritura;Dificultades en lectura, precisión, fluidez, comprensión o escritura.;Infantil;medio;LOG_SRC002
+LOG_P013;LOG_A007;Afasia;Alteración adquirida del lenguaje;Dificultad adquirida de comprensión o expresión del lenguaje tras lesión neurológica.;Adultos;alto;"LOG_SRC002;LOG_SRC005"
+LOG_P014;LOG_A007;Comunicación funcional reducida;Participación comunicativa;Limitación para comunicarse en actividades cotidianas por alteración neurológica o funcional.;Adultos;medio;LOG_SRC005
+LOG_P015;LOG_A008;Dificultades pragmáticas;Comunicación social;Dificultad para usar lenguaje en contexto social, turnos, inferencias o adecuación conversacional.;Infantil/Adultos;medio;"LOG_SRC002;LOG_SRC005"

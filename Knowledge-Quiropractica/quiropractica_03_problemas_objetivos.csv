@@ -1,0 +1,9 @@
+﻿problema_id;area_id;nombre;alias;descripcion;riesgo;fuente_ids
+QUI_P001;QUI_A001;Dolor lumbar mecánico;Lumbalgia;Dolor lumbar relacionado con carga y movimiento;medio;"QUI_SRC001;QUI_SRC002"
+QUI_P002;QUI_A001;Rigidez lumbar;Movilidad reducida;Restricción de movilidad lumbar;bajo;QUI_SRC001
+QUI_P003;QUI_A002;Cervicalgia;Dolor cervical;Dolor o rigidez cervical;medio;"QUI_SRC001;QUI_SRC003"
+QUI_P004;QUI_A002;Restricción cervical;Movilidad cervical;Limitación de movimiento cervical;bajo;QUI_SRC001
+QUI_P005;QUI_A003;Alteraciones posturales;Postura;Hábitos posturales mejorables;bajo;QUI_SRC001
+QUI_P006;QUI_A004;Cefalea cervicogénica;Dolor de cabeza asociado a cuello;Cefalea relacionada con región cervical;medio;QUI_SRC003
+QUI_P007;QUI_A005;Sobrecarga deportiva;Recuperación;Molestias relacionadas con entrenamiento;medio;QUI_SRC005
+QUI_P008;QUI_A006;Mantenimiento funcional;Prevención;Seguimiento y autocuidado musculoesquelético;bajo;QUI_SRC001
