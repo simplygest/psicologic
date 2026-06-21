@@ -15,21 +15,36 @@ if ($is_admin) {
   ensure_cabinet_schema($mysqli);
 }
 $branding = get_public_branding_settings($mysqli);
-if (!$is_admin && (int) ($branding['online_booking_enabled'] ?? 1) !== 1) {
+if (!$is_admin && !online_booking_enabled($mysqli)) {
   header('Location: index.php');
   exit;
 }
-$dashboard_config_mode = $is_admin ? dashboard_config_mode_from_db($mysqli) : 'simple';
+$dashboard_config_mode = $is_admin ? dashboard_config_effective_mode_from_db($mysqli, $branding['plan_key'] ?? 'default') : 'simple';
 $dashboard_config = dashboard_config_for_mode($dashboard_config_mode);
-$plan_config = plan_config_for_current();
+$plan_config = plan_config_for_key($branding['plan_key'] ?? 'default');
 $sector_key = $branding['sector_texts_key'] ?? sector_texts_default_key();
 $knowledge_base_enabled = $is_admin
   && app_feature_enabled($dashboard_config, $plan_config, 'knowledgeBase.enabled', false)
   && knowledge_base_sector_has_data($mysqli, $sector_key);
-$sector_texts = sector_texts_for_key($sector_key);
+$body_map_sector_keys = ['fitness', 'fisioterapia', 'quiropractica', 'osteopatia'];
+$body_map_enabled = $knowledge_base_enabled && in_array($sector_key, $body_map_sector_keys, true);
+$knowledge_disclaimer = 'Las recomendaciones mostradas son material de apoyo documental. No constituyen diagnóstico, prescripción clínica automática ni sustituyen el criterio profesional.';
+if ($sector_key === 'fitness') {
+  $knowledge_disclaimer = 'Las recomendaciones mostradas son material de apoyo para la planificación del entrenamiento. No sustituyen la valoración del profesional ni deben interpretarse como una rutina automática.';
+} elseif (in_array($sector_key, ['fisioterapia', 'osteopatia', 'quiropractica'], true)) {
+  $knowledge_disclaimer = 'Las recomendaciones mostradas son material de apoyo documental. No constituyen valoración clínica, tratamiento automático ni sustituyen el criterio profesional.';
+}
+$custom_dashboard_logo_enabled = app_feature_enabled($dashboard_config, $plan_config, 'branding.customLogo', false);
+$sector_texts = sector_texts_for_key($sector_key, $dashboard_config, $plan_config);
 $sector_texts_options = sector_texts_available();
+$patient_label_singular = $sector_texts['labels']['patient']['singular'] ?? 'paciente';
+$patient_label_plural = $sector_texts['labels']['patient']['plural'] ?? 'pacientes';
+$patient_label_title_singular = $sector_texts['labels']['patient']['titleSingular'] ?? 'Paciente';
+$patient_label_title_plural = $sector_texts['labels']['patient']['titlePlural'] ?? 'Pacientes';
+$work_plan_title_singular = $sector_texts['labels']['workPlan']['titleSingular'] ?? 'Plan de trabajo';
 $app_name = $branding['app_name'];
-$profile_image_path = $branding['profile_image_path'];
+$official_brand_logo_url = app_official_brand_logo_url();
+$profile_image_path = $custom_dashboard_logo_enabled ? $branding['profile_image_path'] : '';
 $navbar_image_path = $profile_image_path;
 $has_team_members = false;
 if (!$is_admin) {
@@ -69,6 +84,7 @@ if ($is_admin) {
     }
   }
 }
+$navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_image_path) : '';
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -91,11 +107,7 @@ if ($is_admin) {
   <nav class="navbar navbar-expand-lg py-3">
     <div class="container">
       <a class="navbar-brand d-flex align-items-center gap-2" id="app-brand-link" href="#">
-        <?php if ($navbar_image_path): ?>
-          <img src="<?= htmlspecialchars($navbar_image_path) ?>" alt="" class="brand-avatar" id="app-brand-image">
-        <?php else: ?>
-          <img src="" alt="" class="brand-avatar d-none" id="app-brand-image">
-        <?php endif; ?>
+        <img src="<?= htmlspecialchars($official_brand_logo_url) ?>" alt="SimplyGest Praxis" class="brand-avatar" id="app-brand-image">
         <span id="app-brand" class="dashboard-user-greeting">Hola, <?= htmlspecialchars($_SESSION['name']) ?></span>
       </a>
       <div class="d-flex align-items-center gap-2">
@@ -103,6 +115,11 @@ if ($is_admin) {
           <button class="btn btn-light btn-sm" type="button" id="btn-global-search" title="Buscar">
             <i class="bi bi-search"></i>
           </button>
+        <?php endif; ?>
+        <?php if ($navbar_image_url): ?>
+          <img src="<?= htmlspecialchars($navbar_image_url) ?>" alt="" class="navbar-user-avatar" id="navbar-user-image">
+        <?php else: ?>
+          <img src="" alt="" class="navbar-user-avatar d-none" id="navbar-user-image">
         <?php endif; ?>
         <div class="dropdown">
           <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="dashboard-options-menu" data-bs-toggle="dropdown" aria-expanded="false">
@@ -162,7 +179,7 @@ if ($is_admin) {
         <button class="btn btn-primary" id="btn-upcoming-appointments" type="button"><i class="bi bi-list-check"></i> Pr&oacute;ximas citas</button>
         <button class="btn btn-primary" id="btn-admin-stats" type="button"><i class="bi bi-bar-chart"></i> Informes y estad&iacute;sticas</button>
           <button class="btn btn-primary" id="btn-admin-bonuses" type="button"><i class="bi bi-card-list"></i> Bonos</button>
-        <button class="btn btn-primary" id="btn-admin-patients" type="button"><i class="bi bi-people"></i> <?= $is_superadmin ? 'Pacientes' : 'Mis pacientes' ?></button>
+        <button class="btn btn-primary" id="btn-admin-patients" type="button"><i class="bi bi-people"></i> <?= $is_superadmin ? htmlspecialchars($patient_label_title_plural, ENT_QUOTES, 'UTF-8') : 'Mis ' . htmlspecialchars($patient_label_plural, ENT_QUOTES, 'UTF-8') ?></button>
         </div>
         <div class="dropdown dashboard-mobile-menu">
           <button class="btn btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -173,7 +190,7 @@ if ($is_admin) {
             <li><button class="dropdown-item" type="button" id="btn-mobile-upcoming-appointments"><i class="bi bi-list-check me-2"></i>Pr&oacute;ximas citas</button></li>
             <li><button class="dropdown-item" type="button" id="btn-mobile-admin-stats"><i class="bi bi-bar-chart me-2"></i>Informes y estad&iacute;sticas</button></li>
             <li><button class="dropdown-item" type="button" id="btn-mobile-admin-bonuses"><i class="bi bi-card-list me-2"></i>Bonos</button></li>
-            <li><button class="dropdown-item" type="button" id="btn-mobile-admin-patients"><i class="bi bi-people me-2"></i><?= $is_superadmin ? 'Pacientes' : 'Mis pacientes' ?></button></li>
+            <li><button class="dropdown-item" type="button" id="btn-mobile-admin-patients"><i class="bi bi-people me-2"></i><?= $is_superadmin ? htmlspecialchars($patient_label_title_plural, ENT_QUOTES, 'UTF-8') : 'Mis ' . htmlspecialchars($patient_label_plural, ENT_QUOTES, 'UTF-8') ?></button></li>
           </ul>
         </div>
         <span id="admin-actions-msg" class="align-self-center ms-2 text-success" style="display: none;"></span>
@@ -184,6 +201,7 @@ if ($is_admin) {
         <div class="dashboard-action-buttons d-flex gap-2 flex-wrap align-items-center">
           <button class="btn btn-primary" id="btn-patient-portal-appointments" type="button"><i class="bi bi-calendar-check"></i> Mis citas</button>
           <button class="btn btn-primary" id="btn-patient-portal-tasks" type="button"><i class="bi bi-list-check"></i> Mis tareas</button>
+          <button class="btn btn-primary" id="btn-patient-portal-documents" type="button"><i class="bi bi-folder2-open"></i> Mis documentos</button>
           <button class="btn btn-primary" id="btn-buy-bonus" type="button" style="display: none;"><i class="bi bi-bag-check"></i> Comprar bono</button>
           <button class="btn btn-primary" id="btn-my-bonuses" type="button" style="display: none;"><i class="bi bi-card-list"></i> Mis bonos</button>
         </div>
@@ -194,6 +212,7 @@ if ($is_admin) {
           <ul class="dropdown-menu">
             <li><button class="dropdown-item" type="button" id="btn-mobile-patient-portal-appointments"><i class="bi bi-calendar-check me-2"></i>Mis citas</button></li>
             <li><button class="dropdown-item" type="button" id="btn-mobile-patient-portal-tasks"><i class="bi bi-list-check me-2"></i>Mis tareas</button></li>
+            <li><button class="dropdown-item" type="button" id="btn-mobile-patient-portal-documents"><i class="bi bi-folder2-open me-2"></i>Mis documentos</button></li>
             <li style="display: none;"><button class="dropdown-item" type="button" id="btn-mobile-buy-bonus"><i class="bi bi-bag-check me-2"></i>Comprar bono</button></li>
             <li style="display: none;"><button class="dropdown-item" type="button" id="btn-mobile-my-bonuses"><i class="bi bi-card-list me-2"></i>Mis bonos</button></li>
           </ul>
@@ -235,7 +254,7 @@ if ($is_admin) {
           <?php if ($is_admin): ?>
             <div id="adminPatientSelect" class="mb-3 d-none">
               <select id="patientSelect" class="form-select">
-                <option value="">Selecciona un paciente...</option>
+                <option value="">Selecciona un <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?>...</option>
               </select>
             </div>
           <?php endif; ?>
@@ -305,7 +324,7 @@ if ($is_admin) {
       <div class="modal-dialog modal-xl">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title">Detalle de la cita</h5>
+            <h5 class="modal-title" id="appointment-payment-modal-title">Detalle de la cita</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body">
@@ -316,7 +335,10 @@ if ($is_admin) {
                 <button class="nav-link active" id="appointment-detail-tab" data-bs-toggle="tab" data-bs-target="#appointment-detail-panel" type="button" role="tab">Detalle</button>
               </li>
               <li class="nav-item" role="presentation">
-                <button class="nav-link" id="appointment-session-tab" data-bs-toggle="tab" data-bs-target="#appointment-session-panel" type="button" role="tab">Sesi&oacute;n</button>
+                <button class="nav-link" id="appointment-session-tab" data-bs-toggle="tab" data-bs-target="#appointment-session-panel" type="button" role="tab">Tareas</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="appointment-files-tab" data-bs-toggle="tab" data-bs-target="#appointment-files-panel" type="button" role="tab">Archivos</button>
               </li>
             </ul>
             <div class="tab-content">
@@ -360,12 +382,18 @@ if ($is_admin) {
                   <div class="text-center text-muted py-4">Cargando sesi&oacute;n...</div>
                 </div>
               </div>
+              <div class="tab-pane fade" id="appointment-files-panel" role="tabpanel" aria-labelledby="appointment-files-tab">
+                <div id="appointment-files-alert" class="alert d-none"></div>
+                <div id="appointment-files-content">
+                  <div class="text-center text-muted py-4">Cargando archivos...</div>
+                </div>
+              </div>
             </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-outline-danger me-auto" id="btn-cancel-appointment-from-detail">Cancelar cita</button>
             <button type="button" class="btn btn-outline-secondary" id="btn-open-patient-from-appointment-detail">
-              <i class="bi bi-person-lines-fill"></i> Ver ficha del paciente
+              <i class="bi bi-person-lines-fill"></i> Ver ficha del <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?>
             </button>
             <button type="button" class="btn btn-primary" id="btn-save-appointment-payment">Guardar cambios</button>
           </div>
@@ -422,7 +450,7 @@ if ($is_admin) {
           <div class="modal-body">
             <div class="input-group mb-3">
               <span class="input-group-text"><i class="bi bi-search"></i></span>
-              <input type="search" class="form-control" id="global-search-input" placeholder="Buscar pacientes, citas, archivos, tareas..." autocomplete="off">
+              <input type="search" class="form-control" id="global-search-input" placeholder="Buscar <?= htmlspecialchars($patient_label_plural, ENT_QUOTES, 'UTF-8') ?>, citas, archivos, tareas..." autocomplete="off">
             </div>
             <div id="global-search-results" class="global-search-results">
               <div class="text-center text-muted py-4">Escribe al menos 2 caracteres para buscar.</div>
@@ -465,13 +493,13 @@ if ($is_admin) {
       <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title"><?= $is_superadmin ? 'Pacientes' : 'Mis pacientes' ?></h5>
+            <h5 class="modal-title"><?= $is_superadmin ? htmlspecialchars($patient_label_title_plural, ENT_QUOTES, 'UTF-8') : 'Mis ' . htmlspecialchars($patient_label_plural, ENT_QUOTES, 'UTF-8') ?></h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body">
             <div id="admin-patients-alert" class="alert d-none"></div>
             <div class="d-flex justify-content-end align-items-center gap-2 mb-3 flex-wrap">
-              <button class="btn btn-primary btn-sm" type="button" id="btn-new-patient"><i class="bi bi-person-plus"></i> Nuevo paciente</button>
+              <button class="btn btn-primary btn-sm" type="button" id="btn-new-patient"><i class="bi bi-person-plus"></i> Nuevo <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?></button>
             </div>
             <div class="row g-2 mb-3">
               <div class="<?= $is_superadmin ? 'col-md-5' : 'col-md-8' ?>">
@@ -497,7 +525,7 @@ if ($is_admin) {
               <table class="table align-middle">
                 <thead>
                   <tr>
-                    <th>Paciente</th>
+                    <th><?= htmlspecialchars($patient_label_title_singular, ENT_QUOTES, 'UTF-8') ?></th>
                     <?php if ($is_superadmin): ?>
                       <th>Profesional</th>
                     <?php endif; ?>
@@ -537,14 +565,14 @@ if ($is_admin) {
       <div class="modal-dialog modal-xl">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title" id="patient-editor-title">Paciente</h5>
+            <h5 class="modal-title" id="patient-editor-title"><?= htmlspecialchars($patient_label_title_singular, ENT_QUOTES, 'UTF-8') ?></h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body">
             <div id="patient-editor-alert" class="alert d-none"></div>
             <ul class="nav nav-tabs mb-4" id="patient-editor-tabs" role="tablist">
               <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="patient-data-tab" data-bs-toggle="tab" data-bs-target="#patient-data-panel" type="button" role="tab">Datos del paciente</button>
+                <button class="nav-link active" id="patient-data-tab" data-bs-toggle="tab" data-bs-target="#patient-data-panel" type="button" role="tab">Datos del <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?></button>
               </li>
               <li class="nav-item" role="presentation">
                 <button class="nav-link" id="patient-more-data-tab" data-bs-toggle="tab" data-bs-target="#patient-more-data-panel" type="button" role="tab">M&aacute;s datos</button>
@@ -564,7 +592,7 @@ if ($is_admin) {
                 <button class="nav-link" id="patient-evolution-tab" data-bs-toggle="tab" data-bs-target="#patient-evolution-panel" type="button" role="tab">Evoluci&oacute;n</button>
               </li>
               <li class="nav-item" role="presentation">
-                <button class="nav-link" id="patient-files-tab" data-bs-toggle="tab" data-bs-target="#patient-files-panel" type="button" role="tab">Archivos</button>
+                <button class="nav-link" id="patient-files-tab" data-bs-toggle="tab" data-bs-target="#patient-files-panel" type="button" role="tab">Documentaci&oacute;n</button>
               </li>
               <li class="nav-item" role="presentation">
                 <button class="nav-link" id="patient-bonuses-tab" data-bs-toggle="tab" data-bs-target="#patient-bonuses-panel" type="button" role="tab">Bonos</button>
@@ -604,7 +632,7 @@ if ($is_admin) {
                         <div id="patient-editor-professional-new-wrap">
                           <label class="form-label" for="patient-editor-professional">Asignar profesional</label>
                           <select class="form-select" id="patient-editor-professional" name="professional_id">
-                            <option value="">Permitir elegir profesional al paciente</option>
+                            <option value="">Permitir elegir profesional al <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?></option>
                           </select>
                         </div>
                         <div id="patient-editor-professional-current-wrap" class="d-none">
@@ -615,7 +643,7 @@ if ($is_admin) {
                               <div class="form-text" id="patient-editor-transfer-status">El traspaso solo puede hacerlo el superadmin.</div>
                             </div>
                             <button type="button" class="btn btn-outline-primary btn-sm" id="btn-show-patient-transfer">
-                              <i class="bi bi-arrow-left-right"></i> Traspasar paciente
+                              <i class="bi bi-arrow-left-right"></i> Traspasar <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?>
                             </button>
                           </div>
                           <div id="patient-transfer-panel" class="patient-transfer-panel d-none">
@@ -688,21 +716,66 @@ if ($is_admin) {
               </div>
               <?php if ($knowledge_base_enabled): ?>
                 <div class="tab-pane fade" id="patient-diagnosis-panel" role="tabpanel" aria-labelledby="patient-diagnosis-tab">
-                  <div class="alert alert-info mb-3">
-                    Las recomendaciones mostradas son material de apoyo documental. No constituyen diagn&oacute;stico, prescripci&oacute;n cl&iacute;nica autom&aacute;tica ni sustituyen el criterio profesional del terapeuta.
+                  <div class="alert alert-info small mb-3">
+                    <?= htmlspecialchars($knowledge_disclaimer, ENT_QUOTES, 'UTF-8') ?>
                   </div>
                   <div id="patient-knowledge-alert" class="alert d-none"></div>
                   <div class="row g-3">
-                    <div class="col-12">
+                    <?php if ($body_map_enabled): ?>
+                      <div class="col-12">
+                        <div class="patient-knowledge-mode">
+                          <div class="btn-group btn-group-sm" role="group" aria-label="Tipo de recomendaci&oacute;n">
+                            <button type="button" class="btn btn-primary patient-knowledge-mode-btn active" data-knowledge-mode="muscles">
+                              Ejercicios por m&uacute;sculo
+                            </button>
+                            <button type="button" class="btn btn-outline-primary patient-knowledge-mode-btn" data-knowledge-mode="objective">
+                              Rutinas por objetivo
+                            </button>
+                          </div>
+                          <p class="mb-0 text-muted small">Elige si quieres consultar ejercicios seg&uacute;n la zona muscular o revisar rutinas y pautas por objetivo.</p>
+                        </div>
+                      </div>
+                      <div class="col-12">
+                        <section class="patient-body-map-panel patient-knowledge-mode-panel" data-knowledge-mode-panel="muscles">
+                          <div class="patient-body-map-header">
+                            <div>
+                              <h6>Ejercicios por m&uacute;sculo</h6>
+                              <p>Selecciona una o varias zonas para consultar ejercicios, rutinas o pautas relacionadas.</p>
+                            </div>
+                            <div class="patient-body-map-actions">
+                              <div class="btn-group btn-group-sm" role="group" aria-label="Vista del mapa muscular">
+                                <button type="button" class="btn btn-outline-primary active" id="btn-body-map-front">Frontal</button>
+                                <button type="button" class="btn btn-outline-primary" id="btn-body-map-back">Posterior</button>
+                              </div>
+                              <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-body-map-clear">Limpiar</button>
+                            </div>
+                          </div>
+                          <div class="row g-3 align-items-start">
+                            <div class="col-lg-5">
+                              <div id="patient-body-map" class="patient-body-map" aria-label="Mapa interactivo de musculatura"></div>
+                            </div>
+                            <div class="col-lg-7">
+                              <div id="patient-body-map-selected" class="patient-body-map-selected">
+                                <span class="text-muted">No hay zonas seleccionadas.</span>
+                              </div>
+                              <div id="patient-body-map-results" class="patient-body-map-results">
+                                <div class="text-muted py-3">Selecciona un m&uacute;sculo para ver recomendaciones relacionadas.</div>
+                              </div>
+                            </div>
+                          </div>
+                        </section>
+                      </div>
+                    <?php endif; ?>
+                    <div class="col-12 patient-knowledge-mode-panel<?= $body_map_enabled ? ' d-none' : '' ?>" data-knowledge-mode-panel="objective">
+                      <div class="patient-objective-panel">
                       <label class="form-label" for="patient-editor-knowledge-problem"><?= htmlspecialchars($sector_texts['labels']['problem']['titleSingular'] ?? 'Problema o diagnóstico') ?></label>
                       <div class="form-text mb-2">Selecciona <?= htmlspecialchars($sector_texts['labels']['problem']['singular'] ?? 'un problema o diagnóstico') ?> para consultar <?= htmlspecialchars($sector_texts['labels']['technique']['plural'] ?? 'técnicas') ?>, <?= htmlspecialchars($sector_texts['labels']['task']['plural'] ?? 'tareas') ?>, <?= htmlspecialchars($sector_texts['labels']['evaluation']['plural'] ?? 'cuestionarios') ?> y fuentes.</div>
                       <select class="form-select" id="patient-editor-knowledge-problem" name="knowledge_problem_id" form="patient-editor-form">
                         <option value="">Sin <?= htmlspecialchars($sector_texts['clinicalTerms']['diagnosis'] ?? 'diagnóstico') ?> asociado</option>
                       </select>
-                    </div>
-                    <div class="col-12">
-                      <div id="patient-knowledge-content" class="patient-knowledge-content">
+                      <div id="patient-knowledge-content" class="patient-knowledge-content mt-3">
                         <div class="text-center text-muted py-4">No hay <?= htmlspecialchars($sector_texts['clinicalTerms']['diagnosis'] ?? 'diagnóstico') ?> seleccionado.</div>
+                      </div>
                       </div>
                     </div>
                   </div>
@@ -724,7 +797,7 @@ if ($is_admin) {
                       </tr>
                     </thead>
                     <tbody id="patient-history-body">
-                      <tr><td colspan="7" class="text-center text-muted py-4">Selecciona un paciente guardado para ver su historial.</td></tr>
+                      <tr><td colspan="7" class="text-center text-muted py-4">Selecciona un <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?> guardado para ver su historial.</td></tr>
                     </tbody>
                   </table>
                 </div>
@@ -735,8 +808,8 @@ if ($is_admin) {
                 <div class="alert alert-info d-flex align-items-start gap-2">
                   <i class="bi bi-list-check fs-5"></i>
                   <div>
-                    <strong>Plan de trabajo del paciente</strong>
-                    <div>Desde aqu&iacute; puedes personalizar tareas, actividades, temas a tratar o pautas para este paciente, y marcarlas como completadas o pendientes en las sucesivas citas.</div>
+                    <strong><?= htmlspecialchars($work_plan_title_singular, ENT_QUOTES, 'UTF-8') ?></strong>
+                    <div>Desde aqu&iacute; puedes personalizar tareas, actividades, temas a tratar o pautas para este <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?>, y marcarlas como completadas o pendientes en las sucesivas citas.</div>
                   </div>
                 </div>
                 <div class="d-flex justify-content-end gap-2 mb-3 flex-wrap">
@@ -749,7 +822,7 @@ if ($is_admin) {
                     <div class="patient-work-plan-column">
                       <h6>Pendientes</h6>
                       <div id="patient-work-plan-pending" class="patient-work-plan-list">
-                        <div class="text-center text-muted py-4">Selecciona un paciente guardado para ver su plan.</div>
+                        <div class="text-center text-muted py-4">Selecciona un <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?> guardado para ver su plan.</div>
                       </div>
                     </div>
                   </div>
@@ -757,7 +830,7 @@ if ($is_admin) {
                     <div class="patient-work-plan-column">
                       <h6>Completadas</h6>
                       <div id="patient-work-plan-completed-list" class="patient-work-plan-list">
-                        <div class="text-center text-muted py-4">Selecciona un paciente guardado para ver su plan.</div>
+                        <div class="text-center text-muted py-4">Selecciona un <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?> guardado para ver su plan.</div>
                       </div>
                     </div>
                   </div>
@@ -782,7 +855,7 @@ if ($is_admin) {
                     <div class="col-md-8">
                       <label class="form-label" for="patient-evolution-appointment">Cita vinculada</label>
                       <select class="form-select" id="patient-evolution-appointment" name="appointment_id">
-                        <option value="">Nota general del paciente</option>
+                        <option value="">Nota general del <?= htmlspecialchars($patient_label_singular) ?></option>
                       </select>
                     </div>
                     <div class="col-12">
@@ -813,24 +886,35 @@ if ($is_admin) {
                   </div>
                 </form>
                 <div id="patient-evolution-list" class="patient-evolution-list">
-                  <div class="text-center text-muted py-4">Selecciona un paciente guardado para ver su evoluci&oacute;n.</div>
+                  <div class="text-center text-muted py-4">Selecciona un <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?> guardado para ver su evoluci&oacute;n.</div>
                 </div>
                 <div class="text-end text-muted small mt-2" id="patient-evolution-count"></div>
               </div>
               <div class="tab-pane fade" id="patient-files-panel" role="tabpanel" aria-labelledby="patient-files-tab">
                 <div id="patient-files-alert" class="alert d-none"></div>
+                <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-3">
+                  <div class="btn-group btn-group-sm" role="group" aria-label="Filtrar documentaci&oacute;n">
+                    <button type="button" class="btn btn-primary patient-files-filter" data-files-filter="all">Todo</button>
+                    <button type="button" class="btn btn-outline-primary patient-files-filter" data-files-filter="file">Archivos</button>
+                    <button type="button" class="btn btn-outline-primary patient-files-filter" data-files-filter="questionnaire">Cuestionarios</button>
+                  </div>
+                  <button type="button" class="btn btn-primary btn-sm" id="btn-show-patient-document-form">
+                    <i class="bi bi-plus-lg"></i> Nuevo documento
+                  </button>
+                </div>
                 <div class="table-responsive">
                   <table class="table align-middle">
                     <thead>
                       <tr>
-                        <th>Archivo</th>
-                        <th>Origen</th>
+                        <th>Documento</th>
+                        <th>Tipo / origen</th>
                         <th>Fecha</th>
+                        <th>Portal</th>
                         <th class="text-end">Acciones</th>
                       </tr>
                     </thead>
                     <tbody id="patient-files-body">
-                      <tr><td colspan="4" class="text-center text-muted py-4">Selecciona un paciente guardado para ver sus archivos.</td></tr>
+                      <tr><td colspan="5" class="text-center text-muted py-4">Selecciona un <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?> guardado para ver su documentaci&oacute;n.</td></tr>
                     </tbody>
                   </table>
                 </div>
@@ -841,7 +925,7 @@ if ($is_admin) {
                 <?php if ($is_superadmin): ?>
                   <div class="d-flex justify-content-end mb-3">
                     <button class="btn btn-primary btn-sm" type="button" id="btn-show-create-patient-bonus">
-                      <i class="bi bi-plus-lg"></i> Crear bono para este paciente
+                      <i class="bi bi-plus-lg"></i> Crear bono para este <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?>
                     </button>
                   </div>
                   <form id="patient-bonus-create-form" class="border rounded p-3 mb-3 d-none">
@@ -883,7 +967,7 @@ if ($is_admin) {
                       </tr>
                     </thead>
                     <tbody id="patient-bonuses-body">
-                      <tr><td colspan="<?= $is_superadmin ? 7 : 6 ?>" class="text-center text-muted py-4">Selecciona un paciente guardado para ver sus bonos.</td></tr>
+                      <tr><td colspan="<?= $is_superadmin ? 7 : 6 ?>" class="text-center text-muted py-4">Selecciona un <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?> guardado para ver sus bonos.</td></tr>
                     </tbody>
                   </table>
                 </div>
@@ -897,11 +981,120 @@ if ($is_admin) {
                 <i class="bi bi-file-earmark-medical"></i> Informe interno
               </button>
               <button type="button" class="btn btn-outline-primary btn-patient-report" id="btn-patient-report-public" data-report-type="patient" disabled>
-                <i class="bi bi-file-earmark-person"></i> Informe paciente
+                <i class="bi bi-file-earmark-person"></i> Informe <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?>
               </button>
             </div>
             <button class="btn btn-primary" type="submit" id="btn-save-patient" form="patient-editor-form">Guardar cambios</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="workoutxExerciseModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="workoutx-exercise-title">Ejercicio</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div id="workoutx-exercise-alert" class="alert d-none"></div>
+            <div id="workoutx-exercise-content" class="workoutx-exercise-content">
+              <div class="text-center text-muted py-4">
+                <span class="spinner-border spinner-border-sm me-2"></span>Cargando ejercicio...
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="patientDocumentModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <form id="patient-document-form" enctype="multipart/form-data">
+            <div class="modal-header">
+              <h5 class="modal-title">Nuevo documento</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+              <div id="patient-document-alert" class="alert d-none"></div>
+              <input type="hidden" id="patient-document-id" name="document_id" value="0">
+              <input type="hidden" id="patient-document-patient-id" name="patient_id" value="0">
+              <div class="row g-3">
+                <div class="col-md-4">
+                  <label class="form-label" for="patient-document-type">Tipo</label>
+                  <select class="form-select" id="patient-document-type" name="document_type">
+                    <option value="file">Archivo</option>
+                    <option value="questionnaire">Cuestionario</option>
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label" for="patient-document-date">Fecha</label>
+                  <input type="date" class="form-control" id="patient-document-date" name="document_date">
+                </div>
+                <div class="col-md-4 patient-document-questionnaire-field">
+                  <label class="form-label" for="patient-document-status">Estado</label>
+                  <select class="form-select" id="patient-document-status" name="status">
+                    <option value="completed">Completado</option>
+                    <option value="pending">Pendiente</option>
+                    <option value="reviewed">Revisado</option>
+                  </select>
+                </div>
+                <div class="col-12">
+                  <label class="form-label" for="patient-document-title">T&iacute;tulo</label>
+                  <input type="text" class="form-control" id="patient-document-title" name="title" maxlength="180" required>
+                </div>
+                <div class="col-12">
+                  <label class="form-label" for="patient-document-description">Descripci&oacute;n</label>
+                  <textarea class="form-control" id="patient-document-description" name="description" rows="2"></textarea>
+                </div>
+                <div class="col-md-6 patient-document-questionnaire-field">
+                  <label class="form-label" for="patient-document-score">Nota / resultado</label>
+                  <input type="text" class="form-control" id="patient-document-score" name="score" maxlength="80" placeholder="Ej. 18/30, nivel medio...">
+                </div>
+                <div class="col-md-6 patient-document-questionnaire-field">
+                  <label class="form-label" for="patient-document-result-label">Etiqueta del resultado</label>
+                  <input type="text" class="form-control" id="patient-document-result-label" name="result_label" maxlength="120" placeholder="Ej. Resultado moderado">
+                </div>
+                <div class="col-12 patient-document-questionnaire-field">
+                  <label class="form-label" for="patient-document-observations">Observaciones</label>
+                  <textarea class="form-control" id="patient-document-observations" name="observations" rows="3"></textarea>
+                </div>
+                <div class="col-12 patient-document-questionnaire-field">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch" id="patient-document-result-visible-to-patient" name="result_visible_to_patient" value="1">
+                    <label class="form-check-label" for="patient-document-result-visible-to-patient">Publicar nota/resultado en el Portal de Clientes</label>
+                  </div>
+                </div>
+                <div class="col-md-5 patient-document-questionnaire-field">
+                  <label class="form-label" for="patient-document-version-type">Versi&oacute;n</label>
+                  <select class="form-select" id="patient-document-version-type" name="version_type">
+                    <option value="completed">Cuestionario completado</option>
+                    <option value="template">Plantilla vac&iacute;a</option>
+                    <option value="revision">Revisi&oacute;n / seguimiento</option>
+                  </select>
+                </div>
+                <div class="col-md-7">
+                  <label class="form-label" for="patient-document-file">Archivo</label>
+                  <input type="file" class="form-control" id="patient-document-file" name="document_file" accept=".pdf,.doc,.docx,.xls,.xlsx,image/jpeg,image/png,image/webp,image/gif">
+                  <div class="form-text">PDF, DOC, DOCX, Excel o imagen. M&aacute;ximo 12 MB.</div>
+                </div>
+                <div class="col-12">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch" id="patient-document-visible-to-patient" name="visible_to_patient" value="1">
+                    <label class="form-check-label" for="patient-document-visible-to-patient">Disponible en el portal del <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?></label>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button type="submit" class="btn btn-primary" id="btn-save-patient-document">
+                <i class="bi bi-check2"></i> Guardar documento
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     </div>
@@ -930,7 +1123,7 @@ if ($is_admin) {
               <div class="tab-pane fade show active" id="upcoming-list-panel" role="tabpanel" aria-labelledby="upcoming-list-tab">
                 <div class="row g-2 mb-3">
                   <div class="<?= $is_superadmin ? 'col-md-5' : 'col-md-7' ?>">
-                    <input type="search" class="form-control" id="upcoming-appointments-search" placeholder="Buscar por paciente, email, profesional, servicio o pago">
+                    <input type="search" class="form-control" id="upcoming-appointments-search" placeholder="Buscar por <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?>, email, profesional, servicio o pago">
                   </div>
                   <?php if ($is_superadmin): ?>
                     <div class="col-md-3">
@@ -955,7 +1148,7 @@ if ($is_admin) {
                       <tr>
                         <th>Fecha</th>
                         <th>Profesional</th>
-                        <th>Paciente</th>
+                        <th><?= htmlspecialchars($patient_label_title_singular) ?></th>
                         <th>Servicio</th>
                         <th>Modalidad</th>
                         <th>Pago</th>
@@ -974,7 +1167,7 @@ if ($is_admin) {
               <div class="tab-pane fade" id="cancelled-list-panel" role="tabpanel" aria-labelledby="cancelled-list-tab">
                 <div class="row g-2 mb-3">
                   <div class="col-md-12">
-                    <input type="search" class="form-control" id="cancelled-appointments-search" placeholder="Buscar por paciente, email, profesional, servicio o pago">
+                    <input type="search" class="form-control" id="cancelled-appointments-search" placeholder="Buscar por <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?>, email, profesional, servicio o pago">
                   </div>
                 </div>
                 <div class="table-responsive upcoming-appointments-table-wrap">
@@ -984,7 +1177,7 @@ if ($is_admin) {
                         <th>Fecha cita</th>
                         <th>Cancelada</th>
                         <th>Profesional</th>
-                        <th>Paciente</th>
+                        <th><?= htmlspecialchars($patient_label_title_singular, ENT_QUOTES, 'UTF-8') ?></th>
                         <th>Servicio</th>
                         <th>Modalidad</th>
                         <th>Pago</th>
@@ -1091,7 +1284,7 @@ if ($is_admin) {
           <div id="bonus-list-panel" class="d-none">
             <div class="row g-2 mb-3 d-none" id="bonus-list-tools">
               <div class="<?= $is_superadmin ? 'col-md-5' : 'col-md-8' ?>">
-                <input type="search" class="form-control" id="bonus-list-search" placeholder="<?= $is_superadmin ? 'Buscar por paciente, email, bono, estado o profesional' : 'Buscar por paciente, email, bono o estado' ?>">
+                <input type="search" class="form-control" id="bonus-list-search" placeholder="<?= $is_superadmin ? 'Buscar por ' . htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') . ', email, bono, estado o profesional' : 'Buscar por ' . htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') . ', email, bono o estado' ?>">
               </div>
               <?php if ($is_superadmin): ?>
                 <div class="col-md-3">
@@ -1104,7 +1297,7 @@ if ($is_admin) {
                 <select class="form-select" id="bonus-list-sort">
                   <option value="date_desc">Compra mas reciente</option>
                   <option value="date_asc">Compra mas antigua</option>
-                  <option value="patient_asc">Paciente A-Z</option>
+                  <option value="patient_asc"><?= htmlspecialchars($patient_label_title_singular, ENT_QUOTES, 'UTF-8') ?> A-Z</option>
                   <option value="remaining_desc">Mas sesiones restantes</option>
                   <option value="remaining_asc">Menos sesiones restantes</option>
                 </select>
@@ -1186,7 +1379,7 @@ if ($is_admin) {
                 <div class="col-12">
                   <div class="form-check">
                     <input class="form-check-input" type="checkbox" id="patient-work-plan-visible">
-                    <label class="form-check-label" for="patient-work-plan-visible">El paciente puede ver esta tarea desde el Portal</label>
+                    <label class="form-check-label" for="patient-work-plan-visible">El <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?> puede ver esta tarea desde el Portal</label>
                   </div>
                 </div>
               </div>
@@ -1263,29 +1456,28 @@ if ($is_admin) {
               <div class="tab-pane fade show active" id="closed-days-panel" role="tabpanel" aria-labelledby="closed-days-tab">
                 <div id="general-settings-alert" class="alert d-none"></div>
                 <div class="row g-3 align-items-start mb-4 <?= $is_superadmin ? '' : 'd-none' ?>">
-                  <div class="col-lg-10 offset-lg-2">
+                  <div class="col-lg-12">
                     <div class="form-check form-switch">
                       <input class="form-check-input" type="checkbox" id="online-booking-enabled" checked>
-                      <label class="form-check-label" for="online-booking-enabled">Permitir reservas online (dashboard público)</label>
+                      <label class="form-check-label" for="online-booking-enabled">Habilitar Portal de Pacientes</label>
                     </div>
                     <div class="form-text">Si se desactiva, los pacientes no tendrán acceso a la reserva de citas, y será de uso interno por los profesionales.</div>
                   </div>
                 </div>
-                <div class="row g-3 align-items-center mb-4 <?= $is_superadmin ? '' : 'd-none' ?>">
-                  <label class="col-lg-2 col-form-label" for="patient-registration-mode">Registro de nuevos pacientes</label>
-                  <div class="col-lg-10">
-                    <select class="form-select" id="patient-registration-mode">
-                      <option value="invite">Los pacientes necesitan una invitación para registrarse y poder realizar reservas</option>
-                      <option value="open">Los pacientes pueden darse de alta directamente en la web sin invitación previa</option>
-                    </select>
+                <div class="row g-3 align-items-start mb-4 <?= $is_superadmin ? '' : 'd-none' ?>">
+                  <div class="col-lg-12">
+                    <div class="form-check form-switch">
+                      <input class="form-check-input" type="checkbox" id="patient-registration-requires-invite" checked>
+                      <label class="form-check-label" for="patient-registration-requires-invite">Requerir invitación para registrarse en el Portal</label>
+                    </div>
                   </div>
                 </div>
 
                 <div class="row g-3 align-items-start mb-4">
-                  <div class="col-lg-10 offset-lg-2">
+                  <div class="col-lg-12">
                     <div class="form-check form-switch">
                       <input class="form-check-input" type="checkbox" id="patient-tasks-visible-default">
-                      <label class="form-check-label" for="patient-tasks-visible-default">Tareas visibles para los pacientes</label>
+                      <label class="form-check-label" for="patient-tasks-visible-default">Publicar las tareas del <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?> en su Portal</label>
                     </div>
                     <div class="form-text">Indica si quieres que, por defecto, las tareas que asignes a tus pacientes est&eacute;n visibles en el portal de pacientes.</div>
                   </div>
@@ -1307,32 +1499,7 @@ if ($is_admin) {
                 <div class="row g-3 align-items-start mb-4">
                   <label class="col-lg-2 col-form-label">Servicios</label>
                   <div class="col-lg-10">
-                    <div class="row g-2">
-                      <div class="col-6 col-md-3">
-                        <div class="form-check">
-                          <input class="form-check-input available-session-type" type="checkbox" id="available-session-individual" value="individual" checked disabled>
-                          <label class="form-check-label" for="available-session-individual">Individual</label>
-                        </div>
-                      </div>
-                      <div class="col-6 col-md-3">
-                        <div class="form-check">
-                          <input class="form-check-input available-session-type" type="checkbox" id="available-session-couple" value="couple">
-                          <label class="form-check-label" for="available-session-couple">Parejas</label>
-                        </div>
-                      </div>
-                      <div class="col-6 col-md-3">
-                        <div class="form-check">
-                          <input class="form-check-input available-session-type" type="checkbox" id="available-session-family" value="family">
-                          <label class="form-check-label" for="available-session-family">Familiar</label>
-                        </div>
-                      </div>
-                      <div class="col-6 col-md-3">
-                        <div class="form-check">
-                          <input class="form-check-input available-session-type" type="checkbox" id="available-session-group" value="group">
-                          <label class="form-check-label" for="available-session-group">Grupos</label>
-                        </div>
-                      </div>
-                    </div>
+                    <div class="row g-2" id="available-session-types-list"></div>
                   </div>
                 </div>
 
@@ -1340,30 +1507,11 @@ if ($is_admin) {
                 <div class="row g-3 align-items-start mb-4">
                   <label class="col-lg-2 col-form-label">Duraciones</label>
                   <div class="col-lg-10">
-                    <div class="row g-2">
-                      <div class="col-4 col-md-3">
-                        <div class="form-check">
-                          <input class="form-check-input available-session-duration" type="checkbox" id="available-duration-60" value="60" checked>
-                          <label class="form-check-label" for="available-duration-60">60 minutos</label>
-                        </div>
-                      </div>
-                      <div class="col-4 col-md-3">
-                        <div class="form-check">
-                          <input class="form-check-input available-session-duration" type="checkbox" id="available-duration-90" value="90">
-                          <label class="form-check-label" for="available-duration-90">90 minutos</label>
-                        </div>
-                      </div>
-                      <div class="col-4 col-md-3">
-                        <div class="form-check">
-                          <input class="form-check-input available-session-duration" type="checkbox" id="available-duration-120" value="120">
-                          <label class="form-check-label" for="available-duration-120">120 minutos</label>
-                        </div>
-                      </div>
-                    </div>
+                    <div class="row g-2" id="available-session-durations-list"></div>
                     <div class="mt-3">
                       <div class="form-check mb-2">
                         <input class="form-check-input" type="checkbox" id="display-effective-duration-enabled">
-                        <label class="form-check-label fw-semibold" for="display-effective-duration-enabled">Mostrar duraci&oacute;n efectiva al paciente</label>
+                        <label class="form-check-label fw-semibold" for="display-effective-duration-enabled">Mostrar duraci&oacute;n efectiva al <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?></label>
                       </div>
                       <div class="row g-2 align-items-center">
                         <div class="col-sm-4 col-md-3">
@@ -1455,7 +1603,7 @@ if ($is_admin) {
                 <div class="form-check form-switch mb-4">
                   <input class="form-check-input" type="checkbox" id="create-compensation-bonus-on-paid-cancel" checked>
                   <label class="form-check-label" for="create-compensation-bonus-on-paid-cancel">Crear un bono/vale al cancelar una cita que haya sido pagada</label>
-                  <div class="form-text">Si una cita pagada con tarjeta o Bizum se cancela, se generar&aacute; un vale interno de 1 sesi&oacute;n para el paciente.</div>
+                  <div class="form-text">Si una cita pagada con tarjeta o Bizum se cancela, se generar&aacute; un vale interno de 1 sesi&oacute;n para el <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?>.</div>
                 </div>
                 <div id="bonuses-config-block">
                   <div class="table-responsive services-table-wrap">
@@ -1571,11 +1719,11 @@ if ($is_admin) {
                   </div>
                 </div>
                 <hr class="my-4">
-                <div class="row g-3 align-items-start mb-4">
+                <div class="row g-3 align-items-start mb-4 d-none" id="dashboard-config-row">
                   <label class="col-lg-2 col-form-label" for="dashboard-config-mode">Dashboard</label>
                   <div class="col-lg-10">
                     <div class="d-flex gap-2 flex-wrap align-items-start">
-                      <select class="form-select" id="dashboard-config-mode" style="max-width: 260px;">
+                      <select class="form-select d-none" id="dashboard-config-mode" style="max-width: 260px;">
                         <option value="simple">Simple</option>
                         <option value="advanced">Completo</option>
                         <option value="custom">Personalizado</option>
@@ -1826,7 +1974,7 @@ if ($is_admin) {
                   <div class="col-lg-10 offset-lg-2">
                     <div class="form-check form-switch">
                       <input class="form-check-input" type="checkbox" id="appointment-reminder-enabled" name="appointment_reminder_enabled">
-                      <label class="form-check-label" for="appointment-reminder-enabled">Enviar email de recordatorio al paciente 24 horas antes de la cita</label>
+                      <label class="form-check-label" for="appointment-reminder-enabled">Enviar email de recordatorio al <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?> 24 horas antes de la cita</label>
                     </div>
                   </div>
                 </div>
@@ -2031,13 +2179,13 @@ if ($is_admin) {
       <div class="modal-dialog modal-lg">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title">Personalizar dashboard</h5>
+            <h5 class="modal-title">Personalizar interfaz</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body">
             <div id="dashboard-custom-config-alert" class="alert d-none"></div>
             <label class="form-label" for="dashboard-custom-config-json">JSON personalizado</label>
-            <div class="form-text mb-2">Aqui podras elegir que caracteristicas quieres usar o no. Hazlo con precaucion para evitar problemas con la app.</div>
+            <div class="form-text mb-2">Aquí podrás elegir qué características quieres usar y, opcionalmente, personalizar textos de nomenclatura en la sección <code>texts</code>. Hazlo con precaución para evitar problemas con la app.</div>
             <textarea class="form-control dashboard-config-json-editor" id="dashboard-custom-config-json" rows="18" spellcheck="false"></textarea>
           </div>
           <div class="modal-footer">
@@ -2236,7 +2384,7 @@ if ($is_admin) {
                 <div class="row g-3 align-items-start mb-3">
                   <label class="col-lg-2 col-form-label" for="professional-editor-bio">Informaci&oacute;n sobre m&iacute;</label>
                   <div class="col-lg-10">
-                    <textarea class="form-control" id="professional-editor-bio" rows="3" placeholder="Presentaci&oacute;n breve del profesional, enfoque de trabajo, experiencia o forma de acompa&ntilde;ar al paciente..."></textarea>
+                    <textarea class="form-control" id="professional-editor-bio" rows="3" placeholder="Presentaci&oacute;n breve del profesional, enfoque de trabajo, experiencia o forma de acompa&ntilde;ar al <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?>..."></textarea>
                   </div>
                 </div>
 
@@ -2401,6 +2549,27 @@ if ($is_admin) {
         </div>
       </div>
     </div>
+
+    <div class="modal fade" id="patientPortalDocumentsModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Mis documentos</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div class="btn-group btn-group-sm mb-3" role="group" aria-label="Filtrar documentos">
+              <button type="button" class="btn btn-primary patient-portal-documents-filter" data-documents-filter="all">Todo</button>
+              <button type="button" class="btn btn-outline-primary patient-portal-documents-filter" data-documents-filter="file">Archivos</button>
+              <button type="button" class="btn btn-outline-primary patient-portal-documents-filter" data-documents-filter="questionnaire">Cuestionarios</button>
+            </div>
+            <div id="patient-portal-documents" class="patient-portal-list patient-portal-modal-list">
+              <div class="text-muted small">Cargando documentos...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   <?php endif; ?>
 
   <div class="modal fade" id="changePasswordModal" tabindex="-1" aria-hidden="true">
@@ -2435,6 +2604,13 @@ if ($is_admin) {
     </div>
   </div>
 
+  <footer class="dashboard-legal-footer">
+    <span class="legal-brand-line">
+      <img src="<?= htmlspecialchars($official_brand_logo_url) ?>" alt="" class="legal-brand-mark">
+      <span><?= htmlspecialchars(app_legal_footer_text()) ?></span>
+    </span>
+  </footer>
+
   <script>
     const IS_ADMIN = <?= $is_admin ? 'true' : 'false' ?>;
     const IS_SUPERADMIN = <?= $is_superadmin ? 'true' : 'false' ?>;
@@ -2444,12 +2620,18 @@ if ($is_admin) {
     const DASHBOARD_CONFIG = <?= json_encode($dashboard_config, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
     const PLAN_CONFIG = <?= json_encode($plan_config, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
     const KNOWLEDGE_BASE_ENABLED = <?= $knowledge_base_enabled ? 'true' : 'false' ?>;
+    const CURRENT_SECTOR_KEY = <?= json_encode($sector_key) ?>;
+    const BODY_MAP_ENABLED = <?= $body_map_enabled ? 'true' : 'false' ?>;
     const SECTOR_TEXTS = <?= json_encode($sector_texts, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
     const SECTOR_TEXT_OPTIONS = <?= json_encode($sector_texts_options, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+    const INITIAL_NAVBAR_IMAGE_URL = <?= json_encode($navbar_image_url) ?>;
   </script>
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <?php if ($body_map_enabled): ?>
+    <script src="https://unpkg.com/body-muscles/dist/umd/body-muscles.umd.min.js"></script>
+  <?php endif; ?>
   <script src="js/app.js?v=<?= filemtime(__DIR__ . '/js/app.js') ?>"></script>
 </body>
 

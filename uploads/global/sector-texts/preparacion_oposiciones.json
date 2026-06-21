@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "key": "preparacion_oposiciones",
+  "name": "Preparacion de oposiciones",
+  "description": "Configuracion de textos para preparadores, academias y servicios de oposiciones.",
+  "labels": {
+    "patient": {
+      "singular": "opositor",
+      "plural": "opositores",
+      "titleSingular": "Opositor",
+      "titlePlural": "Opositores"
+    },
+    "professional": {
+      "singular": "preparador",
+      "plural": "preparadores",
+      "titleSingular": "Preparador",
+      "titlePlural": "Preparadores"
+    },
+    "organization": {
+      "singular": "academia",
+      "plural": "academias",
+      "titleSingular": "Academia",
+      "titlePlural": "Academias"
+    },
+    "appointment": {
+      "singular": "tutoria",
+      "plural": "tutorias",
+      "titleSingular": "Tutoria",
+      "titlePlural": "Tutorias"
+    },
+    "session": {
+      "singular": "sesion",
+      "plural": "sesiones",
+      "titleSingular": "Sesion",
+      "titlePlural": "Sesiones"
+    },
+    "workPlan": {
+      "singular": "plan de estudio",
+      "plural": "planes de estudio",
+      "titleSingular": "Plan de estudio",
+      "titlePlural": "Planes de estudio"
+    },
+    "task": {
+      "singular": "tarea",
+      "plural": "tareas",
+      "titleSingular": "Tarea",
+      "titlePlural": "Tareas"
+    },
+    "evolution": {
+      "singular": "progreso",
+      "plural": "progresos",
+      "titleSingular": "Progreso",
+      "titlePlural": "Progresos"
+    },
+    "problem": {
+      "singular": "objetivo o dificultad",
+      "plural": "objetivos o dificultades",
+      "titleSingular": "Objetivo o dificultad",
+      "titlePlural": "Objetivos o dificultades"
+    },
+    "evaluation": {
+      "singular": "evaluacion",
+      "plural": "evaluaciones",
+      "titleSingular": "Evaluacion",
+      "titlePlural": "Evaluaciones"
+    },
+    "technique": {
+      "singular": "metodo",
+      "plural": "metodos",
+      "titleSingular": "Metodo",
+      "titlePlural": "Metodos"
+    },
+    "resource": {
+      "singular": "recurso",
+      "plural": "recursos",
+      "titleSingular": "Recurso",
+      "titlePlural": "Recursos"
+    },
+    "goal": {
+      "singular": "objetivo",
+      "plural": "objetivos",
+      "titleSingular": "Objetivo",
+      "titlePlural": "Objetivos"
+    }
+  },
+  "clinicalTerms": {
+    "diagnosis": "objetivo",
+    "treatment": "preparacion",
+    "exercise": "tarea de estudio",
+    "followUp": "seguimiento",
+    "discharge": "cierre"
+  },
+  "portal": {
+    "bookingCta": "Reserva tu tutoria",
+    "myAppointments": "Mis tutorias",
+    "myTasks": "Mis tareas"
+  },
+  "reports": {
+    "internalPatientReport": "Informe interno del opositor",
+    "patientReport": "Informe para opositor"
+  },
+  "featureHints": {
+    "workPlan": true,
+    "patientPortal": true,
+    "clinicalEvolution": true,
+    "sessionFiles": true
+  },
+  "appointmentServices": [
+    {
+      "key": "tutorial",
+      "label": "Tutoria",
+      "name": "Tutoria individual",
+      "enabledByDefault": true
+    },
+    {
+      "key": "planning",
+      "label": "Planificacion",
+      "name": "Planificacion de estudio",
+      "enabledByDefault": true
+    },
+    {
+      "key": "mock_exam",
+      "label": "Simulacro",
+      "name": "Revision de simulacro",
+      "enabledByDefault": false
+    }
+  ],
+  "appointmentDurations": [
+    {
+      "minutes": 30,
+      "label": "30 minutos",
+      "enabledByDefault": false
+    },
+    {
+      "minutes": 60,
+      "label": "60 minutos",
+      "enabledByDefault": true
+    },
+    {
+      "minutes": 90,
+      "label": "90 minutos",
+      "enabledByDefault": false
+    }
+  ]
+}

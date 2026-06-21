@@ -1,0 +1,36 @@
+{
+    "version": 1,
+    "plan": {
+        "key": "novus",
+        "label": "Novus",
+        "features": {
+            "patientPortal.enabled": false,
+            "patientPortal.invitations": false,
+            "onlineBooking.enabled": false,
+            "tasks.enabled": false,
+            "closures.enabled": false,
+            "bonuses.enabled": false,
+            "reports.globalReports": false,
+            "upcomingAppointments.planning": false,
+            "appointments.effectiveDuration": false,
+            "taskTemplates.enabled": false,
+            "onlinePayments.enabled": false,
+            "payments.online": false,
+            "knowledgeBase.enabled": false,
+            "knowledgeBase.importTasks": false,
+            "questionnaires.enabled": false,
+            "reminders.patient24h": false,
+            "calendarSync.enabled": false,
+            "branding.customLogo": false,
+            "team.enabled": false,
+            "ui.customization": false
+        },
+        "limits": {
+            "appointmentDurations": [
+                60,
+                90,
+                120
+            ]
+        }
+    }
+}

@@ -8,7 +8,10 @@ require_once 'db.php';
 require_once 'settings_helpers.php';
 $branding = get_public_branding_settings($mysqli);
 $app_name = $branding['app_name'];
-$profile_image_path = $branding['show_profile_image_public'] ? $branding['profile_image_path'] : '';
+$official_brand_logo_url = app_official_brand_logo_url();
+$tenant_brand_logo_url = trim((string) ($branding['profile_image_path'] ?? '')) !== ''
+    ? app_upload_asset_url($branding['profile_image_path'])
+    : $official_brand_logo_url;
 $token = $_GET['t'] ?? '';
 $valid_format = preg_match('/^[a-f0-9]{64}$/', $token);
 ?>
@@ -27,15 +30,13 @@ $valid_format = preg_match('/^[a-f0-9]{64}$/', $token);
     <style>:root { --primary-color: <?= htmlspecialchars($branding['primary_color']) ?>; }</style>
 </head>
 
-<body class="d-flex align-items-center justify-content-center" style="min-height: 100vh;">
+<body class="auth-page d-flex align-items-center justify-content-center flex-column" style="min-height: 100vh;">
     <div class="container">
         <div class="row justify-content-center">
             <div class="col-md-5">
                 <div class="card p-4">
                     <div class="text-center mb-4">
-                        <?php if ($profile_image_path): ?>
-                            <img src="<?= htmlspecialchars($profile_image_path) ?>" alt="" class="auth-brand-image mb-3">
-                        <?php endif; ?>
+                        <img src="<?= htmlspecialchars($tenant_brand_logo_url) ?>" alt="<?= htmlspecialchars($app_name) ?>" class="auth-brand-image mb-3">
                         <h2 style="color: var(--primary-color);"><?= htmlspecialchars($app_name) ?></h2>
                         <p class="text-muted">Crea una nueva contrase&ntilde;a para tu cuenta.</p>
                     </div>
@@ -66,6 +67,13 @@ $valid_format = preg_match('/^[a-f0-9]{64}$/', $token);
             </div>
         </div>
     </div>
+
+    <footer class="auth-legal-footer">
+        <span class="legal-brand-line">
+            <img src="<?= htmlspecialchars($official_brand_logo_url) ?>" alt="" class="legal-brand-mark">
+            <span><?= htmlspecialchars(app_legal_footer_text()) ?></span>
+        </span>
+    </footer>
 
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script>

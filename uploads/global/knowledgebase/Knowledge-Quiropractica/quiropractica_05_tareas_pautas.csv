@@ -1,0 +1,9 @@
+﻿tarea_id;titulo;descripcion;objetivo;riesgo;duracion;tecnica_id
+QUI_TA001;Registro de dolor;Registrar intensidad y actividades;Seguimiento;bajo;7 días;QUI_T002
+QUI_TA002;Movilidad lumbar diaria;Ejercicios suaves lumbares;Mejorar movilidad;bajo;10 min/día;QUI_T006
+QUI_TA003;Movilidad cervical diaria;Ejercicios suaves cervicales;Mejorar movilidad;bajo;10 min/día;QUI_T006
+QUI_TA004;Pausas activas;Pausas cada hora;Reducir rigidez;bajo;1 semana;QUI_T004
+QUI_TA005;Revisión ergonómica;Analizar puesto de trabajo;Mejorar postura;bajo;30 min;QUI_T004
+QUI_TA006;Programa de ejercicios;Rutina personalizada;Función;bajo;2 semanas;QUI_T005
+QUI_TA007;Diario de actividad;Registrar carga física;Control carga;bajo;7 días;QUI_T007
+QUI_TA008;Plan de mantenimiento;Rutina preventiva;Prevención;bajo;mensual;QUI_T008

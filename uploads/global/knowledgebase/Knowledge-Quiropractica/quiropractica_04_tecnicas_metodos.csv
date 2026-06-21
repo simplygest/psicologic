@@ -1,0 +1,9 @@
+﻿tecnica_id;nombre;descripcion;riesgo
+QUI_T001;Valoración quiropráctica;Evaluación inicial;medio
+QUI_T002;Ajuste vertebral;Manipulación vertebral;medio
+QUI_T003;Movilización articular;Movilidad controlada;bajo
+QUI_T004;Educación postural;Hábitos y ergonomía;bajo
+QUI_T005;Ejercicios domiciliarios;Programa para casa;bajo
+QUI_T006;Movilidad activa;Ejercicios de movilidad;bajo
+QUI_T007;Control de carga;Gestión de actividad;medio
+QUI_T008;Prevención y mantenimiento;Seguimiento preventivo;bajo

@@ -6,22 +6,71 @@ if (function_exists('set_time_limit')) {
 }
 
 $rootDir = dirname(__DIR__);
+require_once $rootDir . '/app_paths.php';
 require_once $rootDir . '/config.php';
+require_once $rootDir . '/tenant_helpers.php';
 require_once $rootDir . '/cabinet_helpers.php';
 require_once $rootDir . '/sector_text_helpers.php';
-define('KNOWLEDGE_IMPORT_SILENT', true);
-require_once $rootDir . '/import_knowledge_sectors.php';
 
-$configPath = $rootDir . '/config.local.php';
-$installed = file_exists($configPath);
 $requestMethod = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $errors = [];
 $success = false;
 $sectorTextOptions = sector_texts_available();
+$officialBrandLogoUrl = app_official_brand_logo_url('../');
+$installTenantKey = tenant_key_from_request();
+$installTenant = null;
+$installed = false;
+
+function install_open_db()
+{
+    mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+    $mysqli = mysqli_init();
+    if (!$mysqli) {
+        throw new RuntimeException('No se pudo inicializar MySQL.');
+    }
+    $flags = 0;
+    if (defined('DB_SSL') && DB_SSL) {
+        $cert_name = defined('DB_SSL_CERT') ? DB_SSL_CERT : 'mysql.pem';
+        $cert_path = ($_SERVER['DOCUMENT_ROOT'] ?? dirname(__DIR__)) . '/' . ltrim($cert_name, '/\\');
+        if (file_exists($cert_path)) {
+            $mysqli->ssl_set(null, null, $cert_path, null, null);
+        }
+        $flags = MYSQLI_CLIENT_SSL;
+    }
+    $mysqli->real_connect(DB_HOST, DB_USER, DB_PASS, DB_NAME, defined('DB_PORT') ? DB_PORT : 3306, null, $flags);
+    $mysqli->set_charset('utf8mb4');
+    return $mysqli;
+}
+
+try {
+    if ($installTenantKey === '') {
+        $errors[] = 'La URL no contiene un tenant valido.';
+    } else {
+        $installDb = install_open_db();
+        tenant_ensure_table($installDb);
+        $installTenant = tenant_fetch_by_key($installDb, $installTenantKey);
+        if (!$installTenant) {
+            $errors[] = 'No existe ningun tenant configurado para "' . $installTenantKey . '".';
+        } else {
+            if (!defined('CURRENT_TENANT_ID')) {
+                define('CURRENT_TENANT_ID', (int) $installTenant['id']);
+                define('CURRENT_TENANT_KEY', tenant_normalize_key($installTenant['tenant_key']));
+            }
+            $GLOBALS['current_tenant'] = $installTenant;
+            $_SESSION['tenant_id'] = CURRENT_TENANT_ID;
+            $_SESSION['tenant_key'] = CURRENT_TENANT_KEY;
+            $status = strtolower((string) ($installTenant['status'] ?? 'pending'));
+            $installed = $status === 'active';
+        }
+        $installDb->close();
+    }
+} catch (Throwable $e) {
+    $errors[] = 'No se pudo leer la configuracion del tenant: ' . $e->getMessage();
+}
 
 function install_tenant_config_paths($rootDir)
 {
-    $tenantKey = basename($rootDir);
+    $tenantKey = function_exists('tenant_key_from_request') ? tenant_key_from_request() : basename($rootDir);
     $parentDir = dirname($rootDir);
 
     return [
@@ -54,22 +103,24 @@ $tenantConfigError = '';
 $tenantConfig = install_read_tenant_config($rootDir, $tenantConfigError);
 $tenantDatabaseConfig = is_array($tenantConfig['database'] ?? null) ? $tenantConfig['database'] : [];
 $tenantInstallerConfig = is_array($tenantConfig['installation'] ?? null) ? $tenantConfig['installation'] : [];
-$hasTenantConfig = !empty($tenantConfig);
-$configuredSectorTextsKey = trim((string) ($tenantInstallerConfig['sector_texts_key'] ?? ''));
+$hasTenantConfig = true;
+$configuredSectorTextsKey = trim((string) ($tenantInstallerConfig['sector_texts_key'] ?? ($installTenant['sector_texts_key'] ?? '')));
 $sectorIsPreconfigured = $configuredSectorTextsKey !== '';
 $defaultSectorTextsKey = $sectorIsPreconfigured ? $configuredSectorTextsKey : sector_texts_default_key();
 $configuredDbName = trim((string) ($tenantDatabaseConfig['name'] ?? ''));
 $defaultDbName = $configuredDbName !== '' ? $configuredDbName : install_default_database_name($rootDir, $defaultSectorTextsKey);
+$tenantDefaultAppName = trim((string) ($installTenant['app_name'] ?? ''));
+$tenantDefaultTimezone = trim((string) ($installTenant['timezone'] ?? ''));
 
 $defaults = [
-    'app_name' => $tenantInstallerConfig['app_name'] ?? (defined('DEFAULT_APP_NAME') ? DEFAULT_APP_NAME : 'SimplyGest Praxis'),
-    'timezone' => $tenantInstallerConfig['timezone'] ?? (defined('APP_TIMEZONE') ? APP_TIMEZONE : 'Atlantic/Canary'),
+    'app_name' => $tenantInstallerConfig['app_name'] ?? ($tenantDefaultAppName !== '' ? $tenantDefaultAppName : (defined('DEFAULT_APP_NAME') ? DEFAULT_APP_NAME : 'SimplyGest Praxis')),
+    'timezone' => $tenantInstallerConfig['timezone'] ?? ($tenantDefaultTimezone !== '' ? $tenantDefaultTimezone : (defined('APP_TIMEZONE') ? APP_TIMEZONE : 'Atlantic/Canary')),
     'admin_name' => 'Administrador',
     'admin_email' => '',
     'admin_password' => '',
     'db_host' => $tenantDatabaseConfig['host'] ?? (defined('DB_HOST') ? DB_HOST : 'localhost'),
     'db_port' => (string) ($tenantDatabaseConfig['port'] ?? (defined('DB_PORT') ? DB_PORT : '3306')),
-    'db_name' => $hasTenantConfig ? $defaultDbName : (defined('DB_NAME') ? DB_NAME : 'psicologic'),
+    'db_name' => defined('DB_NAME') ? DB_NAME : ($hasTenantConfig ? $defaultDbName : 'sgpraxis'),
     'db_user' => $tenantDatabaseConfig['user'] ?? (defined('DB_USER') ? DB_USER : ''),
     'db_password' => $tenantDatabaseConfig['password'] ?? '',
     'db_ssl' => array_key_exists('ssl', $tenantDatabaseConfig) ? ((bool) $tenantDatabaseConfig['ssl'] ? '1' : '0') : (defined('DB_SSL') && DB_SSL ? '1' : '0'),
@@ -154,34 +205,6 @@ function install_default_database_name($rootDir, $sectorKey)
     return substr($tenantKey . '_' . $sectorKey, 0, 64);
 }
 
-function install_global_knowledge_base_dirs($rootDir)
-{
-    $parentDir = dirname($rootDir);
-    $documentRoot = rtrim((string) ($_SERVER['DOCUMENT_ROOT'] ?? ''), '/\\');
-
-    return array_values(array_unique(array_filter([
-        $parentDir . '/globalknowledgebase',
-        $documentRoot ? $documentRoot . '/globalknowledgebase' : '',
-        $rootDir . '/globalknowledgebase',
-    ])));
-}
-
-function install_import_knowledge_sector_if_available($mysqli, $rootDir, $sectorKey)
-{
-    ensure_knowledge_schema($mysqli);
-    foreach (install_global_knowledge_base_dirs($rootDir) as $baseDir) {
-        if (!is_dir($baseDir)) {
-            continue;
-        }
-        $configs = knowledge_sector_import_configs($baseDir);
-        if (!isset($configs[$sectorKey]) || !is_dir($configs[$sectorKey]['dir'])) {
-            continue;
-        }
-        return import_sector($mysqli, $sectorKey, $configs[$sectorKey]);
-    }
-    return null;
-}
-
 function install_quote_identifier($name)
 {
     return '`' . str_replace('`', '``', $name) . '`';
@@ -201,12 +224,16 @@ function install_base_tables($mysqli)
 {
     $mysqli->query("CREATE TABLE IF NOT EXISTS users (
         id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        tenant_id INT UNSIGNED NOT NULL DEFAULT 1,
         name VARCHAR(100) NOT NULL,
-        email VARCHAR(150) UNIQUE NULL,
-        phone VARCHAR(30) UNIQUE NULL,
+        email VARCHAR(150) NULL,
+        phone VARCHAR(30) NULL,
         password_hash VARCHAR(255) NULL,
         role ENUM('superadmin','admin','patient') NOT NULL DEFAULT 'patient',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_users_tenant_email (tenant_id, email),
+        UNIQUE KEY uniq_users_tenant_phone (tenant_id, phone),
+        INDEX idx_users_tenant_role (tenant_id, role)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     $mysqli->query("CREATE TABLE IF NOT EXISTS invitations (
@@ -359,10 +386,12 @@ function install_base_tables($mysqli)
         site_phone VARCHAR(40) NULL,
         admin_notification_email VARCHAR(150) NULL,
         favicon_path VARCHAR(255) NULL,
+        primary_color VARCHAR(7) NOT NULL DEFAULT '#4285f4',
         show_team_public TINYINT(1) NOT NULL DEFAULT 0,
         public_site_enabled TINYINT(1) NOT NULL DEFAULT 0,
         show_contact_public TINYINT(1) NOT NULL DEFAULT 0,
         allow_patient_transfer TINYINT(1) NOT NULL DEFAULT 0,
+        plan_key VARCHAR(32) NOT NULL DEFAULT 'novus',
         online_booking_enabled TINYINT(1) NOT NULL DEFAULT 1,
         patient_registration_mode VARCHAR(16) NOT NULL DEFAULT 'invite',
         patient_tasks_visible_default TINYINT(1) NOT NULL DEFAULT 0,
@@ -414,11 +443,13 @@ function install_ensure_payment_settings_columns($mysqli)
     install_add_column_if_missing($mysqli, 'payment_settings', 'public_site_enabled', 'TINYINT(1) NOT NULL DEFAULT 0 AFTER show_team_public');
     install_add_column_if_missing($mysqli, 'payment_settings', 'show_contact_public', 'TINYINT(1) NOT NULL DEFAULT 0');
     install_add_column_if_missing($mysqli, 'payment_settings', 'allow_patient_transfer', 'TINYINT(1) NOT NULL DEFAULT 0');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'plan_key', 'VARCHAR(32) NOT NULL DEFAULT "novus" AFTER allow_patient_transfer');
     install_add_column_if_missing($mysqli, 'payment_settings', 'dashboard_config_mode', 'VARCHAR(16) NOT NULL DEFAULT "simple"');
     install_add_column_if_missing($mysqli, 'payment_settings', 'sector_texts_key', 'VARCHAR(32) NOT NULL DEFAULT "psicologia" AFTER dashboard_config_mode');
     install_add_column_if_missing($mysqli, 'payment_settings', 'site_tagline', 'VARCHAR(255) NULL AFTER app_name');
     install_add_column_if_missing($mysqli, 'payment_settings', 'site_phone', 'VARCHAR(40) NULL AFTER site_tagline');
     install_add_column_if_missing($mysqli, 'payment_settings', 'favicon_path', 'VARCHAR(255) NULL AFTER profile_image_path');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'primary_color', 'VARCHAR(7) NOT NULL DEFAULT "#4285f4" AFTER favicon_path');
     install_add_column_if_missing($mysqli, 'payment_settings', 'legal_owner_name', 'VARCHAR(255) NULL');
     install_add_column_if_missing($mysqli, 'payment_settings', 'legal_nif', 'VARCHAR(50) NULL');
     install_add_column_if_missing($mysqli, 'payment_settings', 'legal_address', 'VARCHAR(500) NULL');
@@ -437,7 +468,7 @@ function install_ensure_payment_settings_columns($mysqli)
     install_add_column_if_missing($mysqli, 'payment_settings', 'available_weekdays', 'VARCHAR(30) NOT NULL DEFAULT "1,2,3,4,5"');
     install_add_column_if_missing($mysqli, 'payment_settings', 'appointment_delivery_mode', 'VARCHAR(20) NOT NULL DEFAULT "both"');
     install_add_column_if_missing($mysqli, 'payment_settings', 'available_session_types', 'VARCHAR(100) NOT NULL DEFAULT "individual"');
-    install_add_column_if_missing($mysqli, 'payment_settings', 'available_session_durations', 'VARCHAR(30) NOT NULL DEFAULT "60"');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'available_session_durations', 'VARCHAR(50) NOT NULL DEFAULT "60"');
     install_add_column_if_missing($mysqli, 'payment_settings', 'display_effective_duration_enabled', 'TINYINT(1) NOT NULL DEFAULT 0');
     install_add_column_if_missing($mysqli, 'payment_settings', 'display_duration_offset_minutes', 'TINYINT UNSIGNED NOT NULL DEFAULT 5');
     install_add_column_if_missing($mysqli, 'payment_settings', 'online_booking_enabled', 'TINYINT(1) NOT NULL DEFAULT 1');
@@ -501,7 +532,7 @@ if ($requestMethod === 'POST') {
     $dashboardConfigMode = install_dashboard_config_mode($tenantInstallerConfig['dashboard_config_mode'] ?? 'advanced');
     $publicSiteEnabled = !empty($tenantInstallerConfig['public_site_enabled']) ? 1 : 0;
     $tenantDbName = trim((string) ($tenantDatabaseConfig['name'] ?? ''));
-    $resolvedDbName = $tenantDbName !== '' ? $tenantDbName : install_default_database_name($rootDir, $sectorTextsKey);
+    $resolvedDbName = defined('DB_NAME') ? DB_NAME : ($tenantDbName !== '' ? $tenantDbName : 'sgpraxis');
 
     $settings = [
         'db_host' => trim((string) ($hasTenantConfig ? $defaults['db_host'] : ($_POST['db_host'] ?? ''))),
@@ -515,16 +546,13 @@ if ($requestMethod === 'POST') {
         'max_booking_days' => defined('MAX_BOOKING_DAYS') ? MAX_BOOKING_DAYS : 40,
         'cron_webhook_token' => defined('CRON_WEBHOOK_TOKEN') && CRON_WEBHOOK_TOKEN !== '' ? CRON_WEBHOOK_TOKEN : bin2hex(random_bytes(32)),
         'fastcron_api_key' => defined('FASTCRON_API_KEY') ? FASTCRON_API_KEY : '',
+        'workoutx_api_key' => defined('WORKOUTX_API_KEY') ? WORKOUTX_API_KEY : '',
     ];
 
     $appName = trim($_POST['app_name'] ?? '');
     $adminName = trim($_POST['admin_name'] ?? '');
     $adminEmail = trim($_POST['admin_email'] ?? '');
     $adminPassword = (string) ($_POST['admin_password'] ?? '');
-
-    if ($tenantConfigError !== '') {
-        $errors[] = $tenantConfigError;
-    }
 
     if ($appName === '') {
         $errors[] = 'Indica el nombre o título del sitio.';
@@ -550,79 +578,76 @@ if ($requestMethod === 'POST') {
     if ($settings['db_port'] <= 0) {
         $settings['db_port'] = 3306;
     }
+    if (!$installTenant) {
+        $errors[] = 'No se pudo identificar el tenant que se va a instalar.';
+    }
+    if ($installed) {
+        $errors[] = 'Este tenant ya esta instalado.';
+    }
 
     if (!$errors) {
         mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
         try {
-            $test = mysqli_init();
-            $flags = 0;
-            if ($settings['db_ssl']) {
-                $sslCert = install_mysql_ssl_cert_path($rootDir);
-                if ($sslCert) {
-                    $test->ssl_set(null, null, $sslCert, null, null);
-                }
-                $flags = MYSQLI_CLIENT_SSL;
-            }
-
-            $test->real_connect(
-                $settings['db_host'],
-                $settings['db_user'],
-                $settings['db_password'],
-                null,
-                $settings['db_port'],
-                null,
-                $flags
-            );
-
-            $test->set_charset('utf8mb4');
-            if (install_database_exists($test, $settings['db_name'])) {
-                throw new RuntimeException('La base de datos "' . $settings['db_name'] . '" ya existe. Por seguridad, el instalador solo puede crear instalaciones nuevas en una base de datos vacía e inexistente.');
-            }
-            $test->query("CREATE DATABASE " . install_quote_identifier($settings['db_name']) . " CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
-            $test->select_db($settings['db_name']);
-
-            install_base_tables($test);
+            $test = install_open_db();
 
             require_once $rootDir . '/mail_helpers.php';
             require_once $rootDir . '/settings_helpers.php';
             require_once $rootDir . '/payment_helpers.php';
 
-            ensure_admin_notification_email_column($test);
-            ensure_branding_columns($test);
-            ensure_appointment_payment_columns($test);
-            ensure_appointment_services_tables($test);
-            ensure_bonus_tables($test);
-            ensure_payment_attempts_table($test);
-            ensure_payment_settings_price_columns($test);
-            install_ensure_payment_settings_columns($test);
-            install_import_knowledge_sector_if_available($test, $rootDir, $sectorTextsKey);
+            ensure_current_tenant_payment_settings($test);
 
             $defaultTagline = 'Psicología sanitaria y neuropsicología en Santa Cruz de Tenerife';
-            $stmt = $test->prepare("UPDATE payment_settings SET app_name = ?, site_tagline = COALESCE(NULLIF(site_tagline, ''), ?), admin_notification_email = ?, sector_texts_key = ?, dashboard_config_mode = ?, public_site_enabled = ? WHERE id = 1");
-            $stmt->bind_param('sssssi', $appName, $defaultTagline, $adminEmail, $sectorTextsKey, $dashboardConfigMode, $publicSiteEnabled);
+            $defaultPrimaryColor = '#4285f4';
+            $tenantId = (int) $installTenant['id'];
+            $stmt = $test->prepare("UPDATE payment_settings SET app_name = ?, site_tagline = COALESCE(NULLIF(site_tagline, ''), ?), admin_notification_email = ?, sector_texts_key = ?, dashboard_config_mode = ?, public_site_enabled = ?, primary_color = ? WHERE tenant_id = ?");
+            $stmt->bind_param('sssssisi', $appName, $defaultTagline, $adminEmail, $sectorTextsKey, $dashboardConfigMode, $publicSiteEnabled, $defaultPrimaryColor, $tenantId);
             $stmt->execute();
             $stmt->close();
 
             $passwordHash = password_hash($adminPassword, PASSWORD_DEFAULT);
             $role = 'superadmin';
-            $stmt = $test->prepare("INSERT INTO users (name, email, phone, password_hash, role)
-                VALUES (?, ?, NULL, ?, ?)
-                ON DUPLICATE KEY UPDATE name = VALUES(name), password_hash = VALUES(password_hash), role = 'superadmin'");
-            $stmt->bind_param('ssss', $adminName, $adminEmail, $passwordHash, $role);
+            $stmt = $test->prepare("SELECT id FROM users WHERE tenant_id = ? AND email = ? LIMIT 1");
+            $stmt->bind_param('is', $tenantId, $adminEmail);
+            $stmt->execute();
+            $row = $stmt->get_result()->fetch_assoc();
+            $adminUserId = (int) ($row['id'] ?? 0);
+            $stmt->close();
+
+            if ($adminUserId > 0) {
+                $stmt = $test->prepare("UPDATE users SET name = ?, password_hash = ?, role = 'superadmin' WHERE tenant_id = ? AND id = ?");
+                $stmt->bind_param('ssii', $adminName, $passwordHash, $tenantId, $adminUserId);
+                $stmt->execute();
+                $stmt->close();
+            } else {
+                $stmt = $test->prepare("INSERT INTO users (tenant_id, name, email, phone, password_hash, role) VALUES (?, ?, ?, NULL, ?, ?)");
+                $stmt->bind_param('issss', $tenantId, $adminName, $adminEmail, $passwordHash, $role);
+                $stmt->execute();
+                $adminUserId = (int) $test->insert_id;
+                $stmt->close();
+            }
+
+            if ($adminUserId > 0 && function_exists('seed_default_professional')) {
+                seed_default_professional($test);
+            }
+
+            if (!is_dir(app_tenant_public_uploads_dir())) {
+                @mkdir(app_tenant_public_uploads_dir(), 0775, true);
+            }
+
+            $stmt = $test->prepare("
+                UPDATE tenants
+                SET tenant_name = ?, app_name = ?, sector_texts_key = ?, dashboard_config_mode = ?, public_site_enabled = ?, db_name = ?, status = 'active', installed_at = COALESCE(installed_at, NOW())
+                WHERE id = ?
+            ");
+            $stmt->bind_param('ssssisi', $appName, $appName, $sectorTextsKey, $dashboardConfigMode, $publicSiteEnabled, $settings['db_name'], $tenantId);
             $stmt->execute();
             $stmt->close();
 
-            ensure_cabinet_schema($test);
-
             $test->close();
 
-            if (!install_write_config($configPath, $settings)) {
-                $errors[] = 'No se pudo crear config.local.php. Revisa los permisos de escritura del servidor.';
-            } else {
-                $success = true;
-                $installed = true;
-            }
+            $success = true;
+            $installed = true;
         } catch (Throwable $e) {
             $errors[] = 'No se pudo completar la instalación: ' . $e->getMessage();
         }
@@ -654,6 +679,17 @@ if ($requestMethod === 'POST') {
             border-radius: 10px;
             box-shadow: 0 18px 45px rgba(30, 35, 50, .08);
             padding: 28px;
+        }
+        .install-card > .install-brand-logo,
+        .install-card > h1,
+        .install-card > p {
+            text-align: center;
+        }
+        .install-brand-logo {
+            display: block;
+            width: min(220px, 72%);
+            height: auto;
+            margin: 0 auto 22px;
         }
         .install-steps {
             display: flex;
@@ -703,6 +739,12 @@ if ($requestMethod === 'POST') {
             padding: 28px;
             text-align: center;
         }
+        .install-legal-footer {
+            margin-top: 18px;
+            text-align: center;
+            color: #7b8495;
+            font-size: .86rem;
+        }
         @media (max-width: 576px) {
             .install-card { padding: 20px; }
             .install-steps { flex-direction: column; }
@@ -713,6 +755,7 @@ if ($requestMethod === 'POST') {
 <body>
     <main class="install-shell">
         <div class="install-card">
+            <img src="<?php echo htmlspecialchars($officialBrandLogoUrl, ENT_QUOTES, 'UTF-8'); ?>" alt="SimplyGest Praxis" class="install-brand-logo">
             <h1 class="h3 mb-2">Instalación de SimplyGest Praxis</h1>
             <p class="text-muted mb-0">Configura los datos básicos para dejar lista esta instalación.</p>
 
@@ -723,10 +766,10 @@ if ($requestMethod === 'POST') {
                 <a class="btn btn-primary" href="../login.php">Ir al login</a>
             <?php elseif ($installed && $requestMethod !== 'POST'): ?>
                 <div class="alert alert-info mt-4">
-                    Esta instalación ya tiene configuración local. Para repetir el asistente, elimina manualmente el archivo <strong>config.local.php</strong>.
+                    Este tenant ya est&aacute; instalado. Para cambiar su configuraci&oacute;n, entra al dashboard o edita la fila correspondiente en <strong>tenants</strong>.
                 </div>
                 <a class="btn btn-primary" href="../login.php">Ir al login</a>
-            <?php elseif ($tenantConfigError !== '' && $requestMethod !== 'POST'): ?>
+            <?php elseif ($tenantConfigError !== '' && !$installTenant && $requestMethod !== 'POST'): ?>
                 <div class="alert alert-danger mt-4">
                     <?php echo htmlspecialchars($tenantConfigError, ENT_QUOTES, 'UTF-8'); ?>
                 </div>
@@ -738,7 +781,7 @@ if ($requestMethod === 'POST') {
                         <?php endforeach; ?>
                     </div>
                 <?php endif; ?>
-                <?php if ($tenantConfigError !== '' && !$errors): ?>
+                <?php if ($tenantConfigError !== '' && !$installTenant && !$errors): ?>
                     <div class="alert alert-danger mt-4">
                         <?php echo htmlspecialchars($tenantConfigError, ENT_QUOTES, 'UTF-8'); ?>
                     </div>
@@ -816,7 +859,7 @@ if ($requestMethod === 'POST') {
                             <?php if ($hasTenantConfig): ?>
                                 <div class="col-12">
                                     <div class="alert alert-light border mb-0">
-                                        Se usará la conexión de Azure preconfigurada para esta instalación.
+                                        Pulsa <strong>Guardar instalación</strong> para continuar.
                                     </div>
                                 </div>
                             <?php else: ?>
@@ -854,13 +897,19 @@ if ($requestMethod === 'POST') {
                     </section>
                 </form>
             <?php endif; ?>
+            <footer class="install-legal-footer">
+                <span class="legal-brand-line">
+                    <img src="<?php echo htmlspecialchars($officialBrandLogoUrl, ENT_QUOTES, 'UTF-8'); ?>" alt="" class="legal-brand-mark">
+                    <span><?php echo htmlspecialchars(app_legal_footer_text(), ENT_QUOTES, 'UTF-8'); ?></span>
+                </span>
+            </footer>
         </div>
     </main>
     <div class="install-progress-overlay" id="installProgressOverlay" aria-live="polite" aria-modal="true" role="dialog">
         <div class="install-progress-box">
             <div class="spinner-border text-primary mb-3" role="status" aria-hidden="true"></div>
             <h2 class="h5 mb-2">Preparando tu entorno</h2>
-            <p class="text-muted mb-0">Estamos creando la base de datos e importando la base de conocimiento. Espera unos segundos, por favor.</p>
+            <p class="text-muted mb-0">Estamos preparando la instalaci&oacute;n y creando la configuraci&oacute;n inicial. Espera unos segundos, por favor.</p>
         </div>
     </div>
 

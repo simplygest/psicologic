@@ -1,0 +1,151 @@
+{
+  "version": 1,
+  "key": "logopedia",
+  "name": "Logopedia",
+  "description": "Configuración de textos para clínicas y consultas de logopedia.",
+  "labels": {
+    "patient": {
+      "singular": "paciente",
+      "plural": "pacientes",
+      "titleSingular": "Paciente",
+      "titlePlural": "Pacientes"
+    },
+    "professional": {
+      "singular": "logopeda",
+      "plural": "logopedas",
+      "titleSingular": "Logopeda",
+      "titlePlural": "Logopedas"
+    },
+    "organization": {
+      "singular": "consulta",
+      "plural": "consultas",
+      "titleSingular": "Consulta",
+      "titlePlural": "Consultas"
+    },
+    "appointment": {
+      "singular": "cita",
+      "plural": "citas",
+      "titleSingular": "Cita",
+      "titlePlural": "Citas"
+    },
+    "session": {
+      "singular": "sesión",
+      "plural": "sesiones",
+      "titleSingular": "Sesión",
+      "titlePlural": "Sesiones"
+    },
+    "workPlan": {
+      "singular": "plan de intervención",
+      "plural": "planes de intervención",
+      "titleSingular": "Plan de intervención",
+      "titlePlural": "Planes de intervención"
+    },
+    "task": {
+      "singular": "ejercicio",
+      "plural": "ejercicios",
+      "titleSingular": "Ejercicio",
+      "titlePlural": "Ejercicios"
+    },
+    "evolution": {
+      "singular": "evolución",
+      "plural": "evoluciones",
+      "titleSingular": "Evolución",
+      "titlePlural": "Evolución"
+    },
+    "problem": {
+      "singular": "Área de intervención",
+      "plural": "Áreas de intervención",
+      "titleSingular": "Área de intervención",
+      "titlePlural": "Áreas de intervención"
+    },
+    "evaluation": {
+      "singular": "evaluación logopédica",
+      "plural": "evaluaciones logopédicas",
+      "titleSingular": "Evaluación logopédica",
+      "titlePlural": "Evaluaciones logopédicas"
+    },
+    "technique": {
+      "singular": "técnica",
+      "plural": "técnicas",
+      "titleSingular": "Técnica",
+      "titlePlural": "Técnicas"
+    },
+    "resource": {
+      "singular": "material",
+      "plural": "materiales",
+      "titleSingular": "Material",
+      "titlePlural": "Materiales"
+    },
+    "goal": {
+      "singular": "objetivo de intervención",
+      "plural": "objetivos de intervención",
+      "titleSingular": "Objetivo de intervención",
+      "titlePlural": "Objetivos de intervención"
+    }
+  },
+  "clinicalTerms": {
+    "diagnosis": "perfil logopédico",
+    "treatment": "intervención logopédica",
+    "exercise": "ejercicio logopédico",
+    "followUp": "seguimiento",
+    "discharge": "alta"
+  },
+  "services": {
+    "individual": "Individual",
+    "couple": "Parejas",
+    "family": "Familiar",
+    "group": "Grupos"
+  },
+  "portal": {
+    "bookingCta": "Reserva tu cita",
+    "myAppointments": "Mis citas",
+    "myTasks": "Mis ejercicios"
+  },
+  "reports": {
+    "internalPatientReport": "Informe interno de paciente",
+    "patientReport": "Informe para paciente"
+  },
+  "featureHints": {
+    "workPlan": true,
+    "patientPortal": true,
+    "clinicalEvolution": true,
+    "sessionFiles": true
+  },
+  "appointmentServices": [
+    {
+      "key": "assessment",
+      "label": "Valoracion",
+      "name": "Valoracion logopedica",
+      "enabledByDefault": true
+    },
+    {
+      "key": "therapy",
+      "label": "Intervencion",
+      "name": "Sesion de intervencion",
+      "enabledByDefault": true
+    },
+    {
+      "key": "family_guidance",
+      "label": "Familia",
+      "name": "Orientacion familiar",
+      "enabledByDefault": false
+    }
+  ],
+  "appointmentDurations": [
+    {
+      "minutes": 30,
+      "label": "30 minutos",
+      "enabledByDefault": false
+    },
+    {
+      "minutes": 45,
+      "label": "45 minutos",
+      "enabledByDefault": true
+    },
+    {
+      "minutes": 60,
+      "label": "60 minutos",
+      "enabledByDefault": false
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+﻿problema_id;area_id;nombre;alias;descripcion;poblacion;nivel_riesgo;fuente_ids
+FIS_P001;FIS_A001;Dolor lumbar inespecífico;Lumbalgia;Dolor lumbar sin signos de patología específica, con enfoque de educación, ejercicio y actividad.;Adultos;medio;"FIS_SRC005;FIS_SRC001"
+FIS_P002;FIS_A001;Ciática / dolor radicular;Dolor irradiado pierna;Dolor lumbar con síntomas irradiados compatibles con afectación radicular.;Adultos;alto;FIS_SRC005
+FIS_P003;FIS_A001;Dolor cervical mecánico;Cervicalgia;Dolor cervical asociado a movilidad, postura, carga o actividad.;Adultos;medio;"FIS_SRC001;FIS_SRC006"
+FIS_P004;FIS_A001;Dolor dorsal / rigidez torácica;Dorsalgia;Molestia o rigidez dorsal relacionada con movilidad, postura o carga.;Adultos;bajo;"FIS_SRC001;FIS_SRC006"
+FIS_P005;FIS_A002;Artrosis de rodilla;Osteoartritis rodilla;Dolor y limitación funcional por osteoartritis de rodilla.;Adultos;medio;"FIS_SRC003;FIS_SRC001"
+FIS_P006;FIS_A002;Artrosis de cadera;Osteoartritis cadera;Dolor y limitación funcional por osteoartritis de cadera.;Adultos;medio;"FIS_SRC003;FIS_SRC001"
+FIS_P007;FIS_A002;Dolor femoropatelar;Dolor anterior rodilla;Dolor anterior de rodilla asociado a carga, escaleras o sedestación prolongada.;Adultos;medio;FIS_SRC001
+FIS_P008;FIS_A002;Esguince de tobillo;Inestabilidad tobillo;Lesión ligamentosa de tobillo y prevención de recurrencias.;Adultos;medio;"FIS_SRC001;FIS_SRC006"
+FIS_P009;FIS_A002;Fascitis plantar / dolor talón;Dolor plantar;Dolor en talón/planta asociado a carga y tolerancia tisular.;Adultos;medio;FIS_SRC001
+FIS_P010;FIS_A002;Tendinopatía aquílea;Dolor tendón Aquiles;Dolor y limitación por tendón de Aquiles, carga y progresión de fuerza.;Adultos;medio;"FIS_SRC001;FIS_SRC006"
+FIS_P011;FIS_A002;Tendinopatía rotuliana;Rodilla saltador;Dolor tendón rotuliano asociado a saltos/carga.;Adultos;medio;FIS_SRC001
+FIS_P012;FIS_A003;Dolor de hombro subacromial;Hombro doloroso;Dolor de hombro relacionado con movimiento, carga y función.;Adultos;medio;"FIS_SRC001;FIS_SRC006"
+FIS_P013;FIS_A003;Capsulitis adhesiva;Hombro congelado;Rigidez progresiva y dolor de hombro con limitación de movilidad.;Adultos;medio;FIS_SRC001
+FIS_P014;FIS_A003;Epicondilalgia lateral;Codo de tenista;Dolor lateral de codo asociado a agarre y carga de extensores.;Adultos;medio;FIS_SRC001
+FIS_P015;FIS_A003;Síndrome túnel carpiano leve;Síntomas mano/muñeca;"Parestesias o molestias compatibles con atrapamiento leve; requiere cribado y derivación si alarma.";Adultos;alto;FIS_SRC001
+FIS_P016;FIS_A004;Readaptación deportiva general;Retorno al deporte;Progresión de carga, fuerza, movilidad y criterios funcionales.;Adultos;medio;"FIS_SRC001;FIS_SRC004"
+FIS_P017;FIS_A004;Lesión muscular leve/moderada;Rotura/contractura muscular;Recuperación progresiva de movilidad, fuerza y carga específica.;Adultos;medio;"FIS_SRC004;FIS_SRC001"
+FIS_P018;FIS_A004;Sobrecarga por entrenamiento;Exceso de carga;Dolor o fatiga por progresión inadecuada de entrenamiento.;Adultos;medio;FIS_SRC001
+FIS_P019;FIS_A005;Riesgo de caídas;Equilibrio/marcha;Prevención de caídas mediante fuerza, equilibrio y revisión de riesgos.;Mayores;alto;"FIS_SRC009;FIS_SRC008"
+FIS_P020;FIS_A005;Fragilidad funcional;Pérdida funcional;Baja fuerza, baja tolerancia al esfuerzo y limitación en actividades diarias.;Mayores;alto;"FIS_SRC008;FIS_SRC009"
+FIS_P021;FIS_A005;Alteración de la marcha;Marcha insegura;Dificultades de patrón de marcha, equilibrio o confianza al caminar.;Mayores;medio;FIS_SRC008
+FIS_P022;FIS_A006;Dolor persistente;Dolor crónico no específico;Dolor mantenido con impacto funcional y posible sensibilización/evitación.;Adultos;medio;"FIS_SRC001;FIS_SRC005"
+FIS_P023;FIS_A006;Miedo al movimiento;Kinesiofobia;Evitación de movimiento por miedo al daño o dolor.;Adultos;medio;"FIS_SRC005;FIS_SRC008"
+FIS_P024;FIS_A007;Rehabilitación tras cirugía ortopédica;Postoperatorio musculoesquelético;Recuperación funcional tras cirugía, siguiendo indicaciones médicas y fases.;Adultos;alto;"FIS_SRC004;FIS_SRC002"
+FIS_P025;FIS_A007;Rehabilitación tras lesión traumática;Postlesión;Plan de rehabilitación individual con objetivos y progresión.;Adultos;alto;FIS_SRC004
+FIS_P026;FIS_A008;Desacondicionamiento físico;Baja tolerancia esfuerzo;Baja capacidad funcional tras inactividad, enfermedad o dolor.;Adultos;medio;"FIS_SRC008;FIS_SRC004"
+FIS_P027;FIS_A008;Educación respiratoria básica;Respiración y función;Ejercicios respiratorios básicos y tolerancia al esfuerzo no sustitutivos de valoración médica.;Adultos;medio;FIS_SRC002

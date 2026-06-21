@@ -8,6 +8,7 @@ require_once 'settings_helpers.php';
 ensure_appointment_payment_columns($mysqli);
 ensure_appointment_services_tables($mysqli);
 $branding = get_public_branding_settings($mysqli);
+$tenant_id = current_tenant_id();
 
 $token = $_GET['t'] ?? ($_POST['token'] ?? '');
 $token = preg_match('/^[a-f0-9]{64}$/', $token) ? $token : '';
@@ -24,12 +25,13 @@ if ($token) {
                COALESCE(a.payment_status, 'pending') AS payment_status,
                a.payment_method, a.payment_attempt_id, a.patient_bonus_id, a.user_id, u.name, u.email
         FROM appointments a
-        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
-        LEFT JOIN appointment_services s ON s.id = so.service_id
-        JOIN users u ON u.id = a.user_id
-        WHERE a.cancel_token = ?
+        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id AND so.tenant_id = a.tenant_id
+        LEFT JOIN appointment_services s ON s.id = so.service_id AND s.tenant_id = a.tenant_id
+        JOIN users u ON u.id = a.user_id AND u.tenant_id = a.tenant_id
+        WHERE a.tenant_id = ?
+          AND a.cancel_token = ?
     ");
-    $stmt->bind_param("s", $token);
+    $stmt->bind_param("is", $tenant_id, $token);
     $stmt->execute();
     $appointment = $stmt->get_result()->fetch_assoc();
 }
@@ -44,8 +46,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             error_log('No se pudo eliminar evento en Google Calendar: ' . $e->getMessage());
         }
 
-        $stmt = $mysqli->prepare("UPDATE appointments SET status = 'cancelled', cancelled_at = NOW() WHERE id = ? AND cancel_token = ? AND status = 'booked'");
-        $stmt->bind_param("is", $appointment['id'], $token);
+        $stmt = $mysqli->prepare("UPDATE appointments SET status = 'cancelled', cancelled_at = NOW() WHERE tenant_id = ? AND id = ? AND cancel_token = ? AND status = 'booked'");
+        $stmt->bind_param("iis", $tenant_id, $appointment['id'], $token);
         $stmt->execute();
 
         $cancelled = $stmt->affected_rows > 0;
@@ -80,7 +82,7 @@ $payment_settings = ['online_payment_enabled' => 0, 'appointment_price' => '70.0
 $settings_res = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
 if ($settings_res->num_rows > 0) {
     ensure_payment_settings_price_columns($mysqli);
-    $settings_res = $mysqli->query("SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price FROM payment_settings WHERE id = 1");
+    $settings_res = $mysqli->query("SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price FROM payment_settings WHERE tenant_id = $tenant_id");
     if ($settings = $settings_res->fetch_assoc()) {
         $payment_settings = $settings;
     }

@@ -14,9 +14,11 @@ require_once 'db.php';
 require_once 'payment_helpers.php';
 require_once 'mail_helpers.php';
 require_once 'urlme_helpers.php';
+require_once 'dashboard_config_helpers.php';
 
 ensure_appointment_payment_columns($mysqli);
 ensure_appointment_services_tables($mysqli);
+$tenant_id = current_tenant_id();
 
 $settings_table = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
 if (!$settings_table || $settings_table->num_rows === 0) {
@@ -33,12 +35,17 @@ ensure_payment_settings_price_columns($mysqli);
 $settings_res = $mysqli->query("
     SELECT appointment_reminder_enabled, online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price
     FROM payment_settings
-    WHERE id = 1
+    WHERE tenant_id = $tenant_id
 ");
 $settings = $settings_res->fetch_assoc() ?: [];
 
 if ((int) ($settings['appointment_reminder_enabled'] ?? 0) !== 1) {
     echo json_encode(['success' => true, 'enabled' => false, 'sent' => 0]);
+    exit;
+}
+
+if (!app_feature_enabled_from_db($mysqli, 'reminders.patient24h', false)) {
+    echo json_encode(['success' => true, 'enabled' => false, 'sent' => 0, 'message' => 'Recordatorios no disponibles en este plan']);
     exit;
 }
 
@@ -49,16 +56,18 @@ $stmt = $mysqli->prepare("
            COALESCE(a.payment_status, 'pending') AS payment_status,
            u.name, u.email
     FROM appointments a
-    LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
-    LEFT JOIN appointment_services s ON s.id = so.service_id
-    JOIN users u ON u.id = a.user_id
-    WHERE a.status = 'booked'
+    LEFT JOIN appointment_service_options so ON so.id = a.service_option_id AND so.tenant_id = a.tenant_id
+    LEFT JOIN appointment_services s ON s.id = so.service_id AND s.tenant_id = a.tenant_id
+    JOIN users u ON u.id = a.user_id AND u.tenant_id = a.tenant_id
+    WHERE a.tenant_id = ?
+      AND a.status = 'booked'
       AND a.reminder_sent_at IS NULL
       AND u.email IS NOT NULL
       AND u.email != ''
       AND TIMESTAMP(a.appointment_date, a.appointment_time) BETWEEN DATE_ADD(NOW(), INTERVAL 23 HOUR) AND DATE_ADD(NOW(), INTERVAL 25 HOUR)
     ORDER BY a.appointment_date ASC, a.appointment_time ASC
 ");
+$stmt->bind_param("i", $tenant_id);
 $stmt->execute();
 $appointments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
@@ -71,8 +80,8 @@ foreach ($appointments as $appointment) {
     $cancel_token = $appointment['cancel_token'];
     if (!$cancel_token) {
         $cancel_token = bin2hex(random_bytes(32));
-        $update_token = $mysqli->prepare("UPDATE appointments SET cancel_token = ? WHERE id = ?");
-        $update_token->bind_param("si", $cancel_token, $appointment['id']);
+        $update_token = $mysqli->prepare("UPDATE appointments SET cancel_token = ? WHERE tenant_id = ? AND id = ?");
+        $update_token->bind_param("sii", $cancel_token, $tenant_id, $appointment['id']);
         $update_token->execute();
     }
 
@@ -107,8 +116,8 @@ foreach ($appointments as $appointment) {
         $payment_note;
 
     if (send_app_email($appointment['email'], 'Recordatorio de cita', $body, null, $mysqli)) {
-        $update_sent = $mysqli->prepare("UPDATE appointments SET reminder_sent_at = NOW() WHERE id = ?");
-        $update_sent->bind_param("i", $appointment['id']);
+        $update_sent = $mysqli->prepare("UPDATE appointments SET reminder_sent_at = NOW() WHERE tenant_id = ? AND id = ?");
+        $update_sent->bind_param("ii", $tenant_id, $appointment['id']);
         $update_sent->execute();
         $sent++;
     } else {

@@ -1,6 +1,7 @@
 <?php
 // db.php
 require_once 'config.php';
+require_once __DIR__ . '/tenant_helpers.php';
 
 try {
     mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
@@ -30,6 +31,7 @@ try {
         $flags
     );
     $mysqli->set_charset('utf8mb4');
+    tenant_bootstrap_current($mysqli);
 } catch (\Exception $e) {
     die('Error de conexión: ' . $e->getMessage());
 }

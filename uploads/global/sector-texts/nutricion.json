@@ -1,0 +1,151 @@
+{
+  "version": 1,
+  "key": "nutricion",
+  "name": "Nutrición",
+  "description": "Configuración de textos para consultas de nutrición y dietética.",
+  "labels": {
+    "patient": {
+      "singular": "paciente",
+      "plural": "pacientes",
+      "titleSingular": "Paciente",
+      "titlePlural": "Pacientes"
+    },
+    "professional": {
+      "singular": "nutricionista",
+      "plural": "nutricionistas",
+      "titleSingular": "Nutricionista",
+      "titlePlural": "Nutricionistas"
+    },
+    "organization": {
+      "singular": "consulta",
+      "plural": "consultas",
+      "titleSingular": "Consulta",
+      "titlePlural": "Consultas"
+    },
+    "appointment": {
+      "singular": "cita",
+      "plural": "citas",
+      "titleSingular": "Cita",
+      "titlePlural": "Citas"
+    },
+    "session": {
+      "singular": "sesión",
+      "plural": "sesiones",
+      "titleSingular": "Sesión",
+      "titlePlural": "Sesiones"
+    },
+    "workPlan": {
+      "singular": "plan nutricional",
+      "plural": "planes nutricionales",
+      "titleSingular": "Plan nutricional",
+      "titlePlural": "Planes nutricionales"
+    },
+    "task": {
+      "singular": "pauta",
+      "plural": "pautas",
+      "titleSingular": "Pauta",
+      "titlePlural": "Pautas"
+    },
+    "evolution": {
+      "singular": "evolución",
+      "plural": "evoluciones",
+      "titleSingular": "Evolución",
+      "titlePlural": "Evolución"
+    },
+    "problem": {
+      "singular": "problema u objetivo nutricional",
+      "plural": "problemas u objetivos nutricionales",
+      "titleSingular": "Problema u objetivo nutricional",
+      "titlePlural": "Problemas u objetivos nutricionales"
+    },
+    "evaluation": {
+      "singular": "valoración nutricional",
+      "plural": "valoraciones nutricionales",
+      "titleSingular": "Valoración nutricional",
+      "titlePlural": "Valoraciones nutricionales"
+    },
+    "technique": {
+      "singular": "estrategia",
+      "plural": "estrategias",
+      "titleSingular": "Estrategia",
+      "titlePlural": "Estrategias"
+    },
+    "resource": {
+      "singular": "recurso",
+      "plural": "recursos",
+      "titleSingular": "Recurso",
+      "titlePlural": "Recursos"
+    },
+    "goal": {
+      "singular": "objetivo nutricional",
+      "plural": "objetivos nutricionales",
+      "titleSingular": "Objetivo nutricional",
+      "titlePlural": "Objetivos nutricionales"
+    }
+  },
+  "clinicalTerms": {
+    "diagnosis": "objetivo nutricional",
+    "treatment": "plan nutricional",
+    "exercise": "pauta nutricional",
+    "followUp": "seguimiento",
+    "discharge": "alta"
+  },
+  "services": {
+    "individual": "Individual",
+    "couple": "Parejas",
+    "family": "Familiar",
+    "group": "Grupos"
+  },
+  "portal": {
+    "bookingCta": "Reserva tu cita",
+    "myAppointments": "Mis citas",
+    "myTasks": "Mis pautas"
+  },
+  "reports": {
+    "internalPatientReport": "Informe interno de paciente",
+    "patientReport": "Informe para paciente"
+  },
+  "featureHints": {
+    "workPlan": true,
+    "patientPortal": true,
+    "clinicalEvolution": true,
+    "sessionFiles": true
+  },
+  "appointmentServices": [
+    {
+      "key": "first_visit",
+      "label": "Primera visita",
+      "name": "Primera visita nutricional",
+      "enabledByDefault": true
+    },
+    {
+      "key": "followup",
+      "label": "Seguimiento",
+      "name": "Seguimiento nutricional",
+      "enabledByDefault": true
+    },
+    {
+      "key": "meal_plan",
+      "label": "Plan nutricional",
+      "name": "Revision de plan nutricional",
+      "enabledByDefault": false
+    }
+  ],
+  "appointmentDurations": [
+    {
+      "minutes": 30,
+      "label": "30 minutos",
+      "enabledByDefault": false
+    },
+    {
+      "minutes": 45,
+      "label": "45 minutos",
+      "enabledByDefault": true
+    },
+    {
+      "minutes": 60,
+      "label": "60 minutos",
+      "enabledByDefault": false
+    }
+  ]
+}

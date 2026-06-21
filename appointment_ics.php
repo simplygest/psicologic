@@ -52,7 +52,7 @@ $end = (new DateTimeImmutable($start, new DateTimeZone('Atlantic/Canary')))
     ->modify('+' . (int) ($appointment['duration_minutes'] ?? 60) . ' minutes')
     ->format('Y-m-d H:i:s');
 
-$uid = 'appointment-' . hash('sha256', $token) . '@psicologic';
+$uid = 'appointment-' . hash('sha256', app_current_tenant_key() . ':' . $token) . '@simplygest-praxis';
 $ics = caldav_build_ics($uid, $summary, $description, $start, $end, 'Atlantic/Canary', $online_session_url);
 $filename = 'cita-' . date('Ymd-His', strtotime($start)) . '.ics';
 

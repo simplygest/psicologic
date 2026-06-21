@@ -12,7 +12,7 @@ if (!cabinet_public_team_enabled($mysqli)) {
 }
 
 $app_name = $branding['app_name'];
-$profile_image_path = $branding['show_profile_image_public'] ? $branding['profile_image_path'] : '';
+$profile_image_path = $branding['show_profile_image_public'] ? app_upload_asset_url($branding['profile_image_path']) : '';
 $is_logged_in = isset($_SESSION['user_id']);
 $is_admin = in_array(($_SESSION['role'] ?? ''), ['admin', 'superadmin'], true);
 $online_booking_enabled = (int) ($branding['online_booking_enabled'] ?? 1) === 1;
@@ -128,7 +128,7 @@ function team_social_links($member)
                         <article class="team-card">
                             <div class="team-card-photo">
                                 <?php if (!empty($member['display_photo_path'])): ?>
-                                    <img src="<?= htmlspecialchars($member['display_photo_path']) ?>" alt="<?= htmlspecialchars($member['display_name']) ?>">
+                                    <img src="<?= htmlspecialchars(app_upload_asset_url($member['display_photo_path'])) ?>" alt="<?= htmlspecialchars($member['display_name']) ?>">
                                 <?php else: ?>
                                     <div class="team-card-placeholder"><?= htmlspecialchars(team_initials($member['display_name'])) ?></div>
                                 <?php endif; ?>

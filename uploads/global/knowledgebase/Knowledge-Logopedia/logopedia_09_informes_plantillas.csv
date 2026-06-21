@@ -1,0 +1,13 @@
+﻿informe_id;nombre;tipo;descripcion;problema_ids;nivel_riesgo
+LOG_INF001;Informe logopédico inicial;Evaluación inicial;Datos, motivo, antecedentes, evaluación, impresión logopédica, objetivos y plan.;Todos;bajo
+LOG_INF002;Informe de evolución logopédica;Seguimiento;Resumen de objetivos trabajados, asistencia, tareas, evolución y recomendaciones.;Todos;bajo
+LOG_INF003;Informe escolar;Coordinación educativa;Necesidades comunicativas, objetivos, adaptaciones de aula y pautas para profesorado.;Infantil/escolar;medio
+LOG_INF004;Informe de alta;Cierre de intervención;Objetivos alcanzados, evolución, pautas de mantenimiento y señales de consulta.;Todos;bajo
+LOG_INF005;Informe de habla/articulación;Habla;Fonemas afectados, inteligibilidad, procesos, intervención y recomendaciones.;"LOG_P001;LOG_P002;LOG_P003";bajo
+LOG_INF006;Informe de lenguaje infantil;Lenguaje;Comprensión, expresión, vocabulario, morfosintaxis, narrativa y pautas familiares/escolares.;"LOG_P006;LOG_P007;LOG_P008;LOG_P009";medio
+LOG_INF007;Informe de fluidez;Fluidez;Patrón de disfluencia, impacto, evitación, estrategias y plan de apoyo.;"LOG_P011;LOG_P012;LOG_P013";medio
+LOG_INF008;Informe de voz;Voz;Uso vocal, síntomas, higiene vocal, evolución y recomendaciones/derivación si procede.;"LOG_P014;LOG_P015;LOG_P016";medio
+LOG_INF009;Informe de deglución/alimentación;Deglución;Síntomas, riesgos, pautas, adaptaciones y coordinación sanitaria.;"LOG_P018;LOG_P019;LOG_P020";alto
+LOG_INF010;Informe de afasia/comunicación adulta;Neurorehabilitación;Perfil comunicativo, apoyos, objetivos funcionales y recomendaciones a familia/cuidadores.;"LOG_P026;LOG_P027;LOG_P028;LOG_P029";alto
+LOG_INF011;Informe CAA;Comunicación aumentativa;Sistema propuesto, vocabulario inicial, entrenamiento y pautas del entorno.;"LOG_P036;LOG_P037";medio
+LOG_INF012;Informe miofuncional orofacial;Miofuncional;Funciones orales, postura, respiración, deglución y coordinación con otros profesionales.;"LOG_P038;LOG_P039;LOG_P040";medio

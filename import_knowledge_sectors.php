@@ -56,7 +56,8 @@ function knowledge_sector_import_configs(string $base_dir): array
             'tasks' => 'logopedia_05_tareas_pautas.csv',
             'problem_techniques' => 'logopedia_06_problema_tecnica.csv',
             'recommendations' => 'logopedia_07_recomendaciones_tareas.csv',
-            'questionnaires' => 'logopedia_08_evaluaciones_indicadores.csv'
+            'questionnaires' => 'logopedia_08_evaluaciones_indicadores.csv',
+            'documents' => 'logopedia_09_informes_plantillas.csv'
         ]
     ],
     'quiropractica' => [
@@ -85,6 +86,51 @@ function knowledge_sector_import_configs(string $base_dir): array
             'recommendations' => '07_recomendaciones_tareas.csv',
             'questionnaires' => '08_cuestionarios.csv'
         ]
+    ],
+    'terapia_ocupacional' => [
+        'dir' => rtrim($base_dir, '/\\') . '/Knowledge-TerapiaOcupacional',
+        'prefix' => 'terapia_ocupacional',
+        'files' => [
+            'sources' => 'terapia_ocupacional_01_fuentes.csv',
+            'areas' => 'terapia_ocupacional_02_areas.csv',
+            'problems' => 'terapia_ocupacional_03_problemas_objetivos.csv',
+            'techniques' => 'terapia_ocupacional_04_tecnicas_metodos.csv',
+            'tasks' => 'terapia_ocupacional_05_tareas_pautas.csv',
+            'problem_techniques' => 'terapia_ocupacional_06_problema_tecnica.csv',
+            'recommendations' => 'terapia_ocupacional_07_recomendaciones_tareas.csv',
+            'questionnaires' => 'terapia_ocupacional_08_evaluaciones_indicadores.csv',
+            'documents' => 'terapia_ocupacional_09_documentos_informes.csv'
+        ]
+    ],
+    'preparacion_oposiciones' => [
+        'dir' => rtrim($base_dir, '/\\') . '/Knowledge-Oposiciones',
+        'prefix' => 'oposiciones',
+        'files' => [
+            'sources' => 'oposiciones_01_fuentes.csv',
+            'areas' => 'oposiciones_02_areas.csv',
+            'problems' => 'oposiciones_03_problemas_objetivos.csv',
+            'techniques' => 'oposiciones_04_tecnicas_metodos.csv',
+            'tasks' => 'oposiciones_05_tareas_pautas.csv',
+            'problem_techniques' => 'oposiciones_06_problema_tecnica.csv',
+            'recommendations' => 'oposiciones_07_recomendaciones_tareas.csv',
+            'questionnaires' => 'oposiciones_08_evaluaciones_indicadores.csv',
+            'documents' => 'oposiciones_09_documentos_informes.csv'
+        ]
+    ],
+    'psicopedagogia' => [
+        'dir' => rtrim($base_dir, '/\\') . '/Knowledge-Psicopedagogia',
+        'prefix' => 'psicopedagogia',
+        'files' => [
+            'sources' => 'psicopedagogia_01_fuentes.csv',
+            'areas' => 'psicopedagogia_02_areas.csv',
+            'problems' => 'psicopedagogia_03_problemas_objetivos.csv',
+            'techniques' => 'psicopedagogia_04_tecnicas_metodos.csv',
+            'tasks' => 'psicopedagogia_05_tareas_pautas.csv',
+            'problem_techniques' => 'psicopedagogia_06_problema_tecnica.csv',
+            'recommendations' => 'psicopedagogia_07_recomendaciones_tareas.csv',
+            'questionnaires' => 'psicopedagogia_08_evaluaciones_indicadores.csv',
+            'documents' => 'psicopedagogia_09_documentos_informes.csv'
+        ]
     ]
     ];
 }
@@ -92,8 +138,10 @@ function knowledge_sector_import_configs(string $base_dir): array
 function knowledge_default_import_base_dir(string $tenant_root): string
 {
     foreach ([
-        dirname($tenant_root) . '/globalknowledgebase',
-        $tenant_root . '/globalknowledgebase',
+        $tenant_root . '/uploads/global/knowledgebase',
+        dirname($tenant_root) . '/uploads/global/knowledgebase',
+        $tenant_root . '/uploads/global/globalknowledgebase',
+        dirname($tenant_root) . '/uploads/global/globalknowledgebase',
         $tenant_root
     ] as $candidate) {
         if (is_dir($candidate)) {
@@ -279,6 +327,7 @@ function ensure_knowledge_schema(mysqli $mysqli): void
             use_area VARCHAR(180) DEFAULT NULL,
             questionnaire_type VARCHAR(120) DEFAULT NULL,
             notes TEXT DEFAULT NULL,
+            resource_kind VARCHAR(30) NOT NULL DEFAULT 'questionnaire',
             UNIQUE uniq_knowledge_questionnaires_sector_code (sector_key, questionnaire_code),
             INDEX idx_knowledge_questionnaires_sector (sector_key),
             INDEX idx_knowledge_questionnaires_problem (problem_id)
@@ -313,6 +362,7 @@ function ensure_knowledge_schema(mysqli $mysqli): void
         ensure_sector_code_unique($mysqli, $table, $columns[0]);
     }
     add_column_if_missing($mysqli, 'knowledge_recommendations', 'clinical_note', 'TEXT DEFAULT NULL');
+    add_column_if_missing($mysqli, 'knowledge_questionnaires', 'resource_kind', "VARCHAR(30) NOT NULL DEFAULT 'questionnaire' AFTER notes");
     add_column_if_missing($mysqli, 'knowledge_problem_sources', 'sector_key', "VARCHAR(32) NOT NULL DEFAULT 'psicologia' FIRST");
     add_index_if_missing($mysqli, 'knowledge_problem_sources', 'idx_knowledge_problem_sources_sector', "INDEX idx_knowledge_problem_sources_sector (sector_key)");
     add_column_if_missing($mysqli, 'knowledge_problem_techniques', 'sector_key', "VARCHAR(32) NOT NULL DEFAULT 'psicologia' FIRST");
@@ -571,13 +621,14 @@ function import_recommendations(mysqli $mysqli, string $sector_key, array $rows,
 
 function import_questionnaires(mysqli $mysqli, string $sector_key, array $rows, array $problem_map): int
 {
-    $delete = $mysqli->prepare("DELETE FROM knowledge_questionnaires WHERE sector_key = ?");
-    $delete->bind_param('s', $sector_key);
+    $resource_kind = 'questionnaire';
+    $delete = $mysqli->prepare("DELETE FROM knowledge_questionnaires WHERE sector_key = ? AND resource_kind = ?");
+    $delete->bind_param('ss', $sector_key, $resource_kind);
     $delete->execute();
     $stmt = $mysqli->prepare("
-        INSERT INTO knowledge_questionnaires (sector_key, questionnaire_code, problem_id, name, use_area, questionnaire_type, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE problem_id = VALUES(problem_id), name = VALUES(name), use_area = VALUES(use_area), questionnaire_type = VALUES(questionnaire_type), notes = VALUES(notes)
+        INSERT INTO knowledge_questionnaires (sector_key, questionnaire_code, problem_id, name, use_area, questionnaire_type, notes, resource_kind)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE problem_id = VALUES(problem_id), name = VALUES(name), use_area = VALUES(use_area), questionnaire_type = VALUES(questionnaire_type), notes = VALUES(notes), resource_kind = VALUES(resource_kind)
     ");
     $count = 0;
     $processed = 0;
@@ -590,12 +641,60 @@ function import_questionnaires(mysqli $mysqli, string $sector_key, array $rows, 
         $type = pick($row, ['tipo', 'questionnaire_type']);
         $notes = pick($row, ['notas', 'notes']);
         if ($code && $problem_id && $name) {
-            $stmt->bind_param('ssissss', $sector_key, $code, $problem_id, $name, $use_area, $type, $notes);
+            $stmt->bind_param('ssisssss', $sector_key, $code, $problem_id, $name, $use_area, $type, $notes, $resource_kind);
             $stmt->execute();
             $count++;
         }
         if ($processed % 100 === 0) {
             keep_alive("$sector_key: $processed evaluaciones procesadas");
+        }
+    }
+    return $count;
+}
+
+function import_documents(mysqli $mysqli, string $sector_key, array $rows, array $problem_map): int
+{
+    $resource_kind = 'document';
+    $delete = $mysqli->prepare("DELETE FROM knowledge_questionnaires WHERE sector_key = ? AND resource_kind = ?");
+    $delete->bind_param('ss', $sector_key, $resource_kind);
+    $delete->execute();
+    $stmt = $mysqli->prepare("
+        INSERT INTO knowledge_questionnaires (sector_key, questionnaire_code, problem_id, name, use_area, questionnaire_type, notes, resource_kind)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE problem_id = VALUES(problem_id), name = VALUES(name), use_area = VALUES(use_area), questionnaire_type = VALUES(questionnaire_type), notes = VALUES(notes), resource_kind = VALUES(resource_kind)
+    ");
+    $count = 0;
+    $processed = 0;
+    $all_problem_ids = array_values(array_filter(array_map('intval', $problem_map)));
+    foreach ($rows as $row) {
+        $processed++;
+        $code = pick($row, ['documento_id', 'informe_id', 'resource_code']);
+        $name = pick($row, ['nombre', 'name']);
+        $problem_ids_raw = pick($row, ['problema_ids', 'problema_id', 'problem_ids']);
+        $target_problem_ids = [];
+        if (strtolower(trim($problem_ids_raw)) === 'todos') {
+            $target_problem_ids = $all_problem_ids;
+        } else {
+            foreach (split_ids($problem_ids_raw) as $problem_code) {
+                if (isset($problem_map[$problem_code])) {
+                    $target_problem_ids[] = (int) $problem_map[$problem_code];
+                }
+            }
+        }
+        $target_problem_ids = array_values(array_unique(array_filter($target_problem_ids)));
+        $use_area = 'Documento sugerido';
+        $type = pick($row, ['tipo', 'questionnaire_type']);
+        $notes = pick($row, ['descripcion', 'notas', 'notes']);
+        foreach ($target_problem_ids as $problem_id) {
+            if ($code && $problem_id && $name) {
+                $document_code = count($target_problem_ids) > 1 ? $code . '_' . $problem_id : $code;
+                $stmt->bind_param('ssisssss', $sector_key, $document_code, $problem_id, $name, $use_area, $type, $notes, $resource_kind);
+                $stmt->execute();
+                $count++;
+            }
+        }
+        if ($processed % 100 === 0) {
+            keep_alive("$sector_key: $processed documentos procesados");
         }
     }
     return $count;
@@ -683,6 +782,12 @@ function import_sector(mysqli $mysqli, string $sector_key, array $config): array
         ? import_questionnaires($mysqli, $sector_key, csv_rows($dir . '/' . $questionnaire_file), $problem_map)
         : 0;
 
+    $documents_file = $files['documents'] ?? '';
+    keep_alive("$sector_key: importando documentos/informes sugeridos");
+    $stats['documentos'] = $documents_file
+        ? import_documents($mysqli, $sector_key, csv_rows($dir . '/' . $documents_file), $problem_map)
+        : 0;
+
     keep_alive("Sector $sector_key completado");
 
     return $stats;
@@ -700,11 +805,29 @@ ini_set('output_buffering', 'off');
 ini_set('zlib.output_compression', '0');
 
 $sectors = knowledge_sector_import_configs(knowledge_default_import_base_dir(__DIR__));
+$requested_sector = strtolower(trim((string) ($_GET['sector'] ?? 'all')));
+$valid_sector_keys = array_keys($sectors);
+$sector_list_html = '<code>' . implode('</code>, <code>', array_map(fn($sector_key) => htmlspecialchars($sector_key, ENT_QUOTES, 'UTF-8'), $valid_sector_keys)) . '</code>';
+
+if ($requested_sector !== '' && $requested_sector !== 'all') {
+    if (!isset($sectors[$requested_sector])) {
+        http_response_code(400);
+        echo '<h1>Sector no valido</h1>';
+        echo '<p>No existe configuracion de importacion para el sector <code>' . htmlspecialchars($requested_sector, ENT_QUOTES, 'UTF-8') . '</code>.</p>';
+        echo '<p>Sectores disponibles: ' . $sector_list_html . '.</p>';
+        exit;
+    }
+    $sectors = [$requested_sector => $sectors[$requested_sector]];
+}
 
 if (($_GET['run'] ?? '') !== '1') {
     echo '<h1>Importador Knowledge por sector</h1>';
-    echo '<p>Este importador cargara Fisioterapia, Nutricion, Osteopatia, Logopedia y Quiropractica usando sector_key.</p>';
-    echo '<p><a href="?run=1">Ejecutar importacion</a></p>';
+    echo '<p>Este importador actualiza las tablas knowledge_* usando sector_key. Puedes importar todos los sectores o limitarlo a uno.</p>';
+    echo '<p>Sectores disponibles: ' . $sector_list_html . '.</p>';
+    echo '<p><a href="?run=1">Ejecutar todos</a></p>';
+    foreach ($valid_sector_keys as $sector_key) {
+        echo '<p><a href="?run=1&amp;sector=' . rawurlencode($sector_key) . '">Ejecutar solo ' . htmlspecialchars($sector_key, ENT_QUOTES, 'UTF-8') . '</a></p>';
+    }
     exit;
 }
 

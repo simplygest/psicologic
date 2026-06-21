@@ -1,0 +1,19 @@
+﻿evaluacion_id;problema_id;nombre;area_uso;tipo;notas;fuente_ids
+LOG_E001;LOG_P001;Muestra de habla espontánea;Habla/articulación;Observación/registro;Registrar inteligibilidad, sonidos afectados y contexto. Herramienta interna.;LOG_SRC002
+LOG_E002;LOG_P001;Registro fonético-fonológico;Habla/articulación;Evaluación;Registrar fonemas, posiciones, errores y procesos. No sustituye prueba estandarizada.;LOG_SRC002
+LOG_E003;LOG_P006;Inventario de vocabulario/comprensión;Lenguaje infantil;Evaluación;Usar instrumentos validados solo si se dispone de licencia/permiso.;LOG_SRC002
+LOG_E004;LOG_P007;CELF / pruebas de lenguaje equivalentes;Lenguaje infantil;Prueba estandarizada;No incluir ítems completos sin revisar licencia.;LOG_SRC002
+LOG_E005;LOG_P011;Registro de frecuencia de disfluencias;Fluidez;Seguimiento;Registrar frecuencia, situación, evitación y participación.;"LOG_SRC002;LOG_SRC003"
+LOG_E006;LOG_P014;Escala perceptiva de voz;Voz;Evaluación;"Requiere criterio profesional; revisar instrumentos específicos y licencia.";LOG_SRC002
+LOG_E007;LOG_P014;Voice Handicap Index u otra escala de impacto vocal;Voz;Cuestionario;Revisar licencia/condiciones antes de integrar completo.;LOG_SRC002
+LOG_E008;LOG_P018;Cribado de deglución;Deglución;Cribado;"Alto riesgo; requiere profesional cualificado y coordinación sanitaria.";LOG_SRC004
+LOG_E009;LOG_P018;Registro de tos/atragantamiento;Deglución;Seguimiento;Registro funcional, no diagnóstico aislado.;LOG_SRC004
+LOG_E010;LOG_P022;Pruebas de conciencia fonológica;Lectoescritura;Evaluación;Revisar licencias antes de integrar pruebas completas.;LOG_SRC002
+LOG_E011;LOG_P023;Registro de lectura: precisión, velocidad, comprensión;Lectoescritura;Seguimiento;"Puede ser interno; no sustituye pruebas estandarizadas.";LOG_SRC002
+LOG_E012;LOG_P026;Boston Diagnostic Aphasia Examination / prueba equivalente;Afasia;Prueba estandarizada;No incluir material completo sin licencia.;"LOG_SRC005;LOG_SRC010"
+LOG_E013;LOG_P026;Token Test / prueba de comprensión;Afasia/comprensión;Prueba estandarizada;Revisar licencia antes de integración.;LOG_SRC005
+LOG_E014;LOG_P030;Evaluación motora del habla;Habla motora;Evaluación;Requiere valoración profesional y coordinación si hay causa neurológica.;LOG_SRC011
+LOG_E015;LOG_P033;Checklist pragmático funcional;Comunicación social;Seguimiento;Herramienta propia de observación funcional.;LOG_SRC002
+LOG_E016;LOG_P036;Matriz de comunicación / evaluación CAA;CAA;Evaluación funcional;Seleccionar sistema según capacidades, entorno y preferencias.;LOG_SRC002
+LOG_E017;LOG_P038;Evaluación orofacial/miofuncional;Miofuncional;Evaluación;Requiere profesional cualificado y coordinación con odontología/ORL si procede.;LOG_SRC002
+LOG_E018;LOG_P042;Registro de discriminación auditiva;Audición/comunicación;Seguimiento;Puede complementarse con audiología.;LOG_SRC002

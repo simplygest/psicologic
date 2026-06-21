@@ -1,0 +1,11 @@
+﻿equipment_id;nombre_es;name_en;descripcion
+EQ_BODY;Peso corporal;bodyweight;Sin material
+EQ_BARBELL;Barra;barbell;Barra olímpica o similar
+EQ_DUMBBELL;Mancuernas;dumbbell;Una o dos mancuernas
+EQ_MACHINE;Máquina;machine;Máquinas guiadas de gimnasio
+EQ_CABLE;Polea;cable;Polea alta, baja o ajustable
+EQ_BAND;Banda elástica;resistance_band;Banda o goma elástica
+EQ_KETTLEBELL;Kettlebell;kettlebell;Pesa rusa
+EQ_TRX;TRX / suspensión;suspension;Entrenamiento en suspensión
+EQ_CARDIO;Cardio;cardio_machine;Cinta, bici, remo, elíptica
+EQ_MIXED;Mixto;mixed;Puede hacerse con varios materiales

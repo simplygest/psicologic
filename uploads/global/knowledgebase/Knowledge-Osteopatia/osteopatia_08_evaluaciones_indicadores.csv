@@ -1,0 +1,6 @@
+﻿evaluacion_id;problema_id;nombre;area_uso;tipo;notas;fuente_ids
+OST_E001;OST_P001;Escala dolor 0-10;Dolor lumbar;Seguimiento;Indicador simple de evolución, no diagnóstico.;"OST_SRC003;OST_SRC005"
+OST_E002;OST_P001;Oswestry Disability Index;Función lumbar;Cuestionario;Revisar licencia/condiciones antes de integrar formulario completo.;OST_SRC003
+OST_E003;OST_P003;Neck Disability Index;Función cervical;Cuestionario;Revisar licencia/condiciones antes de integrar formulario completo.;OST_SRC005
+OST_E004;OST_P007;Registro de apertura mandibular/síntomas;ATM;Seguimiento;Medición/registro funcional propio del profesional.;OST_SRC001
+OST_E005;OST_P013;Checklist de mantenimiento funcional;Mantenimiento;Checklist;Herramienta interna no diagnóstica.;OST_SRC005

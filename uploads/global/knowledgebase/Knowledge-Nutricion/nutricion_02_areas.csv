@@ -1,0 +1,9 @@
+﻿area_id;nombre;descripcion
+NUT_A001;Control de peso y composición corporal;Objetivos de pérdida, ganancia o mantenimiento de peso y composición corporal.
+NUT_A002;Diabetes y glucemia;Educación alimentaria y hábitos para personas con alteraciones glucémicas.
+NUT_A003;Salud cardiovascular;Hábitos alimentarios orientados a perfil lipídico, presión arterial y riesgo cardiovascular.
+NUT_A004;Digestivo;Síntomas digestivos, tolerancias, fibra, hidratación y hábitos intestinales.
+NUT_A005;Nutrición deportiva;Rendimiento, recuperación, energía, proteína e hidratación para actividad física.
+NUT_A006;Geriatría y fragilidad;Malnutrición, hidratación, proteína y prevención de pérdida funcional en mayores.
+NUT_A007;Educación alimentaria;Planificación de comidas, lectura de etiquetas, compra y adherencia.
+NUT_A008;Conducta alimentaria no clínica;Relación con la comida, hambre emocional y adherencia, sin sustituir evaluación psicológica especializada.

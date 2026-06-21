@@ -234,7 +234,8 @@ function fastcron_effective_api_key($mysqli)
     if ($table && $table->num_rows > 0) {
         $column = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'fastcron_api_key'");
         if ($column && $column->num_rows > 0) {
-            $res = $mysqli->query("SELECT fastcron_api_key FROM payment_settings WHERE id = 1");
+            $tenant_id = current_tenant_id();
+            $res = $mysqli->query("SELECT fastcron_api_key FROM payment_settings WHERE tenant_id = $tenant_id");
             $row = $res ? $res->fetch_assoc() : null;
             $stored = trim($row['fastcron_api_key'] ?? '');
         }
@@ -258,7 +259,8 @@ function fastcron_count_daily_planning_professionals($mysqli)
     $res = $mysqli->query("
         SELECT COUNT(*) AS total
         FROM professionals
-        WHERE is_active = 1
+        WHERE tenant_id = " . current_tenant_id() . "
+          AND is_active = 1
           AND appointment_summary_email_mode IN ('today_morning', 'tomorrow_evening')
     ");
     $row = $res ? $res->fetch_assoc() : null;
@@ -269,7 +271,8 @@ function fastcron_sync_professional_planning_cron($mysqli, $app_name = '', $fail
 {
     fastcron_ensure_planning_cron_column($mysqli);
 
-    $settings_res = $mysqli->query("SELECT fastcron_planning_cron_id FROM payment_settings WHERE id = 1");
+    $tenant_id = current_tenant_id();
+    $settings_res = $mysqli->query("SELECT fastcron_planning_cron_id FROM payment_settings WHERE tenant_id = $tenant_id");
     $settings = $settings_res ? $settings_res->fetch_assoc() : [];
     $current_cron_id = trim($settings['fastcron_planning_cron_id'] ?? '');
     $daily_professionals = fastcron_count_daily_planning_professionals($mysqli);
@@ -281,7 +284,7 @@ function fastcron_sync_professional_planning_cron($mysqli, $app_name = '', $fail
         $remote_cron = fastcron_get_cron($api_key, $current_cron_id);
         if (!$remote_cron) {
             $current_cron_id = '';
-            $mysqli->query("UPDATE payment_settings SET fastcron_planning_cron_id = NULL WHERE id = 1");
+            $mysqli->query("UPDATE payment_settings SET fastcron_planning_cron_id = NULL WHERE tenant_id = $tenant_id");
         }
     }
 
@@ -296,15 +299,15 @@ function fastcron_sync_professional_planning_cron($mysqli, $app_name = '', $fail
         $existing_cron = fastcron_find_cron_by_name($api_key, $cron_name);
         if ($existing_cron && !empty($existing_cron['id'])) {
             $existing_cron_id = (string) $existing_cron['id'];
-            $stmt = $mysqli->prepare("UPDATE payment_settings SET fastcron_planning_cron_id = ? WHERE id = 1");
-            $stmt->bind_param("s", $existing_cron_id);
+            $stmt = $mysqli->prepare("UPDATE payment_settings SET fastcron_planning_cron_id = ? WHERE tenant_id = ?");
+            $stmt->bind_param("si", $existing_cron_id, $tenant_id);
             $stmt->execute();
             return ['action' => 'linked_existing', 'cron_id' => $existing_cron_id, 'daily_professionals' => $daily_professionals];
         }
 
         $new_cron_id = fastcron_create_planning_cron($api_key, $cron_url, $app_name);
-        $stmt = $mysqli->prepare("UPDATE payment_settings SET fastcron_planning_cron_id = ? WHERE id = 1");
-        $stmt->bind_param("s", $new_cron_id);
+        $stmt = $mysqli->prepare("UPDATE payment_settings SET fastcron_planning_cron_id = ? WHERE tenant_id = ?");
+        $stmt->bind_param("si", $new_cron_id, $tenant_id);
         $stmt->execute();
 
         return ['action' => 'created', 'cron_id' => $new_cron_id, 'daily_professionals' => $daily_professionals];
@@ -319,7 +322,7 @@ function fastcron_sync_professional_planning_cron($mysqli, $app_name = '', $fail
         }
 
         fastcron_delete_cron($api_key, $current_cron_id);
-        $mysqli->query("UPDATE payment_settings SET fastcron_planning_cron_id = NULL WHERE id = 1");
+        $mysqli->query("UPDATE payment_settings SET fastcron_planning_cron_id = NULL WHERE tenant_id = $tenant_id");
 
         return ['action' => 'deleted', 'cron_id' => '', 'daily_professionals' => 0];
     }

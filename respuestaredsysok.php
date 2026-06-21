@@ -9,6 +9,7 @@ $message = 'El pago se ha completado correctamente.';
 $detail = '';
 $valid = false;
 $branding = get_public_branding_settings($mysqli);
+$tenant_id = current_tenant_id();
 
 $token = $_GET['t'] ?? '';
 $token = preg_match('/^[a-f0-9]{64}$/', $token) ? $token : '';
@@ -28,14 +29,14 @@ if ($token) {
                b.name AS bonus_name, b.session_count AS bonus_sessions, b.price AS bonus_price,
                u.name, u.email, u.phone
         FROM payment_attempts pa
-        LEFT JOIN appointments a ON a.id = pa.appointment_id
-        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
-        LEFT JOIN appointment_services s ON s.id = so.service_id
-        LEFT JOIN appointment_bonuses b ON b.id = pa.bonus_id
-        JOIN users u ON u.id = pa.user_id
-        WHERE pa.token = ?
+        LEFT JOIN appointments a ON a.id = pa.appointment_id AND a.tenant_id = pa.tenant_id
+        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id AND so.tenant_id = pa.tenant_id
+        LEFT JOIN appointment_services s ON s.id = so.service_id AND s.tenant_id = pa.tenant_id
+        LEFT JOIN appointment_bonuses b ON b.id = pa.bonus_id AND b.tenant_id = pa.tenant_id
+        JOIN users u ON u.id = pa.user_id AND u.tenant_id = pa.tenant_id
+        WHERE pa.tenant_id = ? AND pa.token = ?
     ");
-    $stmt->bind_param("s", $token);
+    $stmt->bind_param("is", $tenant_id, $token);
     $stmt->execute();
     $payment = $stmt->get_result()->fetch_assoc();
 
@@ -44,13 +45,13 @@ if ($token) {
         $mysqli->begin_transaction();
 
         try {
-            $stmt = $mysqli->prepare("UPDATE payment_attempts SET status = 'OK' WHERE id = ?");
-            $stmt->bind_param("i", $payment['id']);
+            $stmt = $mysqli->prepare("UPDATE payment_attempts SET status = 'OK' WHERE tenant_id = ? AND id = ?");
+            $stmt->bind_param("ii", $tenant_id, $payment['id']);
             $stmt->execute();
 
             if (($payment['purchase_type'] ?? 'appointment') === 'bonus') {
-                $already = $mysqli->prepare("SELECT id FROM patient_bonuses WHERE payment_attempt_id = ? LIMIT 1");
-                $already->bind_param("i", $payment['id']);
+                $already = $mysqli->prepare("SELECT id FROM patient_bonuses WHERE tenant_id = ? AND payment_attempt_id = ? LIMIT 1");
+                $already->bind_param("ii", $tenant_id, $payment['id']);
                 $already->execute();
                 $existing_bonus = $already->get_result()->fetch_assoc();
 
@@ -59,19 +60,19 @@ if ($token) {
                     $total_sessions = (int) $payment['bonus_sessions'];
                     $remaining_sessions = $total_sessions;
                     $stmt = $mysqli->prepare("
-                        INSERT INTO patient_bonuses (user_id, bonus_id, total_sessions, remaining_sessions, status, purchased_at, payment_attempt_id)
-                        VALUES (?, ?, ?, ?, ?, NOW(), ?)
+                        INSERT INTO patient_bonuses (tenant_id, user_id, bonus_id, total_sessions, remaining_sessions, status, purchased_at, payment_attempt_id)
+                        VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)
                     ");
-                    $stmt->bind_param("iiiisi", $payment['user_id'], $payment['bonus_id'], $total_sessions, $remaining_sessions, $status, $payment['id']);
+                    $stmt->bind_param("iiiiisi", $tenant_id, $payment['user_id'], $payment['bonus_id'], $total_sessions, $remaining_sessions, $status, $payment['id']);
                     $stmt->execute();
                 }
             } else {
                 $stmt = $mysqli->prepare("
                     UPDATE appointments
                     SET payment_status = 'paid', payment_method = ?, paid_at = NOW(), payment_attempt_id = ?
-                    WHERE id = ?
+                    WHERE tenant_id = ? AND id = ?
                 ");
-                $stmt->bind_param("sii", $payment['payment_method'], $payment['id'], $payment['appointment_id']);
+                $stmt->bind_param("siii", $payment['payment_method'], $payment['id'], $tenant_id, $payment['appointment_id']);
                 $stmt->execute();
             }
 

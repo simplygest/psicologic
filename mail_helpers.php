@@ -77,11 +77,12 @@ function ensure_admin_notification_email_column($mysqli)
 function get_admin_notification_email($mysqli)
 {
     ensure_admin_notification_email_column($mysqli);
+    $tenant_id = current_tenant_id();
 
     $res = $mysqli->query("
         SELECT email_provider, admin_notification_email, smtp_from_email, google_connected_email
         FROM payment_settings
-        WHERE id = 1
+        WHERE tenant_id = $tenant_id
     ");
     $row = $res->fetch_assoc();
     if (!$row) {
@@ -99,12 +100,13 @@ function get_admin_notification_email($mysqli)
 function get_email_settings($mysqli)
 {
     ensure_admin_notification_email_column($mysqli);
+    $tenant_id = current_tenant_id();
 
     $res = $mysqli->query("
         SELECT app_name, email_provider, smtp_host, smtp_port, smtp_username, smtp_password, smtp_secure,
                smtp_from_email, smtp_from_name, google_connected_email
         FROM payment_settings
-        WHERE id = 1
+        WHERE tenant_id = $tenant_id
     ");
     return $res->fetch_assoc() ?: [];
 }
@@ -112,7 +114,8 @@ function get_email_settings($mysqli)
 function get_app_name($mysqli)
 {
     ensure_admin_notification_email_column($mysqli);
-    $res = $mysqli->query("SELECT app_name FROM payment_settings WHERE id = 1");
+    $tenant_id = current_tenant_id();
+    $res = $mysqli->query("SELECT app_name FROM payment_settings WHERE tenant_id = $tenant_id");
     $row = $res->fetch_assoc();
     return trim($row['app_name'] ?? '') ?: 'SimplyGest Praxis';
 }
@@ -265,11 +268,13 @@ function get_appointment_professional($mysqli, $appointment)
     $stmt = $mysqli->prepare("
         SELECT p.id, p.user_id, p.display_name, p.public_email, u.email AS user_email
         FROM professionals p
-        LEFT JOIN users u ON u.id = p.user_id
-        WHERE p.id = ?
+        LEFT JOIN users u ON u.id = p.user_id AND u.tenant_id = p.tenant_id
+        WHERE p.tenant_id = ?
+          AND p.id = ?
         LIMIT 1
     ");
-    $stmt->bind_param("i", $professional_id);
+    $tenant_id = current_tenant_id();
+    $stmt->bind_param("ii", $tenant_id, $professional_id);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
     if (!$row) {
@@ -342,7 +347,8 @@ function appointment_display_settings($mysqli)
     if (!$enabled_column || $enabled_column->num_rows === 0 || !$offset_column || $offset_column->num_rows === 0) {
         return [];
     }
-    $res = $mysqli->query("SELECT display_effective_duration_enabled, display_duration_offset_minutes FROM payment_settings WHERE id = 1");
+    $tenant_id = current_tenant_id();
+    $res = $mysqli->query("SELECT display_effective_duration_enabled, display_duration_offset_minutes FROM payment_settings WHERE tenant_id = $tenant_id");
     return $res ? ($res->fetch_assoc() ?: []) : [];
 }
 
@@ -385,10 +391,11 @@ function professional_appointments_summary_table($mysqli, $professional_id, $sta
                u.name AS patient_name,
                s.name AS service_name
         FROM appointments a
-        INNER JOIN users u ON u.id = a.user_id
-        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
-        LEFT JOIN appointment_services s ON s.id = so.service_id
-        WHERE a.professional_id = ?
+        INNER JOIN users u ON u.id = a.user_id AND u.tenant_id = a.tenant_id
+        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id AND so.tenant_id = a.tenant_id
+        LEFT JOIN appointment_services s ON s.id = so.service_id AND s.tenant_id = a.tenant_id
+        WHERE a.tenant_id = ?
+          AND a.professional_id = ?
           AND a.status = 'booked'
           AND a.appointment_date >= ?
           AND a.appointment_date < ?
@@ -397,7 +404,8 @@ function professional_appointments_summary_table($mysqli, $professional_id, $sta
     if (!$stmt) {
         return '';
     }
-    $stmt->bind_param('iss', $professional_id, $start_sql, $end_sql);
+    $tenant_id = current_tenant_id();
+    $stmt->bind_param('iiss', $tenant_id, $professional_id, $start_sql, $end_sql);
     $stmt->execute();
     $res = $stmt->get_result();
     $display_settings = appointment_display_settings($mysqli);

@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "key": "psicopedagogia",
+  "name": "Psicopedagogia",
+  "description": "Configuracion de textos para consultas y centros de psicopedagogia.",
+  "labels": {
+    "patient": {
+      "singular": "alumno",
+      "plural": "alumnos",
+      "titleSingular": "Alumno",
+      "titlePlural": "Alumnos"
+    },
+    "professional": {
+      "singular": "psicopedagogo",
+      "plural": "psicopedagogos",
+      "titleSingular": "Psicopedagogo",
+      "titlePlural": "Psicopedagogos"
+    },
+    "organization": {
+      "singular": "centro",
+      "plural": "centros",
+      "titleSingular": "Centro",
+      "titlePlural": "Centros"
+    },
+    "appointment": {
+      "singular": "cita",
+      "plural": "citas",
+      "titleSingular": "Cita",
+      "titlePlural": "Citas"
+    },
+    "session": {
+      "singular": "sesion",
+      "plural": "sesiones",
+      "titleSingular": "Sesion",
+      "titlePlural": "Sesiones"
+    },
+    "workPlan": {
+      "singular": "plan de intervencion",
+      "plural": "planes de intervencion",
+      "titleSingular": "Plan de intervencion",
+      "titlePlural": "Planes de intervencion"
+    },
+    "task": {
+      "singular": "actividad",
+      "plural": "actividades",
+      "titleSingular": "Actividad",
+      "titlePlural": "Actividades"
+    },
+    "evolution": {
+      "singular": "progreso",
+      "plural": "progresos",
+      "titleSingular": "Progreso",
+      "titlePlural": "Progresos"
+    },
+    "problem": {
+      "singular": "necesidad educativa",
+      "plural": "necesidades educativas",
+      "titleSingular": "Necesidad educativa",
+      "titlePlural": "Necesidades educativas"
+    },
+    "evaluation": {
+      "singular": "evaluacion psicopedagogica",
+      "plural": "evaluaciones psicopedagogicas",
+      "titleSingular": "Evaluacion psicopedagogica",
+      "titlePlural": "Evaluaciones psicopedagogicas"
+    },
+    "technique": {
+      "singular": "estrategia",
+      "plural": "estrategias",
+      "titleSingular": "Estrategia",
+      "titlePlural": "Estrategias"
+    },
+    "resource": {
+      "singular": "recurso",
+      "plural": "recursos",
+      "titleSingular": "Recurso",
+      "titlePlural": "Recursos"
+    },
+    "goal": {
+      "singular": "objetivo educativo",
+      "plural": "objetivos educativos",
+      "titleSingular": "Objetivo educativo",
+      "titlePlural": "Objetivos educativos"
+    }
+  },
+  "clinicalTerms": {
+    "diagnosis": "perfil psicopedagogico",
+    "treatment": "intervencion psicopedagogica",
+    "exercise": "actividad psicopedagogica",
+    "followUp": "seguimiento",
+    "discharge": "alta"
+  },
+  "portal": {
+    "bookingCta": "Reserva tu cita",
+    "myAppointments": "Mis citas",
+    "myTasks": "Mis actividades"
+  },
+  "reports": {
+    "internalPatientReport": "Informe interno del alumno",
+    "patientReport": "Informe para alumno"
+  },
+  "featureHints": {
+    "workPlan": true,
+    "patientPortal": true,
+    "clinicalEvolution": true,
+    "sessionFiles": true
+  },
+  "appointmentServices": [
+    {
+      "key": "assessment",
+      "label": "Evaluacion",
+      "name": "Evaluacion psicopedagogica",
+      "enabledByDefault": true
+    },
+    {
+      "key": "intervention",
+      "label": "Intervencion",
+      "name": "Sesion de intervencion",
+      "enabledByDefault": true
+    },
+    {
+      "key": "family_school",
+      "label": "Familia/centro",
+      "name": "Coordinacion familiar o escolar",
+      "enabledByDefault": false
+    }
+  ],
+  "appointmentDurations": [
+    {
+      "minutes": 45,
+      "label": "45 minutos",
+      "enabledByDefault": false
+    },
+    {
+      "minutes": 60,
+      "label": "60 minutos",
+      "enabledByDefault": true
+    },
+    {
+      "minutes": 90,
+      "label": "90 minutos",
+      "enabledByDefault": false
+    }
+  ]
+}

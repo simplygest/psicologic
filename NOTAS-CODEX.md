@@ -1,4 +1,4 @@
-﻿# Notas Codex - SimplyGest Praxis
+# Notas Codex - SimplyGest Praxis
 
 Ultima revision: 2026-06-15
 
@@ -76,6 +76,17 @@ La configuracion principal esta en `config.php` y la conexion MySQL en `db.php`.
 
 ## Cambios/novedades recientes detectadas
 
+- La pestaña de archivos del paciente pasa a funcionar como Documentacion unificada:
+  - Mantiene visibles los adjuntos historicos de evolucion/sesion.
+  - Anade `patient_documents` para archivos y cuestionarios con tipo, fecha, nota/resultado, observaciones, estado y visibilidad en Portal.
+  - Anade `patient_document_versions` para guardar nuevas versiones de cuestionarios/documentos cuando se vuelven a subir rellenados o revisados.
+  - No se importan cuestionarios sugeridos desde la base de conocimiento para evitar problemas de licencia.
+- Integracion inicial WorkoutX para Fitness:
+  - `workoutx_helpers.php` centraliza llamadas a la Exercise API con `X-WorkoutX-Key`.
+  - `WORKOUTX_API_KEY` se lee desde `workoutx_api_key` en configuracion privada.
+  - `api/admin.php?action=workoutx_exercise_media` busca/casa un ejercicio local y devuelve GIF/metadatos para el modal.
+  - `sync_workoutx_exercises.php` sincroniza IDs/GIFs/metadatos de WorkoutX con `fitness_exercises` y crea `fitness_workoutx_muscle_map`.
+  - No se guarda la API key en el repositorio.
 - Opcion global en Configuracion > General > Duraciones para mostrar una duracion efectiva al paciente/profesional restando un offset visual (por defecto 5 min) sin cambiar la duracion real del slot.
 - Se anadio `cron_reminders.php`.
 - Se anadio `fastcron_helpers.php`.
@@ -403,6 +414,31 @@ git config --global --add safe.directory C:/Sete/psicologic
   - Definir que caracteristicas son realmente ocultables sin romper flujos.
   - Diferenciar configuracion visual/operativa (`simple`, `advanced`, `custom`) de limitaciones por plan contratado.
   - Actualizar los tres JSON cuando se definan flags definitivos y aplicar esos flags progresivamente en UI/API.
+- Retomar matriz de planes (`plan-config/*.json`):
+  - `Novus` y `default` quedan con las funciones comerciales desactivadas por defecto.
+  - `Summum` queda con todas las funciones activadas.
+  - `Magister` queda provisionalmente igual que `Novus` hasta definir su matriz real.
+  - Dependencias a tener en cuenta: las invitaciones dependen de Portal de pacientes; pago online depende de Redsys/configuracion de cobro; tareas visibles en portal dependen de Portal + tareas; importar tareas del knowledge depende de Knowledge Base + tareas; cuestionarios dependeran de Knowledge Base si se alimentan desde esa tabla; recordatorios 24h dependen de envio de email; sincronizacion de calendario depende del proveedor conectado; equipo de trabajo debe limitar alta/gestion de profesionales cuando el plan no lo permita; personalizar UI solo deberia mostrarse si el plan lo permite.
+  - Primera capa aplicada en UI/API: portal, invitaciones, bonos, pagos online, recordatorios, calendario online, logo propio, equipo, informes, tareas, plantillas, knowledge import y cuestionarios ya consultan flags del plan/dashboard en los puntos principales.
+  - Pendiente fino: revisar modulo por modulo si quedan accesos secundarios no cubiertos, especialmente paginas publicas y flujos legacy con datos ya activos antes de cambiar de plan.
+- Preparacion para deployment multi-tenant con una sola instalacion:
+  - Se anade `app_paths.php` como capa central para resolver `tenant_key`, uploads publicos, uploads protegidos y config propia del tenant.
+  - Por compatibilidad, si no hay resolver global todavia, el tenant se infiere de `tenant_key` en config o del primer segmento de la URL; en la instalacion actual seguira resolviendo como `psicologic`.
+  - Las nuevas subidas publicas van a `uploads/{tenant_id}/...` (por ejemplo `uploads/1/settings/...`) para que no dependan de nombres editables.
+  - Los recursos globales compartidos pueden vivir en `uploads/global/...` (`plan-config`, `sector-texts`, `dashboard-config`, imagenes internas, etc.) con fallback a las carpetas versionadas actuales.
+  - Los nuevos documentos/adjuntos protegidos van a `_protected/uploads/{tenant_id}/...`, resolviendo fisicamente contra `protected_uploads_root` o, por defecto, contra la carpeta `_protected` hermana del proyecto.
+  - Las rutas antiguas `uploads/...` y `_protected/uploads/psicologic/...` se siguen resolviendo para no romper archivos ya guardados en BD.
+  - `dashboard-config/simple.json` y `advanced.json`, `plan-config/*.json` y `sector-texts/*.json` siguen siendo globales.
+  - El JSON personalizado del dashboard pasa a guardarse por tenant en `uploads/{tenant_id}/config/dashboard-custom.json`; si no existe, se inicializa desde el custom global o desde advanced.
+  - La tabla `tenants` es la fuente principal del tenant activo. `tenant_key` debe ser unico; `db_name` no debe ser unico porque en el modelo multi-tenant puro varios tenants pueden compartir el mismo schema (`sgpraxis`) y el aislamiento se hace con `tenant_id`.
+  - Si un tenant esta en `status = pending` o `installing`, la app redirige al instalador antes de permitir login/dashboard. Las llamadas JSON reciben `install_required`.
+  - Los indices unicos de datos reutilizables por tenants deben incluir `tenant_id`. Se migra `users.email` y `users.phone` a `UNIQUE (tenant_id, email/phone)` y `professionals.public_slug` a `UNIQUE (tenant_id, public_slug)`.
+  - Los unicos globales aceptables son tokens aleatorios o claves globales reales (`tenants.tenant_key`, reset tokens, tokens de invitacion, codigos del knowledge por sector, etc.).
+- Primer prototipo de mapa muscular:
+  - Disponible en la pestana de Diagnostico/Objetivo para sectores `fitness`, `fisioterapia`, `quiropractica` y `osteopatia`, siempre que el plan permita Knowledge Base.
+  - Usa la libreria Body Muscles por CDN y permite alternar vista frontal/posterior, seleccionar varios musculos y consultar resultados relacionados.
+  - Para `fitness`, el endpoint `body_map_recommendations` consulta `fitness_exercises` y `fitness_exercise_regions` enlazadas con `praxis_bodymuscles_regions`.
+  - Para Fisioterapia/Osteopatia/Quiropractica el panel queda preparado y devuelve mensaje vacio hasta que existan recomendaciones vinculadas a musculos.
 
 ## Como retomar en otro PC
 

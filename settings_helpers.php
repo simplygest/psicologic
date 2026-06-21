@@ -1,5 +1,7 @@
 <?php
 require_once __DIR__ . '/sector_text_helpers.php';
+require_once __DIR__ . '/dashboard_config_helpers.php';
+require_once __DIR__ . '/app_paths.php';
 
 function ensure_branding_columns($mysqli)
 {
@@ -20,6 +22,7 @@ function ensure_branding_columns($mysqli)
         'public_site_enabled' => "ALTER TABLE payment_settings ADD public_site_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER show_profile_image_public",
         'show_prices_public' => "ALTER TABLE payment_settings ADD show_prices_public TINYINT(1) NOT NULL DEFAULT 0 AFTER show_profile_image_public",
         'show_contact_public' => "ALTER TABLE payment_settings ADD show_contact_public TINYINT(1) NOT NULL DEFAULT 0 AFTER show_prices_public",
+        'plan_key' => "ALTER TABLE payment_settings ADD plan_key VARCHAR(32) NOT NULL DEFAULT 'novus' AFTER show_contact_public",
         'dashboard_config_mode' => "ALTER TABLE payment_settings ADD dashboard_config_mode VARCHAR(16) NOT NULL DEFAULT 'simple'",
         'sector_texts_key' => "ALTER TABLE payment_settings ADD sector_texts_key VARCHAR(32) NOT NULL DEFAULT 'psicologia' AFTER dashboard_config_mode",
         'online_booking_enabled' => "ALTER TABLE payment_settings ADD online_booking_enabled TINYINT(1) NOT NULL DEFAULT 1 AFTER show_contact_public",
@@ -41,6 +44,30 @@ function ensure_branding_columns($mysqli)
             $mysqli->query($sql);
         }
     }
+
+    $column_res = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'tenant_id'");
+    if ($column_res && $column_res->num_rows === 0) {
+        $mysqli->query("ALTER TABLE payment_settings ADD tenant_id INT UNSIGNED NOT NULL DEFAULT 1 AFTER id");
+    }
+}
+
+function ensure_current_tenant_payment_settings($mysqli)
+{
+    ensure_branding_columns($mysqli);
+    $tenant_id = current_tenant_id();
+    $tenant = current_tenant();
+    $app_name = trim((string) ($tenant['app_name'] ?? '')) ?: 'SimplyGest Praxis';
+    $sector_key = trim((string) ($tenant['sector_texts_key'] ?? '')) ?: 'psicologia';
+    $dashboard_mode = trim((string) ($tenant['dashboard_config_mode'] ?? '')) ?: 'advanced';
+    $public_site = (int) ($tenant['public_site_enabled'] ?? 0);
+
+    $stmt = $mysqli->prepare("
+        INSERT INTO payment_settings (id, tenant_id, app_name, sector_texts_key, dashboard_config_mode, public_site_enabled, primary_color)
+        VALUES (?, ?, ?, ?, ?, ?, '#4285f4')
+        ON DUPLICATE KEY UPDATE sector_texts_key = VALUES(sector_texts_key)
+    ");
+    $stmt->bind_param("iisssi", $tenant_id, $tenant_id, $app_name, $sector_key, $dashboard_mode, $public_site);
+    $stmt->execute();
 }
 
 function get_public_branding_settings($mysqli)
@@ -57,6 +84,7 @@ function get_public_branding_settings($mysqli)
         'public_site_enabled' => 0,
         'show_prices_public' => 0,
         'show_contact_public' => 0,
+        'plan_key' => 'novus',
         'online_booking_enabled' => 1,
         'patient_registration_mode' => 'invite',
         'initial_calendar_view' => 'month',
@@ -78,12 +106,17 @@ function get_public_branding_settings($mysqli)
 
     ensure_branding_columns($mysqli);
 
-    $res = $mysqli->query("
-        SELECT app_name, site_tagline, site_phone, profile_image_path, landing_image_path, favicon_path, primary_color, show_profile_image_public, public_site_enabled, show_prices_public, show_contact_public, online_booking_enabled, patient_registration_mode, initial_calendar_view, sector_texts_key,
+    ensure_current_tenant_payment_settings($mysqli);
+    $tenant_id = current_tenant_id();
+    $stmt = $mysqli->prepare("
+        SELECT app_name, site_tagline, site_phone, profile_image_path, landing_image_path, favicon_path, primary_color, show_profile_image_public, public_site_enabled, show_prices_public, show_contact_public, plan_key, online_booking_enabled, patient_registration_mode, initial_calendar_view, sector_texts_key,
                legal_owner_name, legal_nif, legal_address, legal_email, legal_license_number, legal_professional_college, legal_uses_non_technical_cookies, legal_terms_notes
         FROM payment_settings
-        WHERE id = 1
+        WHERE tenant_id = ?
     ");
+    $stmt->bind_param("i", $tenant_id);
+    $stmt->execute();
+    $res = $stmt->get_result();
 
     if ($row = $res->fetch_assoc()) {
         $settings['app_name'] = trim($row['app_name'] ?? '') ?: 'SimplyGest Praxis';
@@ -97,6 +130,9 @@ function get_public_branding_settings($mysqli)
         $settings['public_site_enabled'] = (int) ($row['public_site_enabled'] ?? 0);
         $settings['show_prices_public'] = (int) ($row['show_prices_public'] ?? 0);
         $settings['show_contact_public'] = (int) ($row['show_contact_public'] ?? 0);
+        $tenant = function_exists('current_tenant') ? current_tenant() : null;
+        $tenant_plan_key = plan_config_normalize_key(is_array($tenant) ? ($tenant['plan_key'] ?? '') : '', '');
+        $settings['plan_key'] = $tenant_plan_key !== '' ? $tenant_plan_key : 'novus';
         $settings['online_booking_enabled'] = (int) ($row['online_booking_enabled'] ?? 1);
         $settings['patient_registration_mode'] = in_array(($row['patient_registration_mode'] ?? ''), ['invite', 'open'], true) ? $row['patient_registration_mode'] : 'invite';
         $settings['initial_calendar_view'] = in_array(($row['initial_calendar_view'] ?? ''), ['week', 'month'], true) ? $row['initial_calendar_view'] : 'month';
@@ -119,7 +155,10 @@ function get_public_branding_settings($mysqli)
 function online_booking_enabled($mysqli)
 {
     $settings = get_public_branding_settings($mysqli);
-    return (int) ($settings['online_booking_enabled'] ?? 1) === 1;
+    $plan_config = plan_config_for_key($settings['plan_key'] ?? 'novus');
+    return (int) ($settings['online_booking_enabled'] ?? 1) === 1
+        && plan_config_feature_enabled($plan_config, 'patientPortal.enabled', false)
+        && plan_config_feature_enabled($plan_config, 'onlineBooking.enabled', false);
 }
 
 function patient_registration_is_open($mysqli)
@@ -140,7 +179,7 @@ function public_asset_local_path($path)
         return '';
     }
 
-    return __DIR__ . '/' . $path;
+    return app_public_path($path);
 }
 
 function public_asset_exists($path)
@@ -178,7 +217,7 @@ function generate_favicon_from_public_image($source_public_path, $force = false)
         return '';
     }
 
-    $favicon_public_path = 'uploads/settings/favicon.ico';
+    $favicon_public_path = app_tenant_public_upload_relative_path('settings', 'favicon.ico');
     $favicon_path = public_asset_local_path($favicon_public_path);
     if (!$force && is_file($favicon_path) && filemtime($favicon_path) >= filemtime($source_path)) {
         return $favicon_public_path;
@@ -223,7 +262,7 @@ function generate_favicon_from_public_image($source_public_path, $force = false)
     }
 
     $upload_dir = dirname($favicon_path);
-    if (!is_dir($upload_dir) && !mkdir($upload_dir, 0755, true)) {
+    if (!app_ensure_dir($upload_dir)) {
         return '';
     }
 
@@ -260,9 +299,10 @@ function ensure_branding_favicon($mysqli, &$settings)
     }
 
     $settings['favicon_path'] = $generated_path;
-    $stmt = $mysqli->prepare("UPDATE payment_settings SET favicon_path = ? WHERE id = 1");
+    $tenant_id = current_tenant_id();
+    $stmt = $mysqli->prepare("UPDATE payment_settings SET favicon_path = ? WHERE tenant_id = ?");
     if ($stmt) {
-        $stmt->bind_param("s", $generated_path);
+        $stmt->bind_param("si", $generated_path, $tenant_id);
         $stmt->execute();
     }
 }
@@ -297,7 +337,11 @@ function favicon_link_tags($settings)
         'gif' => 'image/gif'
     ];
     $type = $types[$extension] ?? 'image/png';
-    $safe_href = htmlspecialchars($href . $version, ENT_QUOTES, 'UTF-8');
+    $asset_href = app_upload_asset_url($href);
+    if ($asset_href === $href) {
+        $asset_href .= $version;
+    }
+    $safe_href = htmlspecialchars($asset_href, ENT_QUOTES, 'UTF-8');
     $safe_type = htmlspecialchars($type, ENT_QUOTES, 'UTF-8');
 
     return '<link rel="icon" href="' . $safe_href . '" type="' . $safe_type . '">' . "\n"

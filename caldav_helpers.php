@@ -248,10 +248,11 @@ function caldav_create_event_in_default_calendar($base_url, $username, $password
 
 function caldav_get_settings($mysqli)
 {
+    $tenant_id = current_tenant_id();
     $res = $mysqli->query("
         SELECT calendar_provider, icloud_calendar_email, icloud_calendar_app_password, icloud_calendar_url
         FROM payment_settings
-        WHERE id = 1
+        WHERE tenant_id = $tenant_id
     ");
 
     return $res->fetch_assoc() ?: [];
@@ -287,12 +288,14 @@ function icloud_create_calendar_event($mysqli, $appointment_id)
                s.name AS service_name,
                u.name, u.email, u.phone
         FROM appointments a
-        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
-        LEFT JOIN appointment_services s ON s.id = so.service_id
-        JOIN users u ON u.id = a.user_id
-        WHERE a.id = ?
+        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id AND so.tenant_id = a.tenant_id
+        LEFT JOIN appointment_services s ON s.id = so.service_id AND s.tenant_id = a.tenant_id
+        JOIN users u ON u.id = a.user_id AND u.tenant_id = a.tenant_id
+        WHERE a.tenant_id = ?
+          AND a.id = ?
     ");
-    $stmt->bind_param("i", $appointment_id);
+    $tenant_id = current_tenant_id();
+    $stmt->bind_param("ii", $tenant_id, $appointment_id);
     $stmt->execute();
     $appointment = $stmt->get_result()->fetch_assoc();
     if (!$appointment) {
@@ -323,8 +326,8 @@ function icloud_create_calendar_event($mysqli, $appointment_id)
         date_default_timezone_get()
     );
 
-    $stmt = $mysqli->prepare("UPDATE appointments SET icloud_calendar_event_url = ? WHERE id = ?");
-    $stmt->bind_param("si", $result['event_url'], $appointment_id);
+    $stmt = $mysqli->prepare("UPDATE appointments SET icloud_calendar_event_url = ? WHERE tenant_id = ? AND id = ?");
+    $stmt->bind_param("sii", $result['event_url'], $tenant_id, $appointment_id);
     $stmt->execute();
 
     return $result['event_url'];
@@ -334,8 +337,9 @@ function icloud_delete_calendar_event($mysqli, $appointment_id)
 {
     caldav_ensure_appointment_event_column($mysqli);
 
-    $stmt = $mysqli->prepare("SELECT icloud_calendar_event_url FROM appointments WHERE id = ?");
-    $stmt->bind_param("i", $appointment_id);
+    $tenant_id = current_tenant_id();
+    $stmt = $mysqli->prepare("SELECT icloud_calendar_event_url FROM appointments WHERE tenant_id = ? AND id = ?");
+    $stmt->bind_param("ii", $tenant_id, $appointment_id);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
     $event_url = trim($row['icloud_calendar_event_url'] ?? '');

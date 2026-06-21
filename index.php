@@ -8,8 +8,11 @@ $branding = get_public_branding_settings($mysqli);
 $app_name = $branding['app_name'];
 $site_tagline = trim($branding['site_tagline'] ?? '') ?: 'Psicología sanitaria y neuropsicología en Santa Cruz de Tenerife';
 $site_phone = trim($branding['site_phone'] ?? '');
-$profile_image_path = $branding['show_profile_image_public'] ? $branding['profile_image_path'] : '';
-$landing_image_path = $branding['landing_image_path'] ?: '';
+$official_brand_logo_url = app_official_brand_logo_url();
+$tenant_brand_logo_url = trim((string) ($branding['profile_image_path'] ?? '')) !== ''
+    ? app_upload_asset_url($branding['profile_image_path'])
+    : $official_brand_logo_url;
+$landing_image_path = $branding['landing_image_path'] ? app_upload_asset_url($branding['landing_image_path']) : '';
 $show_prices_public = (int) ($branding['show_prices_public'] ?? 0) === 1;
 $show_contact_public = (int) ($branding['show_contact_public'] ?? 0) === 1;
 $show_team_public = cabinet_public_team_enabled($mysqli);
@@ -26,7 +29,8 @@ $settings_table = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
 if ($settings_table && $settings_table->num_rows > 0) {
     $delivery_column = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'appointment_delivery_mode'");
     if ($delivery_column && $delivery_column->num_rows > 0) {
-        $delivery_res = $mysqli->query("SELECT appointment_delivery_mode FROM payment_settings WHERE id = 1");
+        $tenant_id = current_tenant_id();
+        $delivery_res = $mysqli->query("SELECT appointment_delivery_mode FROM payment_settings WHERE tenant_id = $tenant_id");
         if ($delivery_row = $delivery_res->fetch_assoc()) {
             $appointment_delivery_mode = $delivery_row['appointment_delivery_mode'] ?: 'both';
         }
@@ -65,10 +69,7 @@ function public_delivery_text($mode)
     <nav class="navbar navbar-expand-lg public-navbar py-3">
         <div class="container">
             <a class="navbar-brand d-flex align-items-center gap-2" href="index.php">
-                <?php if ($profile_image_path): ?>
-                    <img src="<?= htmlspecialchars($profile_image_path) ?>" alt="" class="brand-avatar">
-                <?php endif; ?>
-                <span><?= htmlspecialchars($app_name) ?></span>
+                <img src="<?= htmlspecialchars($tenant_brand_logo_url) ?>" alt="<?= htmlspecialchars($app_name) ?>" class="brand-avatar">
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#publicNav" aria-controls="publicNav" aria-expanded="false" aria-label="Abrir menú">
                 <span class="navbar-toggler-icon"></span>
@@ -258,7 +259,10 @@ function public_delivery_text($mode)
 
     <footer class="public-footer">
         <div class="container d-flex flex-column flex-md-row justify-content-between gap-2">
-            <span>&copy; <?= date('Y') ?> <?= htmlspecialchars($app_name) ?></span>
+            <span class="legal-brand-line">
+                <img src="<?= htmlspecialchars($official_brand_logo_url) ?>" alt="" class="legal-brand-mark">
+                <span><?= htmlspecialchars(app_legal_footer_text()) ?></span>
+            </span>
             <span class="public-footer-links">
                 <a href="legal.php#privacidad">Política de privacidad</a>
                 <a href="legal.php#aviso-legal">Aviso legal</a>

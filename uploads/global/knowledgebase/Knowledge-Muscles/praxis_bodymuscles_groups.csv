@@ -1,0 +1,9 @@
+﻿group_id;group_en;group_es;region_count;bodymuscles_ids
+BMG01;Head & Neck;Cabeza y cuello;6;head|face|neck-right|neck-left|head-back|nape
+BMG02;Shoulders;Hombros;12;shoulder-front-left|shoulder-front-right|shoulder-side-left|shoulder-side-right|deltoid-rear-left|deltoid-rear-right|traps-upper-left|traps-mid-left|traps-lower-left|traps-upper-right|traps-mid-right|traps-lower-right
+BMG03;Arms;Brazos;14;biceps-left|biceps-right|triceps-long-left|triceps-lateral-left|triceps-long-right|triceps-lateral-right|forearm-left|forearm-right|forearm-flexors-left|forearm-extensors-left|forearm-flexors-right|forearm-extensors-right|elbow-left|elbow-right
+BMG04;Chest;Pecho;4;chest-upper-left|chest-upper-right|chest-lower-left|chest-lower-right
+BMG05;Back;Espalda;15;lats-upper-left|lats-mid-left|lats-lower-left|lats-upper-right|lats-mid-right|lats-lower-right|lower-back-erectors-left|lower-back-ql-left|lower-back-erectors-right|lower-back-ql-right|spine|gluteus-medius-left|gluteus-maximus-left|gluteus-medius-right|gluteus-maximus-right
+BMG06;Abdominals;Abdomen;8;abs-upper-left|abs-upper-right|abs-lower-left|abs-lower-right|serratus-anterior-left|serratus-anterior-right|obliques-left|obliques-right
+BMG07;Legs;Piernas;22;quads-left|quads-right|hamstrings-medial-left|hamstrings-lateral-left|hamstrings-medial-right|hamstrings-lateral-right|adductors-left|adductors-right|tibialis-anterior-left|tibialis-anterior-right|calves-gastroc-medial-left|calves-gastroc-lateral-left|calves-soleus-left|calves-gastroc-medial-right|calves-gastroc-lateral-right|calves-soleus-right|knee-left|knee-right|knee-back-left|knee-back-right|hip-flexor-left|hip-flexor-right
+BMG08;Hands & Feet;Manos y pies;8;hand-left|hand-right|foot-left|foot-right|hand-back-left|hand-back-right|foot-back-left|foot-back-right

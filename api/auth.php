@@ -9,24 +9,102 @@ header('Content-Type: application/json');
 
 $action = $_GET['action'] ?? '';
 
+function auth_column_exists($mysqli, $table, $column)
+{
+    $stmt = $mysqli->prepare("
+        SELECT COUNT(*) AS total
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = ?
+          AND COLUMN_NAME = ?
+    ");
+    if (!$stmt) {
+        return false;
+    }
+    $stmt->bind_param('ss', $table, $column);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    return $row && (int) $row['total'] > 0;
+}
+
+function auth_add_column_if_missing($mysqli, $table, $column, $definition)
+{
+    if (!auth_column_exists($mysqli, $table, $column)) {
+        $mysqli->query("ALTER TABLE `$table` ADD COLUMN `$column` $definition");
+    }
+}
+
+function auth_index_exists($mysqli, $table, $index)
+{
+    $table = $mysqli->real_escape_string($table);
+    $index = $mysqli->real_escape_string($index);
+    $res = $mysqli->query("SHOW INDEX FROM `$table` WHERE Key_name = '$index'");
+    return $res && $res->num_rows > 0;
+}
+
+function auth_drop_single_column_unique_indexes($mysqli, $table, $column)
+{
+    $table_sql = $mysqli->real_escape_string($table);
+    $column_sql = $mysqli->real_escape_string($column);
+    $res = $mysqli->query("SHOW INDEX FROM `$table_sql`");
+    if (!$res) {
+        return;
+    }
+    $indexes = [];
+    while ($row = $res->fetch_assoc()) {
+        $key = $row['Key_name'] ?? '';
+        if ($key === '' || $key === 'PRIMARY' || (int) ($row['Non_unique'] ?? 1) !== 0) {
+            continue;
+        }
+        $indexes[$key][] = [
+            'column' => $row['Column_name'] ?? '',
+            'seq' => (int) ($row['Seq_in_index'] ?? 0)
+        ];
+    }
+    foreach ($indexes as $key => $columns) {
+        usort($columns, fn($a, $b) => $a['seq'] <=> $b['seq']);
+        $column_names = array_map(fn($item) => $item['column'], $columns);
+        if ($column_names === [$column_sql]) {
+            $key_sql = str_replace('`', '``', $key);
+            $mysqli->query("ALTER TABLE `$table_sql` DROP INDEX `$key_sql`");
+        }
+    }
+}
+
+function auth_add_unique_index_if_missing($mysqli, $table, $index, $columns)
+{
+    if (!auth_index_exists($mysqli, $table, $index)) {
+        $mysqli->query("ALTER TABLE `$table` ADD UNIQUE `$index` ($columns)");
+    }
+}
+
 function ensure_password_reset_table($mysqli)
 {
     $mysqli->query("
         CREATE TABLE IF NOT EXISTS password_resets (
             id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            tenant_id INT UNSIGNED NOT NULL DEFAULT 1,
             user_id INT UNSIGNED NOT NULL,
             token_hash CHAR(64) NOT NULL UNIQUE,
             expires_at DATETIME NOT NULL,
             used_at DATETIME DEFAULT NULL,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_password_resets_user (user_id),
+            INDEX idx_password_resets_tenant_user (tenant_id, user_id),
             INDEX idx_password_resets_expires (expires_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     ");
+    auth_add_column_if_missing($mysqli, 'password_resets', 'tenant_id', "INT UNSIGNED NOT NULL DEFAULT 1 AFTER id");
 }
 
 function ensure_patient_registration_schema($mysqli)
 {
+    auth_add_column_if_missing($mysqli, 'users', 'tenant_id', "INT UNSIGNED NOT NULL DEFAULT 1 AFTER id");
+    auth_drop_single_column_unique_indexes($mysqli, 'users', 'email');
+    auth_drop_single_column_unique_indexes($mysqli, 'users', 'phone');
+    auth_add_unique_index_if_missing($mysqli, 'users', 'uniq_users_tenant_email', 'tenant_id, email');
+    auth_add_unique_index_if_missing($mysqli, 'users', 'uniq_users_tenant_phone', 'tenant_id, phone');
+    auth_add_column_if_missing($mysqli, 'invitations', 'tenant_id', "INT UNSIGNED NOT NULL DEFAULT 1 AFTER id");
+
     $res = $mysqli->query("SHOW COLUMNS FROM users LIKE 'password_hash'");
     if ($res && $res->num_rows > 0) {
         $mysqli->query("ALTER TABLE users MODIFY password_hash VARCHAR(255) NULL");
@@ -45,6 +123,7 @@ function ensure_patient_registration_schema($mysqli)
     $mysqli->query("
         CREATE TABLE IF NOT EXISTS patient_profiles (
             user_id INT UNSIGNED NOT NULL PRIMARY KEY,
+            tenant_id INT UNSIGNED NOT NULL DEFAULT 1,
             patient_type VARCHAR(80) DEFAULT NULL,
             patient_status VARCHAR(20) NOT NULL DEFAULT 'active',
             birth_date DATE DEFAULT NULL,
@@ -63,6 +142,7 @@ function ensure_patient_registration_schema($mysqli)
             updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     ");
+    auth_add_column_if_missing($mysqli, 'patient_profiles', 'tenant_id', "INT UNSIGNED NOT NULL DEFAULT 1 AFTER user_id");
 
     $columns = [
         'patient_status' => "ALTER TABLE patient_profiles ADD patient_status VARCHAR(20) NOT NULL DEFAULT 'active' AFTER patient_type",
@@ -110,8 +190,8 @@ function save_patient_profile_photo_upload($file, $patient_id)
         'image/webp' => 'webp',
         'image/gif' => 'gif'
     ];
-    $upload_dir = dirname(__DIR__) . '/uploads/patients';
-    if (!is_dir($upload_dir) && !mkdir($upload_dir, 0755, true)) {
+    $upload_dir = app_tenant_public_upload_dir('patients');
+    if (!app_ensure_dir($upload_dir)) {
         throw new \Exception('No se pudo crear la carpeta de fotos.');
     }
 
@@ -121,10 +201,11 @@ function save_patient_profile_photo_upload($file, $patient_id)
         throw new \Exception('No se pudo guardar la foto.');
     }
 
-    return 'uploads/patients/' . $filename;
+    return app_tenant_public_upload_relative_path('patients', $filename);
 }
 
 if ($action === 'login') {
+    $tenant_id = current_tenant_id();
     $login_id = trim($_POST['login_id'] ?? '');
     $password = $_POST['password'] ?? '';
 
@@ -133,8 +214,8 @@ if ($action === 'login') {
         exit;
     }
 
-    $stmt = $mysqli->prepare("SELECT * FROM users WHERE email = ? OR phone = ?");
-    $stmt->bind_param("ss", $login_id, $login_id);
+    $stmt = $mysqli->prepare("SELECT * FROM users WHERE tenant_id = ? AND (email = ? OR phone = ?)");
+    $stmt->bind_param("iss", $tenant_id, $login_id, $login_id);
     $stmt->execute();
     $res = $stmt->get_result();
     $user = $res->fetch_assoc();
@@ -147,12 +228,15 @@ if ($action === 'login') {
         $_SESSION['user_id'] = $user['id'];
         $_SESSION['role'] = $user['role'];
         $_SESSION['name'] = $user['name'];
+        $_SESSION['tenant_id'] = $tenant_id;
+        $_SESSION['tenant_key'] = current_tenant_key();
         echo json_encode(['success' => true]);
     } else {
         echo json_encode(['success' => false, 'error' => 'Credenciales incorrectas.']);
     }
 } elseif ($action === 'register') {
     ensure_patient_registration_schema($mysqli);
+    $tenant_id = current_tenant_id();
     $token = trim($_POST['token'] ?? '');
     $name = trim($_POST['name'] ?? '');
     $email = trim($_POST['email'] ?? '');
@@ -162,8 +246,8 @@ if ($action === 'login') {
 
     $invite = null;
     if ($token !== '') {
-        $stmt = $mysqli->prepare("SELECT id, user_id FROM invitations WHERE token = ? AND used = 0");
-        $stmt->bind_param("s", $token);
+        $stmt = $mysqli->prepare("SELECT id, user_id FROM invitations WHERE tenant_id = ? AND token = ? AND used = 0");
+        $stmt->bind_param("is", $tenant_id, $token);
         $stmt->execute();
         $res = $stmt->get_result();
         $invite = $res->fetch_assoc();
@@ -186,8 +270,8 @@ if ($action === 'login') {
 
     $invite_user_id = !empty($invite['user_id']) ? (int) $invite['user_id'] : 0;
 
-    $stmt = $mysqli->prepare("SELECT id FROM users WHERE email = ? AND id <> ?");
-    $stmt->bind_param("si", $email, $invite_user_id);
+    $stmt = $mysqli->prepare("SELECT id FROM users WHERE tenant_id = ? AND email = ? AND id <> ?");
+    $stmt->bind_param("isi", $tenant_id, $email, $invite_user_id);
     $stmt->execute();
     $res = $stmt->get_result();
     if ($res->fetch_assoc()) {
@@ -196,8 +280,8 @@ if ($action === 'login') {
     }
 
     if ($phone) {
-        $stmt = $mysqli->prepare("SELECT id FROM users WHERE phone = ? AND id <> ?");
-        $stmt->bind_param("si", $phone, $invite_user_id);
+        $stmt = $mysqli->prepare("SELECT id FROM users WHERE tenant_id = ? AND phone = ? AND id <> ?");
+        $stmt->bind_param("isi", $tenant_id, $phone, $invite_user_id);
         $stmt->execute();
         $res = $stmt->get_result();
         if ($res->fetch_assoc()) {
@@ -207,8 +291,8 @@ if ($action === 'login') {
     }
 
     if ($invite_user_id > 0) {
-        $stmt = $mysqli->prepare("SELECT id, password_hash FROM users WHERE id = ? AND role = 'patient'");
-        $stmt->bind_param("i", $invite_user_id);
+        $stmt = $mysqli->prepare("SELECT id, password_hash FROM users WHERE tenant_id = ? AND id = ? AND role = 'patient'");
+        $stmt->bind_param("ii", $tenant_id, $invite_user_id);
         $stmt->execute();
         $target_user = $stmt->get_result()->fetch_assoc();
         if (!$target_user) {
@@ -226,29 +310,29 @@ if ($action === 'login') {
     $mysqli->begin_transaction();
     try {
         if ($invite_user_id > 0) {
-            $stmt = $mysqli->prepare("UPDATE users SET name = ?, email = ?, phone = ?, password_hash = ? WHERE id = ? AND role = 'patient'");
-            $stmt->bind_param("ssssi", $name, $email, $phone, $hash, $invite_user_id);
+            $stmt = $mysqli->prepare("UPDATE users SET name = ?, email = ?, phone = ?, password_hash = ? WHERE tenant_id = ? AND id = ? AND role = 'patient'");
+            $stmt->bind_param("ssssii", $name, $email, $phone, $hash, $tenant_id, $invite_user_id);
             $stmt->execute();
             $new_user_id = $invite_user_id;
         } else {
-            $stmt = $mysqli->prepare("INSERT INTO users (name, email, phone, password_hash, role) VALUES (?, ?, ?, ?, 'patient')");
-            $stmt->bind_param("ssss", $name, $email, $phone, $hash);
+            $stmt = $mysqli->prepare("INSERT INTO users (tenant_id, name, email, phone, password_hash, role) VALUES (?, ?, ?, ?, ?, 'patient')");
+            $stmt->bind_param("issss", $tenant_id, $name, $email, $phone, $hash);
             $stmt->execute();
             $new_user_id = $mysqli->insert_id;
         }
 
         $stmt = $mysqli->prepare("
-            INSERT INTO patient_profiles (user_id, admission_date, created_by_admin)
-            VALUES (?, CURDATE(), ?)
+            INSERT INTO patient_profiles (user_id, tenant_id, admission_date, created_by_admin)
+            VALUES (?, ?, CURDATE(), ?)
             ON DUPLICATE KEY UPDATE user_id = user_id
         ");
         $created_by_admin = $invite_user_id > 0 ? 1 : 0;
-        $stmt->bind_param("ii", $new_user_id, $created_by_admin);
+        $stmt->bind_param("iii", $new_user_id, $tenant_id, $created_by_admin);
         $stmt->execute();
 
         if ($invite) {
-            $stmt = $mysqli->prepare("UPDATE invitations SET used = 1, used_at = NOW() WHERE id = ?");
-            $stmt->bind_param("i", $invite['id']);
+            $stmt = $mysqli->prepare("UPDATE invitations SET used = 1, used_at = NOW() WHERE tenant_id = ? AND id = ?");
+            $stmt->bind_param("ii", $tenant_id, $invite['id']);
             $stmt->execute();
         }
 
@@ -282,14 +366,15 @@ if ($action === 'login') {
     }
 } elseif ($action === 'request_password_reset') {
     ensure_password_reset_table($mysqli);
+    $tenant_id = current_tenant_id();
     $login_id = trim($_POST['login_id'] ?? '');
     if ($login_id === '') {
         echo json_encode(['success' => false, 'error' => 'Indica tu email o teléfono.']);
         exit;
     }
 
-    $stmt = $mysqli->prepare("SELECT id, name, email FROM users WHERE email = ? OR phone = ? LIMIT 1");
-    $stmt->bind_param("ss", $login_id, $login_id);
+    $stmt = $mysqli->prepare("SELECT id, name, email FROM users WHERE tenant_id = ? AND (email = ? OR phone = ?) LIMIT 1");
+    $stmt->bind_param("iss", $tenant_id, $login_id, $login_id);
     $stmt->execute();
     $user = $stmt->get_result()->fetch_assoc();
 
@@ -297,12 +382,12 @@ if ($action === 'login') {
         $token = bin2hex(random_bytes(32));
         $token_hash = hash('sha256', $token);
 
-        $stmt = $mysqli->prepare("UPDATE password_resets SET used_at = NOW() WHERE user_id = ? AND used_at IS NULL");
-        $stmt->bind_param("i", $user['id']);
+        $stmt = $mysqli->prepare("UPDATE password_resets SET used_at = NOW() WHERE tenant_id = ? AND user_id = ? AND used_at IS NULL");
+        $stmt->bind_param("ii", $tenant_id, $user['id']);
         $stmt->execute();
 
-        $stmt = $mysqli->prepare("INSERT INTO password_resets (user_id, token_hash, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 1 HOUR))");
-        $stmt->bind_param("is", $user['id'], $token_hash);
+        $stmt = $mysqli->prepare("INSERT INTO password_resets (tenant_id, user_id, token_hash, expires_at) VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 1 HOUR))");
+        $stmt->bind_param("iis", $tenant_id, $user['id'], $token_hash);
         $stmt->execute();
 
         $reset_link = urlme_shorten_url(app_public_base_url() . 'reset_password.php?t=' . urlencode($token), 'Restablecer contrasena SimplyGest Praxis', date('Y-m-d H:i:s', strtotime('+1 hour')));
@@ -321,6 +406,7 @@ if ($action === 'login') {
     echo json_encode(['success' => true, 'message' => 'Si los datos coinciden con una cuenta, enviaremos un enlace para crear una nueva contraseña.']);
 } elseif ($action === 'reset_password') {
     ensure_password_reset_table($mysqli);
+    $tenant_id = current_tenant_id();
     $token = $_POST['token'] ?? '';
     $password = $_POST['password'] ?? '';
     if (!preg_match('/^[a-f0-9]{64}$/', $token) || strlen($password) < 6) {
@@ -332,12 +418,13 @@ if ($action === 'login') {
     $stmt = $mysqli->prepare("
         SELECT id, user_id
         FROM password_resets
-        WHERE token_hash = ?
+        WHERE tenant_id = ?
+          AND token_hash = ?
           AND used_at IS NULL
           AND expires_at >= NOW()
         LIMIT 1
     ");
-    $stmt->bind_param("s", $token_hash);
+    $stmt->bind_param("is", $tenant_id, $token_hash);
     $stmt->execute();
     $reset = $stmt->get_result()->fetch_assoc();
     if (!$reset) {
@@ -348,12 +435,12 @@ if ($action === 'login') {
     $hash = password_hash($password, PASSWORD_DEFAULT);
     $mysqli->begin_transaction();
     try {
-        $stmt = $mysqli->prepare("UPDATE users SET password_hash = ? WHERE id = ?");
-        $stmt->bind_param("si", $hash, $reset['user_id']);
+        $stmt = $mysqli->prepare("UPDATE users SET password_hash = ? WHERE tenant_id = ? AND id = ?");
+        $stmt->bind_param("sii", $hash, $tenant_id, $reset['user_id']);
         $stmt->execute();
 
-        $stmt = $mysqli->prepare("UPDATE password_resets SET used_at = NOW() WHERE id = ?");
-        $stmt->bind_param("i", $reset['id']);
+        $stmt = $mysqli->prepare("UPDATE password_resets SET used_at = NOW() WHERE tenant_id = ? AND id = ?");
+        $stmt->bind_param("ii", $tenant_id, $reset['id']);
         $stmt->execute();
 
         $mysqli->commit();
@@ -368,15 +455,16 @@ if ($action === 'login') {
         exit;
     }
 
+    $tenant_id = current_tenant_id();
     $user_id = (int) $_SESSION['user_id'];
     $stmt = $mysqli->prepare("
         SELECT u.name, u.email, u.phone, pp.photo_path
         FROM users u
-        LEFT JOIN patient_profiles pp ON pp.user_id = u.id
-        WHERE u.id = ? AND u.role = 'patient'
+        LEFT JOIN patient_profiles pp ON pp.user_id = u.id AND pp.tenant_id = u.tenant_id
+        WHERE u.tenant_id = ? AND u.id = ? AND u.role = 'patient'
         LIMIT 1
     ");
-    $stmt->bind_param("i", $user_id);
+    $stmt->bind_param("ii", $tenant_id, $user_id);
     $stmt->execute();
     $profile = $stmt->get_result()->fetch_assoc();
     if (!$profile) {
@@ -399,6 +487,7 @@ if ($action === 'login') {
         exit;
     }
 
+    $tenant_id = current_tenant_id();
     $user_id = (int) $_SESSION['user_id'];
     $email = trim($_POST['email'] ?? '');
     $phone = trim($_POST['phone'] ?? '');
@@ -408,8 +497,8 @@ if ($action === 'login') {
     }
     $phone = $phone !== '' ? $phone : null;
 
-    $stmt = $mysqli->prepare("SELECT id FROM users WHERE email = ? AND id <> ? LIMIT 1");
-    $stmt->bind_param("si", $email, $user_id);
+    $stmt = $mysqli->prepare("SELECT id FROM users WHERE tenant_id = ? AND email = ? AND id <> ? LIMIT 1");
+    $stmt->bind_param("isi", $tenant_id, $email, $user_id);
     $stmt->execute();
     if ($stmt->get_result()->fetch_assoc()) {
         echo json_encode(['success' => false, 'error' => 'Ya existe otra cuenta con ese email.']);
@@ -417,8 +506,8 @@ if ($action === 'login') {
     }
 
     if ($phone !== null) {
-        $stmt = $mysqli->prepare("SELECT id FROM users WHERE phone = ? AND id <> ? LIMIT 1");
-        $stmt->bind_param("si", $phone, $user_id);
+        $stmt = $mysqli->prepare("SELECT id FROM users WHERE tenant_id = ? AND phone = ? AND id <> ? LIMIT 1");
+        $stmt->bind_param("isi", $tenant_id, $phone, $user_id);
         $stmt->execute();
         if ($stmt->get_result()->fetch_assoc()) {
             echo json_encode(['success' => false, 'error' => 'Ya existe otra cuenta con ese telefono.']);
@@ -435,16 +524,16 @@ if ($action === 'login') {
 
     $mysqli->begin_transaction();
     try {
-        $stmt = $mysqli->prepare("UPDATE users SET email = ?, phone = ? WHERE id = ? AND role = 'patient'");
-        $stmt->bind_param("ssi", $email, $phone, $user_id);
+        $stmt = $mysqli->prepare("UPDATE users SET email = ?, phone = ? WHERE tenant_id = ? AND id = ? AND role = 'patient'");
+        $stmt->bind_param("ssii", $email, $phone, $tenant_id, $user_id);
         $stmt->execute();
 
         $stmt = $mysqli->prepare("
-            INSERT INTO patient_profiles (user_id, photo_path)
-            VALUES (?, ?)
+            INSERT INTO patient_profiles (user_id, tenant_id, photo_path)
+            VALUES (?, ?, ?)
             ON DUPLICATE KEY UPDATE photo_path = COALESCE(VALUES(photo_path), photo_path)
         ");
-        $stmt->bind_param("is", $user_id, $uploaded_photo_path);
+        $stmt->bind_param("iis", $user_id, $tenant_id, $uploaded_photo_path);
         $stmt->execute();
 
         $mysqli->commit();
@@ -474,9 +563,10 @@ if ($action === 'login') {
         exit;
     }
 
+    $tenant_id = current_tenant_id();
     $user_id = (int) $_SESSION['user_id'];
-    $stmt = $mysqli->prepare("SELECT password_hash FROM users WHERE id = ? LIMIT 1");
-    $stmt->bind_param("i", $user_id);
+    $stmt = $mysqli->prepare("SELECT password_hash FROM users WHERE tenant_id = ? AND id = ? LIMIT 1");
+    $stmt->bind_param("ii", $tenant_id, $user_id);
     $stmt->execute();
     $user = $stmt->get_result()->fetch_assoc();
     if (!$user || empty($user['password_hash']) || !password_verify($current_password, $user['password_hash'])) {
@@ -485,8 +575,8 @@ if ($action === 'login') {
     }
 
     $hash = password_hash($new_password, PASSWORD_DEFAULT);
-    $stmt = $mysqli->prepare("UPDATE users SET password_hash = ? WHERE id = ?");
-    $stmt->bind_param("si", $hash, $user_id);
+    $stmt = $mysqli->prepare("UPDATE users SET password_hash = ? WHERE tenant_id = ? AND id = ?");
+    $stmt->bind_param("sii", $hash, $tenant_id, $user_id);
     $stmt->execute();
     echo json_encode(['success' => true, 'message' => 'Contraseña actualizada correctamente.']);
 } else {

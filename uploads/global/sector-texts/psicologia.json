@@ -1,0 +1,157 @@
+{
+  "version": 1,
+  "key": "psicologia",
+  "name": "Psicología",
+  "description": "Configuración de textos para gabinetes de psicología, terapia y salud mental.",
+  "labels": {
+    "patient": {
+      "singular": "paciente",
+      "plural": "pacientes",
+      "titleSingular": "Paciente",
+      "titlePlural": "Pacientes"
+    },
+    "professional": {
+      "singular": "profesional",
+      "plural": "profesionales",
+      "titleSingular": "Profesional",
+      "titlePlural": "Profesionales"
+    },
+    "organization": {
+      "singular": "gabinete",
+      "plural": "gabinetes",
+      "titleSingular": "Gabinete",
+      "titlePlural": "Gabinetes"
+    },
+    "appointment": {
+      "singular": "cita",
+      "plural": "citas",
+      "titleSingular": "Cita",
+      "titlePlural": "Citas"
+    },
+    "session": {
+      "singular": "sesión",
+      "plural": "sesiones",
+      "titleSingular": "Sesión",
+      "titlePlural": "Sesiones"
+    },
+    "workPlan": {
+      "singular": "plan de trabajo",
+      "plural": "planes de trabajo",
+      "titleSingular": "Plan de trabajo",
+      "titlePlural": "Planes de trabajo"
+    },
+    "task": {
+      "singular": "tarea",
+      "plural": "tareas",
+      "titleSingular": "Tarea",
+      "titlePlural": "Tareas"
+    },
+    "evolution": {
+      "singular": "evolución",
+      "plural": "evoluciones",
+      "titleSingular": "Evolución",
+      "titlePlural": "Evolución"
+    },
+    "problem": {
+      "singular": "problema o diagnóstico",
+      "plural": "problemas o diagnósticos",
+      "titleSingular": "Problema o diagnóstico",
+      "titlePlural": "Problemas o diagnósticos"
+    },
+    "evaluation": {
+      "singular": "cuestionario",
+      "plural": "cuestionarios",
+      "titleSingular": "Cuestionario",
+      "titlePlural": "Cuestionarios"
+    },
+    "technique": {
+      "singular": "técnica",
+      "plural": "técnicas",
+      "titleSingular": "Técnica",
+      "titlePlural": "Técnicas"
+    },
+    "resource": {
+      "singular": "recurso",
+      "plural": "recursos",
+      "titleSingular": "Recurso",
+      "titlePlural": "Recursos"
+    },
+    "goal": {
+      "singular": "objetivo terapéutico",
+      "plural": "objetivos terapéuticos",
+      "titleSingular": "Objetivo terapéutico",
+      "titlePlural": "Objetivos terapéuticos"
+    }
+  },
+  "clinicalTerms": {
+    "diagnosis": "diagnóstico",
+    "treatment": "intervención terapéutica",
+    "exercise": "tarea terapéutica",
+    "followUp": "seguimiento",
+    "discharge": "alta"
+  },
+  "services": {
+    "individual": "Individual",
+    "couple": "Parejas",
+    "family": "Familiar",
+    "group": "Grupos"
+  },
+  "portal": {
+    "bookingCta": "Reserva tu cita",
+    "myAppointments": "Mis citas",
+    "myTasks": "Mis tareas"
+  },
+  "reports": {
+    "internalPatientReport": "Informe interno de paciente",
+    "patientReport": "Informe para paciente"
+  },
+  "featureHints": {
+    "workPlan": true,
+    "patientPortal": true,
+    "clinicalEvolution": true,
+    "sessionFiles": true
+  },
+  "appointmentServices": [
+    {
+      "key": "individual",
+      "label": "Individual",
+      "name": "Sesion individual",
+      "enabledByDefault": true
+    },
+    {
+      "key": "couple",
+      "label": "Parejas",
+      "name": "Sesion de pareja",
+      "enabledByDefault": false
+    },
+    {
+      "key": "family",
+      "label": "Familiar",
+      "name": "Sesion familiar",
+      "enabledByDefault": false
+    },
+    {
+      "key": "group",
+      "label": "Grupos",
+      "name": "Sesion grupal",
+      "enabledByDefault": false
+    }
+  ],
+  "appointmentDurations": [
+    {
+      "minutes": 60,
+      "label": "60 minutos",
+      "enabledByDefault": true
+    },
+    {
+      "minutes": 90,
+      "label": "90 minutos",
+      "enabledByDefault": false
+    },
+    {
+      "minutes": 120,
+      "label": "120 minutos",
+      "enabledByDefault": false
+    }
+  ]
+}

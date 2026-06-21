@@ -1,0 +1,150 @@
+{
+  "version": 1,
+  "key": "fisioterapia",
+  "name": "Fisioterapia",
+  "description": "Configuración de textos para clínicas de fisioterapia y rehabilitación.",
+  "labels": {
+    "patient": {
+      "singular": "paciente",
+      "plural": "pacientes",
+      "titleSingular": "Paciente",
+      "titlePlural": "Pacientes"
+    },
+    "professional": {
+      "singular": "fisioterapeuta",
+      "plural": "fisioterapeutas",
+      "titleSingular": "Fisioterapeuta",
+      "titlePlural": "Fisioterapeutas"
+    },
+    "organization": {
+      "singular": "clínica",
+      "plural": "clínicas",
+      "titleSingular": "Clínica",
+      "titlePlural": "Clínicas"
+    },
+    "appointment": {
+      "singular": "cita",
+      "plural": "citas",
+      "titleSingular": "Cita",
+      "titlePlural": "Citas"
+    },
+    "session": {
+      "singular": "sesión",
+      "plural": "sesiones",
+      "titleSingular": "Sesión",
+      "titlePlural": "Sesiones"
+    },
+    "workPlan": {
+      "singular": "plan de tratamiento",
+      "plural": "planes de tratamiento",
+      "titleSingular": "Plan de tratamiento",
+      "titlePlural": "Planes de tratamiento"
+    },
+    "task": {
+      "singular": "ejercicio",
+      "plural": "ejercicios",
+      "titleSingular": "Ejercicio",
+      "titlePlural": "Ejercicios"
+    },
+    "evolution": {
+      "singular": "evolución",
+      "plural": "evoluciones",
+      "titleSingular": "Evolución",
+      "titlePlural": "Evolución"
+    },
+    "problem": {
+      "singular": "problema funcional",
+      "plural": "problemas funcionales",
+      "titleSingular": "Problema funcional",
+      "titlePlural": "Problemas funcionales"
+    },
+    "evaluation": {
+      "singular": "valoración",
+      "plural": "valoraciones",
+      "titleSingular": "Valoración",
+      "titlePlural": "Valoraciones"
+    },
+    "technique": {
+      "singular": "técnica",
+      "plural": "técnicas",
+      "titleSingular": "Técnica",
+      "titlePlural": "Técnicas"
+    },
+    "resource": {
+      "singular": "recurso",
+      "plural": "recursos",
+      "titleSingular": "Recurso",
+      "titlePlural": "Recursos"
+    },
+    "goal": {
+      "singular": "objetivo",
+      "plural": "objetivos",
+      "titleSingular": "Objetivo",
+      "titlePlural": "Objetivos"
+    }
+  },
+  "clinicalTerms": {
+    "diagnosis": "diagnóstico fisioterapéutico",
+    "treatment": "tratamiento",
+    "exercise": "ejercicio terapéutico",
+    "followUp": "seguimiento",
+    "discharge": "alta"
+  },
+  "services": {
+    "first_visit": "Primera visita",
+    "followup": "Seguimiento",
+    "treatment": "Tratamiento"
+  },
+  "portal": {
+    "bookingCta": "Reserva tu cita",
+    "myAppointments": "Mis citas",
+    "myTasks": "Mis ejercicios"
+  },
+  "reports": {
+    "internalPatientReport": "Informe interno de paciente",
+    "patientReport": "Informe para paciente"
+  },
+  "featureHints": {
+    "workPlan": true,
+    "patientPortal": true,
+    "clinicalEvolution": true,
+    "sessionFiles": true
+  },
+  "appointmentServices": [
+    {
+      "key": "first_visit",
+      "label": "Primera visita",
+      "name": "Primera visita de fisioterapia",
+      "enabledByDefault": true
+    },
+    {
+      "key": "followup",
+      "label": "Seguimiento",
+      "name": "Sesion de seguimiento",
+      "enabledByDefault": true
+    },
+    {
+      "key": "treatment",
+      "label": "Tratamiento",
+      "name": "Tratamiento fisioterapeutico",
+      "enabledByDefault": false
+    }
+  ],
+  "appointmentDurations": [
+    {
+      "minutes": 30,
+      "label": "30 minutos",
+      "enabledByDefault": false
+    },
+    {
+      "minutes": 45,
+      "label": "45 minutos",
+      "enabledByDefault": true
+    },
+    {
+      "minutes": 60,
+      "label": "60 minutos",
+      "enabledByDefault": false
+    }
+  ]
+}

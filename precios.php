@@ -13,7 +13,7 @@ if ((int) ($branding['show_prices_public'] ?? 0) !== 1) {
 }
 
 $app_name = $branding['app_name'];
-$profile_image_path = $branding['show_profile_image_public'] ? $branding['profile_image_path'] : '';
+$profile_image_path = $branding['show_profile_image_public'] ? app_upload_asset_url($branding['profile_image_path']) : '';
 $is_logged_in = isset($_SESSION['user_id']);
 $is_admin = ($_SESSION['role'] ?? '') === 'admin';
 $online_booking_enabled = (int) ($branding['online_booking_enabled'] ?? 1) === 1;
@@ -33,7 +33,8 @@ if ($settings_res && $settings_res->num_rows > 0) {
         $mysqli->query("ALTER TABLE payment_settings ADD available_session_durations VARCHAR(16) NOT NULL DEFAULT '60'");
     }
     ensure_bonus_tables($mysqli);
-    $res = $mysqli->query("SELECT appointment_delivery_mode, available_session_types, available_session_durations, bonuses_enabled FROM payment_settings WHERE id = 1");
+    $tenant_id = current_tenant_id();
+    $res = $mysqli->query("SELECT appointment_delivery_mode, available_session_types, available_session_durations, bonuses_enabled FROM payment_settings WHERE tenant_id = $tenant_id");
     if ($row = $res->fetch_assoc()) {
         $public_delivery_mode = $row['appointment_delivery_mode'] ?: 'both';
         $public_service_types = explode(',', $row['available_session_types'] ?? 'individual');

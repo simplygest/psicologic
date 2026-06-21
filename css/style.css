@@ -52,11 +52,28 @@ body {
 }
 
 .brand-avatar {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.brand-logo {
+    display: block;
+    width: auto;
+    height: 36px;
+    max-width: 210px;
+    object-fit: contain;
+}
+
+.navbar-user-avatar {
     width: 34px;
     height: 34px;
     border-radius: 50%;
     object-fit: cover;
     border: 2px solid var(--primary-light);
+    background: #fff;
+    flex: 0 0 auto;
 }
 
 @media (max-width: 995px) {
@@ -93,6 +110,16 @@ body {
         max-width: 132px;
     }
 
+    .brand-logo {
+        height: 30px;
+        max-width: 150px;
+    }
+
+    .brand-avatar {
+        width: 36px;
+        height: 36px;
+    }
+
     #patient-bonus-actions.dashboard-actions-bar {
         width: 100%;
     }
@@ -116,6 +143,47 @@ body {
     border-radius: 50%;
     object-fit: cover;
     border: 3px solid var(--primary-light);
+}
+
+.auth-page {
+    padding: 32px 16px;
+}
+
+.auth-brand-logo {
+    display: block;
+    width: min(220px, 78%);
+    max-height: 82px;
+    object-fit: contain;
+    margin-inline: auto;
+}
+
+.auth-legal-footer,
+.dashboard-legal-footer {
+    color: var(--text-muted);
+    font-size: .86rem;
+    text-align: center;
+}
+
+.legal-brand-line {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.legal-brand-mark {
+    display: block;
+    width: auto;
+    height: 16px;
+    object-fit: contain;
+}
+
+.auth-legal-footer {
+    margin-top: 18px;
+}
+
+.dashboard-legal-footer {
+    padding: 12px 16px 22px;
 }
 
 .settings-image-preview {
@@ -1600,7 +1668,7 @@ body:not(.is-admin) .slot.booked {
 .appointment-payment-grid {
     display: grid;
     gap: 10px;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .appointment-payment-grid > div {
@@ -1620,6 +1688,34 @@ body:not(.is-admin) .slot.booked {
 .appointment-payment-grid strong {
     color: #263238;
     font-size: 0.92rem;
+}
+
+.appointment-knowledge-card {
+    background: #ffffff;
+    border: 1px solid var(--border-color);
+    border-left: 4px solid var(--primary-color);
+    border-radius: 8px;
+    padding: 10px 12px;
+}
+
+.appointment-knowledge-card span {
+    color: var(--primary-color);
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 700;
+    margin-bottom: 2px;
+}
+
+.appointment-knowledge-card strong {
+    color: #263238;
+    display: block;
+    font-size: 0.95rem;
+}
+
+.appointment-knowledge-card small {
+    color: #66737d;
+    display: block;
+    margin-top: 2px;
 }
 
 .appointment-modality-card {
@@ -2825,7 +2921,11 @@ body.appointment-work-plan-modal-open #appointmentPaymentModal .modal-content {
 
 .knowledge-problem-summary {
     align-items: flex-start;
-    background: #fbfcfd;
+    background: color-mix(in srgb, var(--primary-color) 14%, white);
+    border-color: color-mix(in srgb, var(--primary-color) 24%, white);
+    border-left: 4px solid var(--primary-color);
+    box-shadow: 0 8px 18px rgba(31, 41, 55, 0.05);
+    padding: 14px 16px;
 }
 
 .knowledge-summary-side {
@@ -2843,7 +2943,8 @@ body.appointment-work-plan-modal-open #appointmentPaymentModal .modal-content {
 }
 
 .knowledge-problem-summary h5 {
-    font-size: 1.08rem;
+    color: #2f3540;
+    font-size: 1.12rem;
     margin: 3px 0 0;
 }
 
@@ -2875,6 +2976,7 @@ body.appointment-work-plan-modal-open #appointmentPaymentModal .modal-content {
 }
 
 .knowledge-technique {
+    margin-left: 20px;
     padding: 0;
     overflow: hidden;
 }
@@ -2942,6 +3044,7 @@ body.appointment-work-plan-modal-open #appointmentPaymentModal .modal-content {
     display: flex;
     flex-direction: column;
     gap: 3px;
+    margin-left: 20px;
 }
 
 .knowledge-source-item {
@@ -2960,6 +3063,316 @@ body.appointment-work-plan-modal-open #appointmentPaymentModal .modal-content {
 .knowledge-source-link {
     flex-shrink: 0;
     line-height: 1;
+}
+
+.patient-knowledge-mode {
+    align-items: center;
+    display: flex;
+    flex-direction: column;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    justify-content: center;
+    text-align: center;
+}
+
+.patient-knowledge-mode .btn-group {
+    justify-content: center;
+}
+
+.patient-objective-panel {
+    background: #fbfcfd;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 14px;
+}
+
+.patient-body-map-panel {
+    background: #fbfcfd;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 14px;
+}
+
+.patient-body-map-header {
+    align-items: flex-start;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.patient-body-map-header h6 {
+    color: var(--primary-color);
+    font-weight: 700;
+    margin: 0 0 3px;
+}
+
+.patient-body-map-header p {
+    color: #66737d;
+    font-size: 0.9rem;
+    margin: 0;
+}
+
+.patient-body-map-actions {
+    display: flex;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.patient-body-map {
+    align-items: center;
+    background: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    display: flex;
+    justify-content: center;
+    min-height: 360px;
+    overflow: hidden;
+    padding: 10px;
+}
+
+.patient-body-map svg {
+    max-height: 100%;
+    width: 100%;
+}
+
+.patient-body-map svg .body-chart-muscle {
+    fill: var(--primary-color) !important;
+}
+
+.patient-body-map svg .selected,
+.patient-body-map svg .is-selected,
+.patient-body-map svg .body-chart-muscle[aria-label*="(selected)"],
+.patient-body-map svg [data-selected="true"],
+.patient-body-map svg [aria-selected="true"] {
+    fill: #dc2626 !important;
+    stroke: #ffffff !important;
+}
+
+.patient-body-map-panel > .row {
+    align-items: stretch !important;
+}
+
+.patient-body-map-panel .col-lg-7 {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.patient-body-map-selected {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+    min-height: 31px;
+}
+
+.patient-body-map-chip {
+    border: 1px solid var(--border-color);
+    font-weight: 600;
+}
+
+.patient-body-map-results {
+    flex: 1 1 auto;
+    max-height: none;
+    min-height: 0;
+    overflow: auto;
+    padding-right: 4px;
+}
+
+.patient-body-map-results-header {
+    color: #66737d;
+    font-size: 0.9rem;
+    margin-bottom: 8px;
+}
+
+.patient-body-exercise-item {
+    align-items: flex-start;
+    background: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    padding: 10px;
+}
+
+.patient-body-exercise-item.has-media {
+    grid-template-columns: 72px minmax(0, 1fr) auto;
+}
+
+.patient-body-exercise-item + .patient-body-exercise-item {
+    margin-top: 8px;
+}
+
+.patient-body-exercise-media {
+    align-items: center;
+    background: #f7f9fb;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    display: flex;
+    height: 72px;
+    justify-content: center;
+    overflow: hidden;
+    width: 72px;
+}
+
+.patient-body-exercise-media img {
+    display: block;
+    height: 100%;
+    object-fit: cover;
+    width: 100%;
+}
+
+.patient-body-exercise-main {
+    min-width: 0;
+}
+
+.patient-body-exercise-main strong {
+    display: block;
+}
+
+.patient-body-exercise-main strong,
+.patient-body-exercise-meta,
+.patient-body-exercise-aliases {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.patient-body-exercise-main p {
+    color: #66737d;
+    margin: 4px 0 0;
+}
+
+.patient-body-exercise-description {
+    color: #66737d;
+    grid-column: 1 / -1;
+    margin: 0;
+}
+
+.patient-body-exercise-main small,
+.patient-body-exercise-meta,
+.patient-body-exercise-aliases {
+    color: #66737d;
+    display: block;
+    font-size: 0.84rem;
+}
+
+.patient-body-exercise-aliases {
+    opacity: 0.85;
+}
+
+.patient-body-exercise-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: flex-end;
+    max-width: 45%;
+    min-width: 0;
+    justify-self: end;
+    text-align: right;
+}
+
+.patient-body-exercise-cues {
+    grid-column: 1 / -1;
+}
+
+.patient-body-exercise-item.has-media .patient-body-exercise-description,
+.patient-body-exercise-item.has-media .patient-body-exercise-cues {
+    grid-column: 2 / -1;
+}
+
+.workoutx-exercise-layout {
+    display: grid;
+    grid-template-columns: minmax(220px, 320px) 1fr;
+    gap: 1rem;
+    align-items: start;
+}
+
+.workoutx-exercise-gif {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 240px;
+    overflow: hidden;
+}
+
+.workoutx-exercise-gif img {
+    width: 100%;
+    max-height: 360px;
+    object-fit: contain;
+}
+
+.workoutx-exercise-meta {
+    color: #5f6f7a;
+    font-size: 0.92rem;
+    margin-bottom: 0.75rem;
+}
+
+.workoutx-exercise-instructions {
+    padding-left: 1.25rem;
+    margin-bottom: 0;
+}
+
+.workoutx-exercise-instructions li {
+    margin-bottom: 0.4rem;
+}
+
+@media (max-width: 768px) {
+    .knowledge-technique,
+    .knowledge-compact-item {
+        margin-left: 0;
+    }
+
+    .patient-body-map-header,
+    .patient-body-exercise-item {
+        grid-template-columns: 1fr;
+    }
+
+    .patient-body-map-actions,
+    .patient-body-exercise-tags {
+        justify-content: flex-start;
+        max-width: none;
+        width: 100%;
+    }
+
+    .workoutx-exercise-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .patient-body-exercise-item.has-media {
+        grid-template-columns: 64px minmax(0, 1fr);
+    }
+
+    .patient-body-exercise-media {
+        height: 64px;
+        width: 64px;
+    }
+
+    .patient-body-exercise-item.has-media .patient-body-exercise-tags,
+    .patient-body-exercise-item.has-media .patient-body-exercise-description,
+    .patient-body-exercise-item.has-media .patient-body-exercise-cues {
+        grid-column: 1 / -1;
+    }
+
+    .patient-body-map {
+        min-height: 300px;
+    }
+
+    .patient-body-map-panel .col-lg-7 {
+        display: block;
+    }
+
+    .patient-body-map-results {
+        max-height: 430px;
+    }
 }
 
 .knowledge-compact-item span,
@@ -3022,6 +3435,11 @@ body.appointment-work-plan-modal-open #appointmentPaymentModal .modal-content {
     margin-top: 12px;
 }
 
+.quick-appointment-body > div {
+    min-width: 0;
+    width: 100%;
+}
+
 .quick-appointment-body h5 {
     font-size: 1.05rem;
     font-weight: 700;
@@ -3036,6 +3454,31 @@ body.appointment-work-plan-modal-open #appointmentPaymentModal .modal-content {
     color: #66737d;
     font-size: 0.88rem;
     margin-top: 3px;
+}
+
+.quick-appointment-contact-row {
+    align-items: center;
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+    margin-top: 3px;
+    width: 100%;
+}
+
+.quick-appointment-contact-row .quick-appointment-contact {
+    margin-top: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.quick-appointment-contact-actions {
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+.quick-appointment-contact-actions .patient-contact-actions {
+    display: inline-flex;
+    gap: 8px;
 }
 
 .quick-appointment-meta {
@@ -3329,6 +3772,19 @@ body.appointment-work-plan-modal-open .modal-backdrop.show {
         justify-content: flex-end;
         margin-left: auto;
         width: 100%;
+    }
+
+    .appointment-payment-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .quick-appointment-contact-row {
+        align-items: flex-start;
+        flex-wrap: wrap;
+    }
+
+    .quick-appointment-contact-actions {
+        margin-left: auto;
     }
 
     .quick-appointment-meta {

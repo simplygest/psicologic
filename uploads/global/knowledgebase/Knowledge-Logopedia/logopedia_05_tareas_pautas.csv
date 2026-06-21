@@ -1,0 +1,81 @@
+﻿tarea_id;titulo;descripcion;objetivo;nivel_riesgo;duracion_estimada;tecnica_id
+LOG_TA001;Completar historia logopédica inicial;Formulario sobre motivo de consulta, desarrollo, antecedentes, entorno, colegio/trabajo y objetivos.;Definir punto de partida y prioridades.;bajo;20-30 min;LOG_T001
+LOG_TA002;Registrar situaciones comunicativas difíciles;Anotar situaciones donde hablar/comprender/tragar resulta más difícil.;Identificar contexto funcional.;bajo;7 días;LOG_T001
+LOG_TA003;Grabar muestra breve de habla;Grabar 1-2 minutos de habla espontánea o lectura según indicación profesional.;Analizar inteligibilidad y evolución.;medio;5 min;LOG_T001
+LOG_TA004;Lista de objetivos funcionales;Elegir 2-3 objetivos comunicativos reales para casa, colegio o trabajo.;Orientar intervención a participación.;bajo;15 min;LOG_T001
+LOG_TA005;Práctica de fonema en sílabas;Repetir el fonema objetivo en sílabas directas/inversas.;Automatizar producción inicial.;bajo;10 min/día;LOG_T002
+LOG_TA006;Práctica de fonema en palabras;Practicar listas de palabras con el sonido objetivo en distintas posiciones.;Generalizar articulación en palabras.;bajo;10 min/día;LOG_T002
+LOG_TA007;Práctica de fonema en frases;Usar palabras objetivo dentro de frases cortas.;Generalizar a habla estructurada.;bajo;10 min/día;LOG_T002
+LOG_TA008;Generalización en conversación;Usar el sonido trabajado en conversación breve supervisada.;Transferir a habla espontánea.;medio;5-10 min/día;LOG_T002
+LOG_TA009;Pares mínimos;Escuchar, identificar y producir pares de palabras que contrastan sonidos.;Mejorar discriminación y contraste fonológico.;bajo;10 min/día;LOG_T003
+LOG_TA010;Detectar errores propios;Escuchar una producción y marcar si el sonido fue correcto o no.;Aumentar conciencia fonológica/articulatoria.;medio;10 min/día;LOG_T003
+LOG_TA011;Juego de contrastes fonológicos;Clasificar imágenes/palabras según contraste fonológico trabajado.;Reducir procesos fonológicos persistentes.;bajo;10-15 min/día;LOG_T004
+LOG_TA012;Nombrar imágenes por categorías;Nombrar objetos o imágenes por campos semánticos.;Ampliar vocabulario expresivo.;bajo;10-15 min/día;LOG_T005
+LOG_TA013;Comprensión de instrucciones;Seguir instrucciones de 1-3 pasos adaptadas al nivel.;Mejorar comprensión oral.;bajo;10 min/día;LOG_T005
+LOG_TA014;Juego de turnos con lenguaje;Realizar juego compartido con turnos y modelado de frases.;Estimular comunicación funcional.;bajo;10-15 min/día;LOG_T005
+LOG_TA015;Expansión de frases en rutina;El adulto reformula y amplía frases del niño durante comida, baño o juego.;Estimular lenguaje natural.;bajo;diario;LOG_T006
+LOG_TA016;Reformulación positiva;Responder al error con modelo correcto sin exigir repetición constante.;Aumentar exposición a lenguaje correcto.;bajo;diario;LOG_T006
+LOG_TA017;Construcción de frases;Crear frases con sujeto-verbo-complemento usando imágenes.;Mejorar morfosintaxis.;bajo;10-15 min/día;LOG_T007
+LOG_TA018;Trabajo de pronombres y verbos;Completar frases con pronombres, tiempos verbales o concordancia según objetivo.;Mejorar estructura gramatical.;medio;10 min/día;LOG_T007
+LOG_TA019;Mapa semántico de palabras;Crear mapa con categoría, función, lugar, partes y asociaciones de una palabra.;Mejorar vocabulario y acceso léxico.;bajo;10-15 min;LOG_T008
+LOG_TA020;Juego de descripciones;Describir un objeto sin decir su nombre para que otro lo adivine.;Mejorar semántica y expresión.;bajo;10 min/día;LOG_T008
+LOG_TA021;Secuenciar historia en imágenes;Ordenar viñetas y contar qué ocurrió antes/después.;Mejorar narrativa y temporalidad.;bajo;10-15 min;LOG_T009
+LOG_TA022;Relato con estructura;Contar una historia incluyendo personaje, lugar, problema, acción y final.;Mejorar coherencia narrativa.;bajo;10-15 min;LOG_T009
+LOG_TA023;Habla lenta con pausas;Practicar lectura o conversación con pausas y ritmo reducido.;Mejorar fluidez y control del habla.;medio;10 min/día;LOG_T010
+LOG_TA024;Inicio suave;Practicar inicios suaves de palabras o frases seleccionadas.;Reducir tensión en inicio de habla.;medio;10 min/día;LOG_T010
+LOG_TA025;Registro de disfluencias;Registrar situación, emoción, frecuencia percibida y estrategia usada.;Detectar patrones de fluidez.;medio;7 días;LOG_T010
+LOG_TA026;Exposición comunicativa graduada;Realizar una situación comunicativa pactada de menor a mayor dificultad.;Reducir evitación comunicativa.;medio;1-3 veces/semana;LOG_T011
+LOG_TA027;Plan de higiene vocal;Aplicar hidratación, descanso vocal y reducción de gritos/carraspeo.;Reducir sobrecarga vocal.;bajo;7-14 días;LOG_T012
+LOG_TA028;Diario vocal;Registrar uso vocal, fatiga, ronquera, hidratación y desencadenantes.;Detectar patrones de disfonía.;bajo;7 días;LOG_T012
+LOG_TA029;Ejercicios de emisión suave;Practicar emisión vocal suave o resonante según pauta profesional.;Mejorar eficiencia vocal.;medio;5-10 min/día;LOG_T013
+LOG_TA030;Respiración costo-diafragmática funcional;Practicar respiración coordinada con voz o habla según indicación.;Apoyar técnica vocal/habla.;bajo;5 min/día;LOG_T013
+LOG_TA031;Praxias linguales pautadas;Realizar movimientos linguales específicos si están indicados.;Mejorar conciencia/movilidad orofacial.;bajo;5 min/día;LOG_T014
+LOG_TA032;Praxias labiales pautadas;Realizar movimientos labiales específicos si están indicados.;Mejorar coordinación orofacial.;bajo;5 min/día;LOG_T014
+LOG_TA033;Conciencia de postura lingual;Observar y registrar posición de lengua en reposo según indicación profesional.;Mejorar conciencia orofacial.;medio;7 días;LOG_T015
+LOG_TA034;Pauta de deglución segura;Aplicar recomendaciones de postura, ritmo, consistencia o supervisión indicadas.;Aumentar seguridad y eficiencia deglutoria.;alto;supervisado;LOG_T016
+LOG_TA035;Registro de tos/atragantamiento;Registrar episodios, alimentos, líquidos, postura y contexto.;Detectar riesgos de deglución.;alto;7 días;LOG_T016
+LOG_TA036;Ejercicios de rimas;Identificar y producir palabras que riman.;Mejorar conciencia fonológica.;bajo;10 min/día;LOG_T017
+LOG_TA037;Segmentación silábica;Separar palabras en sílabas con palmadas o fichas.;Mejorar conciencia silábica.;bajo;10 min/día;LOG_T017
+LOG_TA038;Identificación de fonema inicial;Buscar palabras que empiezan por un sonido objetivo.;Mejorar conciencia fonémica.;bajo;10 min/día;LOG_T017
+LOG_TA039;Mezcla de sonidos;Unir sonidos o sílabas para formar palabras.;Apoyar lectura inicial.;bajo;10 min/día;LOG_T017
+LOG_TA040;Lectura repetida breve;Leer el mismo texto breve varias veces registrando precisión y comodidad.;Mejorar fluidez lectora.;bajo;10 min/día;LOG_T018
+LOG_TA041;Lectura con preguntas;Leer texto breve y responder preguntas literales e inferenciales.;Mejorar comprensión lectora.;bajo;15 min;LOG_T018
+LOG_TA042;Lista de palabras funcionales;Leer palabras frecuentes y relevantes para el contexto del paciente.;Mejorar lectura funcional.;bajo;10 min/día;LOG_T018
+LOG_TA043;Dictado estructurado;Escribir palabras o frases con patrones trabajados.;Mejorar correspondencia sonido-letra.;bajo;10 min/día;LOG_T019
+LOG_TA044;Planificar y revisar texto corto;Escribir 5-8 líneas con planificación, borrador y revisión.;Mejorar escritura funcional.;medio;20 min;LOG_T019
+LOG_TA045;Denominación con claves semánticas;Nombrar imágenes usando pistas de categoría, función o lugar.;Mejorar acceso léxico.;medio;10-15 min;LOG_T021
+LOG_TA046;Denominación con claves fonológicas;Nombrar palabras usando inicial, sílaba o número de sonidos como pista.;Mejorar recuperación de palabras.;medio;10-15 min;LOG_T021
+LOG_TA047;Conversación funcional guiada;Practicar conversación sobre temas reales usando apoyos y estrategias.;Mejorar comunicación cotidiana.;medio;15-20 min;LOG_T022
+LOG_TA048;Guion comunicativo funcional;Preparar frases útiles para una situación concreta: pedir ayuda, cita, compra, llamada.;Aumentar autonomía comunicativa.;bajo;20 min;LOG_T022
+LOG_TA049;Apoyo al interlocutor;Entrenar a familiar/cuidador en esperar, confirmar, simplificar y ofrecer opciones.;Mejorar comunicación en entorno real.;bajo;20 min;LOG_T022
+LOG_TA050;Secuencias motoras de habla;Practicar sílabas/palabras con secuencia motora progresiva.;Mejorar planificación motora del habla.;alto;supervisado;LOG_T023
+LOG_TA051;Control de intensidad y prosodia;Practicar volumen, ritmo, acento o entonación con feedback profesional.;Mejorar naturalidad e inteligibilidad.;medio;10 min/día;LOG_T023
+LOG_TA052;Tablero de comunicación básico;Crear o usar tablero con necesidades, personas, lugares y emociones.;Aumentar comunicación funcional.;medio;diario;LOG_T024
+LOG_TA053;Uso de pictogramas en rutina;Usar apoyo visual en una rutina concreta: comida, colegio, baño, agenda.;Facilitar comprensión y expresión.;bajo;diario;LOG_T024
+LOG_TA054;Elección entre dos opciones;Practicar elección funcional mediante señal, gesto, mirada, pictograma o palabra.;Aumentar intención comunicativa.;bajo;diario;LOG_T024
+LOG_TA055;Practicar turnos conversacionales;Conversación guiada respetando turnos, tema y escucha.;Mejorar pragmática.;bajo;10 min/día;LOG_T025
+LOG_TA056;Inferencias sociales en viñetas;Analizar qué piensa/siente un personaje y por qué.;Mejorar comprensión pragmática.;bajo;10-15 min;LOG_T025
+LOG_TA057;Role-play de situación social;Ensayar saludo, petición, desacuerdo o cierre de conversación.;Mejorar uso social del lenguaje.;bajo;10-15 min;LOG_T025
+LOG_TA058;Discriminación de sonidos del habla;Identificar si dos sonidos/palabras son iguales o diferentes.;Mejorar percepción auditiva del habla.;medio;10 min/día;LOG_T026
+LOG_TA059;Identificación auditiva en ruido suave;Reconocer palabras/frases con distracción controlada si procede.;Mejorar escucha funcional.;medio;supervisado;LOG_T026
+LOG_TA060;Pauta familiar semanal;La familia aplica una pauta concreta en una rutina diaria.;Generalizar intervención al entorno.;bajo;7 días;LOG_T027
+LOG_TA061;Pauta escolar semanal;Enviar objetivo breve y pauta de apoyo al aula si procede.;Generalizar intervención escolar.;bajo;semanal;LOG_T028
+LOG_TA062;Registro de práctica en casa;Marcar días de práctica, dificultad y observaciones.;Mejorar adherencia y seguimiento.;bajo;7 días;LOG_T027
+LOG_TA063;Plan de mantenimiento;Definir rutina mínima de práctica tras mejora o alta.;Mantener logros.;bajo;20 min;LOG_T029
+LOG_TA064;Checklist de señales de alarma;Revisar signos que requieren derivación: pérdida súbita, aspiración, pérdida peso, dolor, cambios neurológicos.;Aumentar seguridad clínica.;alto;supervisado;LOG_T030
+LOG_TA065;Coordinación con ORL/odontología/neurología;Preparar resumen y motivos de coordinación profesional.;Favorecer abordaje interdisciplinar.;alto;supervisado;LOG_T028
+LOG_TA066;Adaptar material a intereses;Crear lista de temas, juguetes, lecturas o actividades motivantes.;Aumentar adherencia.;bajo;15 min;LOG_T027
+LOG_TA067;Escala de participación comunicativa;Valorar con paciente/familia de 0-10 participación en situaciones clave.;Medir cambio funcional.;bajo;semanal;LOG_T022
+LOG_TA068;Diario de generalización;Registrar cuándo se usó la habilidad fuera de consulta.;Comprobar transferencia a vida real.;bajo;7 días;LOG_T029
+LOG_TA069;Respiración nasal funcional observada;Registrar momentos de respiración oral/nasal y posibles desencadenantes.;Aumentar conciencia y orientar coordinación.;medio;7 días;LOG_T015
+LOG_TA070;Ejercicios de soplo pautados;Realizar ejercicios de soplo solo si están indicados por objetivo funcional concreto.;Trabajar control respiratorio/oral cuando proceda.;bajo;5 min/día;LOG_T014
+LOG_TA071;Control de saliva en rutina;Aplicar recordatorios o estrategias acordadas en momentos concretos.;Mejorar manejo funcional de saliva.;medio;7 días;LOG_T015
+LOG_TA072;Práctica de vocabulario funcional;Practicar palabras útiles del día a día: alimentos, personas, lugares, acciones.;Mejorar comunicación funcional.;bajo;10 min/día;LOG_T008
+LOG_TA073;Comprensión de preguntas WH;Responder quién, qué, dónde, cuándo, por qué con apoyo visual.;Mejorar comprensión y expresión.;bajo;10 min/día;LOG_T005
+LOG_TA074;Clasificación por categorías;Agrupar palabras por familia semántica y explicar criterio.;Mejorar organización léxica.;bajo;10 min/día;LOG_T008
+LOG_TA075;Repetición funcional graduada;Repetir sílabas, palabras y frases con dificultad progresiva.;Mejorar precisión del habla.;medio;10 min/día;LOG_T023
+LOG_TA076;Lectura en voz alta con feedback;Leer texto breve trabajando articulación, ritmo, voz o prosodia.;Integrar objetivos en habla funcional.;medio;10 min/día;LOG_T018
+LOG_TA077;Hidratación vocal programada;Programar ingesta de agua y pausas vocales durante jornada.;Cuidar voz profesional.;bajo;7 días;LOG_T012
+LOG_TA078;Reducir carraspeo;Sustituir carraspeo por sorbo de agua, trago seco o técnica pautada.;Reducir irritación vocal.;bajo;7 días;LOG_T012
+LOG_TA079;Lectura labial/apoyo visual básico;Usar pistas visuales y contexto para apoyar comprensión cuando procede.;Mejorar comunicación con hipoacusia.;medio;supervisado;LOG_T026
+LOG_TA080;Entrenamiento del compañero comunicativo;Dar pautas a familiares/cuidadores: tiempo, elección, confirmación, no interrumpir.;Mejorar entorno comunicativo.;bajo;20-30 min;LOG_T022

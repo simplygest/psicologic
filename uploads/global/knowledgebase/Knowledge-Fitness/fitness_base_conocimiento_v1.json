@@ -1,0 +1,3977 @@
+{
+  "version": 1,
+  "sector": "fitness",
+  "sources": [
+    {
+      "source_id": "FIT_SRC001",
+      "nombre": "wger",
+      "titulo": "Open-source workout manager and REST API",
+      "url": "https://wger.readthedocs.io/en/2.0/",
+      "notas": "Referencia pública/open-source para ejercicios, músculos y equipamiento. Revisar licencia de datos concretos si se importa contenido literal."
+    },
+    {
+      "source_id": "FIT_SRC002",
+      "nombre": "wger PyPI",
+      "titulo": "wger license notes",
+      "url": "https://pypi.org/project/wger/",
+      "notas": "La app usa AGPL; datos iniciales pueden tener licencias Creative Commons individuales. No se copia contenido literal."
+    },
+    {
+      "source_id": "FIT_SRC003",
+      "nombre": "ExerciseDB",
+      "titulo": "Exercise database/API",
+      "url": "https://github.com/exercisedb/exercisedb-api",
+      "notas": "Referencia de estructura: ejercicios, equipamiento, grupos musculares, instrucciones, recursos visuales."
+    },
+    {
+      "source_id": "FIT_SRC004",
+      "nombre": "MuscleWiki API",
+      "titulo": "Exercise database with video demonstrations",
+      "url": "https://api.musclewiki.com/",
+      "notas": "Referencia de estructura comercial: ejercicios, vídeos, músculos y rutinas."
+    },
+    {
+      "source_id": "FIT_SRC005",
+      "nombre": "ExRx",
+      "titulo": "Exercise directory and muscle reference",
+      "url": "https://exrx.net/",
+      "notas": "Referencia general para clasificación de ejercicios por músculos y equipamiento. No se copia texto literal."
+    },
+    {
+      "source_id": "FIT_SRC006",
+      "nombre": "Body Muscles",
+      "titulo": "Body map / muscle region IDs",
+      "url": "https://vulovix.github.io/body-muscles/",
+      "notas": "Mapa anatómico Apache 2.0 usado como base visual de regiones."
+    }
+  ],
+  "equipment": [
+    {
+      "equipment_id": "EQ_BODY",
+      "nombre_es": "Peso corporal",
+      "name_en": "bodyweight",
+      "descripcion": "Sin material"
+    },
+    {
+      "equipment_id": "EQ_BARBELL",
+      "nombre_es": "Barra",
+      "name_en": "barbell",
+      "descripcion": "Barra olímpica o similar"
+    },
+    {
+      "equipment_id": "EQ_DUMBBELL",
+      "nombre_es": "Mancuernas",
+      "name_en": "dumbbell",
+      "descripcion": "Una o dos mancuernas"
+    },
+    {
+      "equipment_id": "EQ_MACHINE",
+      "nombre_es": "Máquina",
+      "name_en": "machine",
+      "descripcion": "Máquinas guiadas de gimnasio"
+    },
+    {
+      "equipment_id": "EQ_CABLE",
+      "nombre_es": "Polea",
+      "name_en": "cable",
+      "descripcion": "Polea alta, baja o ajustable"
+    },
+    {
+      "equipment_id": "EQ_BAND",
+      "nombre_es": "Banda elástica",
+      "name_en": "resistance_band",
+      "descripcion": "Banda o goma elástica"
+    },
+    {
+      "equipment_id": "EQ_KETTLEBELL",
+      "nombre_es": "Kettlebell",
+      "name_en": "kettlebell",
+      "descripcion": "Pesa rusa"
+    },
+    {
+      "equipment_id": "EQ_TRX",
+      "nombre_es": "TRX / suspensión",
+      "name_en": "suspension",
+      "descripcion": "Entrenamiento en suspensión"
+    },
+    {
+      "equipment_id": "EQ_CARDIO",
+      "nombre_es": "Cardio",
+      "name_en": "cardio_machine",
+      "descripcion": "Cinta, bici, remo, elíptica"
+    },
+    {
+      "equipment_id": "EQ_MIXED",
+      "nombre_es": "Mixto",
+      "name_en": "mixed",
+      "descripcion": "Puede hacerse con varios materiales"
+    }
+  ],
+  "goals": [
+    {
+      "goal_id": "GOAL_HYPERTROPHY",
+      "nombre": "Hipertrofia",
+      "descripcion": "Aumento de masa muscular"
+    },
+    {
+      "goal_id": "GOAL_STRENGTH",
+      "nombre": "Fuerza",
+      "descripcion": "Mejora de fuerza máxima o submáxima"
+    },
+    {
+      "goal_id": "GOAL_ENDURANCE",
+      "nombre": "Resistencia muscular",
+      "descripcion": "Más repeticiones, tolerancia y volumen"
+    },
+    {
+      "goal_id": "GOAL_FATLOSS",
+      "nombre": "Pérdida de grasa",
+      "descripcion": "Gasto energético, adherencia y masa magra"
+    },
+    {
+      "goal_id": "GOAL_MOBILITY",
+      "nombre": "Movilidad",
+      "descripcion": "Rango de movimiento y control"
+    },
+    {
+      "goal_id": "GOAL_GENERAL",
+      "nombre": "Condición física general",
+      "descripcion": "Salud, tono y entrenamiento completo"
+    }
+  ],
+  "exercises": [
+    {
+      "exercise_id": "FIT_EX001",
+      "name_en": "Push-up",
+      "name_es": "Flexión",
+      "equipment_id": "EQ_BODY",
+      "category": "Empuje",
+      "difficulty": "Principiante",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Empuje horizontal",
+      "description_es": "Ejercicio básico de empuje con peso corporal.",
+      "cues_es": "Mantener cuerpo alineado y controlar la bajada.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX002",
+      "name_en": "Bench Press",
+      "name_es": "Press banca con barra",
+      "equipment_id": "EQ_BARBELL",
+      "category": "Empuje",
+      "difficulty": "Intermedio",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Empuje horizontal",
+      "description_es": "Ejercicio principal para pectoral con barra.",
+      "cues_es": "Escápulas estables, pies firmes y recorrido controlado.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX003",
+      "name_en": "Incline Dumbbell Press",
+      "name_es": "Press inclinado con mancuernas",
+      "equipment_id": "EQ_DUMBBELL",
+      "category": "Empuje",
+      "difficulty": "Intermedio",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Empuje inclinado",
+      "description_es": "Variante para enfatizar la zona superior del pectoral.",
+      "cues_es": "Controlar la bajada y no perder estabilidad del hombro.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX004",
+      "name_en": "Cable Fly",
+      "name_es": "Aperturas en polea",
+      "equipment_id": "EQ_CABLE",
+      "category": "Empuje",
+      "difficulty": "Intermedio",
+      "mechanics": "Aislamiento",
+      "movement_pattern": "Aducción horizontal",
+      "description_es": "Ejercicio de aislamiento de pectoral.",
+      "cues_es": "Codos ligeramente flexionados y tensión constante.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX005",
+      "name_en": "Machine Chest Press",
+      "name_es": "Press de pecho en máquina",
+      "equipment_id": "EQ_MACHINE",
+      "category": "Empuje",
+      "difficulty": "Principiante",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Empuje horizontal",
+      "description_es": "Empuje guiado para pectoral y tríceps.",
+      "cues_es": "Ajustar asiento y no bloquear codos violentamente.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX006",
+      "name_en": "Pull-up",
+      "name_es": "Dominada",
+      "equipment_id": "EQ_BODY",
+      "category": "Tirón",
+      "difficulty": "Intermedio",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Tirón vertical",
+      "description_es": "Ejercicio de tirón vertical con peso corporal.",
+      "cues_es": "Iniciar con depresión escapular y evitar balanceos.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX007",
+      "name_en": "Lat Pulldown",
+      "name_es": "Jalón al pecho",
+      "equipment_id": "EQ_CABLE",
+      "category": "Tirón",
+      "difficulty": "Principiante",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Tirón vertical",
+      "description_es": "Tirón vertical en polea para dorsal.",
+      "cues_es": "Llevar codos hacia abajo, no tirar solo con brazos.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX008",
+      "name_en": "Barbell Row",
+      "name_es": "Remo con barra",
+      "equipment_id": "EQ_BARBELL",
+      "category": "Tirón",
+      "difficulty": "Intermedio",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Tirón horizontal",
+      "description_es": "Remo pesado para espalda media y dorsal.",
+      "cues_es": "Espalda neutra, tirar hacia abdomen y controlar bajada.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX009",
+      "name_en": "Seated Cable Row",
+      "name_es": "Remo sentado en polea",
+      "equipment_id": "EQ_CABLE",
+      "category": "Tirón",
+      "difficulty": "Principiante",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Tirón horizontal",
+      "description_es": "Remo guiado para espalda media.",
+      "cues_es": "Evitar encoger hombros, llevar codos atrás.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX010",
+      "name_en": "One-arm Dumbbell Row",
+      "name_es": "Remo unilateral con mancuerna",
+      "equipment_id": "EQ_DUMBBELL",
+      "category": "Tirón",
+      "difficulty": "Principiante",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Tirón horizontal",
+      "description_es": "Remo unilateral para dorsal y espalda.",
+      "cues_es": "Mantener tronco estable y tirar con el codo.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX011",
+      "name_en": "Overhead Press",
+      "name_es": "Press militar",
+      "equipment_id": "EQ_BARBELL",
+      "category": "Empuje",
+      "difficulty": "Intermedio",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Empuje vertical",
+      "description_es": "Empuje vertical para hombros y tríceps.",
+      "cues_es": "Evitar arquear en exceso la zona lumbar.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX012",
+      "name_en": "Dumbbell Lateral Raise",
+      "name_es": "Elevaciones laterales",
+      "equipment_id": "EQ_DUMBBELL",
+      "category": "Hombro",
+      "difficulty": "Principiante",
+      "mechanics": "Aislamiento",
+      "movement_pattern": "Abducción hombro",
+      "description_es": "Aislamiento del deltoides lateral.",
+      "cues_es": "Subir controlado sin impulso excesivo.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX013",
+      "name_en": "Rear Delt Fly",
+      "name_es": "Pájaros / deltoide posterior",
+      "equipment_id": "EQ_DUMBBELL",
+      "category": "Hombro",
+      "difficulty": "Principiante",
+      "mechanics": "Aislamiento",
+      "movement_pattern": "Abducción horizontal",
+      "description_es": "Trabajo de deltoides posterior.",
+      "cues_es": "Mantener control escapular y no balancear.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX014",
+      "name_en": "Face Pull",
+      "name_es": "Face pull",
+      "equipment_id": "EQ_CABLE",
+      "category": "Hombro",
+      "difficulty": "Principiante",
+      "mechanics": "Aislamiento",
+      "movement_pattern": "Tirón alto",
+      "description_es": "Trabajo de deltoide posterior, trapecio medio y rotadores externos.",
+      "cues_es": "Tirar hacia la cara con codos altos y control.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX015",
+      "name_en": "Dumbbell Shrug",
+      "name_es": "Encogimientos con mancuernas",
+      "equipment_id": "EQ_DUMBBELL",
+      "category": "Trapecio",
+      "difficulty": "Principiante",
+      "mechanics": "Aislamiento",
+      "movement_pattern": "Elevación escapular",
+      "description_es": "Ejercicio directo para trapecio superior.",
+      "cues_es": "Subir hombros verticalmente sin rodarlos.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX016",
+      "name_en": "Barbell Curl",
+      "name_es": "Curl bíceps con barra",
+      "equipment_id": "EQ_BARBELL",
+      "category": "Brazos",
+      "difficulty": "Principiante",
+      "mechanics": "Aislamiento",
+      "movement_pattern": "Flexión codo",
+      "description_es": "Ejercicio básico para bíceps.",
+      "cues_es": "Evitar balanceo y mantener codos estables.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX017",
+      "name_en": "Dumbbell Hammer Curl",
+      "name_es": "Curl martillo",
+      "equipment_id": "EQ_DUMBBELL",
+      "category": "Brazos",
+      "difficulty": "Principiante",
+      "mechanics": "Aislamiento",
+      "movement_pattern": "Flexión codo",
+      "description_es": "Variante de bíceps y antebrazo con agarre neutro.",
+      "cues_es": "Controlar muñecas y recorrido.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX018",
+      "name_en": "Triceps Pushdown",
+      "name_es": "Extensión tríceps en polea",
+      "equipment_id": "EQ_CABLE",
+      "category": "Brazos",
+      "difficulty": "Principiante",
+      "mechanics": "Aislamiento",
+      "movement_pattern": "Extensión codo",
+      "description_es": "Aislamiento de tríceps en polea.",
+      "cues_es": "Codos pegados y extender sin balancear.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX019",
+      "name_en": "Overhead Triceps Extension",
+      "name_es": "Extensión tríceps sobre cabeza",
+      "equipment_id": "EQ_DUMBBELL",
+      "category": "Brazos",
+      "difficulty": "Principiante",
+      "mechanics": "Aislamiento",
+      "movement_pattern": "Extensión codo",
+      "description_es": "Variante con énfasis en cabeza larga del tríceps.",
+      "cues_es": "Mantener codos relativamente fijos.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX020",
+      "name_en": "Wrist Curl",
+      "name_es": "Curl de muñeca",
+      "equipment_id": "EQ_DUMBBELL",
+      "category": "Antebrazo",
+      "difficulty": "Principiante",
+      "mechanics": "Aislamiento",
+      "movement_pattern": "Flexión muñeca",
+      "description_es": "Trabajo de flexores del antebrazo.",
+      "cues_es": "Recorrido lento y controlado.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX021",
+      "name_en": "Reverse Wrist Curl",
+      "name_es": "Extensión de muñeca",
+      "equipment_id": "EQ_DUMBBELL",
+      "category": "Antebrazo",
+      "difficulty": "Principiante",
+      "mechanics": "Aislamiento",
+      "movement_pattern": "Extensión muñeca",
+      "description_es": "Trabajo de extensores del antebrazo.",
+      "cues_es": "Carga ligera y control.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX022",
+      "name_en": "Back Squat",
+      "name_es": "Sentadilla trasera",
+      "equipment_id": "EQ_BARBELL",
+      "category": "Piernas",
+      "difficulty": "Intermedio",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Sentadilla",
+      "description_es": "Ejercicio global de pierna con barra.",
+      "cues_es": "Mantener estabilidad, profundidad adecuada y control de rodillas.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX023",
+      "name_en": "Front Squat",
+      "name_es": "Sentadilla frontal",
+      "equipment_id": "EQ_BARBELL",
+      "category": "Piernas",
+      "difficulty": "Avanzado",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Sentadilla",
+      "description_es": "Sentadilla con mayor demanda de tronco y cuádriceps.",
+      "cues_es": "Mantener torso vertical y codos altos.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX024",
+      "name_en": "Leg Press",
+      "name_es": "Prensa de piernas",
+      "equipment_id": "EQ_MACHINE",
+      "category": "Piernas",
+      "difficulty": "Principiante",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Empuje de pierna",
+      "description_es": "Empuje guiado para piernas.",
+      "cues_es": "No despegar pelvis ni bloquear rodillas de forma agresiva.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX025",
+      "name_en": "Leg Extension",
+      "name_es": "Extensión de piernas",
+      "equipment_id": "EQ_MACHINE",
+      "category": "Piernas",
+      "difficulty": "Principiante",
+      "mechanics": "Aislamiento",
+      "movement_pattern": "Extensión rodilla",
+      "description_es": "Aislamiento de cuádriceps.",
+      "cues_es": "Controlar subida y bajada.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX026",
+      "name_en": "Romanian Deadlift",
+      "name_es": "Peso muerto rumano",
+      "equipment_id": "EQ_BARBELL",
+      "category": "Piernas",
+      "difficulty": "Intermedio",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Bisagra cadera",
+      "description_es": "Trabajo de isquios, glúteos y espalda posterior.",
+      "cues_es": "Bisagra de cadera, espalda neutra y barra cerca del cuerpo.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX027",
+      "name_en": "Hip Thrust",
+      "name_es": "Hip thrust",
+      "equipment_id": "EQ_BARBELL",
+      "category": "Glúteos",
+      "difficulty": "Intermedio",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Extensión cadera",
+      "description_es": "Ejercicio principal de glúteo.",
+      "cues_es": "Extender cadera sin hiperextender lumbar.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX028",
+      "name_en": "Bulgarian Split Squat",
+      "name_es": "Sentadilla búlgara",
+      "equipment_id": "EQ_DUMBBELL",
+      "category": "Piernas",
+      "difficulty": "Intermedio",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Unilateral pierna",
+      "description_es": "Ejercicio unilateral para cuádriceps y glúteo.",
+      "cues_es": "Controlar rodilla, tronco y profundidad.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX029",
+      "name_en": "Walking Lunge",
+      "name_es": "Zancadas caminando",
+      "equipment_id": "EQ_DUMBBELL",
+      "category": "Piernas",
+      "difficulty": "Intermedio",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Unilateral pierna",
+      "description_es": "Trabajo unilateral dinámico de pierna.",
+      "cues_es": "Paso estable y control de rodilla.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX030",
+      "name_en": "Leg Curl",
+      "name_es": "Curl femoral en máquina",
+      "equipment_id": "EQ_MACHINE",
+      "category": "Piernas",
+      "difficulty": "Principiante",
+      "mechanics": "Aislamiento",
+      "movement_pattern": "Flexión rodilla",
+      "description_es": "Aislamiento de isquiosurales.",
+      "cues_es": "Controlar fase excéntrica.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX031",
+      "name_en": "Standing Calf Raise",
+      "name_es": "Elevación de gemelos de pie",
+      "equipment_id": "EQ_MACHINE",
+      "category": "Piernas",
+      "difficulty": "Principiante",
+      "mechanics": "Aislamiento",
+      "movement_pattern": "Flexión plantar",
+      "description_es": "Trabajo de gastrocnemio.",
+      "cues_es": "Pausa arriba y estiramiento controlado abajo.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX032",
+      "name_en": "Seated Calf Raise",
+      "name_es": "Elevación de sóleo sentado",
+      "equipment_id": "EQ_MACHINE",
+      "category": "Piernas",
+      "difficulty": "Principiante",
+      "mechanics": "Aislamiento",
+      "movement_pattern": "Flexión plantar",
+      "description_es": "Variante con énfasis en sóleo.",
+      "cues_es": "Controlar recorrido completo.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX033",
+      "name_en": "Plank",
+      "name_es": "Plancha",
+      "equipment_id": "EQ_BODY",
+      "category": "Core",
+      "difficulty": "Principiante",
+      "mechanics": "Isométrico",
+      "movement_pattern": "Anti-extensión",
+      "description_es": "Ejercicio isométrico de abdomen y estabilidad.",
+      "cues_es": "Mantener pelvis neutra y respirar.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX034",
+      "name_en": "Crunch",
+      "name_es": "Crunch abdominal",
+      "equipment_id": "EQ_BODY",
+      "category": "Core",
+      "difficulty": "Principiante",
+      "mechanics": "Aislamiento",
+      "movement_pattern": "Flexión tronco",
+      "description_es": "Ejercicio básico de abdominales.",
+      "cues_es": "Subir con control sin tirar del cuello.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX035",
+      "name_en": "Hanging Knee Raise",
+      "name_es": "Elevación de rodillas colgado",
+      "equipment_id": "EQ_BODY",
+      "category": "Core",
+      "difficulty": "Intermedio",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Flexión cadera",
+      "description_es": "Trabajo de abdomen inferior y flexores de cadera.",
+      "cues_es": "Evitar balanceo y controlar pelvis.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX036",
+      "name_en": "Russian Twist",
+      "name_es": "Giro ruso",
+      "equipment_id": "EQ_BODY",
+      "category": "Core",
+      "difficulty": "Principiante",
+      "mechanics": "Aislamiento",
+      "movement_pattern": "Rotación tronco",
+      "description_es": "Trabajo de oblicuos.",
+      "cues_es": "Rotar con control y sin colapsar espalda.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX037",
+      "name_en": "Pallof Press",
+      "name_es": "Pallof press",
+      "equipment_id": "EQ_CABLE",
+      "category": "Core",
+      "difficulty": "Principiante",
+      "mechanics": "Anti-rotación",
+      "movement_pattern": "Anti-rotación",
+      "description_es": "Ejercicio anti-rotacional para core.",
+      "cues_es": "Resistir rotación y mantener postura estable.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX038",
+      "name_en": "Bird Dog",
+      "name_es": "Bird dog",
+      "equipment_id": "EQ_BODY",
+      "category": "Core",
+      "difficulty": "Principiante",
+      "mechanics": "Estabilidad",
+      "movement_pattern": "Control motor",
+      "description_es": "Ejercicio de estabilidad lumbar y control cruzado.",
+      "cues_es": "Mover lento sin rotar pelvis.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX039",
+      "name_en": "Glute Bridge",
+      "name_es": "Puente de glúteo",
+      "equipment_id": "EQ_BODY",
+      "category": "Glúteos",
+      "difficulty": "Principiante",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Extensión cadera",
+      "description_es": "Activación y fuerza básica de glúteo.",
+      "cues_es": "Empujar desde talones y no arquear lumbar.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX040",
+      "name_en": "Step-up",
+      "name_es": "Subida al cajón",
+      "equipment_id": "EQ_DUMBBELL",
+      "category": "Piernas",
+      "difficulty": "Principiante",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Unilateral pierna",
+      "description_es": "Trabajo unilateral de pierna y estabilidad.",
+      "cues_es": "Subir con control y evitar impulso excesivo.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX041",
+      "name_en": "Goblet Squat",
+      "name_es": "Sentadilla goblet",
+      "equipment_id": "EQ_DUMBBELL",
+      "category": "Piernas",
+      "difficulty": "Principiante",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Sentadilla",
+      "description_es": "Sentadilla accesible con mancuerna/kettlebell.",
+      "cues_es": "Mantener torso erguido y codos cerca.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX042",
+      "name_en": "Kettlebell Swing",
+      "name_es": "Swing con kettlebell",
+      "equipment_id": "EQ_KETTLEBELL",
+      "category": "Potencia",
+      "difficulty": "Intermedio",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Bisagra cadera",
+      "description_es": "Ejercicio balístico de cadena posterior.",
+      "cues_es": "Movimiento de cadera, no sentadilla ni elevación frontal.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX043",
+      "name_en": "Resistance Band Row",
+      "name_es": "Remo con banda",
+      "equipment_id": "EQ_BAND",
+      "category": "Tirón",
+      "difficulty": "Principiante",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Tirón horizontal",
+      "description_es": "Remo simple con banda elástica.",
+      "cues_es": "Juntar escápulas sin encoger hombros.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX044",
+      "name_en": "Band Pull-apart",
+      "name_es": "Aperturas con banda",
+      "equipment_id": "EQ_BAND",
+      "category": "Hombro",
+      "difficulty": "Principiante",
+      "mechanics": "Aislamiento",
+      "movement_pattern": "Retracción escapular",
+      "description_es": "Ejercicio para deltoide posterior y espalda alta.",
+      "cues_es": "Brazos extendidos y tensión controlada.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX045",
+      "name_en": "TRX Row",
+      "name_es": "Remo en TRX",
+      "equipment_id": "EQ_TRX",
+      "category": "Tirón",
+      "difficulty": "Principiante",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Tirón horizontal",
+      "description_es": "Remo con peso corporal ajustable.",
+      "cues_es": "Cuanto más horizontal, más difícil.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX046",
+      "name_en": "Cable Lateral Raise",
+      "name_es": "Elevación lateral en polea",
+      "equipment_id": "EQ_CABLE",
+      "category": "Hombro",
+      "difficulty": "Intermedio",
+      "mechanics": "Aislamiento",
+      "movement_pattern": "Abducción hombro",
+      "description_es": "Variante con tensión constante para deltoides lateral.",
+      "cues_es": "Mantener control y evitar impulso.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX047",
+      "name_en": "Pec Deck",
+      "name_es": "Contractora de pecho",
+      "equipment_id": "EQ_MACHINE",
+      "category": "Pecho",
+      "difficulty": "Principiante",
+      "mechanics": "Aislamiento",
+      "movement_pattern": "Aducción horizontal",
+      "description_es": "Aislamiento de pectoral en máquina.",
+      "cues_es": "Ajustar asiento y controlar recorrido.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX048",
+      "name_en": "Machine Shoulder Press",
+      "name_es": "Press hombro en máquina",
+      "equipment_id": "EQ_MACHINE",
+      "category": "Hombro",
+      "difficulty": "Principiante",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Empuje vertical",
+      "description_es": "Empuje guiado para deltoides y tríceps.",
+      "cues_es": "No perder control escapular.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX049",
+      "name_en": "Assisted Pull-up",
+      "name_es": "Dominada asistida",
+      "equipment_id": "EQ_MACHINE",
+      "category": "Tirón",
+      "difficulty": "Principiante",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Tirón vertical",
+      "description_es": "Versión asistida de dominada.",
+      "cues_es": "Reducir ayuda progresivamente.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX050",
+      "name_en": "Cable Woodchop",
+      "name_es": "Woodchop en polea",
+      "equipment_id": "EQ_CABLE",
+      "category": "Core",
+      "difficulty": "Intermedio",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Rotación tronco",
+      "description_es": "Trabajo rotacional de core.",
+      "cues_es": "Rotar con control y cadera estable.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX051",
+      "name_en": "Dip",
+      "name_es": "Fondos en paralelas",
+      "equipment_id": "EQ_BODY",
+      "category": "Empuje",
+      "difficulty": "Intermedio",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Empuje vertical/horizontal",
+      "description_es": "Ejercicio para tríceps, pecho y hombro.",
+      "cues_es": "Bajar controlado sin dolor de hombro.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX052",
+      "name_en": "Chin-up",
+      "name_es": "Dominada supina",
+      "equipment_id": "EQ_BODY",
+      "category": "Tirón",
+      "difficulty": "Intermedio",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Tirón vertical",
+      "description_es": "Dominada con mayor participación del bíceps.",
+      "cues_es": "Controlar balanceo y rango.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX053",
+      "name_en": "Bodyweight Squat",
+      "name_es": "Sentadilla libre",
+      "equipment_id": "EQ_BODY",
+      "category": "Piernas",
+      "difficulty": "Principiante",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Sentadilla",
+      "description_es": "Patrón básico de sentadilla sin carga externa.",
+      "cues_es": "Control de rodillas y profundidad tolerada.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX054",
+      "name_en": "Reverse Lunge",
+      "name_es": "Zancada atrás",
+      "equipment_id": "EQ_BODY",
+      "category": "Piernas",
+      "difficulty": "Principiante",
+      "mechanics": "Compuesto",
+      "movement_pattern": "Unilateral pierna",
+      "description_es": "Variante accesible de zancada.",
+      "cues_es": "Paso atrás estable y tronco controlado.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    },
+    {
+      "exercise_id": "FIT_EX055",
+      "name_en": "Side Plank",
+      "name_es": "Plancha lateral",
+      "equipment_id": "EQ_BODY",
+      "category": "Core",
+      "difficulty": "Principiante",
+      "mechanics": "Isométrico",
+      "movement_pattern": "Anti-inclinación",
+      "description_es": "Trabajo isométrico de oblicuos y estabilidad lateral.",
+      "cues_es": "Mantener línea hombro-cadera-pie.",
+      "source_ids": "FIT_SRC005;FIT_SRC006"
+    }
+  ],
+  "exercise_regions": [
+    {
+      "exercise_id": "FIT_EX001",
+      "bodymuscles_id": "chest-upper-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX001",
+      "bodymuscles_id": "chest-upper-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX001",
+      "bodymuscles_id": "chest-lower-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX001",
+      "bodymuscles_id": "chest-lower-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX001",
+      "bodymuscles_id": "triceps-long-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX001",
+      "bodymuscles_id": "triceps-lateral-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX001",
+      "bodymuscles_id": "triceps-long-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX001",
+      "bodymuscles_id": "triceps-lateral-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX001",
+      "bodymuscles_id": "shoulder-front-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX001",
+      "bodymuscles_id": "shoulder-front-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX001",
+      "bodymuscles_id": "abs-upper-left",
+      "role": "stabilizer",
+      "intensity": 35
+    },
+    {
+      "exercise_id": "FIT_EX001",
+      "bodymuscles_id": "abs-upper-right",
+      "role": "stabilizer",
+      "intensity": 35
+    },
+    {
+      "exercise_id": "FIT_EX001",
+      "bodymuscles_id": "abs-lower-left",
+      "role": "stabilizer",
+      "intensity": 35
+    },
+    {
+      "exercise_id": "FIT_EX001",
+      "bodymuscles_id": "abs-lower-right",
+      "role": "stabilizer",
+      "intensity": 35
+    },
+    {
+      "exercise_id": "FIT_EX002",
+      "bodymuscles_id": "chest-upper-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX002",
+      "bodymuscles_id": "chest-upper-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX002",
+      "bodymuscles_id": "chest-lower-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX002",
+      "bodymuscles_id": "chest-lower-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX002",
+      "bodymuscles_id": "triceps-long-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX002",
+      "bodymuscles_id": "triceps-lateral-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX002",
+      "bodymuscles_id": "triceps-long-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX002",
+      "bodymuscles_id": "triceps-lateral-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX002",
+      "bodymuscles_id": "shoulder-front-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX002",
+      "bodymuscles_id": "shoulder-front-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX003",
+      "bodymuscles_id": "chest-upper-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX003",
+      "bodymuscles_id": "chest-upper-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX003",
+      "bodymuscles_id": "shoulder-front-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX003",
+      "bodymuscles_id": "shoulder-front-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX003",
+      "bodymuscles_id": "triceps-long-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX003",
+      "bodymuscles_id": "triceps-long-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX004",
+      "bodymuscles_id": "chest-upper-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX004",
+      "bodymuscles_id": "chest-upper-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX004",
+      "bodymuscles_id": "chest-lower-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX004",
+      "bodymuscles_id": "chest-lower-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX004",
+      "bodymuscles_id": "shoulder-front-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX004",
+      "bodymuscles_id": "shoulder-front-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX005",
+      "bodymuscles_id": "chest-upper-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX005",
+      "bodymuscles_id": "chest-upper-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX005",
+      "bodymuscles_id": "chest-lower-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX005",
+      "bodymuscles_id": "chest-lower-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX005",
+      "bodymuscles_id": "triceps-long-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX005",
+      "bodymuscles_id": "triceps-long-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX005",
+      "bodymuscles_id": "shoulder-front-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX005",
+      "bodymuscles_id": "shoulder-front-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX006",
+      "bodymuscles_id": "lats-upper-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX006",
+      "bodymuscles_id": "lats-mid-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX006",
+      "bodymuscles_id": "lats-lower-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX006",
+      "bodymuscles_id": "lats-upper-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX006",
+      "bodymuscles_id": "lats-mid-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX006",
+      "bodymuscles_id": "lats-lower-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX006",
+      "bodymuscles_id": "biceps-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX006",
+      "bodymuscles_id": "biceps-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX006",
+      "bodymuscles_id": "forearm-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX006",
+      "bodymuscles_id": "forearm-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX006",
+      "bodymuscles_id": "traps-mid-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX006",
+      "bodymuscles_id": "traps-mid-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX007",
+      "bodymuscles_id": "lats-upper-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX007",
+      "bodymuscles_id": "lats-mid-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX007",
+      "bodymuscles_id": "lats-lower-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX007",
+      "bodymuscles_id": "lats-upper-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX007",
+      "bodymuscles_id": "lats-mid-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX007",
+      "bodymuscles_id": "lats-lower-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX007",
+      "bodymuscles_id": "biceps-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX007",
+      "bodymuscles_id": "biceps-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX007",
+      "bodymuscles_id": "traps-mid-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX007",
+      "bodymuscles_id": "traps-mid-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX008",
+      "bodymuscles_id": "lats-mid-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX008",
+      "bodymuscles_id": "lats-mid-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX008",
+      "bodymuscles_id": "traps-mid-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX008",
+      "bodymuscles_id": "traps-mid-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX008",
+      "bodymuscles_id": "biceps-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX008",
+      "bodymuscles_id": "biceps-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX008",
+      "bodymuscles_id": "lower-back-erectors-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX008",
+      "bodymuscles_id": "lower-back-erectors-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX009",
+      "bodymuscles_id": "lats-mid-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX009",
+      "bodymuscles_id": "lats-mid-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX009",
+      "bodymuscles_id": "traps-mid-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX009",
+      "bodymuscles_id": "traps-mid-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX009",
+      "bodymuscles_id": "biceps-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX009",
+      "bodymuscles_id": "biceps-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX009",
+      "bodymuscles_id": "deltoid-rear-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX009",
+      "bodymuscles_id": "deltoid-rear-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX010",
+      "bodymuscles_id": "lats-mid-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX010",
+      "bodymuscles_id": "lats-mid-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX010",
+      "bodymuscles_id": "lats-lower-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX010",
+      "bodymuscles_id": "lats-lower-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX010",
+      "bodymuscles_id": "biceps-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX010",
+      "bodymuscles_id": "biceps-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX010",
+      "bodymuscles_id": "traps-mid-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX010",
+      "bodymuscles_id": "traps-mid-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX011",
+      "bodymuscles_id": "shoulder-front-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX011",
+      "bodymuscles_id": "shoulder-front-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX011",
+      "bodymuscles_id": "shoulder-side-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX011",
+      "bodymuscles_id": "shoulder-side-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX011",
+      "bodymuscles_id": "triceps-long-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX011",
+      "bodymuscles_id": "triceps-lateral-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX011",
+      "bodymuscles_id": "triceps-long-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX011",
+      "bodymuscles_id": "triceps-lateral-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX011",
+      "bodymuscles_id": "traps-upper-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX011",
+      "bodymuscles_id": "traps-upper-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX012",
+      "bodymuscles_id": "shoulder-side-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX012",
+      "bodymuscles_id": "shoulder-side-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX013",
+      "bodymuscles_id": "deltoid-rear-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX013",
+      "bodymuscles_id": "deltoid-rear-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX013",
+      "bodymuscles_id": "traps-mid-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX013",
+      "bodymuscles_id": "traps-mid-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX014",
+      "bodymuscles_id": "deltoid-rear-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX014",
+      "bodymuscles_id": "deltoid-rear-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX014",
+      "bodymuscles_id": "traps-mid-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX014",
+      "bodymuscles_id": "traps-mid-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX014",
+      "bodymuscles_id": "traps-lower-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX014",
+      "bodymuscles_id": "traps-lower-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX015",
+      "bodymuscles_id": "traps-upper-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX015",
+      "bodymuscles_id": "traps-upper-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX016",
+      "bodymuscles_id": "biceps-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX016",
+      "bodymuscles_id": "biceps-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX016",
+      "bodymuscles_id": "forearm-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX016",
+      "bodymuscles_id": "forearm-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX017",
+      "bodymuscles_id": "biceps-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX017",
+      "bodymuscles_id": "biceps-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX017",
+      "bodymuscles_id": "forearm-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX017",
+      "bodymuscles_id": "forearm-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX018",
+      "bodymuscles_id": "triceps-long-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX018",
+      "bodymuscles_id": "triceps-lateral-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX018",
+      "bodymuscles_id": "triceps-long-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX018",
+      "bodymuscles_id": "triceps-lateral-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX019",
+      "bodymuscles_id": "triceps-long-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX019",
+      "bodymuscles_id": "triceps-long-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX019",
+      "bodymuscles_id": "triceps-lateral-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX019",
+      "bodymuscles_id": "triceps-lateral-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX020",
+      "bodymuscles_id": "forearm-flexors-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX020",
+      "bodymuscles_id": "forearm-flexors-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX021",
+      "bodymuscles_id": "forearm-extensors-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX021",
+      "bodymuscles_id": "forearm-extensors-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX022",
+      "bodymuscles_id": "quads-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX022",
+      "bodymuscles_id": "quads-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX022",
+      "bodymuscles_id": "gluteus-maximus-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX022",
+      "bodymuscles_id": "gluteus-maximus-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX022",
+      "bodymuscles_id": "adductors-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX022",
+      "bodymuscles_id": "adductors-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX022",
+      "bodymuscles_id": "hamstrings-medial-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX022",
+      "bodymuscles_id": "hamstrings-medial-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX022",
+      "bodymuscles_id": "lower-back-erectors-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX022",
+      "bodymuscles_id": "lower-back-erectors-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX023",
+      "bodymuscles_id": "quads-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX023",
+      "bodymuscles_id": "quads-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX023",
+      "bodymuscles_id": "gluteus-maximus-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX023",
+      "bodymuscles_id": "gluteus-maximus-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX023",
+      "bodymuscles_id": "abs-upper-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX023",
+      "bodymuscles_id": "abs-upper-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX023",
+      "bodymuscles_id": "lower-back-erectors-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX023",
+      "bodymuscles_id": "lower-back-erectors-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX024",
+      "bodymuscles_id": "quads-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX024",
+      "bodymuscles_id": "quads-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX024",
+      "bodymuscles_id": "gluteus-maximus-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX024",
+      "bodymuscles_id": "gluteus-maximus-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX024",
+      "bodymuscles_id": "adductors-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX024",
+      "bodymuscles_id": "adductors-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX025",
+      "bodymuscles_id": "quads-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX025",
+      "bodymuscles_id": "quads-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX025",
+      "bodymuscles_id": "knee-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX025",
+      "bodymuscles_id": "knee-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX026",
+      "bodymuscles_id": "hamstrings-medial-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX026",
+      "bodymuscles_id": "hamstrings-lateral-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX026",
+      "bodymuscles_id": "hamstrings-medial-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX026",
+      "bodymuscles_id": "hamstrings-lateral-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX026",
+      "bodymuscles_id": "gluteus-maximus-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX026",
+      "bodymuscles_id": "gluteus-maximus-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX026",
+      "bodymuscles_id": "lower-back-erectors-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX026",
+      "bodymuscles_id": "lower-back-erectors-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX027",
+      "bodymuscles_id": "gluteus-maximus-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX027",
+      "bodymuscles_id": "gluteus-maximus-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX027",
+      "bodymuscles_id": "hamstrings-medial-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX027",
+      "bodymuscles_id": "hamstrings-medial-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX027",
+      "bodymuscles_id": "gluteus-medius-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX027",
+      "bodymuscles_id": "gluteus-medius-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX028",
+      "bodymuscles_id": "quads-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX028",
+      "bodymuscles_id": "quads-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX028",
+      "bodymuscles_id": "gluteus-maximus-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX028",
+      "bodymuscles_id": "gluteus-maximus-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX028",
+      "bodymuscles_id": "adductors-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX028",
+      "bodymuscles_id": "adductors-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX028",
+      "bodymuscles_id": "gluteus-medius-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX028",
+      "bodymuscles_id": "gluteus-medius-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX029",
+      "bodymuscles_id": "quads-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX029",
+      "bodymuscles_id": "quads-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX029",
+      "bodymuscles_id": "gluteus-maximus-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX029",
+      "bodymuscles_id": "gluteus-maximus-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX029",
+      "bodymuscles_id": "hamstrings-medial-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX029",
+      "bodymuscles_id": "hamstrings-medial-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX029",
+      "bodymuscles_id": "adductors-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX029",
+      "bodymuscles_id": "adductors-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX030",
+      "bodymuscles_id": "hamstrings-medial-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX030",
+      "bodymuscles_id": "hamstrings-lateral-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX030",
+      "bodymuscles_id": "hamstrings-medial-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX030",
+      "bodymuscles_id": "hamstrings-lateral-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX030",
+      "bodymuscles_id": "knee-back-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX030",
+      "bodymuscles_id": "knee-back-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX031",
+      "bodymuscles_id": "calves-gastroc-medial-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX031",
+      "bodymuscles_id": "calves-gastroc-lateral-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX031",
+      "bodymuscles_id": "calves-gastroc-medial-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX031",
+      "bodymuscles_id": "calves-gastroc-lateral-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX032",
+      "bodymuscles_id": "calves-soleus-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX032",
+      "bodymuscles_id": "calves-soleus-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX033",
+      "bodymuscles_id": "abs-upper-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX033",
+      "bodymuscles_id": "abs-upper-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX033",
+      "bodymuscles_id": "abs-lower-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX033",
+      "bodymuscles_id": "abs-lower-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX033",
+      "bodymuscles_id": "obliques-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX033",
+      "bodymuscles_id": "obliques-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX033",
+      "bodymuscles_id": "lower-back-erectors-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX033",
+      "bodymuscles_id": "lower-back-erectors-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX034",
+      "bodymuscles_id": "abs-upper-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX034",
+      "bodymuscles_id": "abs-upper-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX034",
+      "bodymuscles_id": "abs-lower-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX034",
+      "bodymuscles_id": "abs-lower-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX035",
+      "bodymuscles_id": "abs-lower-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX035",
+      "bodymuscles_id": "abs-lower-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX035",
+      "bodymuscles_id": "hip-flexor-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX035",
+      "bodymuscles_id": "hip-flexor-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX035",
+      "bodymuscles_id": "forearm-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX035",
+      "bodymuscles_id": "forearm-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX036",
+      "bodymuscles_id": "obliques-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX036",
+      "bodymuscles_id": "obliques-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX036",
+      "bodymuscles_id": "abs-upper-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX036",
+      "bodymuscles_id": "abs-upper-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX036",
+      "bodymuscles_id": "abs-lower-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX036",
+      "bodymuscles_id": "abs-lower-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX037",
+      "bodymuscles_id": "obliques-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX037",
+      "bodymuscles_id": "obliques-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX037",
+      "bodymuscles_id": "abs-upper-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX037",
+      "bodymuscles_id": "abs-upper-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX037",
+      "bodymuscles_id": "serratus-anterior-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX037",
+      "bodymuscles_id": "serratus-anterior-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX038",
+      "bodymuscles_id": "lower-back-erectors-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX038",
+      "bodymuscles_id": "lower-back-erectors-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX038",
+      "bodymuscles_id": "abs-lower-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX038",
+      "bodymuscles_id": "abs-lower-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX038",
+      "bodymuscles_id": "gluteus-maximus-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX038",
+      "bodymuscles_id": "gluteus-maximus-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX038",
+      "bodymuscles_id": "shoulder-front-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX038",
+      "bodymuscles_id": "shoulder-front-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX039",
+      "bodymuscles_id": "gluteus-maximus-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX039",
+      "bodymuscles_id": "gluteus-maximus-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX039",
+      "bodymuscles_id": "hamstrings-medial-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX039",
+      "bodymuscles_id": "hamstrings-medial-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX039",
+      "bodymuscles_id": "lower-back-erectors-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX039",
+      "bodymuscles_id": "lower-back-erectors-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX040",
+      "bodymuscles_id": "quads-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX040",
+      "bodymuscles_id": "quads-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX040",
+      "bodymuscles_id": "gluteus-maximus-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX040",
+      "bodymuscles_id": "gluteus-maximus-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX040",
+      "bodymuscles_id": "gluteus-medius-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX040",
+      "bodymuscles_id": "gluteus-medius-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX040",
+      "bodymuscles_id": "calves-gastroc-medial-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX040",
+      "bodymuscles_id": "calves-gastroc-medial-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX041",
+      "bodymuscles_id": "quads-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX041",
+      "bodymuscles_id": "quads-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX041",
+      "bodymuscles_id": "gluteus-maximus-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX041",
+      "bodymuscles_id": "gluteus-maximus-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX041",
+      "bodymuscles_id": "abs-upper-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX041",
+      "bodymuscles_id": "abs-upper-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX041",
+      "bodymuscles_id": "adductors-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX041",
+      "bodymuscles_id": "adductors-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX042",
+      "bodymuscles_id": "gluteus-maximus-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX042",
+      "bodymuscles_id": "gluteus-maximus-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX042",
+      "bodymuscles_id": "hamstrings-medial-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX042",
+      "bodymuscles_id": "hamstrings-medial-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX042",
+      "bodymuscles_id": "lower-back-erectors-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX042",
+      "bodymuscles_id": "lower-back-erectors-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX042",
+      "bodymuscles_id": "traps-upper-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX042",
+      "bodymuscles_id": "traps-upper-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX043",
+      "bodymuscles_id": "lats-mid-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX043",
+      "bodymuscles_id": "lats-mid-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX043",
+      "bodymuscles_id": "traps-mid-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX043",
+      "bodymuscles_id": "traps-mid-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX043",
+      "bodymuscles_id": "biceps-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX043",
+      "bodymuscles_id": "biceps-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX044",
+      "bodymuscles_id": "deltoid-rear-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX044",
+      "bodymuscles_id": "deltoid-rear-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX044",
+      "bodymuscles_id": "traps-mid-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX044",
+      "bodymuscles_id": "traps-mid-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX044",
+      "bodymuscles_id": "traps-lower-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX044",
+      "bodymuscles_id": "traps-lower-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX045",
+      "bodymuscles_id": "lats-mid-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX045",
+      "bodymuscles_id": "lats-mid-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX045",
+      "bodymuscles_id": "traps-mid-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX045",
+      "bodymuscles_id": "traps-mid-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX045",
+      "bodymuscles_id": "biceps-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX045",
+      "bodymuscles_id": "biceps-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX045",
+      "bodymuscles_id": "abs-upper-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX045",
+      "bodymuscles_id": "abs-upper-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX046",
+      "bodymuscles_id": "shoulder-side-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX046",
+      "bodymuscles_id": "shoulder-side-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX047",
+      "bodymuscles_id": "chest-upper-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX047",
+      "bodymuscles_id": "chest-upper-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX047",
+      "bodymuscles_id": "chest-lower-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX047",
+      "bodymuscles_id": "chest-lower-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX048",
+      "bodymuscles_id": "shoulder-front-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX048",
+      "bodymuscles_id": "shoulder-front-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX048",
+      "bodymuscles_id": "shoulder-side-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX048",
+      "bodymuscles_id": "shoulder-side-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX048",
+      "bodymuscles_id": "triceps-long-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX048",
+      "bodymuscles_id": "triceps-long-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX049",
+      "bodymuscles_id": "lats-upper-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX049",
+      "bodymuscles_id": "lats-upper-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX049",
+      "bodymuscles_id": "lats-mid-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX049",
+      "bodymuscles_id": "lats-mid-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX049",
+      "bodymuscles_id": "biceps-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX049",
+      "bodymuscles_id": "biceps-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX049",
+      "bodymuscles_id": "traps-mid-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX049",
+      "bodymuscles_id": "traps-mid-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX050",
+      "bodymuscles_id": "obliques-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX050",
+      "bodymuscles_id": "obliques-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX050",
+      "bodymuscles_id": "serratus-anterior-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX050",
+      "bodymuscles_id": "serratus-anterior-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX050",
+      "bodymuscles_id": "abs-upper-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX050",
+      "bodymuscles_id": "abs-upper-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX051",
+      "bodymuscles_id": "triceps-long-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX051",
+      "bodymuscles_id": "triceps-lateral-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX051",
+      "bodymuscles_id": "triceps-long-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX051",
+      "bodymuscles_id": "triceps-lateral-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX051",
+      "bodymuscles_id": "chest-lower-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX051",
+      "bodymuscles_id": "chest-lower-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX051",
+      "bodymuscles_id": "shoulder-front-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX051",
+      "bodymuscles_id": "shoulder-front-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX052",
+      "bodymuscles_id": "lats-upper-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX052",
+      "bodymuscles_id": "lats-upper-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX052",
+      "bodymuscles_id": "lats-mid-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX052",
+      "bodymuscles_id": "lats-mid-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX052",
+      "bodymuscles_id": "biceps-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX052",
+      "bodymuscles_id": "biceps-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX052",
+      "bodymuscles_id": "forearm-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX052",
+      "bodymuscles_id": "forearm-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX053",
+      "bodymuscles_id": "quads-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX053",
+      "bodymuscles_id": "quads-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX053",
+      "bodymuscles_id": "gluteus-maximus-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX053",
+      "bodymuscles_id": "gluteus-maximus-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX053",
+      "bodymuscles_id": "adductors-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX053",
+      "bodymuscles_id": "adductors-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX054",
+      "bodymuscles_id": "quads-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX054",
+      "bodymuscles_id": "quads-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX054",
+      "bodymuscles_id": "gluteus-maximus-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX054",
+      "bodymuscles_id": "gluteus-maximus-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX054",
+      "bodymuscles_id": "gluteus-medius-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX054",
+      "bodymuscles_id": "gluteus-medius-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX055",
+      "bodymuscles_id": "obliques-left",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX055",
+      "bodymuscles_id": "obliques-right",
+      "role": "primary",
+      "intensity": 100
+    },
+    {
+      "exercise_id": "FIT_EX055",
+      "bodymuscles_id": "abs-lower-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX055",
+      "bodymuscles_id": "abs-lower-right",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX055",
+      "bodymuscles_id": "gluteus-medius-left",
+      "role": "secondary",
+      "intensity": 65
+    },
+    {
+      "exercise_id": "FIT_EX055",
+      "bodymuscles_id": "gluteus-medius-right",
+      "role": "secondary",
+      "intensity": 65
+    }
+  ],
+  "routines": [
+    {
+      "routine_id": "FIT_RUT001",
+      "name_es": "Full Body Novus 3 días",
+      "goal_id": "GOAL_GENERAL",
+      "level": "Principiante",
+      "days_per_week": 3,
+      "description_es": "Rutina sencilla de cuerpo completo para empezar."
+    },
+    {
+      "routine_id": "FIT_RUT002",
+      "name_es": "Hipertrofia Magister 4 días Upper/Lower",
+      "goal_id": "GOAL_HYPERTROPHY",
+      "level": "Intermedio",
+      "days_per_week": 4,
+      "description_es": "Rutina torso/pierna para hipertrofia y progresión."
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "name_es": "Push Pull Legs 6 días",
+      "goal_id": "GOAL_HYPERTROPHY",
+      "level": "Intermedio/Avanzado",
+      "days_per_week": 6,
+      "description_es": "División clásica empuje/tirón/pierna."
+    },
+    {
+      "routine_id": "FIT_RUT004",
+      "name_es": "Fuerza básica 3 días",
+      "goal_id": "GOAL_STRENGTH",
+      "level": "Principiante/Intermedio",
+      "days_per_week": 3,
+      "description_es": "Patrones básicos de fuerza con barra."
+    },
+    {
+      "routine_id": "FIT_RUT005",
+      "name_es": "Casa sin máquinas 3 días",
+      "goal_id": "GOAL_GENERAL",
+      "level": "Principiante",
+      "days_per_week": 3,
+      "description_es": "Entrenamiento con peso corporal y poco material."
+    }
+  ],
+  "routine_exercises": [
+    {
+      "routine_id": "FIT_RUT001",
+      "day_label": "Día 1",
+      "order_num": 1,
+      "exercise_id": "FIT_EX041",
+      "sets": 3,
+      "reps": "8-12",
+      "rest_seconds": 90,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT001",
+      "day_label": "Día 1",
+      "order_num": 2,
+      "exercise_id": "FIT_EX001",
+      "sets": 3,
+      "reps": "8-15",
+      "rest_seconds": 75,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT001",
+      "day_label": "Día 1",
+      "order_num": 3,
+      "exercise_id": "FIT_EX043",
+      "sets": 3,
+      "reps": "10-15",
+      "rest_seconds": 75,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT001",
+      "day_label": "Día 1",
+      "order_num": 4,
+      "exercise_id": "FIT_EX039",
+      "sets": 3,
+      "reps": "10-15",
+      "rest_seconds": 75,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT001",
+      "day_label": "Día 1",
+      "order_num": 5,
+      "exercise_id": "FIT_EX033",
+      "sets": 3,
+      "reps": "30-45s",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT001",
+      "day_label": "Día 2",
+      "order_num": 1,
+      "exercise_id": "FIT_EX053",
+      "sets": 3,
+      "reps": "10-15",
+      "rest_seconds": 75,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT001",
+      "day_label": "Día 2",
+      "order_num": 2,
+      "exercise_id": "FIT_EX005",
+      "sets": 3,
+      "reps": "8-12",
+      "rest_seconds": 90,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT001",
+      "day_label": "Día 2",
+      "order_num": 3,
+      "exercise_id": "FIT_EX007",
+      "sets": 3,
+      "reps": "10-12",
+      "rest_seconds": 90,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT001",
+      "day_label": "Día 2",
+      "order_num": 4,
+      "exercise_id": "FIT_EX040",
+      "sets": 3,
+      "reps": "8-12/cada pierna",
+      "rest_seconds": 75,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT001",
+      "day_label": "Día 2",
+      "order_num": 5,
+      "exercise_id": "FIT_EX036",
+      "sets": 3,
+      "reps": "12-20",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT001",
+      "day_label": "Día 3",
+      "order_num": 1,
+      "exercise_id": "FIT_EX041",
+      "sets": 3,
+      "reps": "8-12",
+      "rest_seconds": 90,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT001",
+      "day_label": "Día 3",
+      "order_num": 2,
+      "exercise_id": "FIT_EX001",
+      "sets": 3,
+      "reps": "8-15",
+      "rest_seconds": 75,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT001",
+      "day_label": "Día 3",
+      "order_num": 3,
+      "exercise_id": "FIT_EX043",
+      "sets": 3,
+      "reps": "10-15",
+      "rest_seconds": 75,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT001",
+      "day_label": "Día 3",
+      "order_num": 4,
+      "exercise_id": "FIT_EX039",
+      "sets": 3,
+      "reps": "10-15",
+      "rest_seconds": 75,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT001",
+      "day_label": "Día 3",
+      "order_num": 5,
+      "exercise_id": "FIT_EX033",
+      "sets": 3,
+      "reps": "30-45s",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT002",
+      "day_label": "Torso A",
+      "order_num": 1,
+      "exercise_id": "FIT_EX002",
+      "sets": 4,
+      "reps": "6-10",
+      "rest_seconds": 120,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT002",
+      "day_label": "Torso A",
+      "order_num": 2,
+      "exercise_id": "FIT_EX009",
+      "sets": 4,
+      "reps": "8-12",
+      "rest_seconds": 90,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT002",
+      "day_label": "Torso A",
+      "order_num": 3,
+      "exercise_id": "FIT_EX011",
+      "sets": 3,
+      "reps": "6-10",
+      "rest_seconds": 120,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT002",
+      "day_label": "Torso A",
+      "order_num": 4,
+      "exercise_id": "FIT_EX007",
+      "sets": 3,
+      "reps": "8-12",
+      "rest_seconds": 90,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT002",
+      "day_label": "Torso A",
+      "order_num": 5,
+      "exercise_id": "FIT_EX016",
+      "sets": 3,
+      "reps": "10-12",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT002",
+      "day_label": "Torso A",
+      "order_num": 6,
+      "exercise_id": "FIT_EX018",
+      "sets": 3,
+      "reps": "10-12",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT002",
+      "day_label": "Pierna A",
+      "order_num": 1,
+      "exercise_id": "FIT_EX022",
+      "sets": 4,
+      "reps": "6-10",
+      "rest_seconds": 150,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT002",
+      "day_label": "Pierna A",
+      "order_num": 2,
+      "exercise_id": "FIT_EX026",
+      "sets": 4,
+      "reps": "8-10",
+      "rest_seconds": 120,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT002",
+      "day_label": "Pierna A",
+      "order_num": 3,
+      "exercise_id": "FIT_EX024",
+      "sets": 3,
+      "reps": "10-12",
+      "rest_seconds": 90,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT002",
+      "day_label": "Pierna A",
+      "order_num": 4,
+      "exercise_id": "FIT_EX030",
+      "sets": 3,
+      "reps": "10-15",
+      "rest_seconds": 75,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT002",
+      "day_label": "Pierna A",
+      "order_num": 5,
+      "exercise_id": "FIT_EX031",
+      "sets": 4,
+      "reps": "10-15",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT002",
+      "day_label": "Pierna A",
+      "order_num": 6,
+      "exercise_id": "FIT_EX033",
+      "sets": 3,
+      "reps": "45-60s",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT002",
+      "day_label": "Torso B",
+      "order_num": 1,
+      "exercise_id": "FIT_EX002",
+      "sets": 4,
+      "reps": "6-10",
+      "rest_seconds": 120,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT002",
+      "day_label": "Torso B",
+      "order_num": 2,
+      "exercise_id": "FIT_EX009",
+      "sets": 4,
+      "reps": "8-12",
+      "rest_seconds": 90,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT002",
+      "day_label": "Torso B",
+      "order_num": 3,
+      "exercise_id": "FIT_EX011",
+      "sets": 3,
+      "reps": "6-10",
+      "rest_seconds": 120,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT002",
+      "day_label": "Torso B",
+      "order_num": 4,
+      "exercise_id": "FIT_EX007",
+      "sets": 3,
+      "reps": "8-12",
+      "rest_seconds": 90,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT002",
+      "day_label": "Torso B",
+      "order_num": 5,
+      "exercise_id": "FIT_EX016",
+      "sets": 3,
+      "reps": "10-12",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT002",
+      "day_label": "Torso B",
+      "order_num": 6,
+      "exercise_id": "FIT_EX018",
+      "sets": 3,
+      "reps": "10-12",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT002",
+      "day_label": "Pierna B",
+      "order_num": 1,
+      "exercise_id": "FIT_EX022",
+      "sets": 4,
+      "reps": "6-10",
+      "rest_seconds": 150,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT002",
+      "day_label": "Pierna B",
+      "order_num": 2,
+      "exercise_id": "FIT_EX026",
+      "sets": 4,
+      "reps": "8-10",
+      "rest_seconds": 120,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT002",
+      "day_label": "Pierna B",
+      "order_num": 3,
+      "exercise_id": "FIT_EX024",
+      "sets": 3,
+      "reps": "10-12",
+      "rest_seconds": 90,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT002",
+      "day_label": "Pierna B",
+      "order_num": 4,
+      "exercise_id": "FIT_EX030",
+      "sets": 3,
+      "reps": "10-15",
+      "rest_seconds": 75,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT002",
+      "day_label": "Pierna B",
+      "order_num": 5,
+      "exercise_id": "FIT_EX031",
+      "sets": 4,
+      "reps": "10-15",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT002",
+      "day_label": "Pierna B",
+      "order_num": 6,
+      "exercise_id": "FIT_EX033",
+      "sets": 3,
+      "reps": "45-60s",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Push 1",
+      "order_num": 1,
+      "exercise_id": "FIT_EX002",
+      "sets": 4,
+      "reps": "6-10",
+      "rest_seconds": 120,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Push 1",
+      "order_num": 2,
+      "exercise_id": "FIT_EX003",
+      "sets": 3,
+      "reps": "8-12",
+      "rest_seconds": 90,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Push 1",
+      "order_num": 3,
+      "exercise_id": "FIT_EX012",
+      "sets": 4,
+      "reps": "12-20",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Push 1",
+      "order_num": 4,
+      "exercise_id": "FIT_EX051",
+      "sets": 3,
+      "reps": "8-12",
+      "rest_seconds": 90,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Push 1",
+      "order_num": 5,
+      "exercise_id": "FIT_EX018",
+      "sets": 3,
+      "reps": "10-15",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Pull 1",
+      "order_num": 1,
+      "exercise_id": "FIT_EX006",
+      "sets": 4,
+      "reps": "6-10",
+      "rest_seconds": 120,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Pull 1",
+      "order_num": 2,
+      "exercise_id": "FIT_EX008",
+      "sets": 4,
+      "reps": "6-10",
+      "rest_seconds": 120,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Pull 1",
+      "order_num": 3,
+      "exercise_id": "FIT_EX014",
+      "sets": 3,
+      "reps": "12-20",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Pull 1",
+      "order_num": 4,
+      "exercise_id": "FIT_EX016",
+      "sets": 3,
+      "reps": "8-12",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Pull 1",
+      "order_num": 5,
+      "exercise_id": "FIT_EX017",
+      "sets": 3,
+      "reps": "10-12",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Legs 1",
+      "order_num": 1,
+      "exercise_id": "FIT_EX022",
+      "sets": 4,
+      "reps": "6-10",
+      "rest_seconds": 150,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Legs 1",
+      "order_num": 2,
+      "exercise_id": "FIT_EX027",
+      "sets": 4,
+      "reps": "8-12",
+      "rest_seconds": 120,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Legs 1",
+      "order_num": 3,
+      "exercise_id": "FIT_EX028",
+      "sets": 3,
+      "reps": "8-12/cada pierna",
+      "rest_seconds": 90,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Legs 1",
+      "order_num": 4,
+      "exercise_id": "FIT_EX030",
+      "sets": 3,
+      "reps": "10-15",
+      "rest_seconds": 75,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Legs 1",
+      "order_num": 5,
+      "exercise_id": "FIT_EX031",
+      "sets": 4,
+      "reps": "12-20",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Push 2",
+      "order_num": 1,
+      "exercise_id": "FIT_EX002",
+      "sets": 4,
+      "reps": "6-10",
+      "rest_seconds": 120,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Push 2",
+      "order_num": 2,
+      "exercise_id": "FIT_EX003",
+      "sets": 3,
+      "reps": "8-12",
+      "rest_seconds": 90,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Push 2",
+      "order_num": 3,
+      "exercise_id": "FIT_EX012",
+      "sets": 4,
+      "reps": "12-20",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Push 2",
+      "order_num": 4,
+      "exercise_id": "FIT_EX051",
+      "sets": 3,
+      "reps": "8-12",
+      "rest_seconds": 90,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Push 2",
+      "order_num": 5,
+      "exercise_id": "FIT_EX018",
+      "sets": 3,
+      "reps": "10-15",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Pull 2",
+      "order_num": 1,
+      "exercise_id": "FIT_EX006",
+      "sets": 4,
+      "reps": "6-10",
+      "rest_seconds": 120,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Pull 2",
+      "order_num": 2,
+      "exercise_id": "FIT_EX008",
+      "sets": 4,
+      "reps": "6-10",
+      "rest_seconds": 120,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Pull 2",
+      "order_num": 3,
+      "exercise_id": "FIT_EX014",
+      "sets": 3,
+      "reps": "12-20",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Pull 2",
+      "order_num": 4,
+      "exercise_id": "FIT_EX016",
+      "sets": 3,
+      "reps": "8-12",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Pull 2",
+      "order_num": 5,
+      "exercise_id": "FIT_EX017",
+      "sets": 3,
+      "reps": "10-12",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Legs 2",
+      "order_num": 1,
+      "exercise_id": "FIT_EX022",
+      "sets": 4,
+      "reps": "6-10",
+      "rest_seconds": 150,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Legs 2",
+      "order_num": 2,
+      "exercise_id": "FIT_EX027",
+      "sets": 4,
+      "reps": "8-12",
+      "rest_seconds": 120,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Legs 2",
+      "order_num": 3,
+      "exercise_id": "FIT_EX028",
+      "sets": 3,
+      "reps": "8-12/cada pierna",
+      "rest_seconds": 90,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Legs 2",
+      "order_num": 4,
+      "exercise_id": "FIT_EX030",
+      "sets": 3,
+      "reps": "10-15",
+      "rest_seconds": 75,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT003",
+      "day_label": "Legs 2",
+      "order_num": 5,
+      "exercise_id": "FIT_EX031",
+      "sets": 4,
+      "reps": "12-20",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT004",
+      "day_label": "Fuerza A",
+      "order_num": 1,
+      "exercise_id": "FIT_EX022",
+      "sets": 5,
+      "reps": "5",
+      "rest_seconds": 180,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT004",
+      "day_label": "Fuerza A",
+      "order_num": 2,
+      "exercise_id": "FIT_EX002",
+      "sets": 5,
+      "reps": "5",
+      "rest_seconds": 180,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT004",
+      "day_label": "Fuerza A",
+      "order_num": 3,
+      "exercise_id": "FIT_EX008",
+      "sets": 5,
+      "reps": "5",
+      "rest_seconds": 150,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT004",
+      "day_label": "Fuerza A",
+      "order_num": 4,
+      "exercise_id": "FIT_EX033",
+      "sets": 3,
+      "reps": "45-60s",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT004",
+      "day_label": "Fuerza B",
+      "order_num": 1,
+      "exercise_id": "FIT_EX022",
+      "sets": 5,
+      "reps": "5",
+      "rest_seconds": 180,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT004",
+      "day_label": "Fuerza B",
+      "order_num": 2,
+      "exercise_id": "FIT_EX002",
+      "sets": 5,
+      "reps": "5",
+      "rest_seconds": 180,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT004",
+      "day_label": "Fuerza B",
+      "order_num": 3,
+      "exercise_id": "FIT_EX008",
+      "sets": 5,
+      "reps": "5",
+      "rest_seconds": 150,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT004",
+      "day_label": "Fuerza B",
+      "order_num": 4,
+      "exercise_id": "FIT_EX033",
+      "sets": 3,
+      "reps": "45-60s",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT004",
+      "day_label": "Fuerza C",
+      "order_num": 1,
+      "exercise_id": "FIT_EX022",
+      "sets": 5,
+      "reps": "5",
+      "rest_seconds": 180,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT004",
+      "day_label": "Fuerza C",
+      "order_num": 2,
+      "exercise_id": "FIT_EX002",
+      "sets": 5,
+      "reps": "5",
+      "rest_seconds": 180,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT004",
+      "day_label": "Fuerza C",
+      "order_num": 3,
+      "exercise_id": "FIT_EX008",
+      "sets": 5,
+      "reps": "5",
+      "rest_seconds": 150,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT004",
+      "day_label": "Fuerza C",
+      "order_num": 4,
+      "exercise_id": "FIT_EX033",
+      "sets": 3,
+      "reps": "45-60s",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT005",
+      "day_label": "Casa A",
+      "order_num": 1,
+      "exercise_id": "FIT_EX001",
+      "sets": 4,
+      "reps": "8-15",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT005",
+      "day_label": "Casa A",
+      "order_num": 2,
+      "exercise_id": "FIT_EX053",
+      "sets": 4,
+      "reps": "12-20",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT005",
+      "day_label": "Casa A",
+      "order_num": 3,
+      "exercise_id": "FIT_EX054",
+      "sets": 3,
+      "reps": "10-12/cada pierna",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT005",
+      "day_label": "Casa A",
+      "order_num": 4,
+      "exercise_id": "FIT_EX038",
+      "sets": 3,
+      "reps": "10/cada lado",
+      "rest_seconds": 45,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT005",
+      "day_label": "Casa A",
+      "order_num": 5,
+      "exercise_id": "FIT_EX033",
+      "sets": 3,
+      "reps": "30-60s",
+      "rest_seconds": 45,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT005",
+      "day_label": "Casa B",
+      "order_num": 1,
+      "exercise_id": "FIT_EX001",
+      "sets": 4,
+      "reps": "8-15",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT005",
+      "day_label": "Casa B",
+      "order_num": 2,
+      "exercise_id": "FIT_EX053",
+      "sets": 4,
+      "reps": "12-20",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT005",
+      "day_label": "Casa B",
+      "order_num": 3,
+      "exercise_id": "FIT_EX054",
+      "sets": 3,
+      "reps": "10-12/cada pierna",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT005",
+      "day_label": "Casa B",
+      "order_num": 4,
+      "exercise_id": "FIT_EX038",
+      "sets": 3,
+      "reps": "10/cada lado",
+      "rest_seconds": 45,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT005",
+      "day_label": "Casa B",
+      "order_num": 5,
+      "exercise_id": "FIT_EX033",
+      "sets": 3,
+      "reps": "30-60s",
+      "rest_seconds": 45,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT005",
+      "day_label": "Casa C",
+      "order_num": 1,
+      "exercise_id": "FIT_EX001",
+      "sets": 4,
+      "reps": "8-15",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT005",
+      "day_label": "Casa C",
+      "order_num": 2,
+      "exercise_id": "FIT_EX053",
+      "sets": 4,
+      "reps": "12-20",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT005",
+      "day_label": "Casa C",
+      "order_num": 3,
+      "exercise_id": "FIT_EX054",
+      "sets": 3,
+      "reps": "10-12/cada pierna",
+      "rest_seconds": 60,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT005",
+      "day_label": "Casa C",
+      "order_num": 4,
+      "exercise_id": "FIT_EX038",
+      "sets": 3,
+      "reps": "10/cada lado",
+      "rest_seconds": 45,
+      "notes": ""
+    },
+    {
+      "routine_id": "FIT_RUT005",
+      "day_label": "Casa C",
+      "order_num": 5,
+      "exercise_id": "FIT_EX033",
+      "sets": 3,
+      "reps": "30-60s",
+      "rest_seconds": 45,
+      "notes": ""
+    }
+  ]
+}

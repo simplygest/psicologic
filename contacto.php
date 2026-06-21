@@ -15,7 +15,7 @@ if ((int) ($branding['show_contact_public'] ?? 0) !== 1) {
 $app_name = $branding['app_name'];
 $site_tagline = trim($branding['site_tagline'] ?? '');
 $site_phone = trim($branding['site_phone'] ?? '');
-$profile_image_path = $branding['show_profile_image_public'] ? $branding['profile_image_path'] : '';
+$profile_image_path = $branding['show_profile_image_public'] ? app_upload_asset_url($branding['profile_image_path']) : '';
 $show_prices_public = (int) ($branding['show_prices_public'] ?? 0) === 1;
 $show_team_public = cabinet_public_team_enabled($mysqli);
 $is_logged_in = isset($_SESSION['user_id']);

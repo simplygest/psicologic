@@ -7,7 +7,7 @@ require_once 'cabinet_helpers.php';
 $branding = get_public_branding_settings($mysqli);
 $app_name = $branding['app_name'];
 $site_tagline = trim($branding['site_tagline'] ?? '');
-$profile_image_path = $branding['show_profile_image_public'] ? $branding['profile_image_path'] : '';
+$profile_image_path = $branding['show_profile_image_public'] ? app_upload_asset_url($branding['profile_image_path']) : '';
 $show_prices_public = (int) ($branding['show_prices_public'] ?? 0) === 1;
 $show_contact_public = (int) ($branding['show_contact_public'] ?? 0) === 1;
 $show_team_public = cabinet_public_team_enabled($mysqli);
@@ -32,7 +32,8 @@ $settings = [
 ];
 $settings_res = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
 if ($settings_res && $settings_res->num_rows > 0) {
-    $res = $mysqli->query("SELECT online_payment_enabled, bonuses_enabled, appointment_delivery_mode FROM payment_settings WHERE id = 1");
+    $tenant_id = current_tenant_id();
+    $res = $mysqli->query("SELECT online_payment_enabled, bonuses_enabled, appointment_delivery_mode FROM payment_settings WHERE tenant_id = $tenant_id");
     if ($row = $res->fetch_assoc()) {
         $settings = array_merge($settings, $row);
     }

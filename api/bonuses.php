@@ -4,6 +4,7 @@ require_once '../db.php';
 require_once '../settings_helpers.php';
 require_once '../payment_helpers.php';
 require_once '../cabinet_helpers.php';
+require_once '../dashboard_config_helpers.php';
 header('Content-Type: application/json');
 
 if (!isset($_SESSION['user_id'])) {
@@ -18,6 +19,11 @@ $is_superadmin = ($_SESSION['role'] ?? '') === 'superadmin';
 
 if (!$is_admin && !online_booking_enabled($mysqli)) {
     echo json_encode(['success' => false, 'error' => 'El área de pacientes no está disponible en este momento.']);
+    exit;
+}
+
+if (!app_feature_enabled_from_db($mysqli, 'bonuses.enabled', false)) {
+    echo json_encode(['success' => false, 'error' => 'Los bonos no estan disponibles en este plan.']);
     exit;
 }
 

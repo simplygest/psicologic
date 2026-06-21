@@ -1,0 +1,31 @@
+﻿tecnica_id;nombre;descripcion;nivel_riesgo
+LOG_T001;Evaluación logopédica funcional;Historia, observación, muestras de habla/lenguaje, objetivos, participación y entorno.;medio
+LOG_T002;Entrenamiento articulatorio;Colocación, producción, repetición y generalización de fonemas.;bajo
+LOG_T003;Discriminación auditiva;Diferenciación de sonidos, pares mínimos, errores y contrastes fonológicos.;bajo
+LOG_T004;Intervención fonológica;Trabajo con procesos fonológicos, contrastes, pares mínimos y generalización.;medio
+LOG_T005;Estimulación del lenguaje;Actividades de vocabulario, comprensión, expresión y estructuras lingüísticas.;bajo
+LOG_T006;Modelado, expansión y reformulación;Técnicas naturalistas de modelado lingüístico en conversación y juego.;bajo
+LOG_T007;Intervención morfosintáctica;Trabajo de frases, concordancia, pronombres, tiempos verbales y estructura gramatical.;medio
+LOG_T008;Intervención semántica;Vocabulario, categorías, relaciones semánticas y acceso léxico.;bajo
+LOG_T009;Narrativa y discurso;Estructura de relatos, secuenciación, personajes, problema, resolución y coherencia.;bajo
+LOG_T010;Fluidez y ritmo;Habla lenta, pausas, inicio suave, control de ritmo y modificación de tartamudez.;medio
+LOG_T011;Desensibilización comunicativa;Reducción de evitación, exposición progresiva y participación comunicativa.;medio
+LOG_T012;Higiene vocal;Hidratación, descanso vocal, reducción de gritos/carraspeo y pautas de cuidado.;bajo
+LOG_T013;Técnica vocal y resonancia;Emisión eficiente, resonancia, respiración y reducción de tensión laríngea.;medio
+LOG_T014;Praxias y conciencia orofacial;Movilidad, coordinación y conciencia orofacial cuando está indicado.;bajo
+LOG_T015;Intervención miofuncional orofacial;Funciones orales, postura lingual, respiración, deglución y hábitos orales.;medio
+LOG_T016;Deglución segura;Adaptaciones, maniobras, postura, ritmo y consistencias bajo evaluación especializada.;alto
+LOG_T017;Conciencia fonológica;Rimas, sílabas, fonemas, segmentación, mezcla y manipulación sonora.;bajo
+LOG_T018;Lectura guiada;Precisión, fluidez, lectura repetida, comprensión y estrategias de lectura.;bajo
+LOG_T019;Escritura guiada;Correspondencia grafema-fonema, ortografía funcional, planificación y revisión de textos.;bajo
+LOG_T020;Terapia de afasia;Comprensión, expresión, denominación, repetición, lectura, escritura y comunicación funcional.;alto
+LOG_T021;Denominación y acceso léxico;Claves fonológicas/semánticas, recuperación de palabras y generalización funcional.;medio
+LOG_T022;Comunicación funcional y participación;Intervención orientada a actividades, contexto, interlocutores y participación real.;medio
+LOG_T023;Habla motora;Trabajo de precisión, secuenciación, respiración, prosodia y control motor del habla.;alto
+LOG_T024;Comunicación aumentativa y alternativa;Uso de pictogramas, tableros, gestos, dispositivos y apoyos visuales.;medio
+LOG_T025;Pragmática y conversación;Turnos, temas, inferencias, comunicación no verbal y adecuación contextual.;bajo
+LOG_T026;Entrenamiento auditivo-verbal;Discriminación, identificación y comprensión de sonidos del habla.;medio
+LOG_T027;Plan domiciliario y familiar;Pautas para casa, familia, colegio o cuidadores con seguimiento profesional.;bajo
+LOG_T028;Coordinación escolar/sanitaria;Coordinación con familia, colegio, médico, odontología, neurología u otros profesionales.;medio
+LOG_T029;Prevención y mantenimiento;Generalización, seguimiento, alta, recaídas y rutina mínima de práctica.;bajo
+LOG_T030;Derivación / signos de alarma;Identificación de situaciones que requieren derivación médica, ORL, neurología, nutrición o urgencias.;alto

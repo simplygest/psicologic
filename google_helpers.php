@@ -6,12 +6,13 @@ require_once __DIR__ . '/payment_helpers.php';
 function google_get_settings($mysqli)
 {
     ensure_admin_notification_email_column($mysqli);
+    $tenant_id = current_tenant_id();
 
     $res = $mysqli->query("
         SELECT app_name, smtp_from_name, google_client_id, google_client_secret, google_refresh_token, google_connected_email,
                google_redirect_uri, google_calendar_enabled, google_calendar_id
         FROM payment_settings
-        WHERE id = 1
+        WHERE tenant_id = $tenant_id
     ");
 
     return $res->fetch_assoc() ?: [];
@@ -121,19 +122,22 @@ function google_exchange_code($mysqli, $code)
     }
 
     if (empty($response['refresh_token'])) {
-        $stmt = $mysqli->prepare("UPDATE payment_settings SET google_refresh_token = NULL WHERE id = 1");
+        $tenant_id = current_tenant_id();
+        $stmt = $mysqli->prepare("UPDATE payment_settings SET google_refresh_token = NULL WHERE tenant_id = ?");
+        $stmt->bind_param("i", $tenant_id);
         $stmt->execute();
         throw new \Exception('Google no devolvió refresh token nuevo. Revoca el acceso anterior de la app en tu cuenta de Google y vuelve a conectar.');
     }
 
-    $stmt = $mysqli->prepare("UPDATE payment_settings SET google_refresh_token = ? WHERE id = 1");
-    $stmt->bind_param("s", $response['refresh_token']);
+    $tenant_id = current_tenant_id();
+    $stmt = $mysqli->prepare("UPDATE payment_settings SET google_refresh_token = ? WHERE tenant_id = ?");
+    $stmt->bind_param("si", $response['refresh_token'], $tenant_id);
     $stmt->execute();
 
     $email = google_fetch_user_email($response['access_token']);
     if ($email) {
-        $stmt = $mysqli->prepare("UPDATE payment_settings SET google_connected_email = ? WHERE id = 1");
-        $stmt->bind_param("s", $email);
+        $stmt = $mysqli->prepare("UPDATE payment_settings SET google_connected_email = ? WHERE tenant_id = ?");
+        $stmt->bind_param("si", $email, $tenant_id);
         $stmt->execute();
     }
 
@@ -252,12 +256,14 @@ function google_create_calendar_event($mysqli, $appointment_id)
                s.name AS service_name,
                u.name, u.email, u.phone
         FROM appointments a
-        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
-        LEFT JOIN appointment_services s ON s.id = so.service_id
-        JOIN users u ON u.id = a.user_id
-        WHERE a.id = ?
+        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id AND so.tenant_id = a.tenant_id
+        LEFT JOIN appointment_services s ON s.id = so.service_id AND s.tenant_id = a.tenant_id
+        JOIN users u ON u.id = a.user_id AND u.tenant_id = a.tenant_id
+        WHERE a.tenant_id = ?
+          AND a.id = ?
     ");
-    $stmt->bind_param("i", $appointment_id);
+    $tenant_id = current_tenant_id();
+    $stmt->bind_param("ii", $tenant_id, $appointment_id);
     $stmt->execute();
     $appointment = $stmt->get_result()->fetch_assoc();
 
@@ -301,8 +307,8 @@ function google_create_calendar_event($mysqli, $appointment_id)
     }
 
     $event_id = $response['id'];
-    $stmt = $mysqli->prepare("UPDATE appointments SET google_calendar_event_id = ? WHERE id = ?");
-    $stmt->bind_param("si", $event_id, $appointment_id);
+    $stmt = $mysqli->prepare("UPDATE appointments SET google_calendar_event_id = ? WHERE tenant_id = ? AND id = ?");
+    $stmt->bind_param("sii", $event_id, $tenant_id, $appointment_id);
     $stmt->execute();
 
     return $event_id;
@@ -324,8 +330,9 @@ function google_delete_calendar_event($mysqli, $appointment_id)
         return false;
     }
 
-    $stmt = $mysqli->prepare("SELECT google_calendar_event_id FROM appointments WHERE id = ?");
-    $stmt->bind_param("i", $appointment_id);
+    $tenant_id = current_tenant_id();
+    $stmt = $mysqli->prepare("SELECT google_calendar_event_id FROM appointments WHERE tenant_id = ? AND id = ?");
+    $stmt->bind_param("ii", $tenant_id, $appointment_id);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
 

@@ -1,0 +1,33 @@
+﻿problema_id;area_id;nombre;alias;descripcion;poblacion;nivel_riesgo;fuente_ids
+P001;A001;Ansiedad generalizada;TAG / preocupación excesiva;Preocupación persistente, difícil de controlar, acompañada de tensión, inquietud o síntomas físicos.;Adultos;medio;"SRC001;SRC007;SRC008"
+P002;A001;Trastorno de pánico;Crisis de pánico;Ataques súbitos de miedo intenso con síntomas físicos y preocupación por nuevas crisis.;Adultos;medio;"SRC001;SRC007"
+P003;A001;Agorafobia;Miedo a lugares o situaciones difíciles de escapar;Evitación o miedo intenso a espacios, transportes, multitudes o situaciones donde escapar parezca difícil.;Adultos;medio;"SRC001;SRC007"
+P004;A001;Ansiedad social;Fobia social;Miedo marcado a situaciones sociales por temor a evaluación negativa, vergüenza o humillación.;Adultos;medio;SRC004
+P005;A001;Fobia específica;Miedo específico;Miedo intenso y persistente ante objetos o situaciones concretas, con evitación.;Adultos;bajo;"SRC007;SRC010"
+P006;A001;Ansiedad por la salud;Hipocondría / preocupación por enfermedad;Preocupación persistente por padecer o contraer una enfermedad, con comprobaciones o búsqueda de seguridad.;Adultos;medio;SRC010
+P007;A001;TOC;Trastorno obsesivo-compulsivo;Obsesiones intrusivas y/o compulsiones repetitivas dirigidas a reducir ansiedad o prevenir consecuencias temidas.;Adultos;alto;"SRC003;SRC011"
+P008;A001;Perfeccionismo clínicamente relevante;Perfeccionismo problemático;Estándares rígidos, miedo al error, autocrítica y dificultad para tolerar imperfección.;Adultos;medio;SRC010
+P009;A002;Depresión leve;Síntomas depresivos leves;Tristeza, apatía, pérdida de interés o baja energía con interferencia leve.;Adultos;medio;"SRC002;SRC008"
+P010;A002;Depresión moderada;Episodio depresivo moderado;Síntomas depresivos con interferencia funcional significativa.;Adultos;alto;"SRC002;SRC008"
+P011;A002;Distimia;Trastorno depresivo persistente;Estado de ánimo bajo persistente y crónico, con baja energía o desesperanza.;Adultos;medio;SRC002
+P012;A002;Anhedonia y apatía;Pérdida de interés;Reducción de actividades gratificantes, motivación y capacidad de disfrute.;Adultos;medio;SRC002
+P013;A002;Duelo;Proceso de pérdida;Respuesta emocional y adaptativa tras una pérdida significativa.;Adultos;medio;SRC010
+P014;A003;TEPT;Estrés postraumático;Reexperimentación, evitación, hiperactivación y alteraciones cognitivas/emocionales tras trauma.;Adultos;alto;SRC005
+P015;A003;Estrés agudo;Reacción aguda al estrés;Síntomas intensos tras evento estresante o traumático reciente.;Adultos;alto;SRC005
+P016;A003;Estrés laboral;Estrés ocupacional;Sobrecarga, tensión, dificultad de desconexión y malestar asociado al trabajo.;Adultos;medio;SRC010
+P017;A003;Burnout;Desgaste profesional;Agotamiento emocional, cinismo/distancia y baja eficacia profesional percibida.;Adultos;medio;SRC010
+P018;A004;Insomnio;Dificultad de sueño;Problemas de conciliación, mantenimiento, despertar precoz o sueño no reparador.;Adultos;medio;"SRC008;SRC010"
+P019;A004;Higiene del sueño deficiente;Hábitos de sueño inadecuados;Rutinas, estímulos o hábitos que dificultan la conciliación o mantenimiento del sueño.;Adultos;bajo;SRC008
+P020;A005;Dependencia emocional;Vínculo dependiente;Necesidad intensa de aprobación, miedo al abandono y dificultad para mantener autonomía emocional.;Adultos;medio;SRC010
+P021;A005;Ruptura sentimental;Adaptación a separación;Malestar emocional tras ruptura, pérdida de proyecto relacional o contacto ambiguo.;Adultos;medio;SRC010
+P022;A005;Celos problemáticos;Celos y control;Pensamientos, emociones y conductas de comprobación/control en la relación.;Adultos;medio;SRC010
+P023;A005;Déficit de habilidades sociales;Habilidades sociales;Dificultad para iniciar, mantener o cerrar interacciones sociales de forma eficaz.;Adultos;bajo;"SRC004;SRC010"
+P024;A005;Asertividad baja;Dificultad para poner límites;Dificultad para expresar necesidades, decir no o defender derechos personales.;Adultos;bajo;SRC010
+P025;A006;Baja autoestima;Autoconcepto negativo;Valoración personal negativa, autocrítica elevada y dificultad para reconocer fortalezas.;Adultos;bajo;SRC010
+P026;A006;Vergüenza corporal o imagen corporal;Insatisfacción corporal;Malestar por apariencia, comparación y evitación de exposición corporal o social.;Adultos;medio;"SRC003;SRC010"
+P027;A007;Control de ira;Ira problemática;Episodios de enfado intenso, impulsividad verbal/conductual o dificultad para regular activación.;Adultos;medio;SRC010
+P028;A007;Gestión emocional;Regulación emocional general;Dificultad para identificar, tolerar o modular emociones intensas.;Adultos;bajo;SRC010
+P029;A008;TDAH adulto;Dificultades atencionales y ejecutivas;Problemas de atención, impulsividad, organización y planificación en adultos.;Adultos;medio;SRC006
+P030;A009;Procrastinación;Postergación problemática;Aplazamiento frecuente de tareas importantes con malestar o perjuicio funcional.;Adultos;bajo;SRC010
+P031;A009;Hábitos saludables y adherencia;Cambio de hábitos;Dificultad para iniciar o mantener rutinas de autocuidado, ejercicio, sueño o alimentación.;Adultos;bajo;SRC010
+P032;A010;Síntomas somáticos asociados a ansiedad;Somatización ansiosa;Síntomas físicos relacionados con activación, preocupación o estrés mantenido.;Adultos;medio;"SRC001;SRC007"

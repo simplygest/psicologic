@@ -1,0 +1,162 @@
+{
+  "version": 1,
+  "key": "fitness",
+  "name": "Fitness",
+  "description": "Configuracion de textos para entrenadores personales, gimnasios y centros fitness.",
+  "labels": {
+    "patient": {
+      "singular": "cliente",
+      "plural": "clientes",
+      "titleSingular": "Cliente",
+      "titlePlural": "Clientes"
+    },
+    "professional": {
+      "singular": "entrenador",
+      "plural": "entrenadores",
+      "titleSingular": "Entrenador",
+      "titlePlural": "Entrenadores"
+    },
+    "organization": {
+      "singular": "centro fitness",
+      "plural": "centros fitness",
+      "titleSingular": "Centro fitness",
+      "titlePlural": "Centros fitness"
+    },
+    "appointment": {
+      "singular": "sesión",
+      "plural": "sesiones",
+      "titleSingular": "Sesión",
+      "titlePlural": "Sesiones"
+    },
+    "session": {
+      "singular": "entrenamiento",
+      "plural": "entrenamientos",
+      "titleSingular": "Entrenamiento",
+      "titlePlural": "Entrenamientos"
+    },
+    "workPlan": {
+      "singular": "plan de entrenamiento",
+      "plural": "planes de entrenamiento",
+      "titleSingular": "Plan de entrenamiento",
+      "titlePlural": "Planes de entrenamiento"
+    },
+    "task": {
+      "singular": "ejercicio",
+      "plural": "ejercicios",
+      "titleSingular": "Ejercicio",
+      "titlePlural": "Ejercicios"
+    },
+    "evolution": {
+      "singular": "progreso",
+      "plural": "progresos",
+      "titleSingular": "Progreso",
+      "titlePlural": "Progresos"
+    },
+    "problem": {
+      "singular": "objetivo",
+      "plural": "objetivos",
+      "titleSingular": "Objetivo",
+      "titlePlural": "Objetivos"
+    },
+    "evaluation": {
+      "singular": "valoración física",
+      "plural": "valoraciones físicas",
+      "titleSingular": "Valoración física",
+      "titlePlural": "Valoraciones físicas"
+    },
+    "technique": {
+      "singular": "grupo muscular",
+      "plural": "grupos musculares",
+      "titleSingular": "Grupo muscular",
+      "titlePlural": "Grupos musculares"
+    },
+    "resource": {
+      "singular": "rutina",
+      "plural": "rutinas",
+      "titleSingular": "Rutina",
+      "titlePlural": "Rutinas"
+    },
+    "goal": {
+      "singular": "objetivo",
+      "plural": "objetivos",
+      "titleSingular": "Objetivo",
+      "titlePlural": "Objetivos"
+    }
+  },
+  "clinicalTerms": {
+    "diagnosis": "objetivo",
+    "treatment": "plan de entrenamiento",
+    "exercise": "ejercicio",
+    "followUp": "seguimiento",
+    "discharge": "alta"
+  },
+  "services": {
+    "individual": "Individual",
+    "couple": "Duo",
+    "family": "Grupo reducido",
+    "group": "Grupo"
+  },
+  "portal": {
+    "bookingCta": "Reserva tu entrenamiento",
+    "myAppointments": "Mis entrenamientos",
+    "myTasks": "Mis ejercicios"
+  },
+  "reports": {
+    "internalPatientReport": "Informe interno de cliente",
+    "patientReport": "Informe para cliente"
+  },
+  "featureHints": {
+    "workPlan": true,
+    "patientPortal": true,
+    "clinicalEvolution": true,
+    "sessionFiles": true
+  },
+  "appointmentServices": [
+    {
+      "key": "assessment",
+      "label": "Valoración",
+      "name": "Valoración inicial",
+      "enabledByDefault": true
+    },
+    {
+      "key": "training",
+      "label": "Entrenamiento",
+      "name": "Entrenamiento personal",
+      "enabledByDefault": true
+    },
+    {
+      "key": "routine_review",
+      "label": "Revisión",
+      "name": "Revisión de rutina",
+      "enabledByDefault": false
+    },
+    {
+      "key": "group",
+      "label": "Grupo",
+      "name": "Entrenamiento grupal",
+      "enabledByDefault": false
+    }
+  ],
+  "appointmentDurations": [
+    {
+      "minutes": 30,
+      "label": "30 minutos",
+      "enabledByDefault": false
+    },
+    {
+      "minutes": 45,
+      "label": "45 minutos",
+      "enabledByDefault": false
+    },
+    {
+      "minutes": 60,
+      "label": "60 minutos",
+      "enabledByDefault": true
+    },
+    {
+      "minutes": 90,
+      "label": "90 minutos",
+      "enabledByDefault": false
+    }
+  ]
+}

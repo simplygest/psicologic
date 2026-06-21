@@ -1,3 +1,4 @@
 config.local.php
 tenant-install.json
 tenant-install.php
+deploy-logs/

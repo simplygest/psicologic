@@ -1,4 +1,4 @@
-﻿let currentStartDate = getMonday(new Date());
+let currentStartDate = getMonday(new Date());
 let currentMonthDate = new Date();
 let currentCalendarView = (typeof INITIAL_CALENDAR_VIEW !== 'undefined' && INITIAL_CALENDAR_VIEW === 'week') ? 'week' : 'month';
 let currentMonthData = null;
@@ -39,6 +39,8 @@ let APP_DASHBOARD_CONFIG = (typeof DASHBOARD_CONFIG !== 'undefined' && DASHBOARD
 let APP_PLAN_CONFIG = (typeof PLAN_CONFIG !== 'undefined' && PLAN_CONFIG) ? PLAN_CONFIG : { plan: { features: {} } };
 let APP_KNOWLEDGE_BASE_ENABLED = typeof KNOWLEDGE_BASE_ENABLED !== 'undefined' ? Boolean(KNOWLEDGE_BASE_ENABLED) : false;
 let APP_KNOWLEDGE_BASE_HAS_SECTOR_DATA = APP_KNOWLEDGE_BASE_ENABLED;
+let APP_CURRENT_SECTOR_KEY = (typeof CURRENT_SECTOR_KEY !== 'undefined' && CURRENT_SECTOR_KEY) ? String(CURRENT_SECTOR_KEY).toLowerCase() : '';
+let APP_BODY_MAP_ENABLED = typeof BODY_MAP_ENABLED !== 'undefined' ? Boolean(BODY_MAP_ENABLED) : false;
 let LOADED_DASHBOARD_CONFIG_MODE = (typeof DASHBOARD_CONFIG_MODE !== 'undefined' && DASHBOARD_CONFIG_MODE) ? DASHBOARD_CONFIG_MODE : 'simple';
 let APPOINTMENT_SERVICES = [];
 let ACTIVE_SERVICE_OPTIONS = [];
@@ -50,6 +52,19 @@ let SETTINGS_SNAPSHOTS = {
 };
 let PATIENT_BONUS_BALANCE = { bonuses_enabled: 0, total_remaining: 0, bonuses: [] };
 let isAppointmentRequestInProgress = false;
+
+function assetUrl(path) {
+    const value = String(path || '').trim();
+    if (!value || /^(https?:)?\/\//i.test(value) || value.startsWith('data:') || value.startsWith('asset.php')) {
+        return value;
+    }
+    const clean = value.replace(/^\/+/, '').replace(/\\/g, '/');
+    if (!clean.startsWith('uploads/')) {
+        return value;
+    }
+    return `asset.php?p=${encodeURIComponent(clean)}`;
+}
+
 let inviteModal = null;
 let upcomingAppointmentsModal = null;
 let appointmentPaymentModal = null;
@@ -69,6 +84,7 @@ let currentInviteLink = '';
 let currentInviteToken = '';
 let currentCancelAppointmentId = null;
 let appointmentSessionAlertTimer = null;
+let appointmentPaymentAlertTimer = null;
 let CURRENT_PATIENT_PROFESSIONAL_CONTEXT = null;
 let CURRENT_BOOKING_PROFESSIONAL_CONTEXT = null;
 let CURRENT_PATIENT_SELECTED_PROFESSIONAL_ID = 0;
@@ -84,6 +100,17 @@ let quickAppointmentsSummaryLoading = false;
 let quickAppointmentsSummaryRequest = null;
 let quickAppointmentsSummaryRendered = false;
 let patientPortalSummaryLoading = false;
+const BODY_MAP_SECTORS = ['fitness', 'fisioterapia', 'quiropractica', 'osteopatia'];
+let BODY_MUSCLE_CHART = null;
+let BODY_MUSCLE_VIEW = 'FRONT';
+let BODY_MUSCLE_STATE = {};
+let BODY_MUSCLE_SELECTED = new Set();
+let BODY_MUSCLE_SELECTED_NAMES = {};
+let BODY_MUSCLE_RESULTS_REQUEST = null;
+
+function appPrimaryColor() {
+    return getComputedStyle(document.documentElement).getPropertyValue('--primary-color').trim() || '#4285f4';
+}
 
 function sectorText(path, fallback = '') {
     const parts = String(path || '').split('.').filter(Boolean);
@@ -122,8 +149,130 @@ function appFeatureEnabled(feature, fallback = false) {
     return dashboardFeatureEnabled(feature, fallback) && planFeatureEnabled(feature, fallback);
 }
 
+function paymentPlanEnabled() {
+    return appFeatureEnabled('onlinePayments.enabled', false) && appFeatureEnabled('payments.online', false);
+}
+
 function knowledgeBaseEnabled() {
     return APP_KNOWLEDGE_BASE_ENABLED && APP_KNOWLEDGE_BASE_HAS_SECTOR_DATA && appFeatureEnabled('knowledgeBase.enabled', false);
+}
+
+function knowledgeImportEnabled() {
+    return knowledgeBaseEnabled() && appFeatureEnabled('knowledgeBase.importTasks', false);
+}
+
+function bodyMapEnabled() {
+    return APP_BODY_MAP_ENABLED && knowledgeBaseEnabled() && BODY_MAP_SECTORS.includes(APP_CURRENT_SECTOR_KEY);
+}
+
+function setFeatureVisible(selector, visible) {
+    const $elements = $(selector);
+    if (!$elements.length) return;
+    $elements.toggleClass('d-none', !visible);
+    $elements.find('input, select, textarea, button').prop('disabled', !visible);
+}
+
+function ensureVisibleSettingsTab() {
+    const activeTab = $('#settings-tabs .nav-link.active');
+    if (activeTab.length && !activeTab.closest('.nav-item').hasClass('d-none')) {
+        return;
+    }
+    const fallback = document.getElementById('closed-days-tab');
+    if (fallback) {
+        bootstrap.Tab.getOrCreateInstance(fallback).show();
+    }
+}
+
+function showFallbackTabIfHidden(activeSelector, fallbackSelector) {
+    const active = document.querySelector(activeSelector);
+    if (!active || !active.classList.contains('active')) return;
+    const item = active.closest('.nav-item');
+    if (!item || !item.classList.contains('d-none')) return;
+    const fallback = document.querySelector(fallbackSelector);
+    if (fallback) {
+        bootstrap.Tab.getOrCreateInstance(fallback).show();
+    }
+}
+
+function applyPlanFeatureVisibility() {
+    const patientPortal = appFeatureEnabled('patientPortal.enabled', false);
+    const patientPortalPlan = planFeatureEnabled('patientPortal.enabled', false);
+    const invitations = patientPortal && appFeatureEnabled('patientPortal.invitations', false);
+    const bonuses = appFeatureEnabled('bonuses.enabled', false);
+    const tasks = appFeatureEnabled('tasks.enabled', false);
+    const tasksPlan = planFeatureEnabled('tasks.enabled', false);
+    const templates = appFeatureEnabled('taskTemplates.enabled', false);
+    const reports = appFeatureEnabled('reports.globalReports', false);
+    const upcomingPlanning = appFeatureEnabled('upcomingAppointments.planning', false);
+    const payments = paymentPlanEnabled();
+    const reminders = appFeatureEnabled('reminders.patient24h', false);
+    const calendarSync = appFeatureEnabled('calendarSync.enabled', false);
+    const customLogo = appFeatureEnabled('branding.customLogo', false);
+    const team = appFeatureEnabled('team.enabled', false);
+    const uiCustomization = planFeatureEnabled('ui.customization', false);
+    const effectiveDuration = appFeatureEnabled('appointments.effectiveDuration', false);
+
+    setFeatureVisible('#btn-generate-invite, #btn-mobile-generate-invite', invitations);
+    setFeatureVisible('#btn-admin-bonuses, #btn-mobile-admin-bonuses, #btn-buy-bonus, #btn-my-bonuses', bonuses);
+    $('#btn-mobile-buy-bonus, #btn-mobile-my-bonuses').closest('li').toggleClass('d-none', !bonuses);
+    $('#patient-bonuses-tab').closest('.nav-item').toggleClass('d-none', !bonuses);
+    $('#patient-bonuses-panel').toggleClass('d-none', !bonuses);
+
+    setFeatureVisible('#btn-admin-stats, #btn-mobile-admin-stats', reports);
+    $('#upcoming-planning-tab').closest('.nav-item').toggleClass('d-none', !upcomingPlanning);
+    $('#upcoming-planning-panel').toggleClass('d-none', !upcomingPlanning);
+    setFeatureVisible('#btn-patient-portal-tasks, #btn-mobile-patient-portal-tasks', patientPortalPlan && tasksPlan);
+    setFeatureVisible('#btn-patient-portal-documents, #btn-mobile-patient-portal-documents', patientPortalPlan);
+    $('#patient-work-plan-tab').closest('.nav-item').toggleClass('d-none', !tasks);
+    $('#patient-work-plan-panel').toggleClass('d-none', !tasks);
+    $('#appointment-session-tab').closest('.nav-item').toggleClass('d-none', !tasks);
+    $('#appointment-session-panel').toggleClass('d-none', !tasks);
+
+    $('#bonuses-settings-tab').closest('.nav-item').toggleClass('d-none', !bonuses);
+    $('#bonuses-settings-panel').toggleClass('d-none', !bonuses);
+    $('#task-templates-settings-tab').closest('.nav-item').toggleClass('d-none', !templates);
+    $('#task-templates-settings-panel').toggleClass('d-none', !templates);
+    $('#payment-settings-tab').closest('.nav-item').toggleClass('d-none', !payments);
+    $('#payment-settings-panel').toggleClass('d-none', !payments);
+    $('#calendar-settings-tab').closest('.nav-item').toggleClass('d-none', !calendarSync);
+    $('#calendar-settings-panel').toggleClass('d-none', !calendarSync);
+    $('#cabinet-settings-tab').closest('.nav-item').toggleClass('d-none', !team);
+    $('#cabinet-settings-panel').toggleClass('d-none', !team);
+
+    $('#online-booking-enabled').closest('.row').toggleClass('d-none', !patientPortal);
+    $('#patient-registration-requires-invite').closest('.row').toggleClass('d-none', !patientPortal || !invitations);
+    $('#patient-tasks-visible-default').closest('.row').toggleClass('d-none', !patientPortal || !tasks);
+    $('#display-effective-duration-enabled').closest('.mt-3').toggleClass('d-none', !effectiveDuration);
+    $('#appointment-reminder-enabled').closest('.row').toggleClass('d-none', !reminders);
+    $('#profile-image').closest('.row').toggleClass('d-none', !customLogo);
+    $('#show-profile-image-public').closest('.form-check').toggleClass('d-none', !customLogo);
+
+    $('#dashboard-config-row').toggleClass('d-none', !uiCustomization);
+    $('#dashboard-config-mode').val(uiCustomization ? (LOADED_DASHBOARD_CONFIG_MODE || 'advanced') : 'advanced');
+    $('#btn-open-dashboard-custom-config').toggleClass('d-none', !uiCustomization);
+
+    if (!payments) {
+        $('#online-payment-enabled').prop('checked', false);
+        togglePaymentSettings();
+    }
+    if (!calendarSync) {
+        $('#calendar-provider').val('none');
+        toggleCalendarSettings();
+    }
+    if (!reminders) {
+        $('#appointment-reminder-enabled').prop('checked', false);
+    }
+    if (!bonuses) {
+        $('#bonuses-enabled').prop('checked', false);
+        toggleBonusesSettings();
+    }
+
+    ensureVisibleSettingsTab();
+    showFallbackTabIfHidden('#patient-work-plan-tab', '#patient-data-tab');
+    showFallbackTabIfHidden('#patient-bonuses-tab', '#patient-data-tab');
+    showFallbackTabIfHidden('#appointment-session-tab', '#appointment-detail-tab');
+    showFallbackTabIfHidden('#upcoming-planning-tab', '#upcoming-list-tab');
+    applyKnowledgeBaseVisibility();
 }
 
 function applyKnowledgeBaseVisibility() {
@@ -223,7 +372,7 @@ function professionalContextHtml(context, titlePrefix, options = {}) {
     const showSubtitle = options.showSubtitle !== false;
     const name = escapeHtml(context.display_name);
     const photo = context.display_photo_path
-        ? `<img class="booking-professional-avatar" src="${escapeHtml(context.display_photo_path)}" alt="${name}">`
+        ? `<img class="booking-professional-avatar" src="${escapeHtml(assetUrl(context.display_photo_path))}" alt="${name}">`
         : '<span class="booking-professional-avatar booking-professional-avatar-empty"><i class="bi bi-person"></i></span>';
     return `
         ${photo}
@@ -360,7 +509,7 @@ function renderSlotProfessionalCards() {
         const selected = id === CURRENT_SLOT_SELECTED_PROFESSIONAL_ID;
         const name = escapeHtml(professional.display_name || 'Sin nombre');
         const photo = professional.display_photo_path
-            ? `<img class="patient-professional-card-avatar" src="${escapeHtml(professional.display_photo_path)}" alt="${name}">`
+            ? `<img class="patient-professional-card-avatar" src="${escapeHtml(assetUrl(professional.display_photo_path))}" alt="${name}">`
             : '<span class="patient-professional-card-avatar patient-professional-card-avatar-empty"><i class="bi bi-person"></i></span>';
         return `
             <button type="button" class="patient-professional-card ${selected ? 'is-selected' : ''}" data-professional-id="${id}" aria-pressed="${selected ? 'true' : 'false'}">
@@ -445,7 +594,7 @@ function renderPatientProfessionalChoice(professionals, context, mode) {
         const selected = id === CURRENT_PATIENT_SELECTED_PROFESSIONAL_ID;
         const name = escapeHtml(professional.display_name || 'Sin nombre');
         const photo = professional.display_photo_path
-            ? `<img class="patient-professional-card-avatar" src="${escapeHtml(professional.display_photo_path)}" alt="${name}">`
+            ? `<img class="patient-professional-card-avatar" src="${escapeHtml(assetUrl(professional.display_photo_path))}" alt="${name}">`
             : '<span class="patient-professional-card-avatar patient-professional-card-avatar-empty"><i class="bi bi-person"></i></span>';
         return `
             <button type="button" class="patient-professional-card ${selected ? 'is-selected' : ''}" data-professional-id="${id}" aria-pressed="${selected ? 'true' : 'false'}">
@@ -786,6 +935,18 @@ function displayAppointmentServiceLabel(app = {}) {
     return label.replace(/\((\d+)\s*min\)/i, (_match, minutes) => `(${displayDurationMinutes(app.duration_minutes || minutes)} min)`);
 }
 
+function activeScheduleDurations(settings = PAYMENT_SETTINGS) {
+    const durations = String(settings.available_session_durations || '60')
+        .split(',')
+        .map(duration => parseInt(duration, 10))
+        .filter(duration => Number.isFinite(duration) && duration > 0 && duration <= 480);
+    return durations.length ? [...new Set(durations)].sort((a, b) => a - b) : [60];
+}
+
+function activeScheduleSlotStep(settings = PAYMENT_SETTINGS) {
+    return Math.max(5, Math.min(...activeScheduleDurations(settings)));
+}
+
 function getScheduleItems() {
     const start = timeToMinutes(PAYMENT_SETTINGS.appointment_start_time || '10:00');
     const end = timeToMinutes(PAYMENT_SETTINGS.appointment_end_time || '19:00');
@@ -795,7 +956,8 @@ function getScheduleItems() {
     const items = [];
     let breakAdded = false;
 
-    for (let minutes = start; minutes <= end; minutes += 60) {
+    const slotStep = activeScheduleSlotStep();
+    for (let minutes = start; minutes <= end; minutes += slotStep) {
         if (hasBreak && minutes >= breakStart && minutes < breakEnd) {
             if (!breakAdded) {
                 items.push({ type: 'break' });
@@ -817,7 +979,7 @@ function selectedSlotCanFitDuration(durationMinutes) {
     const slotStart = timeToMinutes(slotTime);
     const slotEnd = slotStart + parseInt(durationMinutes || 60, 10);
     const lastStart = timeToMinutes(PAYMENT_SETTINGS.appointment_end_time || '19:00');
-    const dayEnd = lastStart + 60;
+    const dayEnd = lastStart + Math.max(...activeScheduleDurations());
     if (slotEnd > dayEnd) {
         return false;
     }
@@ -900,8 +1062,9 @@ function renderSlot(dateStr, timeStr, dayApps) {
             ? `<button class="btn btn-success slot-action-btn" onclick="event.stopPropagation(); openModal('${dateStr}', '${timeStr}', 'pay_own', '${app.id}', '${payPriceArg}', '${payLabelArg}');" title="Pagar cita"><i class="bi bi-credit-card"></i></button>`
             : '';
         if (IS_ADMIN) {
+            const patientSingular = sectorLabel('patient', 'singular', 'paciente');
             const patientButton = app.user_id
-                ? `<button class="btn btn-outline-secondary slot-action-btn" onclick="event.stopPropagation(); openPatientEditorById(${parseInt(app.user_id, 10)}, this);" title="Datos del paciente"><i class="bi bi-person-lines-fill"></i></button>`
+                ? `<button class="btn btn-outline-secondary slot-action-btn" onclick="event.stopPropagation(); openPatientEditorById(${parseInt(app.user_id, 10)}, this);" title="Datos del ${escapeHtml(patientSingular)}"><i class="bi bi-person-lines-fill"></i></button>`
                 : '';
             cls = 'booked';
             text = `
@@ -1030,12 +1193,13 @@ function quickAppointmentCardHtml(app, title, type) {
     const end = app.appointment_end_time || '';
     const timeText = displayAppointmentTimeRange(start, app.duration_minutes || 60, end);
     const dateTimeText = type === 'current'
-        ? `${quickAppointmentDateLabel(app.appointment_date || '')}${timeText ? ` · ${timeText}` : ''}`
+        ? timeText
         : quickAppointmentTimingLabel(app);
-    const contact = quickAppointmentContactHtml(app);
+    const contactText = quickAppointmentContactText(app);
+    const contactActions = patientContactActionsHtml(app.patient_phone, '');
     const payment = adminPaymentLabel(app);
     const consultation = quickAppointmentConsultationBadge(app.consultation_type);
-    const patientName = app.patient_name || 'Paciente';
+    const patientName = app.patient_name || sectorLabel('patient', 'titleSingular', 'Paciente');
     const mainTitle = `${dateTimeText} con ${patientName}`;
     return `
         <div class="col-12 col-lg-6">
@@ -1049,15 +1213,20 @@ function quickAppointmentCardHtml(app, title, type) {
                 <div class="quick-appointment-body">
                     <div>
                         <h5>${escapeHtml(mainTitle)}</h5>
-                        ${contact ? `<div class="quick-appointment-contact">${contact}</div>` : ''}
+                        ${(contactText || contactActions) ? `
+                            <div class="quick-appointment-contact-row">
+                                ${contactText ? `<div class="quick-appointment-contact">${escapeHtml(contactText)}</div>` : '<div></div>'}
+                                ${contactActions ? `<div class="quick-appointment-contact-actions">${contactActions}</div>` : ''}
+                            </div>
+                        ` : ''}
                     </div>
                 </div>
                 <div class="quick-appointment-meta">
                     <div class="quick-appointment-meta-main">
                         <span>${escapeHtml(displayAppointmentServiceLabel(app))}</span>
+                        ${consultation}
                     </div>
                     <div class="quick-appointment-badges">
-                        ${consultation}
                         ${payment}
                     </div>
                 </div>
@@ -1247,7 +1416,8 @@ function loadPatientPortalSummary() {
             }
             CURRENT_PATIENT_PORTAL = {
                 appointments: Array.isArray(res.appointments) ? res.appointments : [],
-                tasks: Array.isArray(res.tasks) ? res.tasks : []
+                tasks: Array.isArray(res.tasks) ? res.tasks : [],
+                documents: Array.isArray(res.documents) ? res.documents : []
             };
             if (res.payment_settings) {
                 PAYMENT_SETTINGS = { ...PAYMENT_SETTINGS, ...res.payment_settings };
@@ -1323,8 +1493,10 @@ function renderPatientQuickAppointment(appointments) {
 function renderPatientPortalSummary(data) {
     const appointments = Array.isArray(data.appointments) ? data.appointments : [];
     const tasks = Array.isArray(data.tasks) ? data.tasks : [];
+    const documents = Array.isArray(data.documents) ? data.documents : [];
     $('#patient-portal-appointments').html(renderPatientPortalAppointments(appointments));
     $('#patient-portal-tasks').html(renderPatientPortalTasks(tasks));
+    $('#patient-portal-documents').html(renderPatientPortalDocuments(documents));
 }
 
 function openPatientPortalAppointmentsModal() {
@@ -1338,6 +1510,13 @@ function openPatientPortalTasksModal() {
     renderPatientPortalSummary(CURRENT_PATIENT_PORTAL);
     if (patientPortalTasksModal) {
         patientPortalTasksModal.show();
+    }
+}
+
+function openPatientPortalDocumentsModal() {
+    renderPatientPortalSummary(CURRENT_PATIENT_PORTAL);
+    if (patientPortalDocumentsModal) {
+        patientPortalDocumentsModal.show();
     }
 }
 
@@ -1419,6 +1598,50 @@ function renderPatientPortalTasks(tasks) {
                     <strong>${escapeHtml(task.title || '')}</strong>
                     ${task.description ? `<div class="text-muted small">${escapeHtml(task.description)}</div>` : ''}
                     ${completed && task.completed_at ? `<div class="text-muted small">Completada el ${escapeHtml(formatDateTimeLabel(task.completed_at))}</div>` : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderPatientPortalDocuments(documents) {
+    const filter = CURRENT_PATIENT_PORTAL_DOCUMENTS_FILTER || 'all';
+    const filtered = (Array.isArray(documents) ? documents : []).filter(doc => {
+        if (filter === 'all') return true;
+        return doc.type === filter;
+    });
+    if (!filtered.length) {
+        const emptyText = filter === 'questionnaire'
+            ? 'No tienes cuestionarios disponibles en el portal.'
+            : (filter === 'file' ? 'No tienes archivos disponibles en el portal.' : 'No tienes documentos disponibles en el portal.');
+        return `<div class="text-muted small">${emptyText}</div>`;
+    }
+    return filtered.slice(0, 20).map(doc => {
+        const isQuestionnaire = doc.type === 'questionnaire';
+        const badge = isQuestionnaire
+            ? '<span class="badge text-bg-info">Cuestionario</span>'
+            : '<span class="badge text-bg-secondary">Archivo</span>';
+        const status = isQuestionnaire && doc.status
+            ? `<span class="badge ${doc.status === 'pending' ? 'text-bg-warning' : 'text-bg-success'}">${escapeHtml(formatPatientDocumentStatus(doc.status))}</span>`
+            : '';
+        const result = [doc.score, doc.result_label].filter(Boolean).join(' · ');
+        const meta = [
+            doc.date ? formatDateTimeLabel(doc.date) : '',
+            doc.file_name || '',
+            doc.size ? formatFileSize(doc.size) : ''
+        ].filter(Boolean).join(' · ');
+        return `
+            <div class="patient-portal-item">
+                <div class="patient-portal-item-main">
+                    <div class="d-flex gap-1 flex-wrap mb-1">${badge}${status}</div>
+                    <strong>${escapeHtml(doc.name || (isQuestionnaire ? 'Cuestionario' : 'Archivo'))}</strong>
+                    ${meta ? `<div class="text-muted small">${escapeHtml(meta)}</div>` : ''}
+                    ${doc.description ? `<div class="text-muted small">${escapeHtml(doc.description)}</div>` : ''}
+                    ${result ? `<div class="small">${escapeHtml(result)}</div>` : ''}
+                    ${doc.observations ? `<div class="text-muted small">${escapeHtml(doc.observations)}</div>` : ''}
+                </div>
+                <div class="patient-portal-item-actions">
+                    ${doc.url ? `<a class="btn btn-outline-primary btn-sm" href="${escapeHtml(doc.url)}" target="_blank" rel="noopener"><i class="bi bi-download"></i> Descargar</a>` : ''}
                 </div>
             </div>
         `;
@@ -1599,6 +1822,7 @@ function canPayAppointment(app) {
     return !IS_ADMIN
         && app
         && app.is_own
+        && paymentPlanEnabled()
         && PAYMENT_SETTINGS.online_payment_enabled == 1
         && app.payment_status !== 'paid';
 }
@@ -1613,6 +1837,7 @@ let changePasswordModal = document.getElementById('changePasswordModal') ? new b
 let patientSelfDataModal = document.getElementById('patientSelfDataModal') ? new bootstrap.Modal(document.getElementById('patientSelfDataModal')) : null;
 let patientPortalAppointmentsModal = document.getElementById('patientPortalAppointmentsModal') ? new bootstrap.Modal(document.getElementById('patientPortalAppointmentsModal')) : null;
 let patientPortalTasksModal = document.getElementById('patientPortalTasksModal') ? new bootstrap.Modal(document.getElementById('patientPortalTasksModal')) : null;
+let patientPortalDocumentsModal = document.getElementById('patientPortalDocumentsModal') ? new bootstrap.Modal(document.getElementById('patientPortalDocumentsModal')) : null;
 let globalSearchModal = document.getElementById('globalSearchModal') ? new bootstrap.Modal(document.getElementById('globalSearchModal')) : null;
 let dashboardCustomConfigModal = document.getElementById('dashboardCustomConfigModal') ? new bootstrap.Modal(document.getElementById('dashboardCustomConfigModal')) : null;
 let taskTemplateModal = document.getElementById('taskTemplateModal') ? new bootstrap.Modal(document.getElementById('taskTemplateModal')) : null;
@@ -1625,6 +1850,8 @@ adminStatsModal = document.getElementById('adminStatsModal') ? new bootstrap.Mod
 bonusesModal = document.getElementById('bonusesModal') ? new bootstrap.Modal(document.getElementById('bonusesModal')) : null;
 let adminPatientsModal = document.getElementById('adminPatientsModal') ? new bootstrap.Modal(document.getElementById('adminPatientsModal')) : null;
 let patientEditorModal = document.getElementById('patientEditorModal') ? new bootstrap.Modal(document.getElementById('patientEditorModal')) : null;
+let patientDocumentModal = document.getElementById('patientDocumentModal') ? new bootstrap.Modal(document.getElementById('patientDocumentModal')) : null;
+let workoutxExerciseModal = document.getElementById('workoutxExerciseModal') ? new bootstrap.Modal(document.getElementById('workoutxExerciseModal')) : null;
 patientWorkPlanTaskModal = document.getElementById('patientWorkPlanTaskModal') ? new bootstrap.Modal(document.getElementById('patientWorkPlanTaskModal')) : null;
 let pendingLocalProfessionalDeleteIndex = null;
 let currentPaymentAppointmentId = null;
@@ -1644,13 +1871,17 @@ let CURRENT_PATIENT_HISTORY_ID = 0;
 let CURRENT_PATIENT_BONUSES_ID = 0;
 let CURRENT_PATIENT_EVOLUTION_ID = 0;
 let CURRENT_PATIENT_FILES_ID = 0;
+let CURRENT_PATIENT_FILES_FILTER = 'all';
+let CURRENT_PATIENT_FILES_ROWS = [];
+let patientFilesAlertTimer = null;
 let CURRENT_PATIENT_WORK_PLAN_ID = 0;
 let CURRENT_PATIENT_WORK_PLAN_ROWS = [];
 let CURRENT_WORK_PLAN_FORM_CONTEXT = { source: 'patient', patientId: 0, appointmentId: 0 };
 let KNOWLEDGE_PROBLEMS = [];
 let KNOWLEDGE_PROBLEMS_LOADED = false;
 let CURRENT_KNOWLEDGE_PROBLEM_DETAIL = null;
-let CURRENT_PATIENT_PORTAL = { appointments: [], tasks: [] };
+let CURRENT_PATIENT_PORTAL = { appointments: [], tasks: [], documents: [] };
+let CURRENT_PATIENT_PORTAL_DOCUMENTS_FILTER = 'all';
 let WORK_PLAN_TASK_TEMPLATES = [];
 let WORK_PLAN_TASK_TEMPLATES_LOADED = false;
 let WORK_PLAN_KNOWLEDGE_IMPORT_OPTIONS = [];
@@ -1692,7 +1923,7 @@ function openModal(date, time, status, extraName = '', extraEmail = '', extraPho
     if (status === 'available') {
         $('#modalTitle').text(`Reservar cita: ${formatDisplayDate(date)} a las ${time}`);
         if (IS_ADMIN) {
-            $('#modalDesc').text('Selecciona un paciente para reservar el horario.');
+            $('#modalDesc').text(`Selecciona un ${sectorLabel('patient', 'singular', 'paciente')} para reservar el horario.`);
             $('#adminPatientSelect').removeClass('d-none');
             if (IS_SUPERADMIN) {
                 $('#adminProfessionalSelect').removeClass('d-none');
@@ -1717,7 +1948,7 @@ function openModal(date, time, status, extraName = '', extraEmail = '', extraPho
         $('#btn-confirm-action').removeClass('btn-danger').addClass('btn-primary').text('Reservar');
     } else if (status === 'cancel_admin') {
         $('#modalTitle').text(`Cancelar cita: ${formatDisplayDate(date)} a las ${time}`);
-        $('#modalDesc').html(`Paciente: <b>${extraName}</b><br><small>Email: ${extraEmail}<br>Tel: ${extraPhone}</small><br><br>¿Confirmar cancelación?`);
+        $('#modalDesc').html(`${capitalizeFirst(sectorLabel('patient', 'singular', 'paciente'))}: <b>${extraName}</b><br><small>Email: ${extraEmail}<br>Tel: ${extraPhone}</small><br><br>¿Confirmar cancelación?`);
         currentCancelAppointmentId = parseCancelPayload(extraName).id || null;
         if (IS_ADMIN) $('#adminPatientSelect').addClass('d-none');
         $('#adminProfessionalSelect').addClass('d-none');
@@ -1790,13 +2021,14 @@ function applyCancelPaymentNotice(status, payload) {
     currentCancelAppointmentId = data.id || null;
     const notice = cancelBonusNotice(data) + cancelCompensationNotice(data, status);
     if (status === 'cancel_admin') {
-        $('#modalDesc').html(`Paciente: <b>${escapeHtml(data.name || '')}</b><br><small>Email: ${escapeHtml(data.email || '')}<br>Tel: ${escapeHtml(data.phone || '')}</small>${notice}<br>&iquest;Confirmar cancelaci&oacute;n?`);
+        $('#modalDesc').html(`${capitalizeFirst(sectorLabel('patient', 'singular', 'paciente'))}: <b>${escapeHtml(data.name || '')}</b><br><small>Email: ${escapeHtml(data.email || '')}<br>Tel: ${escapeHtml(data.phone || '')}</small>${notice}<br>&iquest;Confirmar cancelaci&oacute;n?`);
         return;
     }
     $('#modalDesc').html(`${notice}<br>&iquest;Est&aacute;s seguro de que deseas cancelar tu cita?`);
 }
 
 $(document).ready(function () {
+    applyPlanFeatureVisibility();
     applyKnowledgeBaseVisibility();
     renderWeekInfo();
     startQuickAppointmentsAutoRefresh();
@@ -1908,6 +2140,17 @@ $(document).ready(function () {
         openPatientPortalTasksModal();
     });
 
+    $('#btn-patient-portal-documents').click(function () {
+        openPatientPortalDocumentsModal();
+    });
+
+    $('.patient-portal-documents-filter').click(function () {
+        CURRENT_PATIENT_PORTAL_DOCUMENTS_FILTER = $(this).data('documents-filter') || 'all';
+        $('.patient-portal-documents-filter').removeClass('btn-primary').addClass('btn-outline-primary');
+        $(this).removeClass('btn-outline-primary').addClass('btn-primary');
+        $('#patient-portal-documents').html(renderPatientPortalDocuments(CURRENT_PATIENT_PORTAL.documents || []));
+    });
+
     $('#btn-mobile-buy-bonus').click(function () {
         $('#btn-buy-bonus').trigger('click');
     });
@@ -1922,6 +2165,10 @@ $(document).ready(function () {
 
     $('#btn-mobile-patient-portal-tasks').click(function () {
         $('#btn-patient-portal-tasks').trigger('click');
+    });
+
+    $('#btn-mobile-patient-portal-documents').click(function () {
+        $('#btn-patient-portal-documents').trigger('click');
     });
 
     $('#btn-admin-bonuses').click(function () {
@@ -2129,9 +2376,14 @@ $(document).ready(function () {
 
     $('#patient-diagnosis-tab').on('shown.bs.tab', function () {
         if (!knowledgeBaseEnabled()) return;
+        initPatientBodyMap();
         loadKnowledgeProblems(function () {
             loadSelectedPatientKnowledgeProblem();
         });
+    });
+
+    $('.patient-knowledge-mode-btn').on('click', function () {
+        switchPatientKnowledgeMode($(this).data('knowledge-mode') || 'muscles');
     });
 
     $('#patient-editor-knowledge-problem').on('change', function () {
@@ -2154,10 +2406,33 @@ $(document).ready(function () {
         importKnowledgeProblemTasks(this);
     });
 
+    $('#btn-body-map-front').on('click', function () {
+        setPatientBodyMapView('FRONT');
+    });
+
+    $('#btn-body-map-back').on('click', function () {
+        setPatientBodyMapView('BACK');
+    });
+
+    $('#btn-body-map-clear').on('click', function () {
+        clearPatientBodyMapSelection();
+    });
+
+    $('#patient-body-map-results').on('click', '.btn-workoutx-exercise', function () {
+        openWorkoutxExerciseModal($(this).data('exercise-id'), $(this).data('exercise-name'));
+    });
+
+    $(window).on('resize', function () {
+        if (bodyMapEnabled()) {
+            syncPatientBodyMapResultsHeight();
+        }
+    });
+
     $('.btn-patient-report').click(function () {
+        const patientSingular = sectorLabel('patient', 'singular', 'paciente');
         const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
         if (!patientId) {
-            showPatientEditorAlert('danger', 'Guarda primero el paciente para generar el informe.');
+            showPatientEditorAlert('danger', `Guarda primero el ${patientSingular} para generar el informe.`);
             return;
         }
         const reportType = $(this).data('report-type') === 'patient' ? 'patient' : 'internal';
@@ -2220,6 +2495,39 @@ $(document).ready(function () {
     $('#patient-files-tab').on('shown.bs.tab', function () {
         const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
         loadPatientFiles(patientId);
+    });
+
+    $('.patient-files-filter').on('click', function () {
+        CURRENT_PATIENT_FILES_FILTER = $(this).data('files-filter') || 'all';
+        $('.patient-files-filter').removeClass('btn-primary').addClass('btn-outline-primary');
+        $(this).removeClass('btn-outline-primary').addClass('btn-primary');
+        loadPatientFiles(CURRENT_PATIENT_FILES_ID || parseInt($('#patient-editor-id').val() || '0', 10));
+    });
+
+    $('#btn-show-patient-document-form').on('click', function () {
+        const defaultType = CURRENT_PATIENT_FILES_FILTER === 'questionnaire' ? 'questionnaire' : 'file';
+        showPatientDocumentForm(null, defaultType);
+    });
+
+    $('#patient-document-type').on('change', function () {
+        updatePatientDocumentTypeFields(false, true);
+    });
+
+    $('#patient-document-form').on('submit', function (e) {
+        e.preventDefault();
+        savePatientDocument(this);
+    });
+
+    $('#patient-files-body').on('click', '.btn-delete-patient-document', function () {
+        deletePatientDocument($(this).data('document-id'), $(this).closest('tr'));
+    });
+
+    $('#patient-files-body').on('click', '.btn-edit-patient-document', function () {
+        const documentId = parseInt($(this).data('document-id') || '0', 10);
+        const document = CURRENT_PATIENT_FILES_ROWS.find(item => parseInt(item.id || 0, 10) === documentId && item.can_delete);
+        if (document) {
+            showPatientDocumentForm(document);
+        }
     });
 
     $('#patient-bonuses-tab').on('shown.bs.tab', function () {
@@ -2558,22 +2866,28 @@ $(document).ready(function () {
         }
     });
 
-    $('#patientWorkPlanTaskModal').on('show.bs.modal', function () {
+    $('#patientWorkPlanTaskModal, #patientDocumentModal, #workoutxExerciseModal').on('show.bs.modal', function () {
         if ($('#patientEditorModal').hasClass('show')) {
             $('body').addClass('patient-editor-secondary-modal-open');
         }
+    });
+
+    $('#patientWorkPlanTaskModal').on('show.bs.modal', function () {
         if ($('#appointmentPaymentModal').hasClass('show')) {
             $('body').addClass('appointment-work-plan-modal-open');
         }
     });
 
-    $('#patientWorkPlanTaskModal').on('hidden.bs.modal', function () {
+    $('#patientWorkPlanTaskModal, #patientDocumentModal, #workoutxExerciseModal').on('hidden.bs.modal', function () {
         $('body').removeClass('patient-editor-secondary-modal-open');
-        $('body').removeClass('appointment-work-plan-modal-open');
-        resetPatientWorkPlanFormFields();
         if ($('#patientEditorModal').hasClass('show')) {
             document.body.classList.add('modal-open');
         }
+    });
+
+    $('#patientWorkPlanTaskModal').on('hidden.bs.modal', function () {
+        $('body').removeClass('appointment-work-plan-modal-open');
+        resetPatientWorkPlanFormFields();
         if ($('#appointmentPaymentModal').hasClass('show')) {
             document.body.classList.add('modal-open');
         }
@@ -2692,14 +3006,22 @@ $(document).ready(function () {
         toggleBonusesSettings();
     });
 
-    $('.available-session-type').change(function () {
-        $('#available-session-individual').prop('checked', true);
+    $(document).on('change', '.available-session-type', function () {
+        if (!$('.available-session-type:checked').length) {
+            defaultAppointmentServiceKeys().forEach(type => {
+                $(`.available-session-type[value="${type}"]`).prop('checked', true);
+            });
+        }
         togglePriceRows();
         renderServicesSettings();
     });
 
-    $('.available-session-duration').change(function () {
-        $('#available-duration-60').prop('checked', true);
+    $(document).on('change', '.available-session-duration', function () {
+        if (!$('.available-session-duration:checked').length) {
+            defaultAppointmentDurations().forEach(duration => {
+                $(`.available-session-duration[value="${duration}"]`).prop('checked', true);
+            });
+        }
         renderServicesSettings();
     });
 
@@ -2732,6 +3054,7 @@ $(document).ready(function () {
     $('#primary-color').change(function () {
         $('#primary-color-text').val(this.value);
         document.documentElement.style.setProperty('--primary-color', this.value);
+        refreshPatientBodyMapSelectedColors();
     });
 
     $('#primary-color-text').on('input', function () {
@@ -2739,6 +3062,7 @@ $(document).ready(function () {
         if (/^#[0-9a-fA-F]{6}$/.test(value)) {
             $('#primary-color').val(value);
             document.documentElement.style.setProperty('--primary-color', value);
+            refreshPatientBodyMapSelectedColors();
         }
     });
 
@@ -2747,6 +3071,10 @@ $(document).ready(function () {
     });
 
     $('#btn-open-dashboard-custom-config').on('click', function () {
+        if (!planFeatureEnabled('ui.customization', false)) {
+            showSettingsAlert('#interface-settings-alert', 'danger', 'La personalizacion de interfaz no esta disponible en este plan.');
+            return;
+        }
         openDashboardCustomConfigModal();
     });
 
@@ -2782,7 +3110,7 @@ function bookAppointment() {
 
     if (IS_ADMIN) {
         data.user_id = $('#patientSelect').val();
-        if (!data.user_id) { alert('Selecciona un paciente'); return; }
+        if (!data.user_id) { alert(`Selecciona un ${sectorLabel('patient', 'singular', 'paciente')}`); return; }
     }
     if (IS_SUPERADMIN) {
         data.professional_id = $('#booking-professional').val();
@@ -2821,7 +3149,7 @@ function bookAppointment() {
             if (res.bonus_applied == 1) {
                 const remaining = parseInt(res.bonus_remaining || 0, 10);
                 $('#modalTitle').text('Cita reservada');
-                const ownerText = IS_ADMIN ? 'La cita ha quedado reservada correctamente e incluida con el bono del paciente.' : 'Tu cita ha quedado reservada correctamente e incluida con tu bono.';
+                const ownerText = IS_ADMIN ? `La cita ha quedado reservada correctamente e incluida con el bono del ${sectorLabel('patient', 'singular', 'paciente')}.` : 'Tu cita ha quedado reservada correctamente e incluida con tu bono.';
                 $('#modalDesc').html(`${ownerText}<br><br>Quedan ${remaining} ${remaining === 1 ? 'sesi&oacute;n' : 'sesiones'} disponibles.`);
                 $('#btn-confirm-action').addClass('d-none');
                 $('#payment-options').addClass('d-none');
@@ -2888,6 +3216,10 @@ function consultationTypeLabel(type) {
 }
 
 function serviceTypeLabel(type) {
+    const catalogItem = appointmentServiceCatalog().find(item => item.key === type);
+    if (catalogItem) {
+        return catalogItem.label;
+    }
     const labels = {
         individual: 'Individual',
         couple: 'Pareja',
@@ -2999,37 +3331,133 @@ function setAvailableWeekdays(value) {
     });
 }
 
+function appointmentServiceCatalog() {
+    const services = Array.isArray(APP_SECTOR_TEXTS.appointmentServices) ? APP_SECTOR_TEXTS.appointmentServices : [];
+    if (services.length) {
+        return services
+            .map((item, index) => ({
+                key: String(item.key || '').trim(),
+                label: String(item.label || item.name || item.key || '').trim(),
+                name: String(item.name || item.label || item.key || '').trim(),
+                enabledByDefault: item.enabledByDefault === true,
+                sort: Number.isFinite(parseInt(item.sort, 10)) ? parseInt(item.sort, 10) : (index + 1) * 10
+            }))
+            .filter(item => /^[a-z0-9_-]{2,32}$/.test(item.key))
+            .sort((a, b) => a.sort - b.sort || a.label.localeCompare(b.label));
+    }
+
+    const labels = APP_SECTOR_TEXTS.services && typeof APP_SECTOR_TEXTS.services === 'object' ? APP_SECTOR_TEXTS.services : {
+        individual: 'Individual',
+        couple: 'Parejas',
+        family: 'Familiar',
+        group: 'Grupos'
+    };
+    return Object.keys(labels).map((key, index) => ({
+        key,
+        label: labels[key] || key,
+        name: labels[key] || key,
+        enabledByDefault: index === 0,
+        sort: (index + 1) * 10
+    }));
+}
+
+function appointmentDurationCatalog() {
+    const durations = Array.isArray(APP_SECTOR_TEXTS.appointmentDurations) ? APP_SECTOR_TEXTS.appointmentDurations : [];
+    const items = durations.length ? durations : [
+        { minutes: 60, label: '60 minutos', enabledByDefault: true },
+        { minutes: 90, label: '90 minutos', enabledByDefault: false },
+        { minutes: 120, label: '120 minutos', enabledByDefault: false }
+    ];
+    return items
+        .map((item, index) => ({
+            minutes: parseInt(item.minutes, 10),
+            label: String(item.label || `${item.minutes} minutos`).trim(),
+            enabledByDefault: item.enabledByDefault === true,
+            sort: Number.isFinite(parseInt(item.sort, 10)) ? parseInt(item.sort, 10) : (index + 1) * 10
+        }))
+        .filter(item => Number.isFinite(item.minutes) && item.minutes > 0 && item.minutes <= 480)
+        .sort((a, b) => a.sort - b.sort || a.minutes - b.minutes);
+}
+
+function defaultAppointmentServiceKeys() {
+    const catalog = appointmentServiceCatalog();
+    const defaults = catalog.filter(item => item.enabledByDefault).map(item => item.key);
+    return defaults.length ? defaults : (catalog[0] ? [catalog[0].key] : ['individual']);
+}
+
+function defaultAppointmentDurations() {
+    const catalog = appointmentDurationCatalog();
+    const defaults = catalog.filter(item => item.enabledByDefault).map(item => item.minutes);
+    return defaults.length ? defaults : (catalog[0] ? [catalog[0].minutes] : [60]);
+}
+
+function renderAvailableSessionControls() {
+    const $types = $('#available-session-types-list');
+    if ($types.length) {
+        $types.html(appointmentServiceCatalog().map(item => {
+            const id = `available-session-${item.key}`;
+            return `
+                <div class="col-6 col-md-3">
+                    <div class="form-check">
+                        <input class="form-check-input available-session-type" type="checkbox" id="${id}" value="${escapeHtml(item.key)}">
+                        <label class="form-check-label" for="${id}">${escapeHtml(item.label)}</label>
+                    </div>
+                </div>
+            `;
+        }).join(''));
+    }
+
+    const $durations = $('#available-session-durations-list');
+    if ($durations.length) {
+        $durations.html(appointmentDurationCatalog().map(item => {
+            const id = `available-duration-${item.minutes}`;
+            return `
+                <div class="col-4 col-md-3">
+                    <div class="form-check">
+                        <input class="form-check-input available-session-duration" type="checkbox" id="${id}" value="${item.minutes}">
+                        <label class="form-check-label" for="${id}">${escapeHtml(item.label)}</label>
+                    </div>
+                </div>
+            `;
+        }).join(''));
+    }
+}
+
 function setAvailableSessionTypes(value) {
-    const activeTypes = String(value || 'individual')
+    const defaults = defaultAppointmentServiceKeys();
+    const allowed = appointmentServiceCatalog().map(item => item.key);
+    const activeTypes = String(value || defaults.join(','))
         .split(',')
-        .map(type => type.trim());
+        .map(type => type.trim())
+        .filter(type => allowed.includes(type));
     $('.available-session-type').prop('checked', false);
-    $('#available-session-individual').prop('checked', true);
-    activeTypes.forEach(type => {
+    (activeTypes.length ? activeTypes : defaults).forEach(type => {
         $(`.available-session-type[value="${type}"]`).prop('checked', true);
     });
 }
 
 function selectedSessionTypes() {
-    const types = ['individual'];
+    const types = [];
     $('.available-session-type:checked').each(function () {
         const type = String(this.value || '').trim();
         if (type && !types.includes(type)) {
             types.push(type);
         }
     });
-    return types;
+    return types.length ? types : defaultAppointmentServiceKeys();
 }
 
 function setAvailableSessionDurations(value) {
-    const activeDurations = String(value || '60')
+    const defaults = defaultAppointmentDurations().map(String);
+    const allowed = appointmentDurationCatalog().map(item => String(item.minutes));
+    const activeDurations = String(value || defaults.join(','))
         .split(',')
-        .map(duration => duration.trim());
+        .map(duration => duration.trim())
+        .filter(duration => allowed.includes(duration));
     $('.available-session-duration').prop('checked', false);
-    activeDurations.forEach(duration => {
+    (activeDurations.length ? activeDurations : defaults).forEach(duration => {
         $(`.available-session-duration[value="${duration}"]`).prop('checked', true);
     });
-    $('#available-duration-60').prop('checked', true);
 }
 
 function cancelAppointment() {
@@ -3121,9 +3549,10 @@ function togglePatientBonusActions() {
     if (IS_ADMIN) {
         return;
     }
-    const canBuyBonuses = PAYMENT_SETTINGS.bonuses_enabled == 1 && PAYMENT_SETTINGS.online_payment_enabled == 1;
+    const bonuses = appFeatureEnabled('bonuses.enabled', false);
+    const canBuyBonuses = bonuses && paymentPlanEnabled() && PAYMENT_SETTINGS.bonuses_enabled == 1 && PAYMENT_SETTINGS.online_payment_enabled == 1;
     const canUseInternalVouchers = PAYMENT_SETTINGS.create_compensation_bonus_on_paid_cancel === undefined ? true : PAYMENT_SETTINGS.create_compensation_bonus_on_paid_cancel == 1;
-    const showBonusArea = canBuyBonuses || canUseInternalVouchers;
+    const showBonusArea = bonuses && (canBuyBonuses || canUseInternalVouchers);
     $('#patient-bonus-actions').attr('style', '');
     $('#btn-buy-bonus').toggle(canBuyBonuses);
     $('#btn-my-bonuses').toggle(showBonusArea);
@@ -3133,6 +3562,7 @@ function togglePatientBonusActions() {
 }
 
 function openBuyBonusModal() {
+    if (!appFeatureEnabled('bonuses.enabled', false) || !paymentPlanEnabled()) return;
     if (!bonusesModal) return;
     selectedBonusToBuy = null;
     $('#bonusesModalTitle').text('Comprar bono');
@@ -3240,6 +3670,7 @@ function openAdminBonusesModal() {
 }
 
 function openBonusListModal(title, url, adminView) {
+    if (!appFeatureEnabled('bonuses.enabled', false)) return;
     if (!bonusesModal) return;
     selectedBonusToBuy = null;
     CURRENT_BONUS_LIST_URL = url;
@@ -3290,8 +3721,9 @@ function loadBonusList(url, adminView) {
 function renderBonusListHead(adminView) {
     const showProfessional = adminView && $('#bonus-list-professional').length;
     const actionsHead = CURRENT_BONUS_CAN_MANAGE ? '<th class="text-end">Acciones</th>' : '';
+    const patientTitleSingular = sectorLabel('patient', 'titleSingular', 'Paciente');
     $('#bonus-list-head').html(adminView
-        ? `<tr><th>Paciente</th>${showProfessional ? '<th>Profesional</th>' : ''}<th>Bono</th><th>Compradas</th><th>Restantes</th><th>Pagado</th><th>Comprado</th><th>Estado</th>${actionsHead}</tr>`
+        ? `<tr><th>${escapeHtml(patientTitleSingular)}</th>${showProfessional ? '<th>Profesional</th>' : ''}<th>Bono</th><th>Compradas</th><th>Restantes</th><th>Pagado</th><th>Comprado</th><th>Estado</th>${actionsHead}</tr>`
         : '<tr><th>Bono</th><th>Compradas</th><th>Restantes</th><th>Pagado</th><th>Comprado</th><th>Estado</th></tr>');
 }
 
@@ -3470,7 +3902,7 @@ function deletePatientBonusFromList(button) {
     const patientBonusId = parseInt($button.data('patient-bonus-id') || 0, 10);
     const inPatientEditor = $button.closest('#patient-bonuses-panel').length > 0;
     const bonusName = $button.data('bonus-name') || 'este bono';
-    const patientName = $button.data('patient-name') || 'este paciente';
+    const patientName = $button.data('patient-name') || `este ${sectorLabel('patient', 'singular', 'paciente')}`;
     if (!patientBonusId) {
         showBonusActionAlert(inPatientEditor, 'danger', 'No se ha podido identificar el bono.');
         return;
@@ -3578,7 +4010,7 @@ function copyTextToClipboard(text, onSuccess) {
 function sendInviteEmail(button) {
     const email = $('#invite-email').val().trim();
     if (!email) {
-        showInviteAlert('danger', 'Indica el email del paciente.');
+        showInviteAlert('danger', `Indica el email del ${sectorLabel('patient', 'singular', 'paciente')}.`);
         return;
     }
 
@@ -3695,10 +4127,11 @@ function populateAdminPatientsProfessionalsFilter(professionals = null, currentP
 function populatePatientEditorProfessionalSelect(patient = null) {
     const $select = $('#patient-editor-professional');
     if (!$select.length) return;
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     const selected = patient
         ? String(patient.professional_id || '')
         : String(CURRENT_PROFESSIONAL_ID || '');
-    $select.html('<option value="">Permitir elegir profesional al paciente</option>');
+    $select.html(`<option value="">Permitir elegir profesional al ${escapeHtml(patientSingular)}</option>`);
     CABINET_PROFESSIONALS
         .filter(professional => professional.is_active != 0)
         .forEach(professional => {
@@ -3712,6 +4145,8 @@ function populatePatientEditorProfessionalSelect(patient = null) {
 }
 
 function updatePatientTransferUi(patient = null) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
+    const patientPlural = sectorLabel('patient', 'plural', 'pacientes');
     const hasPatient = Boolean(patient && patient.id);
     $('#patient-editor-professional-new-wrap').toggleClass('d-none', hasPatient);
     $('#patient-editor-professional-current-wrap').toggleClass('d-none', !hasPatient);
@@ -3724,12 +4159,12 @@ function updatePatientTransferUi(patient = null) {
     $('#patient-editor-current-professional').text(patient.professional_name || 'Sin profesional asignado');
     $('#btn-show-patient-transfer')
         .prop('disabled', !canAssignOrTransfer)
-        .html(`<i class="bi bi-arrow-left-right"></i> ${hasProfessional ? 'Traspasar paciente' : 'Asignar profesional'}`);
+        .html(`<i class="bi bi-arrow-left-right"></i> ${hasProfessional ? `Traspasar ${patientSingular}` : 'Asignar profesional'}`);
     let statusText = 'Las citas pasadas conservan su profesional historico; solo se moveran las citas futuras reservadas.';
     if (!hasProfessional) {
-        statusText = 'Este paciente todavia no tiene profesional asignado. Puedes asignarlo manualmente.';
+        statusText = `Este ${patientSingular} todavia no tiene profesional asignado. Puedes asignarlo manualmente.`;
     } else if (!canAssignOrTransfer) {
-        statusText = 'Activa "Permitir traspaso de pacientes" en configuracion para cambiarlo desde aqui.';
+        statusText = `Activa "Permitir traspaso de ${patientPlural}" en configuracion para cambiarlo desde aqui.`;
     }
     $('#patient-editor-transfer-status').text(statusText);
     populatePatientTransferProfessionalSelect(patient);
@@ -3747,6 +4182,7 @@ function populatePatientTransferProfessionalSelect(patient = CURRENT_PATIENT_EDI
 }
 
 function transferCurrentPatientProfessional() {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     const patientId = parseInt($('#patient-editor-id').val() || 0, 10);
     const professionalId = parseInt($('#patient-transfer-professional').val() || 0, 10);
     if (!patientId || !professionalId) {
@@ -3756,7 +4192,7 @@ function transferCurrentPatientProfessional() {
     const target = bookingProfessionalById(professionalId);
     const patient = CURRENT_PATIENT_EDITOR || {};
     const actionText = patient.professional_id ? 'traspasar' : 'asignar';
-    if (!confirm(`¿Quieres ${actionText} este paciente a ${target ? target.display_name : 'este profesional'}? Las citas pasadas conservarán su profesional histórico y solo se moverán las futuras reservadas.`)) {
+    if (!confirm(`¿Quieres ${actionText} este ${patientSingular} a ${target ? target.display_name : 'este profesional'}? Las citas pasadas conservarán su profesional histórico y solo se moverán las futuras reservadas.`)) {
         return;
     }
     const $button = $('#btn-confirm-patient-transfer');
@@ -3802,19 +4238,19 @@ function renderAdminPatients(patients) {
     const colspan = adminPatientsColspan();
     const showProfessional = $('#admin-patients-professional').length;
     if (!patients.length) {
-        $('#admin-patients-body').html(`<tr><td colspan="${colspan}" class="text-center text-muted py-4">Todavia no hay pacientes.</td></tr>`);
+        $('#admin-patients-body').html(`<tr><td colspan="${colspan}" class="text-center text-muted py-4">Todavia no hay ${sectorLabel('patient', 'plural', 'pacientes')}.</td></tr>`);
         $('#admin-patients-count').text('');
         return;
     }
     if (!filteredPatients.length) {
-        $('#admin-patients-body').html(`<tr><td colspan="${colspan}" class="text-center text-muted py-4">No hay pacientes que coincidan con la busqueda.</td></tr>`);
+        $('#admin-patients-body').html(`<tr><td colspan="${colspan}" class="text-center text-muted py-4">No hay ${sectorLabel('patient', 'plural', 'pacientes')} que coincidan con la busqueda.</td></tr>`);
         $('#admin-patients-count').text('');
         return;
     }
 
     const html = filteredPatients.map(patient => {
         const photo = patient.photo_path
-            ? `<img class="table-avatar" src="${escapeHtml(patient.photo_path)}" alt="${escapeHtml(patient.name || '')}">`
+            ? `<img class="table-avatar" src="${escapeHtml(assetUrl(patient.photo_path))}" alt="${escapeHtml(patient.name || '')}">`
             : '<span class="table-avatar table-avatar-empty"><i class="bi bi-person"></i></span>';
         const contact = [
             patient.email ? `<div>${escapeHtml(patient.email)}</div>` : '',
@@ -3847,7 +4283,7 @@ function renderAdminPatients(patients) {
                 <td class="text-end no-export">
                     <div class="d-inline-flex gap-1">
                         ${inviteButton}
-                        <button class="btn btn-outline-secondary btn-sm btn-edit-patient" type="button" data-patient-id="${patient.id}" title="Datos del paciente">
+                        <button class="btn btn-outline-secondary btn-sm btn-edit-patient" type="button" data-patient-id="${patient.id}" title="Datos del ${escapeHtml(sectorLabel('patient', 'singular', 'paciente'))}">
                             <i class="bi bi-pencil"></i>
                         </button>
                     </div>
@@ -3857,7 +4293,7 @@ function renderAdminPatients(patients) {
     }).join('');
 
     $('#admin-patients-body').html(html);
-    $('#admin-patients-count').text(`${filteredPatients.length} ${filteredPatients.length === 1 ? 'paciente' : 'pacientes'}`);
+    $('#admin-patients-count').text(`${filteredPatients.length} ${filteredPatients.length === 1 ? sectorLabel('patient', 'singular', 'paciente') : sectorLabel('patient', 'plural', 'pacientes')}`);
 }
 
 function filterAndSortAdminPatients(patients) {
@@ -4003,14 +4439,18 @@ function knowledgePriorityBadge(priority) {
 function renderKnowledgeProblemDetail(data) {
     const problem = data.problem || {};
     const techniques = Array.isArray(data.techniques) ? data.techniques : [];
-    const questionnaires = Array.isArray(data.questionnaires) ? data.questionnaires : [];
+    const knowledgeDocuments = Array.isArray(data.questionnaires) ? data.questionnaires : [];
+    const questionnaires = knowledgeDocuments.filter(item => (item.resource_kind || 'questionnaire') !== 'document');
+    const suggestedDocuments = knowledgeDocuments.filter(item => item.resource_kind === 'document');
     const sources = Array.isArray(data.sources) ? data.sources : [];
+    const canImportKnowledgeTasks = knowledgeImportEnabled();
     const taskSingular = sectorLabel('task', 'singular', 'tarea');
     const taskPlural = sectorLabel('task', 'plural', 'tareas');
     const techniqueSingular = sectorLabel('technique', 'singular', 'tecnica');
     const techniquePlural = sectorLabel('technique', 'plural', 'tecnicas');
     const techniqueTitlePlural = sectorLabel('technique', 'titlePlural', 'Tecnicas');
     const evaluationTitlePlural = sectorLabel('evaluation', 'titlePlural', 'Cuestionarios');
+    const resourceTitlePlural = sectorLabel('resource', 'titlePlural', 'Documentos');
     const goalTitleSingular = sectorLabel('goal', 'titleSingular', 'Objetivo');
     const techniquesHtml = techniques.length ? techniques.map((technique, index) => {
         const collapseId = `knowledge-technique-${parseInt(technique.id, 10) || index}`;
@@ -4046,17 +4486,17 @@ function renderKnowledgeProblemDetail(data) {
                                         ${task.estimated_duration ? `<span>Duraci&oacute;n: ${escapeHtml(task.estimated_duration)}</span>` : ''}
                                     </div>
                                 </div>
-                                <button class="btn btn-outline-primary btn-sm btn-add-knowledge-recommendation" type="button" data-recommendation-id="${parseInt(rec.id, 10)}">
+                                ${canImportKnowledgeTasks ? `<button class="btn btn-outline-primary btn-sm btn-add-knowledge-recommendation" type="button" data-recommendation-id="${parseInt(rec.id, 10)}">
                                     <i class="bi bi-plus-circle"></i> A&ntilde;adir ${escapeHtml(taskSingular)}
-                                </button>
+                                </button>` : ''}
                             </div>
                         `;
                     }).join('')}
-                    <div class="knowledge-technique-actions">
+                    ${canImportKnowledgeTasks ? `<div class="knowledge-technique-actions">
                         <button class="btn btn-outline-primary btn-sm btn-import-knowledge-technique-tasks" type="button" data-technique-id="${parseInt(technique.id, 10)}">
                             <i class="bi bi-list-check"></i> Importar ${recommendations.length === 1 ? 'el' : 'las'} ${recommendations.length} ${recommendations.length === 1 ? escapeHtml(taskSingular) : escapeHtml(taskPlural)}
                         </button>
-                    </div>
+                    </div>` : ''}
                 </div>
             </div>
         </article>
@@ -4068,7 +4508,14 @@ function renderKnowledgeProblemDetail(data) {
             <span>${escapeHtml([item.type, item.use_area].filter(Boolean).join(' · '))}</span>
             ${item.notes ? `<small>${escapeHtml(item.notes)}</small>` : ''}
         </div>
-    `).join('') : `<div class="text-muted">No hay ${escapeHtml(evaluationTitlePlural.toLowerCase())} disponibles.</div>`;
+    `).join('') : '';
+    const suggestedDocumentsHtml = suggestedDocuments.length ? suggestedDocuments.map(item => `
+        <div class="knowledge-compact-item">
+            <strong>${escapeHtml(item.name || '')}</strong>
+            <span>${escapeHtml([item.type, item.use_area].filter(Boolean).join(' - '))}</span>
+            ${item.notes ? `<small>${escapeHtml(item.notes)}</small>` : ''}
+        </div>
+    `).join('') : '';
     const sourcesHtml = sources.length ? sources.map(source => `
         <div class="knowledge-compact-item knowledge-source-item">
             <div>
@@ -4081,7 +4528,7 @@ function renderKnowledgeProblemDetail(data) {
                 </a>
             ` : ''}
         </div>
-    `).join('') : '<div class="text-muted">No hay fuentes vinculadas.</div>';
+    `).join('') : '';
     return `
         <div class="knowledge-problem-summary">
             <div>
@@ -4095,9 +4542,9 @@ function renderKnowledgeProblemDetail(data) {
                     ${knowledgeRiskBadge(problem.risk_level, 'Riesgo')}
                     ${problem.population ? `<span class="badge text-bg-light">${escapeHtml(problem.population)}</span>` : ''}
                 </div>
-                <button class="btn btn-outline-primary btn-sm" type="button" id="btn-import-knowledge-problem-tasks" title="Importa ${escapeHtml(taskPlural)} recomendadas de todas las ${escapeHtml(techniquePlural)}">
+                ${canImportKnowledgeTasks ? `<button class="btn btn-outline-primary btn-sm" type="button" id="btn-import-knowledge-problem-tasks" title="Importa ${escapeHtml(taskPlural)} recomendadas de todas las ${escapeHtml(techniquePlural)}">
                     <i class="bi bi-list-check"></i> Importar ${escapeHtml(taskPlural)}
-                </button>
+                </button>` : ''}
             </div>
         </div>
         <div class="knowledge-section">
@@ -4105,21 +4552,414 @@ function renderKnowledgeProblemDetail(data) {
             <p class="knowledge-section-help">Haz click en ${escapeHtml(techniqueSingular)} para desplegar las ${escapeHtml(taskPlural)} recomendadas.</p>
             ${techniquesHtml}
         </div>
-        <div class="row g-3">
-            <div class="col-12">
+        ${(questionnairesHtml || suggestedDocumentsHtml || sourcesHtml) ? `<div class="row g-3">
+            ${questionnairesHtml ? `<div class="col-12">
                 <div class="knowledge-section">
                     <h6>${escapeHtml(evaluationTitlePlural)} sugeridos</h6>
                     ${questionnairesHtml}
                 </div>
-            </div>
-            <div class="col-12">
+            </div>` : ''}
+            ${suggestedDocumentsHtml ? `<div class="col-12">
+                <div class="knowledge-section">
+                    <h6>${escapeHtml(resourceTitlePlural)} sugeridos</h6>
+                    ${suggestedDocumentsHtml}
+                </div>
+            </div>` : ''}
+            ${sourcesHtml ? `<div class="col-12">
                 <div class="knowledge-section">
                     <h6>Fuentes</h6>
                     ${sourcesHtml}
                 </div>
-            </div>
+            </div>` : ''}
+        </div>` : ''}
+    `;
+}
+
+function initPatientBodyMap() {
+    if (!bodyMapEnabled() || !$('#patient-body-map').length || BODY_MUSCLE_CHART) {
+        return;
+    }
+    if (typeof BodyMuscles === 'undefined' || !BodyMuscles.BodyChart) {
+        $('#patient-body-map').html('<div class="text-muted text-center py-4">No se pudo cargar el mapa muscular.</div>');
+        return;
+    }
+    const container = document.getElementById('patient-body-map');
+    BODY_MUSCLE_VIEW = BodyMuscles.ViewSide ? BodyMuscles.ViewSide.FRONT : 'FRONT';
+    BODY_MUSCLE_CHART = new BodyMuscles.BodyChart(container, {
+        view: BODY_MUSCLE_VIEW,
+        bodyState: BODY_MUSCLE_STATE,
+        ariaLabel: 'Mapa muscular interactivo',
+        showViewLabel: false,
+        onMuscleClick: function (id, name) {
+            togglePatientBodyMapMuscle(id, name);
+        }
+    });
+    syncPatientBodyMapResultsHeight();
+}
+
+function switchPatientKnowledgeMode(mode) {
+    if (!bodyMapEnabled()) return;
+    const selectedMode = mode === 'objective' ? 'objective' : 'muscles';
+    $('.patient-knowledge-mode-btn').each(function () {
+        const isActive = $(this).data('knowledge-mode') === selectedMode;
+        $(this)
+            .toggleClass('active btn-primary', isActive)
+            .toggleClass('btn-outline-primary', !isActive);
+    });
+    $('.patient-knowledge-mode-panel').each(function () {
+        $(this).toggleClass('d-none', $(this).data('knowledge-mode-panel') !== selectedMode);
+    });
+    if (selectedMode === 'muscles') {
+        initPatientBodyMap();
+        syncPatientBodyMapResultsHeight();
+    } else {
+        loadKnowledgeProblems(function () {
+            loadSelectedPatientKnowledgeProblem();
+        });
+    }
+}
+
+function setPatientBodyMapView(view) {
+    if (!bodyMapEnabled()) return;
+    initPatientBodyMap();
+    const normalized = view === 'BACK' ? 'BACK' : 'FRONT';
+    BODY_MUSCLE_VIEW = (typeof BodyMuscles !== 'undefined' && BodyMuscles.ViewSide) ? BodyMuscles.ViewSide[normalized] : normalized;
+    $('#btn-body-map-front').toggleClass('active', normalized === 'FRONT');
+    $('#btn-body-map-back').toggleClass('active', normalized === 'BACK');
+    if (BODY_MUSCLE_CHART) {
+        BODY_MUSCLE_CHART.update({ view: BODY_MUSCLE_VIEW, bodyState: BODY_MUSCLE_STATE });
+        applyPatientBodyMapSelectionColor();
+        syncPatientBodyMapResultsHeight();
+    }
+}
+
+function togglePatientBodyMapMuscle(id, name) {
+    if (!id) return;
+    if (BODY_MUSCLE_SELECTED.has(id)) {
+        BODY_MUSCLE_SELECTED.delete(id);
+        delete BODY_MUSCLE_SELECTED_NAMES[id];
+        delete BODY_MUSCLE_STATE[id];
+    } else {
+        BODY_MUSCLE_SELECTED.add(id);
+        BODY_MUSCLE_SELECTED_NAMES[id] = name || id;
+        BODY_MUSCLE_STATE[id] = patientBodyMapSelectedState();
+    }
+    if (BODY_MUSCLE_CHART) {
+        BODY_MUSCLE_CHART.update({ bodyState: BODY_MUSCLE_STATE });
+        applyPatientBodyMapSelectionColor();
+    }
+    renderPatientBodyMapSelection();
+    if (BODY_MUSCLE_SELECTED.size) {
+        loadPatientBodyMapResults();
+    } else {
+        resetPatientBodyMapResults();
+    }
+}
+
+function patientBodyMapSelectedState() {
+    return {
+        intensity: 8,
+        selected: true
+    };
+}
+
+function refreshPatientBodyMapSelectedColors() {
+    BODY_MUSCLE_SELECTED.forEach(id => {
+        BODY_MUSCLE_STATE[id] = patientBodyMapSelectedState();
+    });
+    if (BODY_MUSCLE_CHART) {
+        BODY_MUSCLE_CHART.update({ bodyState: BODY_MUSCLE_STATE });
+        applyPatientBodyMapSelectionColor();
+    }
+}
+
+function applyPatientBodyMapSelectionColor() {
+    const primaryColor = appPrimaryColor();
+    requestAnimationFrame(() => {
+        $('#patient-body-map .body-chart-muscle').each(function () {
+            const selected = String(this.getAttribute('aria-label') || '').includes('(selected)');
+            this.setAttribute('fill', selected ? '#dc2626' : primaryColor);
+            this.setAttribute('stroke', selected ? '#ffffff' : '#1e293b');
+        });
+        $('#patient-body-map .body-chart-background path').each(function () {
+            this.setAttribute('fill', primaryColor);
+        });
+    });
+}
+
+function clearPatientBodyMapSelection() {
+    BODY_MUSCLE_SELECTED.clear();
+    BODY_MUSCLE_SELECTED_NAMES = {};
+    BODY_MUSCLE_STATE = {};
+    if (BODY_MUSCLE_CHART) {
+        BODY_MUSCLE_CHART.update({ bodyState: BODY_MUSCLE_STATE });
+        applyPatientBodyMapSelectionColor();
+    }
+    renderPatientBodyMapSelection();
+    resetPatientBodyMapResults();
+}
+
+function resetPatientBodyMapResults() {
+    if (BODY_MUSCLE_RESULTS_REQUEST && BODY_MUSCLE_RESULTS_REQUEST.readyState !== 4) {
+        BODY_MUSCLE_RESULTS_REQUEST.abort();
+    }
+    $('#patient-body-map-results').html('<div class="text-muted py-3">Selecciona un m&uacute;sculo para ver recomendaciones relacionadas.</div>');
+    syncPatientBodyMapResultsHeight();
+}
+
+function syncPatientBodyMapResultsHeight() {
+    requestAnimationFrame(() => {
+        const $map = $('#patient-body-map');
+        const $results = $('#patient-body-map-results');
+        const $selected = $('#patient-body-map-selected');
+        if (!$map.length || !$results.length) return;
+        if (window.matchMedia('(max-width: 768px)').matches) {
+            $results.css({ maxHeight: '', height: '' });
+            return;
+        }
+        const mapHeight = Math.max(0, $map.outerHeight() || 0);
+        const selectedHeight = Math.max(0, $selected.outerHeight(true) || 0);
+        const availableHeight = Math.max(260, mapHeight - selectedHeight);
+        $results.css({ maxHeight: `${availableHeight}px`, height: `${availableHeight}px` });
+    });
+}
+
+function renderPatientBodyMapSelection() {
+    const ids = Array.from(BODY_MUSCLE_SELECTED);
+    if (!ids.length) {
+        $('#patient-body-map-selected').html('<span class="text-muted">No hay zonas seleccionadas.</span>');
+        return;
+    }
+    $('#patient-body-map-selected').html(ids.map(id => `
+        <span class="badge rounded-pill text-bg-light patient-body-map-chip">
+            ${escapeHtml(BODY_MUSCLE_SELECTED_NAMES[id] || id)}
+        </span>
+    `).join(''));
+}
+
+function loadPatientBodyMapResults() {
+    const ids = Array.from(BODY_MUSCLE_SELECTED);
+    if (!ids.length) return;
+    if (BODY_MUSCLE_RESULTS_REQUEST && BODY_MUSCLE_RESULTS_REQUEST.readyState !== 4) {
+        BODY_MUSCLE_RESULTS_REQUEST.abort();
+    }
+    $('#patient-body-map-results').html('<div class="text-muted py-3"><span class="spinner-border spinner-border-sm me-2"></span>Cargando recomendaciones musculares...</div>');
+    BODY_MUSCLE_RESULTS_REQUEST = $.ajax({
+        url: 'api/admin.php?action=body_map_recommendations',
+        method: 'GET',
+        dataType: 'json',
+        data: { muscles: ids.join(',') },
+        success: function (res) {
+            if (!res.success) {
+                $('#patient-body-map-results').html(`<div class="alert alert-warning mb-0">${escapeHtml(res.error || 'No se pudieron cargar recomendaciones musculares.')}</div>`);
+                return;
+            }
+            if (Array.isArray(res.muscles)) {
+                res.muscles.forEach(muscle => {
+                    if (muscle && muscle.bodymuscles_id && muscle.name_es) {
+                        BODY_MUSCLE_SELECTED_NAMES[muscle.bodymuscles_id] = muscle.name_es;
+                    }
+                });
+                renderPatientBodyMapSelection();
+            }
+            $('#patient-body-map-results').html(renderPatientBodyMapResults(res));
+            syncPatientBodyMapResultsHeight();
+        },
+        error: function (xhr) {
+            if (xhr.statusText === 'abort') return;
+            $('#patient-body-map-results').html('<div class="alert alert-warning mb-0">Error de conexion al cargar recomendaciones musculares.</div>');
+            syncPatientBodyMapResultsHeight();
+        }
+    });
+}
+
+function renderPatientBodyMapResults(data) {
+    const exercises = Array.isArray(data.exercises) ? data.exercises : [];
+    if (!exercises.length) {
+        return `<div class="text-muted py-3">${escapeHtml(data.message || 'No hay ejercicios o pautas vinculadas a las zonas seleccionadas.')}</div>`;
+    }
+    return `
+        <div class="patient-body-map-results-header">
+            <strong>${exercises.length} ${exercises.length === 1 ? 'resultado' : 'resultados'}</strong>
+        </div>
+        <div class="patient-body-exercise-list">
+            ${exercises.map(exercise => {
+                const regions = Array.isArray(exercise.regions) ? exercise.regions : [];
+                const meta = translateFitnessExerciseMeta([
+                    exercise.category,
+                    exercise.equipment_name || exercise.equipment_id,
+                    exercise.difficulty
+                ]);
+                const roleLabels = Array.from(new Set(regions.map(region => patientBodyMapRoleLabel(region.role)).filter(Boolean)));
+                const imageUrl = exercise.image_url || '';
+                const hasWorkoutxMedia = Boolean(imageUrl || (exercise.external_source === 'workoutx' && exercise.external_id));
+                const exerciseName = exercise.name_es || exercise.name_en || exercise.exercise_id || '';
+                return `
+                    <article class="patient-body-exercise-item ${imageUrl ? 'has-media' : ''}">
+                        ${imageUrl ? `
+                            <div class="patient-body-exercise-media">
+                                <img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(exerciseName || 'Ejercicio')}" loading="lazy">
+                            </div>
+                        ` : ''}
+                        <div class="patient-body-exercise-main">
+                            <strong>${escapeHtml(exerciseName)}</strong>
+                            ${exercise.aliases ? `<div class="patient-body-exercise-aliases">${escapeHtml(exercise.aliases)}</div>` : ''}
+                            ${meta.length ? `<div class="patient-body-exercise-meta">${escapeHtml(meta.join(' - '))}</div>` : ''}
+                        </div>
+                        <div class="patient-body-exercise-tags">
+                            ${roleLabels.map(role => `<span class="badge text-bg-light">${escapeHtml(role)}</span>`).join('')}
+                            ${hasWorkoutxMedia ? `<button type="button" class="btn btn-outline-primary btn-sm btn-workoutx-exercise" data-exercise-id="${escapeHtml(exercise.exercise_id || '')}" data-exercise-name="${escapeHtml(exerciseName)}">
+                                <i class="bi bi-play-circle"></i> Ver GIF
+                            </button>` : ''}
+                        </div>
+                        ${exercise.description_es ? `<p class="patient-body-exercise-description">${escapeHtml(exercise.description_es)}</p>` : ''}
+                        ${exercise.cues_es ? `<small class="patient-body-exercise-cues">${escapeHtml(exercise.cues_es)}</small>` : ''}
+                    </article>
+                `;
+            }).join('')}
         </div>
     `;
+}
+
+function patientBodyMapRoleLabel(role) {
+    const labels = {
+        primary: 'Principal',
+        secondary: 'Secundario',
+        stabilizer: 'Estabilizador'
+    };
+    return labels[String(role || '').toLowerCase()] || role || '';
+}
+
+function translateFitnessExerciseDisplayValue(value) {
+    const key = String(value || '').trim();
+    if (!key) return '';
+
+    const labels = {
+        'Abs': 'Abdominales',
+        'Adductors': 'Aductores',
+        'Back': 'Espalda',
+        'Band': 'Banda elástica',
+        'Barbell': 'Barra',
+        'Beginner': 'Principiante',
+        'Biceps': 'Bíceps',
+        'Body Weight': 'Peso corporal',
+        'Cable': 'Polea/cable',
+        'Calves': 'Gemelos',
+        'Cardio': 'Cardio',
+        'Chest': 'Pecho',
+        'Delts': 'Deltoides',
+        'Dumbbell': 'Mancuernas',
+        'Flexibility': 'Movilidad/flexibilidad',
+        'Forearms': 'Antebrazos',
+        'Glutes': 'Glúteos',
+        'Hamstrings': 'Isquiosurales',
+        'Intermediate': 'Intermedio',
+        'Kettlebell': 'Kettlebell',
+        'Lats': 'Dorsales',
+        'Leverage Machine': 'Máquina guiada',
+        'Lower Arms': 'Antebrazos',
+        'Lower Back': 'Zona lumbar',
+        'Lower Legs': 'Piernas',
+        'Machine': 'Máquina',
+        'Neck': 'Cuello',
+        'Pectorals': 'Pectorales',
+        'Quads': 'Cuádriceps',
+        'Shoulders': 'Hombros',
+        'Smith Machine': 'Máquina Smith',
+        'Strength': 'Fuerza',
+        'Traps': 'Trapecios',
+        'Triceps': 'Tríceps',
+        'Upper Arms': 'Brazos',
+        'Upper Back': 'Espalda alta',
+        'Upper Legs': 'Piernas',
+        'Waist': 'Zona media',
+        'advanced': 'Avanzado',
+        'beginner': 'Principiante',
+        'cardio': 'Cardio',
+        'flexibility': 'Movilidad/flexibilidad',
+        'intermediate': 'Intermedio',
+        'strength': 'Fuerza'
+    };
+
+    return labels[key] || key;
+}
+
+function translateFitnessExerciseMeta(items) {
+    return (items || [])
+        .map(translateFitnessExerciseDisplayValue)
+        .filter(Boolean);
+}
+
+function openWorkoutxExerciseModal(exerciseId, exerciseName = '') {
+    exerciseId = String(exerciseId || '').trim();
+    exerciseName = String(exerciseName || '').trim();
+    if (!exerciseId || !workoutxExerciseModal) {
+        showPatientKnowledgeAlert('danger', 'No se pudo identificar el ejercicio.', true);
+        return;
+    }
+
+    $('#workoutx-exercise-title').text(exerciseName || 'Ejercicio');
+    $('#workoutx-exercise-alert').addClass('d-none').text('');
+    $('#workoutx-exercise-content').html('<div class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2"></span>Cargando GIF...</div>');
+    workoutxExerciseModal.show();
+
+    $.ajax({
+        url: 'api/admin.php?action=workoutx_exercise_media',
+        dataType: 'json',
+        data: { exercise_id: exerciseId },
+        success: function (res) {
+            if (!res.success) {
+                $('#workoutx-exercise-content').html('');
+                $('#workoutx-exercise-alert')
+                    .removeClass('d-none alert-success')
+                    .addClass('alert-danger')
+                    .text(res.error || 'No se pudo cargar el GIF de WorkoutX.');
+                return;
+            }
+            renderWorkoutxExercise(res.exercise || {}, res.headers || {});
+        },
+        error: function () {
+            $('#workoutx-exercise-content').html('');
+            $('#workoutx-exercise-alert')
+                .removeClass('d-none alert-success')
+                .addClass('alert-danger')
+                .text('Error de conexion al consultar WorkoutX.');
+        }
+    });
+}
+
+function renderWorkoutxExercise(exercise, usageHeaders = {}) {
+    const name = exercise.name || 'Ejercicio';
+    const gifUrl = exercise.gifUrl || '';
+    const meta = [exercise.bodyPart, exercise.target, exercise.equipment, exercise.difficulty].filter(Boolean);
+    const secondary = Array.isArray(exercise.secondaryMuscles) ? exercise.secondaryMuscles : [];
+    const instructions = Array.isArray(exercise.instructions) ? exercise.instructions : [];
+    const quotaText = usageHeaders.quota_remaining
+        ? `WorkoutX: ${usageHeaders.quota_remaining} consultas restantes este mes`
+        : '';
+
+    $('#workoutx-exercise-title').text(name);
+    $('#workoutx-exercise-alert').addClass('d-none').text('');
+    $('#workoutx-exercise-content').html(`
+        <div class="workoutx-exercise-layout">
+            <div class="workoutx-exercise-gif">
+                ${gifUrl
+                    ? `<img src="${escapeHtml(gifUrl)}" alt="${escapeHtml(name)}" loading="lazy">`
+                    : '<div class="text-muted py-5 text-center">WorkoutX no devolvio GIF para este ejercicio.</div>'}
+            </div>
+            <div class="workoutx-exercise-detail">
+                ${meta.length ? `<div class="workoutx-exercise-meta">${escapeHtml(meta.join(' - '))}</div>` : ''}
+                ${secondary.length ? `<div class="small text-muted mb-2">Secundarios: ${escapeHtml(secondary.join(', '))}</div>` : ''}
+                ${exercise.caloriesPerMinute ? `<div class="small text-muted mb-2">Calorias/min aprox.: ${escapeHtml(exercise.caloriesPerMinute)}</div>` : ''}
+                ${instructions.length ? `
+                    <ol class="workoutx-exercise-instructions">
+                        ${instructions.slice(0, 8).map(step => `<li>${escapeHtml(step)}</li>`).join('')}
+                    </ol>
+                ` : '<div class="text-muted small">Sin instrucciones disponibles.</div>'}
+                ${quotaText ? `<div class="text-muted small mt-3">${escapeHtml(quotaText)}</div>` : ''}
+            </div>
+        </div>
+    `);
 }
 
 function showPatientKnowledgeAlert(type, message, autoHide = false) {
@@ -4133,11 +4973,16 @@ function showPatientKnowledgeAlert(type, message, autoHide = false) {
 }
 
 function importKnowledgeRecommendationTask(button) {
+    if (!knowledgeImportEnabled()) {
+        showPatientKnowledgeAlert('danger', 'La importacion de tareas recomendadas no esta disponible en este plan.');
+        return;
+    }
     const patientId = parseInt($('#patient-editor-id').val() || 0, 10);
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     const recommendationId = parseInt($(button).data('recommendation-id') || 0, 10);
     const taskSingular = sectorLabel('task', 'singular', 'tarea');
     if (!patientId) {
-        showPatientKnowledgeAlert('danger', 'Guarda primero el paciente.');
+        showPatientKnowledgeAlert('danger', `Guarda primero el ${patientSingular}.`);
         return;
     }
     const $button = $(button);
@@ -4166,12 +5011,17 @@ function importKnowledgeRecommendationTask(button) {
 }
 
 function importKnowledgeProblemTasks(button) {
+    if (!knowledgeImportEnabled()) {
+        showPatientKnowledgeAlert('danger', 'La importacion de tareas recomendadas no esta disponible en este plan.');
+        return;
+    }
     const patientId = parseInt($('#patient-editor-id').val() || 0, 10);
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     const problemId = parseInt($('#patient-editor-knowledge-problem').val() || 0, 10);
     const diagnosisLabel = sectorText('clinicalTerms.diagnosis', 'diagnostico');
     const taskPlural = sectorLabel('task', 'plural', 'tareas');
     if (!patientId) {
-        showPatientKnowledgeAlert('danger', 'Guarda primero el paciente.');
+        showPatientKnowledgeAlert('danger', `Guarda primero el ${patientSingular}.`);
         return;
     }
     if (!problemId) {
@@ -4205,13 +5055,18 @@ function importKnowledgeProblemTasks(button) {
 }
 
 function importKnowledgeTechniqueTasks(button) {
+    if (!knowledgeImportEnabled()) {
+        showPatientKnowledgeAlert('danger', 'La importacion de tareas recomendadas no esta disponible en este plan.');
+        return;
+    }
     const patientId = parseInt($('#patient-editor-id').val() || 0, 10);
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     const problemId = parseInt($('#patient-editor-knowledge-problem').val() || 0, 10);
     const techniqueId = parseInt($(button).data('technique-id') || 0, 10);
     const techniqueSingular = sectorLabel('technique', 'singular', 'tecnica');
     const taskPlural = sectorLabel('task', 'plural', 'tareas');
     if (!patientId) {
-        showPatientKnowledgeAlert('danger', 'Guarda primero el paciente.');
+        showPatientKnowledgeAlert('danger', `Guarda primero el ${patientSingular}.`);
         return;
     }
     if (!problemId || !techniqueId) {
@@ -4246,11 +5101,12 @@ function importKnowledgeTechniqueTasks(button) {
 
 function openPatientEditorModal(patient = null) {
     if (!patientEditorModal) return;
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     CURRENT_PATIENT_EDITOR = patient ? { ...patient } : null;
     $('#patient-editor-alert').addClass('d-none').text('');
     $('#patient-history-alert').addClass('d-none').text('');
     $('#patient-editor-form')[0].reset();
-    $('#patient-editor-title').text(patient ? 'Editar paciente' : 'Nuevo paciente');
+    $('#patient-editor-title').text(patient ? `Editar ${patientSingular}` : `Nuevo ${patientSingular}`);
     $('#patient-editor-id').val(patient ? patient.id : '');
     $('.btn-patient-report').prop('disabled', !(patient && patient.id));
     $('#patient-editor-name').val(patient ? patient.name || '' : '');
@@ -4262,6 +5118,7 @@ function openPatientEditorModal(patient = null) {
     CURRENT_KNOWLEDGE_PROBLEM_DETAIL = null;
     $('#patient-knowledge-alert').addClass('d-none').text('');
     $('#patient-knowledge-content').html('<div class="text-center text-muted py-4">No hay diagn&oacute;stico seleccionado.</div>');
+    clearPatientBodyMapSelection();
     loadKnowledgeProblems(function () {
         $('#patient-editor-knowledge-problem').val(patient ? patient.knowledge_problem_id || '' : '');
     });
@@ -4274,7 +5131,7 @@ function openPatientEditorModal(patient = null) {
     $('#patient-editor-phone').val(patient ? patient.phone || '' : '');
     $('#patient-editor-photo').val('');
     if (patient && patient.photo_path) {
-        $('#patient-editor-photo-preview').attr('src', patient.photo_path).removeClass('d-none');
+        $('#patient-editor-photo-preview').attr('src', assetUrl(patient.photo_path)).removeClass('d-none');
         $('#patient-editor-photo-status').text('Foto actual guardada.');
     } else {
         $('#patient-editor-photo-preview').attr('src', '').addClass('d-none');
@@ -4306,10 +5163,11 @@ function openPatientEditorModal(patient = null) {
 }
 
 function resetPatientAppointmentHistory(patientId = 0) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     CURRENT_PATIENT_HISTORY_ID = parseInt(patientId || 0, 10);
     $('#patient-history-count').text('');
     if (!patientId) {
-        $('#patient-history-body').html('<tr><td colspan="7" class="text-center text-muted py-4">Guarda el paciente para ver su historial de citas.</td></tr>');
+        $('#patient-history-body').html(`<tr><td colspan="7" class="text-center text-muted py-4">Guarda el ${patientSingular} para ver su historial de citas.</td></tr>`);
         return;
     }
     $('#patient-history-body').html('<tr><td colspan="7" class="text-center text-muted py-4">Cargando historial...</td></tr>');
@@ -4346,9 +5204,10 @@ function loadPatientAppointmentHistory(patientId) {
 }
 
 function renderPatientAppointmentHistory(appointments) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     const rows = Array.isArray(appointments) ? appointments : [];
     if (!rows.length) {
-        $('#patient-history-body').html('<tr><td colspan="7" class="text-center text-muted py-4">Este paciente todavía no tiene citas registradas.</td></tr>');
+        $('#patient-history-body').html(`<tr><td colspan="7" class="text-center text-muted py-4">Este ${patientSingular} todavía no tiene citas registradas.</td></tr>`);
         $('#patient-history-count').text('');
         return;
     }
@@ -4370,12 +5229,13 @@ function renderPatientAppointmentHistory(appointments) {
 }
 
 function resetPatientWorkPlan(patientId = 0) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     CURRENT_PATIENT_WORK_PLAN_ID = parseInt(patientId || 0, 10);
     CURRENT_PATIENT_WORK_PLAN_ROWS = [];
     $('#patient-work-plan-alert').addClass('d-none').text('');
     $('#patient-work-plan-count').text('');
     hidePatientWorkPlanForm();
-    const emptyText = patientId ? 'Cargando plan de trabajo...' : 'Guarda el paciente para ver su plan de trabajo.';
+    const emptyText = patientId ? 'Cargando plan de trabajo...' : `Guarda el ${patientSingular} para ver su plan de trabajo.`;
     $('#patient-work-plan-pending').html(`<div class="text-center text-muted py-4">${emptyText}</div>`);
     $('#patient-work-plan-completed-list').html(`<div class="text-center text-muted py-4">${emptyText}</div>`);
 }
@@ -4498,15 +5358,16 @@ function showAppointmentSessionWorkPlanForm() {
 }
 
 function openWorkPlanTaskModal(options = {}) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     const task = options.task || null;
     const source = options.source || 'patient';
     const patientId = parseInt(options.patientId || 0, 10);
     const appointmentId = parseInt(options.appointmentId || 0, 10);
     if (!patientId) {
         if (source === 'appointment-session') {
-            showAppointmentSessionAlert('danger', 'No se pudo identificar el paciente de la cita.');
+            showAppointmentSessionAlert('danger', `No se pudo identificar el ${patientSingular} de la cita.`);
         } else {
-            showPatientWorkPlanAlert('danger', 'Guarda primero el paciente.');
+            showPatientWorkPlanAlert('danger', `Guarda primero el ${patientSingular}.`);
         }
         return;
     }
@@ -4555,7 +5416,7 @@ function prepareWorkPlanImportOptions() {
         });
         return deferred.promise();
     };
-    const knowledgePromise = knowledgeBaseEnabled()
+    const knowledgePromise = knowledgeImportEnabled()
         ? loadWorkPlanKnowledgeImportOptions()
         : $.Deferred().resolve({ success: true }).promise();
     $.when(waitFor(loadWorkPlanTaskTemplates()), waitFor(knowledgePromise))
@@ -4640,13 +5501,14 @@ function hidePatientWorkPlanForm() {
 }
 
 function savePatientWorkPlanTask(form) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     const context = { ...CURRENT_WORK_PLAN_FORM_CONTEXT };
     const patientId = parseInt(context.patientId || $('#patient-editor-id').val() || '0', 10);
     if (!patientId) {
         if (context.source === 'appointment-session') {
-            showAppointmentSessionAlert('danger', 'No se pudo identificar el paciente de la cita.');
+            showAppointmentSessionAlert('danger', `No se pudo identificar el ${patientSingular} de la cita.`);
         } else {
-            showPatientWorkPlanAlert('danger', 'Guarda primero el paciente.');
+            showPatientWorkPlanAlert('danger', `Guarda primero el ${patientSingular}.`);
         }
         return;
     }
@@ -4783,6 +5645,13 @@ function deletePatientWorkPlanTask(button) {
 }
 
 function loadWorkPlanTaskTemplates(force = false) {
+    if (!appFeatureEnabled('taskTemplates.enabled', false)) {
+        WORK_PLAN_TASK_TEMPLATES = [];
+        WORK_PLAN_TASK_TEMPLATES_LOADED = true;
+        populateWorkPlanTemplateSelect();
+        $('#task-templates-list').html('<div class="text-center text-muted py-4">Las plantillas no estan disponibles en este plan.</div>');
+        return $.Deferred().resolve({ success: true }).promise();
+    }
     if (WORK_PLAN_TASK_TEMPLATES_LOADED && !force) {
         populateWorkPlanTemplateSelect();
         renderWorkPlanTaskTemplates();
@@ -4811,7 +5680,7 @@ function loadWorkPlanTaskTemplates(force = false) {
 }
 
 function loadWorkPlanKnowledgeImportOptions(force = false) {
-    if (!knowledgeBaseEnabled()) {
+    if (!knowledgeImportEnabled()) {
         WORK_PLAN_KNOWLEDGE_IMPORT_OPTIONS = [];
         WORK_PLAN_KNOWLEDGE_IMPORT_OPTIONS_LOADED = true;
         populateWorkPlanTemplateSelect();
@@ -4859,7 +5728,7 @@ function populateWorkPlanTemplateSelect() {
         });
         $select.append($group);
     });
-    if (knowledgeBaseEnabled()) {
+    if (knowledgeImportEnabled()) {
         const knowledgeGrouped = {};
         const knowledgeBaseLabel = 'Base de conocimiento';
         const diagnosisFallback = capitalizeFirst(sectorText('clinicalTerms.diagnosis', 'Diagnostico'));
@@ -4895,7 +5764,7 @@ function renderWorkPlanTaskTemplates() {
     const $list = $('#task-templates-list');
     if (!$list.length) return;
     if (!WORK_PLAN_TASK_TEMPLATES.length) {
-        $list.html('<div class="text-center text-muted py-4">Todavia no hay plantillas. Crea la primera para reutilizarla en los pacientes.</div>');
+        $list.html(`<div class="text-center text-muted py-4">Todavia no hay plantillas. Crea la primera para reutilizarla en los ${sectorLabel('patient', 'plural', 'pacientes')}.</div>`);
         return;
     }
     const html = WORK_PLAN_TASK_TEMPLATES.map(template => {
@@ -5180,24 +6049,25 @@ function deleteWorkPlanTaskTemplateItem(button) {
 }
 
 function importWorkPlanTemplateToPatient(button) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     const context = { ...CURRENT_WORK_PLAN_FORM_CONTEXT };
     const patientId = parseInt(context.patientId || $('#patient-editor-id').val() || '0', 10);
     const selection = getSelectedWorkPlanImportSelection();
     if (!patientId) {
         if (context.source === 'appointment-session') {
-            showAppointmentSessionAlert('danger', 'No se pudo identificar el paciente de la cita.');
+            showAppointmentSessionAlert('danger', `No se pudo identificar el ${patientSingular} de la cita.`);
         } else {
-            showPatientWorkPlanAlert('danger', 'Guarda primero el paciente.');
+            showPatientWorkPlanAlert('danger', `Guarda primero el ${patientSingular}.`);
         }
         return;
     }
     const isTemplate = selection.type === 'template' && selection.templateId > 0;
     const isKnowledge = selection.type === 'knowledge' && selection.problemId > 0 && selection.techniqueId > 0;
-    if (selection.type === 'knowledge' && !knowledgeBaseEnabled()) {
+    if (selection.type === 'knowledge' && !knowledgeImportEnabled()) {
         if (context.source === 'appointment-session') {
-            showAppointmentSessionAlert('danger', 'La base de conocimiento no esta disponible en este plan.');
+            showAppointmentSessionAlert('danger', 'La importacion de tareas recomendadas no esta disponible en este plan.');
         } else {
-            showPatientWorkPlanAlert('danger', 'La base de conocimiento no esta disponible en este plan.');
+            showPatientWorkPlanAlert('danger', 'La importacion de tareas recomendadas no esta disponible en este plan.');
         }
         return;
     }
@@ -5275,6 +6145,7 @@ function showTaskTemplatesAlert(type, message, autoHide = false) {
 }
 
 function resetPatientEvolution(patientId = 0) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     CURRENT_PATIENT_EVOLUTION_ID = parseInt(patientId || 0, 10);
     CURRENT_PATIENT_EVOLUTION_ROWS = [];
     CURRENT_PATIENT_EVOLUTION_APPOINTMENTS = [];
@@ -5282,7 +6153,7 @@ function resetPatientEvolution(patientId = 0) {
     $('#patient-evolution-count').text('');
     hidePatientEvolutionForm();
     if (!patientId) {
-        $('#patient-evolution-list').html('<div class="text-center text-muted py-4">Guarda el paciente para ver su evolución.</div>');
+        $('#patient-evolution-list').html(`<div class="text-center text-muted py-4">Guarda el ${patientSingular} para ver su evolución.</div>`);
         return;
     }
     $('#patient-evolution-list').html('<div class="text-center text-muted py-4">Cargando evolución...</div>');
@@ -5321,8 +6192,9 @@ function loadPatientEvolution(patientId) {
 }
 
 function populatePatientEvolutionAppointmentSelect(selected = '') {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     const $select = $('#patient-evolution-appointment');
-    $select.html('<option value="">Nota general del paciente</option>');
+    $select.html(`<option value="">Nota general del ${patientSingular}</option>`);
     CURRENT_PATIENT_EVOLUTION_APPOINTMENTS.forEach(app => {
         $select.append(`<option value="${app.id}">${escapeHtml(app.label || '')}</option>`);
     });
@@ -5332,9 +6204,10 @@ function populatePatientEvolutionAppointmentSelect(selected = '') {
 }
 
 function renderPatientEvolution(notes) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     const rows = Array.isArray(notes) ? notes : [];
     if (!rows.length) {
-        $('#patient-evolution-list').html('<div class="text-center text-muted py-4">Este paciente todavía no tiene registros de evolución.</div>');
+        $('#patient-evolution-list').html(`<div class="text-center text-muted py-4">Este ${patientSingular} todavía no tiene registros de evolución.</div>`);
         $('#patient-evolution-count').text('');
         return;
     }
@@ -5373,9 +6246,10 @@ function renderPatientEvolution(notes) {
 }
 
 function showPatientEvolutionForm(note = null) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
     if (!patientId) {
-        showPatientEvolutionAlert('danger', 'Guarda primero el paciente.');
+        showPatientEvolutionAlert('danger', `Guarda primero el ${patientSingular}.`);
         return;
     }
     $('#patient-evolution-form').removeClass('d-none');
@@ -5400,9 +6274,10 @@ function hidePatientEvolutionForm() {
 }
 
 function savePatientEvolution(form) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
     if (!patientId) {
-        showPatientEvolutionAlert('danger', 'Guarda primero el paciente.');
+        showPatientEvolutionAlert('danger', `Guarda primero el ${patientSingular}.`);
         return;
     }
     const formData = new FormData(form);
@@ -5437,14 +6312,16 @@ function savePatientEvolution(form) {
 }
 
 function resetPatientFiles(patientId = 0) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     CURRENT_PATIENT_FILES_ID = parseInt(patientId || 0, 10);
+    CURRENT_PATIENT_FILES_ROWS = [];
     $('#patient-files-alert').addClass('d-none').text('');
     $('#patient-files-count').text('');
     if (!patientId) {
-        $('#patient-files-body').html('<tr><td colspan="4" class="text-center text-muted py-4">Guarda el paciente para ver sus archivos.</td></tr>');
+        $('#patient-files-body').html(`<tr><td colspan="5" class="text-center text-muted py-4">Guarda el ${patientSingular} para ver su documentaci&oacute;n.</td></tr>`);
         return;
     }
-    $('#patient-files-body').html('<tr><td colspan="4" class="text-center text-muted py-4">Cargando archivos...</td></tr>');
+    $('#patient-files-body').html('<tr><td colspan="5" class="text-center text-muted py-4">Cargando documentaci&oacute;n...</td></tr>');
 }
 
 function loadPatientFiles(patientId) {
@@ -5455,48 +6332,212 @@ function loadPatientFiles(patientId) {
     }
     CURRENT_PATIENT_FILES_ID = patientId;
     $('#patient-files-alert').addClass('d-none').text('');
-    $('#patient-files-body').html('<tr><td colspan="4" class="text-center text-muted py-4">Cargando archivos...</td></tr>');
+    $('#patient-files-body').html('<tr><td colspan="5" class="text-center text-muted py-4">Cargando documentaci&oacute;n...</td></tr>');
     $('#patient-files-count').text('');
     $.ajax({
         url: 'api/admin.php?action=patient_files',
         dataType: 'json',
-        data: { patient_id: patientId },
+        data: { patient_id: patientId, type: CURRENT_PATIENT_FILES_FILTER || 'all' },
         success: function (res) {
             if (!res.success) {
-                showPatientFilesAlert('danger', res.error || 'No se pudieron cargar los archivos.');
-                $('#patient-files-body').html('<tr><td colspan="4" class="text-center text-muted py-4">No se pudieron cargar los archivos.</td></tr>');
+                showPatientFilesAlert('danger', res.error || 'No se pudo cargar la documentacion.');
+                $('#patient-files-body').html('<tr><td colspan="5" class="text-center text-muted py-4">No se pudo cargar la documentaci&oacute;n.</td></tr>');
                 return;
             }
             renderPatientFiles(res.files || []);
         },
         error: function () {
-            showPatientFilesAlert('danger', 'Error de conexión al cargar los archivos.');
-            $('#patient-files-body').html('<tr><td colspan="4" class="text-center text-muted py-4">No se pudieron cargar los archivos.</td></tr>');
+            showPatientFilesAlert('danger', 'Error de conexion al cargar la documentacion.');
+            $('#patient-files-body').html('<tr><td colspan="5" class="text-center text-muted py-4">No se pudo cargar la documentaci&oacute;n.</td></tr>');
         }
     });
 }
 
 function renderPatientFiles(files) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     const rows = Array.isArray(files) ? files : [];
+    CURRENT_PATIENT_FILES_ROWS = rows;
     if (!rows.length) {
-        $('#patient-files-body').html('<tr><td colspan="4" class="text-center text-muted py-4">Este paciente no tiene archivos.</td></tr>');
+        const emptyText = CURRENT_PATIENT_FILES_FILTER === 'questionnaire'
+            ? `Este ${patientSingular} no tiene cuestionarios.`
+            : (CURRENT_PATIENT_FILES_FILTER === 'file'
+                ? `Este ${patientSingular} no tiene archivos subidos.`
+                : `Este ${patientSingular} no tiene documentaci&oacute;n.`);
+        $('#patient-files-body').html(`<tr><td colspan="5" class="text-center text-muted py-4">${emptyText}</td></tr>`);
         $('#patient-files-count').text('');
         return;
     }
-    const html = rows.map(file => `
+    const html = rows.map(file => {
+        const isQuestionnaire = file.type === 'questionnaire';
+        const typeBadge = isQuestionnaire
+            ? '<span class="badge bg-info text-dark">Cuestionario</span>'
+            : '<span class="badge bg-secondary">Archivo</span>';
+        const statusBadge = isQuestionnaire && file.status
+            ? `<span class="badge bg-light text-dark ms-1">${formatPatientDocumentStatus(file.status)}</span>`
+            : '';
+        const portalBadge = parseInt(file.visible_to_patient || 0, 10) === 1
+            ? '<span class="badge bg-success">Portal</span>'
+            : '<span class="text-muted small">No</span>';
+        const scoreLine = (file.score || file.result_label)
+            ? `<br><small class="text-muted">${escapeHtml([file.score, file.result_label].filter(Boolean).join(' - '))}</small>`
+            : '';
+        const fileNameLine = file.file_name
+            ? `<br><small class="text-muted">${escapeHtml(file.file_name)}${file.size ? ` - ${formatFileSize(file.size)}` : ''}</small>`
+            : (file.size ? `<br><small class="text-muted">${formatFileSize(file.size)}</small>` : '');
+        const descriptionLine = file.description
+            ? `<br><small class="text-muted">${escapeHtml(truncateText(file.description, 90))}</small>`
+            : '';
+        const versionLine = parseInt(file.version_count || 0, 10) > 1
+            ? `<br><small class="text-muted">${parseInt(file.version_count, 10)} versiones</small>`
+            : '';
+        const downloadButton = file.url
+            ? `<a class="btn btn-outline-primary btn-sm" href="${escapeHtml(file.url)}" target="_blank" rel="noopener" title="Descargar archivo"><i class="bi bi-download"></i></a>`
+            : '';
+        const editButton = file.can_delete
+            ? `<button type="button" class="btn btn-outline-primary btn-sm btn-edit-patient-document" data-document-id="${parseInt(file.id || 0, 10)}" title="Editar documento"><i class="bi bi-pencil"></i></button>`
+            : '';
+        const deleteButton = file.can_delete
+            ? `<button type="button" class="btn btn-outline-danger btn-sm btn-delete-patient-document" data-document-id="${parseInt(file.id || 0, 10)}" title="Eliminar documento"><i class="bi bi-trash"></i></button>`
+            : '';
+        return `
         <tr>
-            <td><strong>${escapeHtml(file.name || 'Archivo')}</strong>${file.size ? `<br><small class="text-muted">${formatFileSize(file.size)}</small>` : ''}</td>
-            <td>${escapeHtml(file.source || '')}</td>
+            <td><strong>${escapeHtml(file.name || 'Documento')}</strong>${scoreLine}${fileNameLine}${descriptionLine}</td>
+            <td>${typeBadge}${statusBadge}<br><small class="text-muted">${escapeHtml(file.source || '')}${versionLine}</small></td>
             <td>${file.date ? formatDateTimeLabel(file.date) : '-'}</td>
+            <td>${portalBadge}</td>
             <td class="text-end">
-                <a class="btn btn-outline-primary btn-sm" href="${escapeHtml(file.url || '#')}" target="_blank" rel="noopener" title="Descargar archivo">
-                    <i class="bi bi-download"></i>
-                </a>
+                <div class="d-inline-flex gap-1">${downloadButton}${editButton}${deleteButton}</div>
             </td>
         </tr>
-    `).join('');
+    `;
+    }).join('');
     $('#patient-files-body').html(html);
-    $('#patient-files-count').text(`${rows.length} ${rows.length === 1 ? 'archivo' : 'archivos'}`);
+    $('#patient-files-count').text(`${rows.length} ${rows.length === 1 ? 'documento' : 'documentos'}`);
+}
+
+function formatPatientDocumentStatus(status) {
+    const labels = {
+        pending: 'Pendiente',
+        completed: 'Completado',
+        reviewed: 'Revisado'
+    };
+    return labels[status] || status || '';
+}
+
+function updatePatientDocumentTypeFields(isEditing = false, syncDefaultStatus = false) {
+    const isQuestionnaire = $('#patient-document-type').val() === 'questionnaire';
+    $('.patient-document-questionnaire-field').toggleClass('d-none', !isQuestionnaire);
+    if (!isEditing && syncDefaultStatus) {
+        $('#patient-document-status').val(isQuestionnaire ? 'pending' : 'completed');
+        $('#patient-document-result-visible-to-patient').prop('checked', false);
+    }
+    $('#btn-save-patient-document').html(`<i class="bi bi-check2"></i> ${isQuestionnaire ? 'Guardar cuestionario' : 'Guardar documento'}`);
+}
+
+function normalizePatientDocumentDate(value) {
+    const raw = String(value || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(raw)) {
+        return raw.slice(0, 10);
+    }
+    return '';
+}
+
+function showPatientDocumentForm(document = null, defaultType = 'file') {
+    const patientId = parseInt($('#patient-editor-id').val() || CURRENT_PATIENT_FILES_ID || '0', 10);
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
+    if (!patientId) {
+        showPatientFilesAlert('danger', `Guarda el ${patientSingular} antes de anadir documentacion.`);
+        return;
+    }
+    defaultType = defaultType === 'questionnaire' ? 'questionnaire' : 'file';
+    const patientDocumentForm = $('#patient-document-form')[0];
+    if (patientDocumentForm) {
+        patientDocumentForm.reset();
+    }
+    $('#patient-document-id').val(document ? parseInt(document.id || 0, 10) : '0');
+    $('#patient-document-patient-id').val(patientId);
+    $('#patient-document-type').val((document && document.type) || defaultType);
+    $('#patient-document-date').val(document ? normalizePatientDocumentDate(document.date) : new Date().toISOString().slice(0, 10));
+    $('#patient-document-status').val((document && document.status) || (defaultType === 'questionnaire' ? 'pending' : 'completed'));
+    $('#patient-document-title').val((document && document.name) || '');
+    $('#patient-document-description').val((document && document.description) || '');
+    $('#patient-document-score').val((document && document.score) || '');
+    $('#patient-document-result-label').val((document && document.result_label) || '');
+    $('#patient-document-observations').val((document && document.observations) || '');
+    $('#patient-document-visible-to-patient').prop('checked', parseInt((document && document.visible_to_patient) || 0, 10) === 1);
+    $('#patient-document-result-visible-to-patient').prop('checked', parseInt((document && document.result_visible_to_patient) || 0, 10) === 1);
+    $('#patient-document-alert').addClass('d-none').text('');
+    $('#patientDocumentModal .modal-title').text(document ? 'Editar documento' : 'Nuevo documento');
+    updatePatientDocumentTypeFields(!!document, !document);
+    if (patientDocumentModal) {
+        patientDocumentModal.show();
+    }
+}
+
+function savePatientDocument(form) {
+    const formData = new FormData(form);
+    const $button = $('#btn-save-patient-document');
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Guardando...');
+    $('#patient-document-alert').addClass('d-none').text('');
+    $.ajax({
+        url: 'api/admin.php?action=save_patient_document_file',
+        method: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        dataType: 'json',
+        success: function (res) {
+            if (!res.success) {
+                $('#patient-document-alert').removeClass('d-none alert-success').addClass('alert-danger').text(res.error || 'No se pudo guardar el documento.');
+                return;
+            }
+            if (patientDocumentModal) {
+                patientDocumentModal.hide();
+            }
+            showPatientFilesAlert('success', res.message || 'Documento guardado correctamente.');
+            loadPatientFiles(CURRENT_PATIENT_FILES_ID || parseInt($('#patient-editor-id').val() || '0', 10));
+        },
+        error: function () {
+            $('#patient-document-alert').removeClass('d-none alert-success').addClass('alert-danger').text('Error de conexion al guardar el documento.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function deletePatientDocument(documentId, $row) {
+    documentId = parseInt(documentId || 0, 10);
+    if (!documentId || !confirm('¿Eliminar este documento?')) {
+        return;
+    }
+    $.ajax({
+        url: 'api/admin.php?action=delete_patient_document_file',
+        method: 'POST',
+        dataType: 'json',
+        data: { document_id: documentId },
+        success: function (res) {
+            if (!res.success) {
+                showPatientFilesAlert('danger', res.error || 'No se pudo eliminar el documento.');
+                return;
+            }
+            if ($row && $row.length) {
+                $row.fadeOut(180, function () {
+                    $(this).remove();
+                    if (!$('#patient-files-body tr').length) {
+                        loadPatientFiles(CURRENT_PATIENT_FILES_ID);
+                    }
+                });
+            } else {
+                loadPatientFiles(CURRENT_PATIENT_FILES_ID);
+            }
+            showPatientFilesAlert('success', res.message || 'Documento eliminado correctamente.');
+        },
+        error: function () {
+            showPatientFilesAlert('danger', 'Error de conexion al eliminar el documento.');
+        }
+    });
 }
 
 function formatFileSize(bytes) {
@@ -5508,6 +6549,7 @@ function formatFileSize(bytes) {
 }
 
 function resetPatientBonuses(patientId = 0) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     CURRENT_PATIENT_BONUSES_ID = parseInt(patientId || 0, 10);
     CURRENT_PATIENT_BONUS_CATALOG = [];
     CURRENT_PATIENT_BONUS_CAN_MANAGE = false;
@@ -5517,7 +6559,7 @@ function resetPatientBonuses(patientId = 0) {
     $('#patient-bonus-create-bonus').empty();
     $('#btn-show-create-patient-bonus').addClass('d-none');
     if (!patientId) {
-        $('#patient-bonuses-body').html(`<tr><td colspan="${IS_SUPERADMIN ? 7 : 6}" class="text-center text-muted py-4">Guarda el paciente para ver sus bonos.</td></tr>`);
+        $('#patient-bonuses-body').html(`<tr><td colspan="${IS_SUPERADMIN ? 7 : 6}" class="text-center text-muted py-4">Guarda el ${patientSingular} para ver sus bonos.</td></tr>`);
         return;
     }
     $('#patient-bonuses-body').html(`<tr><td colspan="${IS_SUPERADMIN ? 7 : 6}" class="text-center text-muted py-4">Cargando bonos...</td></tr>`);
@@ -5560,10 +6602,11 @@ function loadPatientBonuses(patientId) {
 }
 
 function renderPatientBonuses(bonuses) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     const rows = Array.isArray(bonuses) ? bonuses : [];
     const colspan = IS_SUPERADMIN ? 7 : 6;
     if (!rows.length) {
-        $('#patient-bonuses-body').html(`<tr><td colspan="${colspan}" class="text-center text-muted py-4">Este paciente no tiene bonos registrados.</td></tr>`);
+        $('#patient-bonuses-body').html(`<tr><td colspan="${colspan}" class="text-center text-muted py-4">Este ${patientSingular} no tiene bonos registrados.</td></tr>`);
         $('#patient-bonuses-count').text('');
         return;
     }
@@ -5689,6 +6732,8 @@ function showPatientBonusesAlert(type, message, autoHide = false) {
 }
 
 function savePatient(form) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
+    const patientTitleSingular = sectorLabel('patient', 'titleSingular', 'Paciente');
     const $button = $('#btn-save-patient');
     const original = $button.html();
     const formData = new FormData(form);
@@ -5716,10 +6761,10 @@ function savePatient(form) {
         contentType: false,
         success: function (res) {
             if (!res.success) {
-                showPatientEditorAlert('danger', res.error || 'No se pudo guardar el paciente.');
+                showPatientEditorAlert('danger', res.error || `No se pudo guardar el ${patientSingular}.`);
                 return;
             }
-            showAdminPatientsAlert('success', res.message || 'Paciente guardado correctamente.');
+            showAdminPatientsAlert('success', res.message || `${patientTitleSingular} guardado correctamente.`);
             if (res.patient_id) {
                 $('#patient-editor-id').val(res.patient_id);
                 $('.btn-patient-report').prop('disabled', false);
@@ -5730,7 +6775,7 @@ function savePatient(form) {
             loadBookingPatients();
         },
         error: function () {
-            showPatientEditorAlert('danger', 'Error de conexión al guardar el paciente.');
+            showPatientEditorAlert('danger', `Error de conexión al guardar el ${patientSingular}.`);
         },
         complete: function () {
             $button.prop('disabled', false).html(original);
@@ -5757,7 +6802,7 @@ function openPatientInviteModal(patientId, button) {
                 openInviteModal(res.link, res.token || '', patient ? patient.email || '' : '');
                 showInviteAlert('success', patient && patient.name
                     ? `Enviar invitacion a ${patient.name}.`
-                    : 'Enviar invitacion al paciente.');
+                    : `Enviar invitacion al ${sectorLabel('patient', 'singular', 'paciente')}.`);
             } else {
                 showAdminPatientsAlert('danger', res.error || 'No se pudo generar la invitacion.');
             }
@@ -5777,7 +6822,7 @@ function refreshPatientSelectOptions() {
         return;
     }
     const selected = $select.val();
-    $select.html('<option value="">Selecciona un paciente...</option>');
+    $select.html(`<option value="">Selecciona un ${sectorLabel('patient', 'singular', 'paciente')}...</option>`);
     ADMIN_BOOKING_PATIENTS.forEach(patient => {
         const professional = patient.professional_name ? ` · ${patient.professional_name}` : '';
         $select.append(`<option value="${patient.id}">${escapeHtml((patient.name || '') + professional)}</option>`);
@@ -5814,6 +6859,7 @@ function bookingPatientById(patientId) {
 }
 
 function openPatientEditorById(patientId, button = null) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     patientId = parseInt(patientId || 0, 10);
     if (!patientId) return;
     const $button = button ? $(button) : $();
@@ -5839,7 +6885,7 @@ function openPatientEditorById(patientId, button = null) {
         data: IS_SUPERADMIN ? { professional_id: 'all' } : {},
         success: function (res) {
             if (!res.success) {
-                alert(res.error || 'No se pudo cargar la ficha del paciente.');
+                alert(res.error || `No se pudo cargar la ficha del ${patientSingular}.`);
                 return;
             }
             if (Array.isArray(res.professionals) && res.professionals.length) {
@@ -5851,13 +6897,13 @@ function openPatientEditorById(patientId, button = null) {
             ADMIN_PATIENTS = Array.isArray(res.patients) ? res.patients : [];
             patient = ADMIN_PATIENTS.find(item => parseInt(item.id, 10) === patientId) || null;
             if (!patient) {
-                alert('No se encontró la ficha del paciente.');
+                alert(`No se encontró la ficha del ${patientSingular}.`);
                 return;
             }
             openPatientEditorModal(patient);
         },
         error: function () {
-            alert('Error de conexión al cargar la ficha del paciente.');
+            alert(`Error de conexión al cargar la ficha del ${patientSingular}.`);
         },
         complete: function () {
             resetButton();
@@ -5880,7 +6926,7 @@ function renderBookingProfessionalCards() {
             const name = escapeHtml(professional.display_name || 'Sin nombre');
             const selectedClass = id === selected ? 'is-selected' : '';
             const photo = professional.display_photo_path
-                ? `<img class="patient-professional-card-avatar" src="${escapeHtml(professional.display_photo_path)}" alt="${name}">`
+                ? `<img class="patient-professional-card-avatar" src="${escapeHtml(assetUrl(professional.display_photo_path))}" alt="${name}">`
                 : '<span class="patient-professional-card-avatar patient-professional-card-avatar-empty"><i class="bi bi-person"></i></span>';
             return `
                 <button type="button" class="patient-professional-card ${selectedClass}" data-professional-id="${id}" aria-pressed="${id === selected ? 'true' : 'false'}">
@@ -5912,6 +6958,7 @@ function populateBookingProfessionalSelect(selectedProfessionalId = null) {
 }
 
 function updateBookingPatientProfessionalNote(patient = null) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     const $note = $('#booking-patient-professional-note');
     if (!$note.length) return;
     if (!patient) {
@@ -5920,10 +6967,10 @@ function updateBookingPatientProfessionalNote(patient = null) {
     }
     const professionalName = patient.professional_name || '';
     if (professionalName) {
-        $note.text(`Paciente de ${professionalName}. Puedes cambiar el profesional solo para esta cita.`);
+        $note.text(`${capitalizeFirst(patientSingular)} de ${professionalName}. Puedes cambiar el profesional solo para esta cita.`);
     } else {
         const currentProfessional = bookingProfessionalById(CURRENT_PROFESSIONAL_ID);
-        $note.text(`Paciente sin profesional asignado. Se asignará por defecto a ${currentProfessional ? currentProfessional.display_name : 'tu usuario'}.`);
+        $note.text(`${capitalizeFirst(patientSingular)} sin profesional asignado. Se asignará por defecto a ${currentProfessional ? currentProfessional.display_name : 'tu usuario'}.`);
     }
 }
 
@@ -6029,10 +7076,16 @@ function showPatientEvolutionAlert(type, message) {
 }
 
 function showPatientFilesAlert(type, message) {
+    if (patientFilesAlertTimer) {
+        clearTimeout(patientFilesAlertTimer);
+    }
     $('#patient-files-alert')
         .removeClass('d-none alert-success alert-danger')
         .addClass(type === 'success' ? 'alert-success' : 'alert-danger')
         .text(message);
+    patientFilesAlertTimer = setTimeout(function () {
+        $('#patient-files-alert').addClass('d-none').text('');
+    }, 3000);
 }
 
 function openUpcomingAppointmentsModal() {
@@ -6247,10 +7300,11 @@ function upcomingPlanningSlots(settings = {}, appointments = []) {
             end = Math.max(end, appStart);
         }
     });
-    start = Math.floor(start / 60) * 60;
-    end = Math.ceil(end / 60) * 60;
+    const slotStep = activeScheduleSlotStep(settings);
+    start = Math.floor(start / slotStep) * slotStep;
+    end = Math.ceil(end / slotStep) * slotStep;
     const slots = [];
-    for (let minutes = start; minutes <= end; minutes += 60) {
+    for (let minutes = start; minutes <= end; minutes += slotStep) {
         slots.push(minutesToTime(minutes));
     }
     return slots;
@@ -6349,7 +7403,7 @@ function renderUpcomingPlanning() {
 function professionalCellHtml(source = {}, nameKey = 'professional_name', photoKey = 'professional_photo_path') {
     const photo = source[photoKey] || '';
     const avatar = photo
-        ? `<img src="${escapeHtml(photo)}" alt="" class="upcoming-professional-avatar">`
+        ? `<img src="${escapeHtml(assetUrl(photo))}" alt="" class="upcoming-professional-avatar">`
         : '<span class="upcoming-professional-avatar upcoming-professional-avatar-empty"><i class="bi bi-person"></i></span>';
     return `
         <div class="upcoming-professional-cell">
@@ -6453,17 +7507,27 @@ function appointmentPaymentButton(app = {}) {
 }
 
 function showAppointmentPaymentAlert(type, message) {
-    $('#appointment-payment-alert')
+    const $alert = $('#appointment-payment-alert')
         .removeClass('d-none alert-success alert-danger alert-warning')
         .addClass(type === 'success' ? 'alert-success' : (type === 'warning' ? 'alert-warning' : 'alert-danger'))
         .text(message);
+    if (appointmentPaymentAlertTimer) {
+        clearTimeout(appointmentPaymentAlertTimer);
+        appointmentPaymentAlertTimer = null;
+    }
+    if (type === 'success') {
+        appointmentPaymentAlertTimer = setTimeout(function () {
+            $alert.addClass('d-none').text('');
+            appointmentPaymentAlertTimer = null;
+        }, 3000);
+    }
 }
 
 function showAppointmentModalityAlert(type, message) {
-    if ($('#appointment-session-panel').hasClass('active')) {
-        showAppointmentSessionAlert(type, message);
-    } else {
+    if ($('#appointment-detail-panel').hasClass('active')) {
         showAppointmentPaymentAlert(type, message);
+    } else {
+        showAppointmentSessionAlert(type, message);
     }
 }
 
@@ -6491,6 +7555,7 @@ function setAppointmentPaymentSelection(status, method = '') {
 }
 
 function renderAppointmentPaymentSummary(app = {}) {
+    const patientTitleSingular = sectorLabel('patient', 'titleSingular', 'Paciente');
     const contact = patientContactSummaryHtml(app.patient_email, app.patient_phone);
     const paymentMethod = paymentMethodLabel(app.payment_method);
     const paidText = app.payment_status === 'paid'
@@ -6501,7 +7566,7 @@ function renderAppointmentPaymentSummary(app = {}) {
         <div class="appointment-payment-card">
             <div class="appointment-payment-main">
                 <div>
-                    <span class="text-muted small">Paciente</span>
+                    <span class="text-muted small">${escapeHtml(patientTitleSingular)}</span>
                     <h6>${escapeHtml(app.patient_name || '')}</h6>
                     ${contact ? `<small class="text-muted">${contact}</small>` : ''}
                 </div>
@@ -6511,7 +7576,37 @@ function renderAppointmentPaymentSummary(app = {}) {
                 <div><span>Fecha</span><strong>${formatDisplayDate(app.appointment_date || '')} · ${escapeHtml(displayAppointmentTimeRange(app.appointment_time || '', app.duration_minutes || 60))}</strong></div>
                 <div><span>Profesional</span><strong>${escapeHtml(app.professional_name || 'Sin asignar')}</strong></div>
                 <div><span>Servicio</span><strong>${escapeHtml(displayAppointmentServiceLabel(app))}</strong></div>
-                <div class="appointment-modality-card">${renderAppointmentModalityInline(app)}</div>
+            </div>
+            ${renderAppointmentKnowledgeProblemCard(app)}
+            <div class="mt-3">${renderAppointmentModalitySessionCard(app)}</div>
+        </div>
+    `;
+}
+
+function renderAppointmentKnowledgeProblemCard(app = {}) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
+    const problem = app.knowledge_problem || {};
+    if (!problem.enabled) {
+        return '';
+    }
+
+    const diagnosisLabel = capitalizeFirst(sectorText('clinicalTerms.diagnosis', 'diagnostico'));
+    const problemTitle = problem.status === 'assigned'
+        ? (problem.name || problem.short_name || diagnosisLabel)
+        : `${diagnosisLabel} pendiente`;
+    const meta = [];
+    if (problem.area) meta.push(problem.area);
+    if (problem.category) meta.push(problem.category);
+    if (problem.risk_level) meta.push(`Riesgo: ${problem.risk_level}`);
+    if (problem.target_population) meta.push(problem.target_population);
+
+    return `
+        <div class="appointment-knowledge-card mt-3">
+            <div>
+                <span>${escapeHtml(diagnosisLabel)}</span>
+                <strong>${escapeHtml(problemTitle)}</strong>
+                ${problem.status === 'assigned' && meta.length ? `<small>${escapeHtml(meta.join(' · '))}</small>` : ''}
+                ${problem.status !== 'assigned' ? `<small>Este ${escapeHtml(patientSingular)} todavia no tiene un problema u objetivo vinculado en su ficha.</small>` : ''}
             </div>
         </div>
     `;
@@ -6567,7 +7662,7 @@ function renderAppointmentModalitySessionCard(app = {}) {
                 <div class="input-group">
                     <input type="url" class="form-control" id="appointment-online-session-url" value="${escapeHtml(onlineUrl)}" placeholder="https://...">
                     <button class="btn btn-outline-primary" type="button" id="btn-send-appointment-online-link" ${onlineUrl ? '' : 'disabled'}>
-                        <i class="bi bi-send"></i> Enviar al paciente
+                        <i class="bi bi-send"></i> Enviar al ${escapeHtml(sectorLabel('patient', 'singular', 'paciente'))}
                     </button>
                 </div>
             </div>
@@ -6582,8 +7677,11 @@ function resetAppointmentSessionPanel(message = 'Cargando sesión...') {
         notes: [],
         files: []
     };
-    $('#appointment-session-alert').addClass('d-none').text('');
+    $('#appointment-session-alert, #appointment-files-alert').addClass('d-none').text('');
     $('#appointment-session-content').html(`<div class="text-center text-muted py-4">${message}</div>`);
+    $('#appointment-files-content').html('<div class="text-center text-muted py-4">Cargando archivos...</div>');
+    $('#appointment-payment-modal-title').text('Detalle de la cita');
+    $('#appointment-session-tab').text('Tareas');
 }
 
 function loadAppointmentSession(app = CURRENT_APPOINTMENT_PAYMENT_DETAIL) {
@@ -6592,8 +7690,9 @@ function loadAppointmentSession(app = CURRENT_APPOINTMENT_PAYMENT_DETAIL) {
         resetAppointmentSessionPanel('No se ha podido cargar la sesión.');
         return;
     }
-    $('#appointment-session-alert').addClass('d-none').text('');
+    $('#appointment-session-alert, #appointment-files-alert').addClass('d-none').text('');
     $('#appointment-session-content').html('<div class="text-center text-muted py-4">Cargando sesión...</div>');
+    $('#appointment-files-content').html('<div class="text-center text-muted py-4">Cargando archivos...</div>');
     $.ajax({
         url: 'api/admin.php?action=appointment_session',
         dataType: 'json',
@@ -6621,8 +7720,9 @@ function loadAppointmentSession(app = CURRENT_APPOINTMENT_PAYMENT_DETAIL) {
 }
 
 function updateAppointmentSessionTabLabel(app = {}) {
-    const $tab = $('#appointment-session-tab');
-    if (!$tab.length) return;
+    const $title = $('#appointment-payment-modal-title');
+    $('#appointment-session-tab').text('Tareas');
+    if (!$title.length) return;
     const start = parseAppointmentDateTime(app.appointment_date, app.appointment_time);
     const end = parseAppointmentDateTime(app.appointment_date, app.appointment_time);
     const duration = parseInt(app.duration_minutes || 60, 10);
@@ -6630,9 +7730,8 @@ function updateAppointmentSessionTabLabel(app = {}) {
         end.setMinutes(end.getMinutes() + duration);
     }
     const now = new Date();
-    const isFuture = start && start > now;
     const isCurrent = start && end && start <= now && end >= now;
-    $tab.text(isFuture && !isCurrent ? 'Preparar esta sesión' : 'Sesión');
+    $title.text(isCurrent ? 'Sesión en curso' : 'Preparar esta sesión');
 }
 
 function parseAppointmentDateTime(dateStr, timeStr) {
@@ -6643,6 +7742,7 @@ function parseAppointmentDateTime(dateStr, timeStr) {
 }
 
 function renderAppointmentSession(app = CURRENT_APPOINTMENT_PAYMENT_DETAIL) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     $('#appointment-session-content').html(`
         <div class="row g-3">
             <div class="col-lg-5">
@@ -6808,12 +7908,13 @@ function renderAppointmentSessionFiles(files) {
 }
 
 function renderAppointmentSession(app = CURRENT_APPOINTMENT_PAYMENT_DETAIL) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     const appointmentDate = app && app.appointment_date ? app.appointment_date : formatDate(new Date());
     $('#appointment-session-content').html(`
         <div class="row g-3">
             <div class="col-12">
                 <section class="appointment-session-box">
-                    <h6>Tareas del paciente</h6>
+                    <h6>Tareas del ${escapeHtml(patientSingular)}</h6>
                     <div id="appointment-session-tasks">${renderAppointmentSessionTasks(CURRENT_APPOINTMENT_SESSION.tasks)}</div>
                 </section>
             </div>
@@ -6864,9 +7965,10 @@ function renderAppointmentSession(app = CURRENT_APPOINTMENT_PAYMENT_DETAIL) {
 }
 
 function renderAppointmentSessionTasks(tasks) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     const rows = Array.isArray(tasks) ? tasks : [];
     if (!rows.length) {
-        return '<div class="text-center text-muted py-3">No hay tareas pendientes o completadas en el plan del paciente.</div>';
+        return `<div class="text-center text-muted py-3">No hay tareas pendientes o completadas en el plan del ${escapeHtml(patientSingular)}.</div>`;
     }
     return rows.map(task => {
         const completed = task.status === 'completed';
@@ -6911,7 +8013,8 @@ function renderAppointmentSessionNotes(notes) {
 }
 
 function showAppointmentSessionAlert(type, message) {
-    const $alert = $('#appointment-session-alert')
+    const target = $('#appointment-files-panel').hasClass('active') ? '#appointment-files-alert' : '#appointment-session-alert';
+    const $alert = $(target)
         .removeClass('d-none alert-success alert-danger')
         .addClass(type === 'success' ? 'alert-success' : 'alert-danger')
         .text(message);
@@ -7146,17 +8249,13 @@ function deleteAppointmentSessionTask(button) {
 }
 
 function renderAppointmentSession(app = CURRENT_APPOINTMENT_PAYMENT_DETAIL) {
-    const appointmentDate = app && app.appointment_date ? app.appointment_date : formatDate(new Date());
     $('#appointment-session-content').html(`
         <div class="row g-3">
-            <div class="col-12">
-                ${renderAppointmentModalitySessionCard(app)}
-            </div>
             <div class="col-12">
                 <section class="appointment-session-box appointment-session-box-compact">
                     <div class="appointment-session-section-header">
                         <div>
-                            <h6>Tareas del paciente</h6>
+                            <h6>Tareas del ${escapeHtml(patientSingular)}</h6>
                             <p>Crea tareas o importa plantillas para trabajar esta sesi&oacute;n.</p>
                         </div>
                         <button class="btn btn-outline-primary btn-sm" type="button" id="btn-show-appointment-session-work-plan-form">
@@ -7166,27 +8265,28 @@ function renderAppointmentSession(app = CURRENT_APPOINTMENT_PAYMENT_DETAIL) {
                     <div id="appointment-session-tasks">${renderAppointmentSessionTasks(CURRENT_APPOINTMENT_SESSION.tasks)}</div>
                 </section>
             </div>
-            <div class="col-12">
-                <section class="appointment-session-box">
-                    <div class="appointment-session-section-header">
-                        <div>
-                            <h6>Notas y archivos de la sesi&oacute;n</h6>
-                        </div>
-                        <button class="btn btn-outline-primary btn-sm" type="button" id="btn-toggle-appointment-session-note">
-                            <i class="bi bi-journal-plus"></i> Nueva nota / archivo
-                        </button>
-                    </div>
-                    <div id="appointment-session-activity">${renderAppointmentSessionActivity(CURRENT_APPOINTMENT_SESSION.notes, CURRENT_APPOINTMENT_SESSION.files)}</div>
-                </section>
-            </div>
         </div>
+    `);
+    $('#appointment-files-content').html(`
+        <section class="appointment-session-box">
+            <div class="appointment-session-section-header">
+                <div>
+                    <h6>Notas y archivos de la sesi&oacute;n</h6>
+                </div>
+                <button class="btn btn-outline-primary btn-sm" type="button" id="btn-toggle-appointment-session-note">
+                    <i class="bi bi-journal-plus"></i> Nueva nota / archivo
+                </button>
+            </div>
+            <div id="appointment-session-activity">${renderAppointmentSessionActivity(CURRENT_APPOINTMENT_SESSION.notes, CURRENT_APPOINTMENT_SESSION.files)}</div>
+        </section>
     `);
 }
 
 function renderAppointmentSessionTasks(tasks) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     const rows = Array.isArray(tasks) ? tasks : [];
     if (!rows.length) {
-        return '<div class="text-center text-muted py-3">No hay tareas pendientes o completadas en el plan del paciente.</div>';
+        return `<div class="text-center text-muted py-3">No hay tareas pendientes o completadas en el plan del ${escapeHtml(patientSingular)}.</div>`;
     }
     return rows.map(task => {
         const completed = task.status === 'completed';
@@ -7338,11 +8438,11 @@ function sendAppointmentOnlineLink(button) {
     const consultationType = app.consultation_type === 'online' ? 'online' : 'presencial';
     const onlineUrl = consultationType === 'online' ? String($('#appointment-online-session-url').val() || '').trim() : '';
     if (!appointmentId) {
-        showAppointmentSessionAlert('danger', 'No se ha podido identificar la cita.');
+        showAppointmentModalityAlert('danger', 'No se ha podido identificar la cita.');
         return;
     }
     if (consultationType !== 'online' || !onlineUrl) {
-        showAppointmentSessionAlert('danger', 'Indica un enlace para una cita online antes de enviarlo.');
+        showAppointmentModalityAlert('danger', 'Indica un enlace para una cita online antes de enviarlo.');
         return;
     }
     const $button = $(button);
@@ -7362,10 +8462,10 @@ function sendAppointmentOnlineLink(button) {
                 dataType: 'json',
                 data: { appointment_id: appointmentId },
                 success: function (sendRes) {
-                    showAppointmentSessionAlert(sendRes.success ? 'success' : 'danger', sendRes.message || sendRes.error || 'No se pudo enviar el enlace.');
+                    showAppointmentModalityAlert(sendRes.success ? 'success' : 'danger', sendRes.message || sendRes.error || 'No se pudo enviar el enlace.');
                 },
                 error: function () {
-                    showAppointmentSessionAlert('danger', 'Error de conexion al enviar el enlace.');
+                    showAppointmentModalityAlert('danger', 'Error de conexion al enviar el enlace.');
                 },
                 complete: function () {
                     $button.prop('disabled', false).html(original);
@@ -7373,7 +8473,7 @@ function sendAppointmentOnlineLink(button) {
             });
         })
         .fail(function () {
-            showAppointmentSessionAlert('danger', 'Error de conexion al guardar el enlace.');
+            showAppointmentModalityAlert('danger', 'Error de conexion al guardar el enlace.');
         })
         .always(function () {
             if (!sendingEmail) {
@@ -7390,6 +8490,10 @@ function openAppointmentPaymentModal(appointmentId) {
     CURRENT_APPOINTMENT_PAYMENT_DETAIL = null;
     resetAppointmentSessionPanel();
     $('#appointment-payment-id').val(appointmentId);
+    if (appointmentPaymentAlertTimer) {
+        clearTimeout(appointmentPaymentAlertTimer);
+        appointmentPaymentAlertTimer = null;
+    }
     $('#appointment-payment-alert').addClass('d-none').text('');
     $('#appointment-payment-summary').html('<div class="text-center text-muted py-4">Cargando cita...</div>');
     $('#appointment-payment-editor').removeClass('d-none');
@@ -7587,7 +8691,7 @@ function renderAdminStats(stats) {
                     <div class="stats-professional-card">
                         ${professionalCellHtml(item, 'display_name', 'public_photo_path')}
                         <div class="stats-professional-numbers">
-                            <span><strong>${parseInt(item.patient_count || 0, 10)}</strong> pacientes</span>
+                            <span><strong>${parseInt(item.patient_count || 0, 10)}</strong> ${escapeHtml(sectorLabel('patient', 'plural', 'pacientes'))}</span>
                             <span><strong>${parseInt(item.upcoming_count || 0, 10)}</strong> citas pr&oacute;ximas</span>
                         </div>
                     </div>
@@ -7614,6 +8718,10 @@ function renderAdminStats(stats) {
 }
 
 function renderAdminReports(reports) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
+    const patientPlural = sectorLabel('patient', 'plural', 'pacientes');
+    const patientTitleSingular = sectorLabel('patient', 'titleSingular', 'Paciente');
+    const patientTitlePlural = sectorLabel('patient', 'titlePlural', 'Pacientes');
     const patientsWithoutUpcoming = Array.isArray(reports.patients_without_upcoming) ? reports.patients_without_upcoming : [];
     const recentCancellations = Array.isArray(reports.recent_cancellations) ? reports.recent_cancellations : [];
     const pendingPayments = Array.isArray(reports.pending_payments) ? reports.pending_payments : [];
@@ -7625,19 +8733,19 @@ function renderAdminReports(reports) {
             <div class="stats-summary-card"><span>Pendientes pago</span><strong>${pendingPayments.length}</strong><small>primeras citas</small></div>
         </div>
         ${reportTableHtml(
-            'Pacientes sin pr&oacute;xima cita',
-            ['Paciente', 'Contacto', '&Uacute;ltima cita'],
+            `${escapeHtml(patientTitlePlural)} sin pr&oacute;xima cita`,
+            [escapeHtml(patientTitleSingular), 'Contacto', '&Uacute;ltima cita'],
             patientsWithoutUpcoming,
             patient => [
                 `<strong>${escapeHtml(patient.name || '')}</strong>`,
                 patientContactSummaryHtml(patient.email, patient.phone) || '-',
                 patient.last_appointment_at ? escapeHtml(formatDateTimeLabel(patient.last_appointment_at)) : 'Sin citas previas'
             ],
-            'No hay pacientes sin pr&oacute;xima cita.'
+            `No hay ${escapeHtml(patientPlural)} sin pr&oacute;xima cita.`
         )}
         ${reportTableHtml(
             'Cancelaciones recientes',
-            ['Fecha cita', 'Cancelada', 'Paciente', 'Profesional', 'Servicio'],
+            ['Fecha cita', 'Cancelada', escapeHtml(patientTitleSingular), 'Profesional', 'Servicio'],
             recentCancellations,
             app => [
                 `<strong>${formatDisplayDate(app.appointment_date || '')}</strong><br><small class="text-muted">${escapeHtml(displayAppointmentTimeRange(app.appointment_time || '', app.duration_minutes || 60))}</small>`,
@@ -7650,7 +8758,7 @@ function renderAdminReports(reports) {
         )}
         ${reportTableHtml(
             'Citas pendientes de registrar pago',
-            ['Fecha', 'Paciente', 'Profesional', 'Servicio', 'Modalidad'],
+            ['Fecha', escapeHtml(patientTitleSingular), 'Profesional', 'Servicio', 'Modalidad'],
             pendingPayments,
             app => [
                 `<strong>${formatDisplayDate(app.appointment_date || '')}</strong><br><small class="text-muted">${escapeHtml(displayAppointmentTimeRange(app.appointment_time || '', app.duration_minutes || 60))}</small>`,
@@ -8109,8 +9217,10 @@ function showSettingsAlert(selector, type, message) {
 }
 
 function toggleDashboardConfigModeControls() {
-    const mode = $('#dashboard-config-mode').val() || 'simple';
-    $('#btn-open-dashboard-custom-config').toggleClass('d-none', mode !== 'custom');
+    const uiCustomization = planFeatureEnabled('ui.customization', false);
+    $('#dashboard-config-row').toggleClass('d-none', !uiCustomization);
+    $('#dashboard-config-mode').val(uiCustomization ? 'custom' : 'advanced');
+    $('#btn-open-dashboard-custom-config').toggleClass('d-none', !uiCustomization);
 }
 
 function openDashboardCustomConfigModal() {
@@ -8151,6 +9261,9 @@ function saveDashboardCustomConfig(button) {
                 throw new Error(`La opcion "${key}" debe ser true o false.`);
             }
         });
+        if (Object.prototype.hasOwnProperty.call(parsed, 'texts') && (!parsed.texts || typeof parsed.texts !== 'object' || Array.isArray(parsed.texts))) {
+            throw new Error('La seccion opcional "texts" debe ser un objeto.');
+        }
     } catch (err) {
         showDashboardCustomConfigAlert('danger', err.message || 'JSON invalido.');
         return;
@@ -8218,11 +9331,11 @@ function loadPaymentSettings() {
             APP_PLAN_CONFIG = settings.plan_config || APP_PLAN_CONFIG || { plan: { features: {} } };
             APP_KNOWLEDGE_BASE_ENABLED = appFeatureEnabled('knowledgeBase.enabled', false);
             APP_KNOWLEDGE_BASE_HAS_SECTOR_DATA = settings.knowledge_base_has_sector_data == 1;
-            applyKnowledgeBaseVisibility();
             APP_SECTOR_TEXTS = settings.sector_texts || APP_SECTOR_TEXTS || {};
             APP_SECTOR_TEXT_OPTIONS = Array.isArray(settings.sector_texts_options) ? settings.sector_texts_options : APP_SECTOR_TEXT_OPTIONS;
             APPOINTMENT_SERVICES = Array.isArray(res.services) ? res.services : [];
             APPOINTMENT_BONUSES = Array.isArray(res.bonuses) ? res.bonuses : [];
+            renderAvailableSessionControls();
             $('#app-name').val(settings.app_name || 'SimplyGest Praxis');
             $('#site-tagline').val(settings.site_tagline || '');
             $('#site-phone').val(settings.site_phone || '');
@@ -8249,7 +9362,7 @@ function loadPaymentSettings() {
             toggleDashboardConfigModeControls();
             $('#online-booking-enabled').prop('checked', settings.online_booking_enabled === undefined ? true : settings.online_booking_enabled == 1);
             $('#patient-tasks-visible-default').prop('checked', settings.patient_tasks_visible_default == 1);
-            $('#patient-registration-mode').val(settings.patient_registration_mode === 'open' ? 'open' : 'invite');
+            $('#patient-registration-requires-invite').prop('checked', settings.patient_registration_mode !== 'open');
             $('#bonuses-enabled').prop('checked', settings.bonuses_enabled == 1);
             $('#create-compensation-bonus-on-paid-cancel').prop('checked', settings.create_compensation_bonus_on_paid_cancel === undefined ? true : settings.create_compensation_bonus_on_paid_cancel == 1);
             toggleBonusesSettings();
@@ -8261,19 +9374,23 @@ function loadPaymentSettings() {
             renderServicesSettings();
             captureServicesSettingsSnapshot();
             if (settings.profile_image_path) {
-                $('#profile-image-preview').attr('src', settings.profile_image_path);
+                $('#profile-image-preview').attr('src', assetUrl(settings.profile_image_path));
                 $('#profile-image-preview-row').attr('style', '');
                 $('#profile-image-status').text('Imagen actual guardada.');
-                $('#app-brand-image').attr('src', settings.profile_image_path).removeClass('d-none');
+                $('#navbar-user-image').attr('src', assetUrl(settings.profile_image_path)).removeClass('d-none');
             } else {
                 $('#profile-image-preview-row').attr('style', 'display: none !important;');
                 $('#profile-image-preview').attr('src', '');
                 $('#profile-image-status').text('');
-                $('#app-brand-image').attr('src', '').addClass('d-none');
+                if (typeof INITIAL_NAVBAR_IMAGE_URL !== 'undefined' && INITIAL_NAVBAR_IMAGE_URL) {
+                    $('#navbar-user-image').attr('src', INITIAL_NAVBAR_IMAGE_URL).removeClass('d-none');
+                } else {
+                    $('#navbar-user-image').attr('src', '').addClass('d-none');
+                }
             }
             $('#profile-image').val('');
             if (settings.landing_image_path) {
-                $('#landing-image-preview').attr('src', settings.landing_image_path);
+                $('#landing-image-preview').attr('src', assetUrl(settings.landing_image_path));
                 $('#landing-image-preview-row').attr('style', '');
                 $('#landing-image-status').text('Imagen actual guardada.');
             } else {
@@ -8336,6 +9453,7 @@ function loadPaymentSettings() {
                 : 'Todavía no hay contraseña SMTP guardada.');
             $('#google-client-secret-status').text('');
             togglePriceRows();
+            applyPlanFeatureVisibility();
             if (typeof IS_SUPERADMIN !== 'undefined' && IS_SUPERADMIN) {
                 loadCabinetSettings()
                     .then(resolve)
@@ -8403,8 +9521,8 @@ function togglePatientCalendarLinkSettings() {
     const ready = patientCalendarEmailSettingsReady();
     $('#send-patient-calendar-link').prop('disabled', !ready);
     $('#send-patient-calendar-link-status').text(ready
-        ? 'El paciente recibirá un enlace .ics compatible con Apple Calendar, iCloud, Google Calendar y Outlook.'
-        : 'Conecta primero la cuenta de email para poder enviar este enlace a los pacientes.');
+        ? `El ${sectorLabel('patient', 'singular', 'paciente')} recibirá un enlace .ics compatible con Apple Calendar, iCloud, Google Calendar y Outlook.`
+        : `Conecta primero la cuenta de email para poder enviar este enlace a los ${sectorLabel('patient', 'plural', 'pacientes')}.`);
 }
 
 function toggleBonusesSettings() {
@@ -8586,13 +9704,14 @@ function saveBonusesSettings(button = null, options = {}) {
 
 function selectedSessionDurations() {
     const durations = [];
+    const allowed = appointmentDurationCatalog().map(item => item.minutes);
     $('.available-session-duration:checked').each(function () {
         const duration = parseInt(this.value, 10);
-        if ([60, 90, 120].includes(duration)) {
+        if (allowed.includes(duration)) {
             durations.push(duration);
         }
     });
-    return durations.length ? [...new Set(durations)].sort((a, b) => a - b) : [60];
+    return durations.length ? [...new Set(durations)].sort((a, b) => a - b) : defaultAppointmentDurations();
 }
 
 function collectServicesSettings() {
@@ -8838,7 +9957,7 @@ function professionalSettingsRowHtml(professional = {}, index = 0) {
             </button></div>`;
     const photo = professional.display_photo_path || professional.public_photo_path || '';
     const avatar = photo
-        ? `<img src="${escapeHtml(photo)}" alt="" style="width: 38px; height: 38px; border-radius: 50%; object-fit: cover;">`
+        ? `<img src="${escapeHtml(assetUrl(photo))}" alt="" style="width: 38px; height: 38px; border-radius: 50%; object-fit: cover;">`
         : '<span class="d-inline-flex align-items-center justify-content-center bg-light text-muted border" style="width: 38px; height: 38px; border-radius: 50%;"><i class="bi bi-person"></i></span>';
     return `
         <tr class="professional-settings-row" data-index="${index}">
@@ -8891,7 +10010,7 @@ function openProfessionalEditor(index = -1) {
     PROFESSIONAL_PHOTO_FILE = null;
     const photo = professional.public_photo_path || professional.display_photo_path || '';
     if (photo) {
-        $('#professional-editor-photo-preview').attr('src', photo).removeClass('d-none');
+        $('#professional-editor-photo-preview').attr('src', assetUrl(photo)).removeClass('d-none');
         $('#professional-editor-photo-status').text('Foto actual. Sube una nueva solo si quieres cambiarla.');
     } else {
         $('#professional-editor-photo-preview').attr('src', '').addClass('d-none');
@@ -8972,7 +10091,7 @@ function openPatientSelfDataModal() {
             $('#patient-self-phone').val(profile.phone || '');
             const photo = profile.photo_path || '';
             if (photo) {
-                $('#patient-self-photo-preview').attr('src', photo).removeClass('d-none');
+                $('#patient-self-photo-preview').attr('src', assetUrl(photo)).removeClass('d-none');
             } else {
                 $('#patient-self-photo-preview').attr('src', '').addClass('d-none');
             }
@@ -9008,8 +10127,8 @@ function savePatientSelfData(form) {
             }
             const profile = res.profile || {};
             if (profile.photo_path) {
-                $('#app-brand-image').attr('src', profile.photo_path).removeClass('d-none');
-                $('#patient-self-photo-preview').attr('src', profile.photo_path).removeClass('d-none');
+                $('#navbar-user-image').attr('src', assetUrl(profile.photo_path)).removeClass('d-none');
+                $('#patient-self-photo-preview').attr('src', assetUrl(profile.photo_path)).removeClass('d-none');
             }
             $alert.removeClass('d-none alert-danger').addClass('alert-success').text(res.message || 'Datos actualizados correctamente.');
             setTimeout(function () {
@@ -9175,7 +10294,7 @@ function openProfessionalTransferDelete(data) {
     const professionalName = escapeHtml(professional.display_name || 'Este profesional');
     $('#professional-delete-title').text(requiresTransfer ? 'Traspasar antes de borrar' : 'Borrar profesional');
     $('#transfer-delete-summary').html(requiresTransfer
-        ? `<strong>${professionalName}</strong> tiene <strong>${usage.pending_appointments || 0}</strong> citas próximas y <strong>${usage.assigned_patients || 0}</strong> pacientes asignados.${historyText}`
+        ? `<strong>${professionalName}</strong> tiene <strong>${usage.pending_appointments || 0}</strong> citas próximas y <strong>${usage.assigned_patients || 0}</strong> ${sectorLabel('patient', 'plural', 'pacientes')} asignados.${historyText}`
         : `Vas a borrar a <strong>${professionalName}</strong> del equipo profesional.`
     );
 
@@ -9366,8 +10485,8 @@ async function saveAllSettings(button = null) {
     const alertSelector = '#settings-save-alert';
     $('#settings-save-alert, #payment-settings-alert, #email-settings-alert, #calendar-settings-alert, #booking-settings-alert, #general-settings-alert, #interface-settings-alert, #legal-settings-alert, #services-settings-alert, #bonuses-settings-alert, #cabinet-settings-alert').addClass('d-none');
     setSettingsButtonLoading(button, true);
-    const previousDashboardConfigMode = LOADED_DASHBOARD_CONFIG_MODE || 'simple';
-    const selectedDashboardConfigMode = $('#dashboard-config-mode').val() || 'simple';
+    const previousDashboardConfigMode = LOADED_DASHBOARD_CONFIG_MODE || 'advanced';
+    const selectedDashboardConfigMode = LOADED_DASHBOARD_CONFIG_MODE || 'advanced';
 
     try {
         const settingsSection = (typeof IS_SUPERADMIN !== 'undefined' && IS_SUPERADMIN) ? 'all' : 'general';
@@ -9461,10 +10580,10 @@ function savePaymentSettings(alertSelector = '#payment-settings-alert', onSucces
     formData.append('show_prices_public', $('#show-prices-public').is(':checked') ? '1' : '0');
     formData.append('show_contact_public', $('#show-contact-public').is(':checked') ? '1' : '0');
     formData.append('initial_calendar_view', $('#initial-calendar-view').val() || 'month');
-    formData.append('dashboard_config_mode', $('#dashboard-config-mode').val() || 'simple');
+    formData.append('dashboard_config_mode', LOADED_DASHBOARD_CONFIG_MODE || 'advanced');
     formData.append('online_booking_enabled', $('#online-booking-enabled').is(':checked') ? '1' : '0');
     formData.append('patient_tasks_visible_default', $('#patient-tasks-visible-default').is(':checked') ? '1' : '0');
-    formData.append('patient_registration_mode', $('#patient-registration-mode').val() || 'invite');
+    formData.append('patient_registration_mode', $('#patient-registration-requires-invite').is(':checked') ? 'invite' : 'open');
     if ($('#profile-image')[0] && $('#profile-image')[0].files[0]) {
         formData.append('profile_image', $('#profile-image')[0].files[0]);
     }

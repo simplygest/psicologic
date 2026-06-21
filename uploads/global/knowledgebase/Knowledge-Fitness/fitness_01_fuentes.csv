@@ -1,0 +1,7 @@
+﻿source_id;nombre;titulo;url;notas
+FIT_SRC001;wger;Open-source workout manager and REST API;https://wger.readthedocs.io/en/2.0/;Referencia pública/open-source para ejercicios, músculos y equipamiento. Revisar licencia de datos concretos si se importa contenido literal.
+FIT_SRC002;wger PyPI;wger license notes;https://pypi.org/project/wger/;"La app usa AGPL; datos iniciales pueden tener licencias Creative Commons individuales. No se copia contenido literal."
+FIT_SRC003;ExerciseDB;Exercise database/API;https://github.com/exercisedb/exercisedb-api;Referencia de estructura: ejercicios, equipamiento, grupos musculares, instrucciones, recursos visuales.
+FIT_SRC004;MuscleWiki API;Exercise database with video demonstrations;https://api.musclewiki.com/;Referencia de estructura comercial: ejercicios, vídeos, músculos y rutinas.
+FIT_SRC005;ExRx;Exercise directory and muscle reference;https://exrx.net/;Referencia general para clasificación de ejercicios por músculos y equipamiento. No se copia texto literal.
+FIT_SRC006;Body Muscles;Body map / muscle region IDs;https://vulovix.github.io/body-muscles/;Mapa anatómico Apache 2.0 usado como base visual de regiones.

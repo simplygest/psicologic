@@ -3,10 +3,12 @@ session_start();
 require_once '../db.php';
 require_once '../redsys/apiRedsys.php';
 require_once '../payment_helpers.php';
+require_once '../dashboard_config_helpers.php';
 header('Content-Type: application/json');
 
 $action = $_GET['action'] ?? '';
 $user_id = $_SESSION['user_id'] ?? null;
+$tenant_id = current_tenant_id();
 $is_admin = in_array(($_SESSION['role'] ?? ''), ['admin', 'superadmin'], true);
 
 function app_base_url()
@@ -20,6 +22,16 @@ function app_base_url()
 
 if (!in_array($action, ['create_redsys_form', 'create_bonus_redsys_form'], true)) {
     echo json_encode(['success' => false, 'error' => 'Accion invalida']);
+    exit;
+}
+
+if (!app_feature_enabled_from_db($mysqli, 'onlinePayments.enabled', false) || !app_feature_enabled_from_db($mysqli, 'payments.online', false)) {
+    echo json_encode(['success' => false, 'error' => 'El pago online no esta disponible en este plan']);
+    exit;
+}
+
+if ($action === 'create_bonus_redsys_form' && !app_feature_enabled_from_db($mysqli, 'bonuses.enabled', false)) {
+    echo json_encode(['success' => false, 'error' => 'La compra de bonos no esta disponible en este plan']);
     exit;
 }
 
@@ -57,7 +69,7 @@ $settings_res = $mysqli->query("
            appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price,
            app_name
     FROM payment_settings
-    WHERE id = 1
+    WHERE tenant_id = $tenant_id
 ");
 $settings = $settings_res->fetch_assoc();
 
@@ -103,15 +115,15 @@ if ($action === 'create_redsys_form') {
                COALESCE(a.payment_status, 'pending') AS payment_status,
                u.name
         FROM appointments a
-        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
-        LEFT JOIN appointment_services s ON s.id = so.service_id
-        JOIN users u ON a.user_id = u.id
-        WHERE $lookup_where AND a.status = 'booked'
+        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id AND so.tenant_id = a.tenant_id
+        LEFT JOIN appointment_services s ON s.id = so.service_id AND s.tenant_id = a.tenant_id
+        JOIN users u ON a.user_id = u.id AND u.tenant_id = a.tenant_id
+        WHERE a.tenant_id = ? AND $lookup_where AND a.status = 'booked'
     ");
     if ($cancel_token) {
-        $stmt->bind_param("s", $cancel_token);
+        $stmt->bind_param("is", $tenant_id, $cancel_token);
     } else {
-        $stmt->bind_param("i", $appointment_id);
+        $stmt->bind_param("ii", $tenant_id, $appointment_id);
     }
     $stmt->execute();
     $appointment = $stmt->get_result()->fetch_assoc();
@@ -140,10 +152,10 @@ if ($action === 'create_redsys_form') {
     $stmt = $mysqli->prepare("
         SELECT id, name, session_count, price
         FROM appointment_bonuses
-        WHERE id = ? AND is_active = 1
+        WHERE tenant_id = ? AND id = ? AND is_active = 1
         LIMIT 1
     ");
-    $stmt->bind_param("i", $bonus_id);
+    $stmt->bind_param("ii", $tenant_id, $bonus_id);
     $stmt->execute();
     $bonus = $stmt->get_result()->fetch_assoc();
 
@@ -170,10 +182,10 @@ $order = sprintf('%04d%06d', $order_seed % 10000, random_int(0, 999999));
 $token = hash('sha256', $purchase_type . '|' . ($appointment_id ?: 0) . '|' . ($bonus_id ?: 0) . '|' . $attempt_user_id . '|' . $order . '|' . $amount_cents);
 
 $stmt = $mysqli->prepare("
-    INSERT INTO payment_attempts (appointment_id, user_id, token, redsys_order, amount_cents, payment_method, purchase_type, bonus_id, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Iniciado')
+    INSERT INTO payment_attempts (tenant_id, appointment_id, user_id, token, redsys_order, amount_cents, payment_method, purchase_type, bonus_id, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Iniciado')
 ");
-$stmt->bind_param("iississi", $appointment_id, $attempt_user_id, $token, $order, $amount_cents, $payment_method, $purchase_type, $bonus_id);
+$stmt->bind_param("iiississi", $tenant_id, $appointment_id, $attempt_user_id, $token, $order, $amount_cents, $payment_method, $purchase_type, $bonus_id);
 $stmt->execute();
 $payment_attempt_id = $mysqli->insert_id;
 
@@ -181,9 +193,9 @@ if ($purchase_type === 'appointment') {
     $stmt = $mysqli->prepare("
         UPDATE appointments
         SET payment_status = 'pending', payment_method = ?, payment_attempt_id = ?
-        WHERE id = ?
+        WHERE tenant_id = ? AND id = ?
     ");
-    $stmt->bind_param("sii", $payment_method, $payment_attempt_id, $appointment_id);
+    $stmt->bind_param("siii", $payment_method, $payment_attempt_id, $tenant_id, $appointment_id);
     $stmt->execute();
 }
 

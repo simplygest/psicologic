@@ -1,0 +1,13 @@
+﻿area_id;nombre;descripcion
+LOG_A001;Habla y articulación;Producción de sonidos, inteligibilidad, fonemas, articulación y fonología.
+LOG_A002;Lenguaje infantil;Comprensión, expresión, vocabulario, morfosintaxis, narración y desarrollo comunicativo.
+LOG_A003;Fluidez;Tartamudez, cluttering/taquifemia, bloqueos, repeticiones y evitación comunicativa.
+LOG_A004;Voz;Disfonía, higiene vocal, fatiga vocal, resonancia y uso profesional de la voz.
+LOG_A005;Deglución y alimentación;Disfagia, alimentación pediátrica, seguridad, eficiencia y funciones orales.
+LOG_A006;Lectoescritura;Conciencia fonológica, lectura, escritura, comprensión lectora y apoyo escolar.
+LOG_A007;Neurorehabilitación del lenguaje;Afasia, comunicación funcional, daño cerebral, ictus y rehabilitación comunicativa adulta.
+LOG_A008;Habla motora;Disartria, apraxia del habla, control motor, coordinación y prosodia.
+LOG_A009;Comunicación social y pragmática;Turnos, conversación, inferencias, intención comunicativa y adecuación contextual.
+LOG_A010;Comunicación aumentativa y alternativa;Sistemas CAA, apoyos visuales, comunicación funcional y participación.
+LOG_A011;Terapia miofuncional orofacial;Respiración oral, deglución atípica, postura lingual, praxias y funciones orales.
+LOG_A012;Audición y comunicación;Apoyo comunicativo en hipoacusia, discriminación auditiva y entrenamiento auditivo-verbal.
