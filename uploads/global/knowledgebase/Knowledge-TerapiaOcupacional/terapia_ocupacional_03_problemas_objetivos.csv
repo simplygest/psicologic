@@ -1,0 +1,48 @@
+﻿problema_id;area_id;nombre;alias;descripcion;poblacion;nivel_riesgo;fuente_ids
+TO_P001;TO_A001;Dificultad para vestirse;Vestido;Limitación para elegir ropa, ponerse/quitarse prendas, botones, cremalleras o calzado.;Adultos/Mayores/Pediatría;medio;"TO_SRC001;TO_SRC011"
+TO_P002;TO_A001;Dificultad para baño e higiene;Baño/aseo;Dificultad para ducharse, lavarse, secarse o mantener seguridad en baño.;Adultos/Mayores;alto;"TO_SRC001;TO_SRC011"
+TO_P003;TO_A001;Dificultad para alimentación;Comer/beber;Dificultad para usar cubiertos, cortar alimentos o llevar comida a la boca.;Adultos/Mayores/Pediatría;medio;"TO_SRC001;TO_SRC011"
+TO_P004;TO_A001;Dificultad para aseo personal;Grooming;Limitación en peinarse, lavarse dientes, afeitarse o cuidado personal.;Adultos/Mayores/Pediatría;bajo;"TO_SRC001;TO_SRC011"
+TO_P005;TO_A001;Dificultad en uso del WC;Toileting;Limitación para transferirse, gestionar ropa, higiene y seguridad en baño.;Adultos/Mayores;alto;"TO_SRC001;TO_SRC011"
+TO_P006;TO_A002;Dificultad para cocinar;Preparación de comidas;Limitación para planificar, preparar, cocinar y recoger con seguridad.;Adultos/Mayores;medio;"TO_SRC001;TO_SRC012"
+TO_P007;TO_A002;Dificultad para compras;Compras/comunidad;Problemas para planificar lista, desplazarse, elegir productos, pagar y regresar.;Adultos/Mayores;medio;"TO_SRC001;TO_SRC012"
+TO_P008;TO_A002;Dificultad en manejo de medicación;Medicación;Dificultad para organizar, recordar o tomar medicación según pauta indicada.;Adultos/Mayores;alto;"TO_SRC001;TO_SRC012"
+TO_P009;TO_A002;Dificultad en gestión del hogar;Tareas domésticas;Limitación para limpieza, lavandería, organización y mantenimiento básico.;Adultos/Mayores;medio;"TO_SRC001;TO_SRC012"
+TO_P010;TO_A002;Dificultad para transporte/comunidad;Movilidad comunitaria;Limitación para usar transporte, orientarse o desplazarse seguro en comunidad.;Adultos/Mayores;medio;"TO_SRC001;TO_SRC006"
+TO_P011;TO_A003;Dificultad en transferencias;Transferencias;Problemas para pasar cama-silla, silla-WC, ducha o coche con seguridad.;Adultos/Mayores;alto;"TO_SRC001;TO_SRC006"
+TO_P012;TO_A003;Riesgo de caídas en actividades cotidianas;Caídas;Riesgo durante baño, vestido, desplazamientos, cocina o comunidad.;Adultos/Mayores;alto;"TO_SRC001;TO_SRC006"
+TO_P013;TO_A003;Baja tolerancia a la actividad;Resistencia funcional;Fatiga o baja resistencia para completar rutinas diarias.;Adultos/Mayores;medio;"TO_SRC006;TO_SRC005"
+TO_P014;TO_A004;Dificultad de agarre y manipulación;Destreza manual;Problemas para coger objetos, abrir envases, abotonar, escribir o usar herramientas.;Adultos/Mayores/Pediatría;medio;TO_SRC001
+TO_P015;TO_A004;Dificultad de coordinación bimanual;Uso de ambas manos;Limitación para tareas que requieren cooperación de ambas manos.;Adultos/Pediatría;medio;TO_SRC001
+TO_P016;TO_A004;Limitación funcional de extremidad superior;Uso funcional brazo/mano;Limitación de alcance, carga, manipulación o uso del brazo en ocupaciones.;Adultos/Mayores;medio;"TO_SRC001;TO_SRC007"
+TO_P017;TO_A004;Dificultad de escritura funcional;Grafomotricidad/escritura;Problemas para escribir de forma legible, funcional o sostenida.;Pediatría/Adultos;bajo;TO_SRC001
+TO_P018;TO_A005;Dificultad de memoria funcional;Memoria cotidiana;Olvidos que afectan medicación, citas, tareas, seguridad o rutinas.;Adultos/Mayores;medio;"TO_SRC006;TO_SRC008"
+TO_P019;TO_A005;Dificultad de planificación y secuenciación;Funciones ejecutivas;Problemas para ordenar pasos, iniciar, continuar o completar actividades.;Adultos/Mayores/Pediatría;medio;TO_SRC006
+TO_P020;TO_A005;Dificultad de atención sostenida;Atención funcional;Limitación para mantener atención en tareas, estudio, trabajo o autocuidado.;Adultos/Pediatría;medio;TO_SRC006
+TO_P021;TO_A006;Desorientación en demencia;Orientación/rutina;Dificultad de orientación temporal, espacial o de rutina en persona con demencia.;Mayores;alto;"TO_SRC008;TO_SRC009"
+TO_P022;TO_A006;Pérdida de independencia en demencia;Autonomía en demencia;Reducción progresiva de participación en ABVD/AIVD y roles cotidianos.;Mayores;alto;"TO_SRC008;TO_SRC009"
+TO_P023;TO_A006;Sobrecarga del cuidador;Cuidador;Carga física/emocional por apoyo continuado a persona dependiente.;Cuidadores;medio;"TO_SRC008;TO_SRC009"
+TO_P024;TO_A007;Heminegligencia / inatención unilateral;Neglect;Dificultad para atender un lado del cuerpo o entorno tras daño neurológico.;Adultos;alto;"TO_SRC007;TO_SRC006"
+TO_P025;TO_A007;Dificultad para retorno a actividades tras ictus;Reintegración post-ictus;Limitación para retomar autocuidado, hogar, ocio o trabajo tras ictus.;Adultos;alto;"TO_SRC007;TO_SRC006"
+TO_P026;TO_A007;Apraxia funcional;Apraxia;Dificultad para realizar acciones aprendidas o secuencias pese a capacidad motora suficiente.;Adultos;alto;"TO_SRC006;TO_SRC007"
+TO_P027;TO_A008;Retraso en motricidad fina;Motricidad fina infantil;Dificultad en pinza, recorte, ensartado, dibujo, escritura o manipulación pequeña.;Pediatría;bajo;TO_SRC001
+TO_P028;TO_A008;Dificultad en juego funcional;Juego;Limitación para explorar, jugar, imaginar, compartir o seguir reglas según edad.;Pediatría;medio;TO_SRC001
+TO_P029;TO_A008;Dificultad de autonomía escolar;Participación escolar;Problemas en materiales, escritura, organización, comedor, recreo o aula.;Pediatría;medio;TO_SRC001
+TO_P030;TO_A009;Hipersensibilidad sensorial;Procesamiento sensorial;Respuesta intensa o evitación ante sonidos, texturas, luces, movimiento o tacto.;Pediatría/Adultos;medio;TO_SRC001
+TO_P031;TO_A009;Búsqueda sensorial / baja regulación;Regulación sensorial;Necesidad elevada de movimiento, presión, estímulos o dificultad para autorregularse.;Pediatría;medio;TO_SRC001
+TO_P032;TO_A009;Dificultad de planificación motora;Praxis infantil;Problemas para idear, planificar y ejecutar acciones motoras nuevas.;Pediatría;medio;TO_SRC001
+TO_P033;TO_A010;Desorganización de rutinas por salud mental;Rutina ocupacional;Dificultad para mantener autocuidado, sueño, comidas, actividad y roles.;Adultos;medio;"TO_SRC001;TO_SRC006"
+TO_P034;TO_A010;Baja motivación / anhedonia ocupacional;Participación reducida;Reducción de participación en actividades significativas o placenteras.;Adultos;medio;TO_SRC001
+TO_P035;TO_A010;Aislamiento social funcional;Participación social;Dificultad para iniciar o mantener participación social significativa.;Adultos/Mayores;medio;TO_SRC006
+TO_P036;TO_A011;Dificultad para retorno al trabajo;Trabajo;Limitación para retomar trabajo por fatiga, dolor, cognición, movilidad o entorno.;Adultos;medio;"TO_SRC001;TO_SRC006"
+TO_P037;TO_A011;Problemas ergonómicos en puesto;Ergonomía;Mal ajuste de entorno, postura, herramientas o hábitos que dificultan rendimiento.;Adultos;bajo;TO_SRC001
+TO_P038;TO_A011;Dificultad de organización académica;Estudio;Problemas para planificar, iniciar tareas, gestionar materiales y entregar trabajos.;Pediatría/Adultos;bajo;TO_SRC001
+TO_P039;TO_A012;Barreras en el hogar;Accesibilidad vivienda;Obstáculos físicos o ambientales que limitan seguridad o participación.;Adultos/Mayores;alto;"TO_SRC006;TO_SRC001"
+TO_P040;TO_A012;Necesidad de ayudas técnicas;Productos de apoyo;Necesidad de seleccionar, entrenar o adaptar ayudas para ocupaciones diarias.;Adultos/Mayores/Pediatría;medio;TO_SRC001
+TO_P041;TO_A012;Riesgo ambiental en baño/cocina;Seguridad hogar;Riesgos por superficies, altura, iluminación, alfombras, utensilios o distribución.;Adultos/Mayores;alto;TO_SRC006
+TO_P042;TO_A013;Fatiga crónica en actividades diarias;Fatiga funcional;Dificultad para distribuir energía y completar tareas significativas.;Adultos;medio;"TO_SRC005;TO_SRC006"
+TO_P043;TO_A013;Dolor que limita ocupaciones;Dolor funcional;Dolor que interfiere en autocuidado, trabajo, hogar u ocio.;Adultos/Mayores;medio;"TO_SRC005;TO_SRC006"
+TO_P044;TO_A013;Dificultad para conservación de energía;Pacing;Problemas para alternar actividad-descanso y priorizar tareas.;Adultos/Mayores;bajo;TO_SRC005
+TO_P045;TO_A014;Pérdida de ocio significativo;Ocio;Reducción de actividades placenteras o significativas por salud, entorno o roles.;Adultos/Mayores;bajo;"TO_SRC001;TO_SRC006"
+TO_P046;TO_A014;Reducción de participación comunitaria;Comunidad;Dificultad para participar en actividades de comunidad, ocio, voluntariado o relaciones.;Adultos/Mayores;medio;TO_SRC006
+TO_P047;TO_A014;Dificultad para roles familiares;Roles familiares;Limitación para participar en crianza, cuidado familiar o responsabilidades domésticas.;Adultos;medio;TO_SRC001

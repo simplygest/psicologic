@@ -1,0 +1,31 @@
+﻿tecnica_id;nombre;descripcion;nivel_riesgo
+PSP_T001;Evaluación psicopedagógica inicial;Historia, demanda, contexto, rendimiento, observación y objetivos.;medio
+PSP_T002;Análisis de tarea académica;Descomponer tarea en demandas cognitivas, lingüísticas, motoras y ejecutivas.;bajo
+PSP_T003;Instrucción explícita;Modelado, explicación clara, práctica guiada y práctica independiente.;bajo
+PSP_T004;Andamiaje gradual;Apoyos temporales que se retiran progresivamente.;bajo
+PSP_T005;Práctica guiada y feedback;Entrenamiento con corrección inmediata, ejemplos y retroalimentación específica.;bajo
+PSP_T006;Conciencia fonológica;Rimas, sílabas, fonemas, segmentación, mezcla y manipulación sonora.;bajo
+PSP_T007;Decodificación y fluidez lectora;Correspondencia letra-sonido, lectura repetida, precisión y automatización.;bajo
+PSP_T008;Estrategias de comprensión lectora;Predicción, preguntas, idea principal, inferencias, resumen y monitorización.;bajo
+PSP_T009;Vocabulario académico;Enseñanza explícita de palabras, morfología, contexto y mapas semánticos.;bajo
+PSP_T010;Planificación de escritura;Lluvia de ideas, organizadores, estructura textual y objetivos del texto.;bajo
+PSP_T011;Revisión y edición de textos;Checklist, lectura en voz alta, revisión por partes y mejora de borradores.;bajo
+PSP_T012;Ortografía estructurada;Reglas, patrones, práctica distribuida y autocorrección.;bajo
+PSP_T013;Sentido numérico y representación;Manipulativos, recta numérica, descomposición, dibujos y modelos.;bajo
+PSP_T014;Resolución de problemas matemáticos;Comprensión del enunciado, representación, plan, ejecución y verificación.;bajo
+PSP_T015;Automatización de hechos básicos;Práctica breve, distribuida, recuperación activa y seguimiento de progreso.;bajo
+PSP_T016;Entrenamiento en funciones ejecutivas;Planificación, memoria de trabajo, inhibición, flexibilidad y monitorización.;medio
+PSP_T017;Apoyos externos de organización;Agenda, checklist, calendario, temporizador, carpetas y sistemas visuales.;bajo
+PSP_T018;Repaso espaciado;Distribución de repasos en el tiempo para consolidar aprendizaje.;bajo
+PSP_T019;Práctica de recuperación;Evocar información sin mirar antes de revisar: test, tarjetas, preguntas.;bajo
+PSP_T020;Técnica Pomodoro / bloques de estudio;Bloques breves de concentración con descansos planificados.;bajo
+PSP_T021;Metacognición y autoevaluación;Planificar, supervisar y evaluar el propio aprendizaje.;bajo
+PSP_T022;Motivación y objetivos SMART;Metas concretas, progreso visible, elección y refuerzo de esfuerzo.;bajo
+PSP_T023;Autorregulación emocional académica;Identificar emoción, pausa, estrategia, reencuadre y vuelta a tarea.;medio
+PSP_T024;Preparación de exámenes y simulacros;Plan, práctica con formato real, análisis de errores y gestión del tiempo.;bajo
+PSP_T025;Diseño Universal para el Aprendizaje;Múltiples formas de implicación, representación y expresión.;bajo
+PSP_T026;Adaptaciones educativas;Ajustes de acceso, tiempo, formato, evaluación y apoyos individualizados.;medio
+PSP_T027;Coordinación familia-escuela;Objetivos compartidos, pautas, seguimiento y comunicación entre contextos.;medio
+PSP_T028;Informe psicopedagógico;Síntesis de evaluación, necesidades, objetivos, recomendaciones y seguimiento.;medio
+PSP_T029;Seguimiento de progreso;Indicadores, registros, pruebas breves, revisión de objetivos y evolución.;bajo
+PSP_T030;Derivación / límites profesionales;Identificar señales que requieren psicología clínica, logopedia, neuropsicología, pediatría u otros.;alto

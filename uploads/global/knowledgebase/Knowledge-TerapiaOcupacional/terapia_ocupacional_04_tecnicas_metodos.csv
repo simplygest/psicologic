@@ -1,0 +1,31 @@
+﻿tecnica_id;nombre;descripcion;nivel_riesgo
+TO_T001;Valoración ocupacional inicial;Historia ocupacional, roles, rutinas, prioridades, entorno, participación y objetivos.;medio
+TO_T002;Análisis de actividad;Descomposición de actividad en pasos, demandas, habilidades y barreras/facilitadores.;bajo
+TO_T003;Entrenamiento en ABVD;Práctica graduada de vestido, baño, higiene, alimentación, WC y autocuidado.;medio
+TO_T004;Entrenamiento en AIVD;Práctica de cocina, compras, medicación, hogar, finanzas y transporte.;medio
+TO_T005;Adaptación de actividad;Modificar tarea, método, entorno, herramienta o nivel de ayuda.;bajo
+TO_T006;Graduación de actividad;Ajuste progresivo de dificultad, duración, asistencia, precisión o contexto.;bajo
+TO_T007;Productos de apoyo;Selección y entrenamiento en ayudas técnicas.;medio
+TO_T008;Adaptación del entorno;Modificación de hogar, baño, cocina, puesto o aula.;medio
+TO_T009;Prevención de caídas;Identificación de riesgos, estrategias de seguridad, entorno y hábitos.;alto
+TO_T010;Entrenamiento en transferencias;Práctica segura de transferencias cama-silla-WC-ducha-coche.;alto
+TO_T011;Conservación de energía;Priorización, planificación, descansos, pacing, simplificación y ergonomía.;bajo
+TO_T012;Autogestión y educación;Educación práctica para síntomas, rutina, energía, seguridad y participación.;bajo
+TO_T013;Entrenamiento motor funcional;Movimiento dentro de actividades significativas y tareas funcionales.;medio
+TO_T014;Destreza manual y coordinación;Agarre, pinza, manipulación y coordinación bimanual.;bajo
+TO_T015;Reentrenamiento cognitivo funcional;Estrategias compensatorias, secuenciación, memoria, atención y resolución en tareas reales.;medio
+TO_T016;Apoyos externos de memoria;Agendas, alarmas, listas, pictogramas, etiquetas y rutinas visuales.;bajo
+TO_T017;Rutinas y estructuración diaria;Diseño de rutinas, horarios, hábitos y bloques de actividad.;bajo
+TO_T018;Intervención en demencia;Adaptación de entorno, rutina, actividad significativa, cuidador y seguridad.;alto
+TO_T019;Entrenamiento a cuidadores;Ayuda graduada, comunicación, seguridad, transferencia y autocuidado del cuidador.;medio
+TO_T020;Rehabilitación post-ictus funcional;Actividades significativas, compensación, adaptación y participación tras ictus.;alto
+TO_T021;Intervención en negligencia/apraxia;Estrategias visuales, guía, secuenciación y adaptación de actividad.;alto
+TO_T022;Juego terapéutico;Juego para habilidades motoras, sociales, cognitivas o sensoriales.;bajo
+TO_T023;Integración/modulación sensorial;Estrategias sensoriales para regulación y participación.;medio
+TO_T024;Intervención escolar;Adaptación de tareas escolares, materiales, organización, escritura y participación.;medio
+TO_T025;Ergonomía y retorno laboral;Análisis de puesto, adaptación, graduación y estrategias de retorno.;medio
+TO_T026;Actividad significativa / activación ocupacional;Programación de actividades significativas para participación y bienestar.;bajo
+TO_T027;Participación social y comunitaria;Planificación de actividades sociales, ocio y comunidad.;bajo
+TO_T028;Coordinación interdisciplinar;Coordinación con familia, escuela, médico, fisio, logo, trabajo social u otros.;medio
+TO_T029;Seguimiento funcional y resultados;Medición de desempeño, satisfacción, independencia, participación y evolución.;bajo
+TO_T030;Derivación / signos de alarma;Identificación de riesgos médicos, seguridad, caídas, disfagia, maltrato o urgencia.;alto

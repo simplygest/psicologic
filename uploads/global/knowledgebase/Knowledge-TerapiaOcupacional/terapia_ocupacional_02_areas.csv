@@ -1,0 +1,15 @@
+﻿area_id;nombre;descripcion
+TO_A001;Actividades básicas de la vida diaria (ABVD);Vestido, aseo, alimentación, baño, higiene, uso del WC y movilidad básica.
+TO_A002;Actividades instrumentales de la vida diaria (AIVD);Cocina, compras, medicación, finanzas, transporte, hogar y comunidad.
+TO_A003;Movilidad funcional y transferencias;Cama, silla, baño, marcha funcional, equilibrio y seguridad.
+TO_A004;Extremidad superior y destreza manual;Uso funcional de mano/brazo, coordinación, agarre, alcance, escritura y manipulación.
+TO_A005;Cognición funcional;Memoria, atención, secuenciación, planificación y resolución de problemas.
+TO_A006;Demencia y neurocognición;Rutinas, orientación, entorno, participación, cuidador y autonomía.
+TO_A007;Daño cerebral / ictus;Reaprendizaje funcional, heminegligencia, participación, actividades y adaptación.
+TO_A008;Pediatría y desarrollo;Juego, autonomía, motricidad fina, coordinación, integración sensorial y escuela.
+TO_A009;Procesamiento sensorial;Regulación, tolerancia sensorial, planificación motora y participación.
+TO_A010;Salud mental y rutina ocupacional;Rutinas, autocuidado, motivación, roles, participación social y actividades significativas.
+TO_A011;Trabajo, estudio y ergonomía;Puesto, retorno al trabajo/estudio, energía, ergonomía y productividad.
+TO_A012;Entorno, ayudas técnicas y accesibilidad;Adaptaciones del hogar, productos de apoyo, prevención de caídas y barreras/facilitadores.
+TO_A013;Dolor, fatiga y conservación de energía;Planificación, pacing, adaptación de actividad, descanso y autogestión.
+TO_A014;Participación social y ocio;Roles, ocio, comunidad, relaciones, participación y calidad de vida.

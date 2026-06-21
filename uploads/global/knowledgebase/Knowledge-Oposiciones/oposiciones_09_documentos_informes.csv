@@ -1,0 +1,15 @@
+﻿documento_id;nombre;tipo;descripcion;problema_ids;nivel_riesgo
+OPO_DOC001;Ficha inicial del opositor;Formulario;Datos de oposición, convocatoria, disponibilidad, temario y objetivo.;Todos;bajo
+OPO_DOC002;Plan maestro de preparación;Plan;Calendario, vueltas, simulacros, repasos y prioridades.;Todos;bajo
+OPO_DOC003;Plan semanal de tareas;Plan;Tareas concretas por día, técnica, tema y evidencia de cumplimiento.;Todos;bajo
+OPO_DOC004;Informe semanal de seguimiento;Informe;Avance, tareas, métricas, incidencias y próximos pasos.;Todos;bajo
+OPO_DOC005;Informe mensual de evolución;Informe;Tendencias, simulacros, adherencia, riesgos y ajustes.;Todos;bajo
+OPO_DOC006;Plantilla de análisis de simulacro;Documento;Nota, aciertos, fallos, blancos, tiempo y clasificación de errores.;Tipo test;bajo
+OPO_DOC007;Plantilla de banco de errores;Documento;Error, causa, corrección, tema relacionado y fecha de repaso.;Todos;bajo
+OPO_DOC008;Plan de repaso espaciado;Plan;Fechas de repaso por tema y nivel de recuerdo.;Todos;bajo
+OPO_DOC009;Rúbrica de tema desarrollado;Rúbrica;Estructura, contenido, precisión, claridad, tiempo y presentación.;Desarrollo;bajo
+OPO_DOC010;Rúbrica de supuesto práctico;Rúbrica;Hechos, normativa, razonamiento, conclusión y claridad.;Supuestos;bajo
+OPO_DOC011;Plan fase final / último mes;Plan;Repasos críticos, simulacros, descanso, logística y estrategia.;Todos;medio
+OPO_DOC012;Checklist día de examen;Checklist;Documentación, horario, desplazamiento, material, descanso y estrategia.;Todos;bajo
+OPO_DOC013;Control de versiones del temario;Documento;Tema, fuente, fecha, cambios, responsable y estado.;Jurídicas/Administrativas;medio
+OPO_DOC014;Hoja de derivación por ansiedad/bloqueo;Documento;Señales observadas, recomendación de derivación y límites del servicio.;Todos;alto

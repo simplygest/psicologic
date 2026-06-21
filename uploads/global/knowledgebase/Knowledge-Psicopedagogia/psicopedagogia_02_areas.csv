@@ -1,0 +1,13 @@
+﻿area_id;nombre;descripcion
+PSP_A001;Lectura inicial y decodificación;Conciencia fonológica, correspondencia grafema-fonema, precisión y fluidez inicial.
+PSP_A002;Comprensión lectora;Vocabulario, inferencias, idea principal, resumen, estrategias y monitorización.
+PSP_A003;Escritura y expresión escrita;Planificación, redacción, ortografía, revisión, estructura textual y grafomotricidad.
+PSP_A004;Matemáticas y cálculo;Sentido numérico, operaciones, hechos aritméticos, cálculo y resolución de problemas.
+PSP_A005;Atención y funciones ejecutivas;Planificación, organización, memoria de trabajo, inhibición, flexibilidad y seguimiento de instrucciones.
+PSP_A006;Técnicas de estudio y aprendizaje;Métodos de estudio, repaso espaciado, práctica de recuperación, toma de apuntes y exámenes.
+PSP_A007;Motivación y autorregulación académica;Metas, autonomía, hábitos, tolerancia a frustración, perseverancia y autoevaluación.
+PSP_A008;Necesidades educativas específicas;Dificultades de aprendizaje, TDAH, altas capacidades, adaptación y coordinación.
+PSP_A009;Organización escolar y hábitos;Agenda, mochila, materiales, deberes, horarios, entregas y rutinas.
+PSP_A010;Orientación familiar y escolar;Pautas a familia, coordinación con colegio, informes, adaptaciones y seguimiento.
+PSP_A011;Habilidades socioemocionales en aprendizaje;Autoestima académica, ansiedad ante exámenes, comunicación y participación.
+PSP_A012;Diseño universal y accesibilidad del aprendizaje;UDL, apoyos visuales, formatos alternativos, andamiaje y participación inclusiva.

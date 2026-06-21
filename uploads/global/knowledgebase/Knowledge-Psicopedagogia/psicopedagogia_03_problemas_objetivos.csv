@@ -1,0 +1,43 @@
+﻿problema_id;area_id;nombre;alias;descripcion;poblacion;nivel_riesgo;fuente_ids
+PSP_P001;PSP_A001;Dificultad en conciencia fonológica;Conciencia de sonidos;Dificultad para identificar, segmentar, mezclar o manipular sílabas/fonemas.;Infantil/Primaria;medio;PSP_SRC003
+PSP_P002;PSP_A001;Dificultad de decodificación;Lectura de palabras;Problemas para asociar letras-sonidos y leer palabras con precisión.;Primaria;medio;"PSP_SRC003;PSP_SRC002"
+PSP_P003;PSP_A001;Lectura lenta o poco fluida;Fluidez lectora;Lectura con baja velocidad, excesivas pausas o escasa automatización.;Primaria/Secundaria;medio;"PSP_SRC002;PSP_SRC003"
+PSP_P004;PSP_A001;Errores frecuentes en lectura;Precisión lectora;Sustituciones, omisiones, inversiones o errores persistentes al leer.;Primaria;medio;"PSP_SRC002;PSP_SRC003"
+PSP_P005;PSP_A002;Baja comprensión lectora;Comprensión;Dificultad para extraer significado, recordar información o integrar ideas.;Primaria/Secundaria;medio;"PSP_SRC004;PSP_SRC002"
+PSP_P006;PSP_A002;Dificultad para inferir;Inferencias;Problemas para deducir información implícita o conectar texto con conocimiento previo.;Primaria/Secundaria;medio;PSP_SRC004
+PSP_P007;PSP_A002;Dificultad para resumir;Resumen/idea principal;Problemas para identificar ideas principales y resumir textos.;Primaria/Secundaria;bajo;"PSP_SRC004;PSP_SRC002"
+PSP_P008;PSP_A002;Vocabulario académico limitado;Vocabulario;Dificultad con palabras académicas o específicas de materias.;Primaria/Secundaria;bajo;PSP_SRC004
+PSP_P009;PSP_A003;Dificultad de planificación escrita;Planificar textos;Problemas para organizar ideas antes de escribir.;Primaria/Secundaria;bajo;"PSP_SRC005;PSP_SRC006"
+PSP_P010;PSP_A003;Redacción desorganizada;Estructura textual;Textos sin estructura clara, coherencia o secuencia.;Primaria/Secundaria;medio;"PSP_SRC005;PSP_SRC006"
+PSP_P011;PSP_A003;Dificultades ortográficas;Ortografía;Errores frecuentes de ortografía natural o arbitraria.;Primaria/Secundaria;bajo;PSP_SRC005
+PSP_P012;PSP_A003;Baja revisión de textos;Revisión;No detecta ni corrige errores de contenido, estructura u ortografía.;Primaria/Secundaria;bajo;"PSP_SRC005;PSP_SRC006"
+PSP_P013;PSP_A003;Grafomotricidad / escritura lenta;Escritura manual;Dificultad de legibilidad, velocidad o fatiga al escribir.;Infantil/Primaria;medio;PSP_SRC005
+PSP_P014;PSP_A004;Dificultad en sentido numérico;Número/cantidad;Problemas con magnitudes, comparación, descomposición y valor posicional.;Primaria;medio;PSP_SRC007
+PSP_P015;PSP_A004;Dificultad en cálculo básico;Operaciones;Problemas para automatizar sumas, restas, multiplicaciones o divisiones.;Primaria;medio;PSP_SRC007
+PSP_P016;PSP_A004;Dificultad en resolución de problemas;Problemas matemáticos;Problemas para comprender enunciado, elegir operación, representar y verificar.;Primaria/Secundaria;medio;PSP_SRC008
+PSP_P017;PSP_A004;Ansiedad o bloqueo ante matemáticas;Bloqueo matemático;Evitación o ansiedad específica ante tareas matemáticas.;Primaria/Secundaria;medio;"PSP_SRC007;PSP_SRC011"
+PSP_P018;PSP_A005;Dificultad de atención sostenida;Atención;Problemas para mantener foco en tareas escolares o estudio.;Primaria/Secundaria;medio;"PSP_SRC011;PSP_SRC012;PSP_SRC013"
+PSP_P019;PSP_A005;Dificultad de memoria de trabajo;Memoria de trabajo;Problemas para retener instrucciones, pasos, datos o información mientras trabaja.;Primaria/Secundaria;medio;"PSP_SRC011;PSP_SRC012"
+PSP_P020;PSP_A005;Dificultad de planificación;Planificación ejecutiva;Problemas para anticipar pasos, tiempos, materiales o entregas.;Primaria/Secundaria;medio;"PSP_SRC011;PSP_SRC012"
+PSP_P021;PSP_A005;Dificultad de inhibición / impulsividad académica;Impulsividad;Responde sin revisar, interrumpe, empieza sin leer o comete errores por prisa.;Primaria/Secundaria;medio;"PSP_SRC011;PSP_SRC012;PSP_SRC013"
+PSP_P022;PSP_A005;Baja flexibilidad cognitiva;Flexibilidad;Dificultad para cambiar estrategia, corregir errores o adaptarse a cambios.;Primaria/Secundaria;medio;"PSP_SRC011;PSP_SRC012"
+PSP_P023;PSP_A006;Mal método de estudio;Técnicas de estudio;Estudia leyendo/subrayando sin recuperación activa ni planificación.;Primaria/Secundaria/Oposiciones;bajo;"PSP_SRC001;PSP_SRC011"
+PSP_P024;PSP_A006;Baja retención a medio plazo;Memorización;Olvida contenido por falta de repaso espaciado y recuperación.;Primaria/Secundaria/Oposiciones;bajo;PSP_SRC001
+PSP_P025;PSP_A006;Dificultad para preparar exámenes;Preparación de exámenes;No planifica, no practica formato examen o no revisa errores.;Primaria/Secundaria/Oposiciones;bajo;PSP_SRC001
+PSP_P026;PSP_A006;Falta de estrategia en apuntes;Apuntes;Apuntes incompletos, desorganizados o poco útiles para estudiar.;Secundaria/Oposiciones;bajo;PSP_SRC001
+PSP_P027;PSP_A007;Baja motivación académica;Motivación;Poca implicación, abandono de tareas o falta de sentido en el aprendizaje.;Primaria/Secundaria;medio;"PSP_SRC011;PSP_SRC009"
+PSP_P028;PSP_A007;Baja tolerancia a la frustración escolar;Frustración;Abandona al equivocarse, evita tareas difíciles o se bloquea.;Primaria/Secundaria;medio;PSP_SRC011
+PSP_P029;PSP_A007;Dependencia excesiva del adulto;Autonomía académica;Necesita supervisión constante para iniciar o terminar tareas.;Primaria/Secundaria;bajo;"PSP_SRC011;PSP_SRC012"
+PSP_P030;PSP_A008;Sospecha de dificultad específica de aprendizaje;DEA;Dificultad persistente en lectura, escritura o matemáticas que requiere evaluación profesional.;Primaria/Secundaria;alto;PSP_SRC001
+PSP_P031;PSP_A008;Necesidad de adaptación educativa;Adaptaciones;Necesita ajustes de acceso, tiempo, formato, apoyo visual o evaluación.;Primaria/Secundaria;medio;"PSP_SRC009;PSP_SRC010"
+PSP_P032;PSP_A008;Altas capacidades con desajuste escolar;AACC;Alto potencial con aburrimiento, baja organización o necesidades de enriquecimiento.;Primaria/Secundaria;medio;PSP_SRC009
+PSP_P033;PSP_A009;Desorganización de materiales;Material escolar;Pierde materiales, olvida libros, no prepara mochila o no encuentra tareas.;Primaria/Secundaria;bajo;PSP_SRC012
+PSP_P034;PSP_A009;No entrega tareas a tiempo;Entregas;Dificultad para registrar, planificar y entregar deberes/trabajos.;Primaria/Secundaria;bajo;PSP_SRC012
+PSP_P035;PSP_A009;Rutina de estudio irregular;Hábito de estudio;No tiene horario, lugar, bloques de trabajo ni sistema estable.;Primaria/Secundaria/Oposiciones;bajo;PSP_SRC001
+PSP_P036;PSP_A010;Necesidad de coordinación familia-centro;Coordinación;Requiere alinear pautas entre familia, colegio y profesional.;Infantil/Primaria/Secundaria;medio;PSP_SRC009
+PSP_P037;PSP_A010;Dificultad para seguimiento familiar;Pautas familia;La familia necesita pautas concretas para apoyar sin sobreayudar.;Infantil/Primaria/Secundaria;bajo;"PSP_SRC011;PSP_SRC012"
+PSP_P038;PSP_A011;Ansiedad ante exámenes;Ansiedad académica;Nerviosismo o bloqueo que interfiere en rendimiento en pruebas.;Primaria/Secundaria/Oposiciones;medio;PSP_SRC011
+PSP_P039;PSP_A011;Baja autoestima académica;Autoeficacia;Creencias de incapacidad o historia de fracaso que afecta implicación.;Primaria/Secundaria;medio;PSP_SRC011
+PSP_P040;PSP_A011;Dificultad de participación en clase;Participación;Evita preguntar, leer en voz alta, exponer o participar.;Primaria/Secundaria;bajo;PSP_SRC009
+PSP_P041;PSP_A012;Barreras de acceso al aprendizaje;Accesibilidad;Materiales o dinámicas que dificultan acceso, participación o expresión.;Todos;medio;"PSP_SRC009;PSP_SRC010"
+PSP_P042;PSP_A012;Necesidad de apoyos visuales o alternativos;Apoyos UDL;Necesita organizadores, esquemas, audio, pictogramas, ejemplos o formatos alternativos.;Todos;bajo;"PSP_SRC009;PSP_SRC010"

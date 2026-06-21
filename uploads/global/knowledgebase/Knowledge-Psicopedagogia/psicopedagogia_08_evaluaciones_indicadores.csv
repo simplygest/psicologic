@@ -1,0 +1,17 @@
+﻿evaluacion_id;problema_id;nombre;area_uso;tipo;notas;fuente_ids
+PSP_E001;PSP_P001;Registro de conciencia fonológica;Lectura inicial;Observación/registro;"Herramienta interna; pruebas estandarizadas requieren licencia.";PSP_SRC003
+PSP_E002;PSP_P002;Registro de precisión lectora;Lectura;Seguimiento;"Palabras correctas/errores por tipo; no diagnóstico aislado.";"PSP_SRC002;PSP_SRC003"
+PSP_E003;PSP_P003;Fluidez lectora semanal;Lectura;Seguimiento;Registrar texto, precisión, comodidad y evolución.;PSP_SRC002
+PSP_E004;PSP_P005;Preguntas de comprensión literal/inferencial;Comprensión;Seguimiento;Muestra funcional adaptada al texto.;PSP_SRC004
+PSP_E005;PSP_P009;Rúbrica de planificación escrita;Escritura;Rúbrica;Herramienta interna de planificación y estructura.;"PSP_SRC005;PSP_SRC006"
+PSP_E006;PSP_P011;Registro de errores ortográficos;Escritura;Seguimiento;Clasifica errores por patrón para orientar intervención.;PSP_SRC005
+PSP_E007;PSP_P014;Prueba informal de sentido numérico;Matemáticas;Observación;Usar con manipulativos/representaciones.;PSP_SRC007
+PSP_E008;PSP_P016;Rúbrica de resolución de problemas;Matemáticas;Rúbrica;Comprensión, representación, operación, respuesta y comprobación.;PSP_SRC008
+PSP_E009;PSP_P018;Registro de atención en tarea;Atención;Observación;Duración, distractores, apoyos, reinicios.;"PSP_SRC011;PSP_SRC012"
+PSP_E010;PSP_P019;Observación de memoria de trabajo;Funciones ejecutivas;Observación;Número de pasos retenidos, necesidad de repetición y apoyos.;PSP_SRC011
+PSP_E011;PSP_P023;Checklist de técnicas de estudio;Estudio;Checklist;Evalúa método real de estudio.;PSP_SRC001
+PSP_E012;PSP_P025;Resultados de simulacros;Exámenes;Seguimiento;Nota, tiempo, errores y tipo de fallo.;PSP_SRC001
+PSP_E013;PSP_P027;Escala de motivación académica 0-10;Motivación;Autorregistro;Herramienta propia no clínica.;PSP_SRC011
+PSP_E014;PSP_P031;Registro de adaptaciones aplicadas;Adaptaciones;Seguimiento;Anotar ajuste, contexto y efecto observado.;PSP_SRC009
+PSP_E015;PSP_P038;Registro de ansiedad ante examen;Socioemocional;Autorregistro;Si hay afectación clínica, derivar a psicología clínica.;PSP_SRC011
+PSP_E016;PSP_P041;Checklist UDL de barreras;Accesibilidad;Checklist;Basado en principios UDL, sin copiar material protegido.;"PSP_SRC009;PSP_SRC010"

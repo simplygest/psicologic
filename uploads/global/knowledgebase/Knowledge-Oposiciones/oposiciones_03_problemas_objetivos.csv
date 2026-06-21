@@ -1,0 +1,42 @@
+﻿problema_id;area_id;nombre;alias;descripcion;poblacion;nivel_riesgo;fuente_ids
+OPO_P001;OPO_A001;No sabe por dónde empezar;Inicio desorganizado;No tiene estructura inicial ni visión del temario completo.;Todos;bajo;"OPO_SRC001;OPO_SRC002"
+OPO_P002;OPO_A001;Temario demasiado amplio;Sobrecarga de temario;Sensación de imposibilidad por volumen de temas o bloques.;Todos;medio;OPO_SRC002
+OPO_P003;OPO_A001;No llega a la fecha de examen;Planificación insuficiente;El ritmo actual no permite cubrir o repasar antes de la fecha objetivo.;Todos;medio;OPO_SRC002
+OPO_P004;OPO_A001;No controla vueltas de repaso;Vueltas desordenadas;No sabe qué temas están vistos, repasados, débiles u olvidados.;Todos;bajo;"OPO_SRC002;OPO_SRC003"
+OPO_P005;OPO_A001;Priorización incorrecta;Estudia sin ponderar;Dedica tiempo a temas de bajo rendimiento o evita los importantes/difíciles.;Todos;medio;OPO_SRC002
+OPO_P006;OPO_A002;Estudio pasivo;Leer/subrayar sin comprobar;Estudia releyendo o subrayando, pero sin recuperación activa ni evaluación.;Todos;bajo;"OPO_SRC003;OPO_SRC004;OPO_SRC006"
+OPO_P007;OPO_A002;No entiende el tema;Comprensión superficial;Memoriza sin comprender estructura, conceptos o relaciones.;Todos;medio;OPO_SRC004
+OPO_P008;OPO_A002;Apuntes poco útiles;Material desorganizado;Los apuntes no facilitan repaso, recuperación ni simulacros.;Todos;bajo;"OPO_SRC002;OPO_SRC009"
+OPO_P009;OPO_A002;Subrayado excesivo;Todo parece importante;Marca demasiado contenido y no distingue ideas clave.;Todos;bajo;OPO_SRC004
+OPO_P010;OPO_A003;Olvida lo estudiado;Baja retención;Estudia, pero olvida al cabo de días o semanas.;Todos;medio;"OPO_SRC003;OPO_SRC004;OPO_SRC005"
+OPO_P011;OPO_A003;No usa repaso espaciado;Repasos concentrados;Repasa demasiado tarde o todo junto antes del examen.;Todos;bajo;"OPO_SRC003;OPO_SRC004;OPO_SRC005"
+OPO_P012;OPO_A003;Falla al recordar sin mirar;Recuperación débil;Tiene sensación de saberlo, pero no puede evocarlo en blanco.;Todos;medio;"OPO_SRC003;OPO_SRC004"
+OPO_P013;OPO_A003;Confunde temas similares;Interferencia;Mezcla conceptos, normas, plazos, autores o artículos parecidos.;Todos;medio;"OPO_SRC003;OPO_SRC004"
+OPO_P014;OPO_A004;Mal resultado en test;Test bajo;Resultados bajos por desconocimiento, lectura, despistes o estrategia.;Tipo test;medio;OPO_SRC007
+OPO_P015;OPO_A004;Muchos errores por despiste;Despistes en test;Errores por leer rápido, no revisar enunciado o marcar mal.;Tipo test;bajo;OPO_SRC002
+OPO_P016;OPO_A004;Duda demasiado en test;Inseguridad en opciones;Pierde tiempo o cambia respuestas correctas por inseguridad.;Tipo test;medio;"OPO_SRC007;OPO_SRC008"
+OPO_P017;OPO_A004;No controla penalización;Estrategia de riesgo;No sabe cuándo responder, dejar blanco o arriesgar según baremo.;Tipo test;medio;OPO_SRC007
+OPO_P018;OPO_A004;No entrena con tiempo real;Falta de simulacro;Estudia contenido pero no practica condiciones de examen.;Todos;medio;OPO_SRC007
+OPO_P019;OPO_A005;No sabe desarrollar temas;Desarrollo escrito débil;Tiene contenido pero no estructura respuesta escrita completa.;Desarrollo;medio;OPO_SRC002
+OPO_P020;OPO_A005;Redacción lenta;No termina examen;Sabe el contenido, pero no llega por velocidad o estructura.;Desarrollo;medio;OPO_SRC002
+OPO_P021;OPO_A005;Respuesta sin estructura;Desarrollo desordenado;No usa epígrafes, introducción, cierre ni jerarquía clara.;Desarrollo;bajo;OPO_SRC002
+OPO_P022;OPO_A006;Dificultad en supuestos prácticos;Caso práctico;No sabe detectar problema, norma aplicable, criterio o estructura de respuesta.;Supuestos;medio;OPO_SRC002
+OPO_P023;OPO_A006;No justifica respuestas;Falta argumentación;Resuelve sin explicar criterio, fundamento o pasos.;Supuestos/Desarrollo;medio;OPO_SRC002
+OPO_P024;OPO_A007;Rutina irregular;Hábito inestable;"Estudia algunos días mucho y otros nada; no hay sistema sostenible.";Todos;bajo;OPO_SRC002
+OPO_P025;OPO_A007;Procrastinación;Posposición;Retrasa el inicio o evita tareas difíciles.;Todos;medio;"OPO_SRC002;OPO_SRC006"
+OPO_P026;OPO_A007;Cansancio acumulado;Fatiga de estudio;Baja energía, saturación y menor rendimiento por exceso o mala distribución.;Todos;medio;OPO_SRC002
+OPO_P027;OPO_A008;No entrega tareas al preparador;Baja adherencia;No cumple tareas semanales o no reporta avances.;Todos;bajo;OPO_SRC002
+OPO_P028;OPO_A008;No hay datos de progreso;Seguimiento insuficiente;No se registran notas, fallos, temas vistos o evolución.;Todos;bajo;OPO_SRC002
+OPO_P029;OPO_A008;Estancamiento de rendimiento;Meseta;Las notas no mejoran pese a estudiar.;Todos;medio;"OPO_SRC002;OPO_SRC004"
+OPO_P030;OPO_A009;Pérdida de motivación;Desgaste;Disminuye constancia por falta de resultados, cansancio o horizonte largo.;Todos;medio;OPO_SRC002
+OPO_P031;OPO_A009;Frustración tras suspender;Post-suspenso;Baja ánimo o abandono tras mal resultado.;Todos;medio;"OPO_SRC002;OPO_SRC008"
+OPO_P032;OPO_A009;Objetivos poco realistas;Expectativas mal calibradas;Quiere avanzar más de lo posible con el tiempo disponible.;Todos;bajo;OPO_SRC002
+OPO_P033;OPO_A010;Ansiedad ante examen;Ansiedad evaluativa;Activación o miedo que interfiere con preparación o rendimiento.;Todos;medio;"OPO_SRC006;OPO_SRC007;OPO_SRC008"
+OPO_P034;OPO_A010;Bloqueo en simulacros;Quedarse en blanco;Dificultad para recuperar información bajo presión.;Todos;medio;"OPO_SRC007;OPO_SRC008"
+OPO_P035;OPO_A010;Evita hacer simulacros;Evitación;No practica examen real por miedo al resultado.;Todos;medio;"OPO_SRC006;OPO_SRC007"
+OPO_P036;OPO_A011;Mala gestión del tiempo de estudio;Tiempo mal distribuido;Invierte demasiado o poco tiempo en bloques concretos.;Todos;bajo;OPO_SRC002
+OPO_P037;OPO_A011;Mala gestión del tiempo en examen;Ritmo de examen;Se atasca, no reserva revisión o no termina.;Todos;medio;OPO_SRC007
+OPO_P038;OPO_A011;No reserva tiempo de repaso;Sin consolidación;Planifica estudio nuevo pero no repasos suficientes.;Todos;bajo;"OPO_SRC003;OPO_SRC005"
+OPO_P039;OPO_A012;Material desactualizado;Cambios normativos;Estudia contenido antiguo o sin control de versiones.;Jurídicas/Administrativas;alto;OPO_SRC001
+OPO_P040;OPO_A012;Demasiadas fuentes;Fuentes dispersas;Usa varios temarios, vídeos y apuntes sin criterio, generando ruido.;Todos;bajo;OPO_SRC002
+OPO_P041;OPO_A012;No registra cambios de temario;Versionado débil;No sabe qué temas se han actualizado o cuándo.;Todos;medio;OPO_SRC001

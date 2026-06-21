@@ -1,0 +1,5308 @@
+{
+  "version": 1,
+  "sector": "preparacion_oposiciones",
+  "sources": [
+    {
+      "fuente_id": "OPO_SRC001",
+      "organismo": "Institute of Education Sciences / What Works Clearinghouse",
+      "titulo": "Practice Guides",
+      "url": "https://ies.ed.gov/ncee/wwc/practiceguides",
+      "notas": "Guías prácticas basadas en evidencia, experiencia profesional y paneles expertos."
+    },
+    {
+      "fuente_id": "OPO_SRC002",
+      "organismo": "Education Endowment Foundation",
+      "titulo": "Metacognition and Self-Regulated Learning",
+      "url": "https://educationendowmentfoundation.org.uk/education-evidence/guidance-reports/metacognition",
+      "notas": "Metacognición, autorregulación, planificación, monitorización y evaluación del aprendizaje."
+    },
+    {
+      "fuente_id": "OPO_SRC003",
+      "organismo": "The Learning Scientists",
+      "titulo": "Six Strategies for Effective Learning",
+      "url": "https://www.learningscientists.org/blog/2017/4/20-1",
+      "notas": "Práctica espaciada, intercalado, elaboración, ejemplos concretos, codificación dual y recuperación."
+    },
+    {
+      "fuente_id": "OPO_SRC004",
+      "organismo": "Madan 2023 / PMC",
+      "titulo": "Using Evidence-Based Learning Strategies",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10368606/",
+      "notas": "Revisión de estrategias de aprendizaje basadas en evidencia."
+    },
+    {
+      "fuente_id": "OPO_SRC005",
+      "organismo": "Thompson 2023",
+      "titulo": "Spaced learning, interleaving, retrieval practice",
+      "url": "https://www.jacr.org/article/S1546-1440%2823%2900646-4/fulltext",
+      "notas": "Estrategias para mejorar retención a largo plazo."
+    },
+    {
+      "fuente_id": "OPO_SRC006",
+      "organismo": "Teachers College Columbia",
+      "titulo": "Overcoming test anxiety",
+      "url": "https://www.tc.columbia.edu/articles/2025/march/heres-how-students-can-overcome-test-anxiety/",
+      "notas": "Ansiedad ante exámenes, evitación, procrastinación y técnicas ineficaces como releer sin autoevaluar."
+    },
+    {
+      "fuente_id": "OPO_SRC007",
+      "organismo": "Child Mind Institute",
+      "titulo": "Tips for Beating Test Anxiety",
+      "url": "https://childmind.org/article/tips-for-beating-test-anxiety/",
+      "notas": "Preparación, simulacros, formato de examen y estrategias para reducir ansiedad."
+    },
+    {
+      "fuente_id": "OPO_SRC008",
+      "organismo": "Jirjees 2024 / PMC",
+      "titulo": "Test anxiety and coping strategies among university students",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11519940/",
+      "notas": "Estrategias de afrontamiento de ansiedad ante exámenes."
+    },
+    {
+      "fuente_id": "OPO_SRC009",
+      "organismo": "CAST",
+      "titulo": "Universal Design for Learning Guidelines",
+      "url": "https://udlguidelines.cast.org/",
+      "notas": "Adaptación de materiales, formatos y participación en aprendizaje."
+    },
+    {
+      "fuente_id": "OPO_SRC010",
+      "organismo": "EEF PDF",
+      "titulo": "Metacognition and Self-Regulated Learning Guidance Report",
+      "url": "https://d2tic4wvo1iusb.cloudfront.net/production/eef-guidance-reports/metacognition/metacognition-and-self-regulated-learning_guidance-report.v.2.4.0.pdf",
+      "notas": "Guía práctica sobre autorregulación y metacognición."
+    }
+  ],
+  "areas": [
+    {
+      "area_id": "OPO_A001",
+      "nombre": "Planificación del temario",
+      "descripcion": "Calendario, bloques, prioridades, vueltas y control de avance."
+    },
+    {
+      "area_id": "OPO_A002",
+      "nombre": "Técnicas de estudio",
+      "descripcion": "Lectura activa, comprensión, esquemas, resúmenes, recuperación y repaso."
+    },
+    {
+      "area_id": "OPO_A003",
+      "nombre": "Memorización y retención",
+      "descripcion": "Repaso espaciado, tarjetas, recuperación activa, intercalado y olvido."
+    },
+    {
+      "area_id": "OPO_A004",
+      "nombre": "Simulacros y exámenes tipo test",
+      "descripcion": "Práctica con tiempo, corrección, análisis de errores y estrategia de examen."
+    },
+    {
+      "area_id": "OPO_A005",
+      "nombre": "Exámenes de desarrollo / temas",
+      "descripcion": "Estructura, redacción, tiempos, epígrafes y práctica escrita."
+    },
+    {
+      "area_id": "OPO_A006",
+      "nombre": "Supuestos prácticos / casos",
+      "descripcion": "Lectura del caso, estructura de respuesta, normativa, criterio y entrenamiento aplicado."
+    },
+    {
+      "area_id": "OPO_A007",
+      "nombre": "Organización diaria y hábitos",
+      "descripcion": "Rutinas, horario, energía, descansos, lugar de estudio y adherencia."
+    },
+    {
+      "area_id": "OPO_A008",
+      "nombre": "Seguimiento del alumno",
+      "descripcion": "Notas, progreso, asistencia, tareas, cumplimiento, incidencias y evolución."
+    },
+    {
+      "area_id": "OPO_A009",
+      "nombre": "Motivación y disciplina",
+      "descripcion": "Objetivos, constancia, bloqueo, frustración, recaídas y sostenibilidad."
+    },
+    {
+      "area_id": "OPO_A010",
+      "nombre": "Ansiedad ante examen",
+      "descripcion": "Nervios, bloqueo, activación, evitación, práctica bajo presión y afrontamiento."
+    },
+    {
+      "area_id": "OPO_A011",
+      "nombre": "Gestión del tiempo",
+      "descripcion": "Ritmo de estudio, tiempo por tema, tiempo de examen y priorización."
+    },
+    {
+      "area_id": "OPO_A012",
+      "nombre": "Materiales y actualización normativa",
+      "descripcion": "Control de versiones, cambios legislativos, apuntes, fuentes y actualizaciones."
+    }
+  ],
+  "problemas_objetivos": [
+    {
+      "problema_id": "OPO_P001",
+      "area_id": "OPO_A001",
+      "nombre": "No sabe por dónde empezar",
+      "alias": "Inicio desorganizado",
+      "descripcion": "No tiene estructura inicial ni visión del temario completo.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "bajo",
+      "fuente_ids": "OPO_SRC001;OPO_SRC002"
+    },
+    {
+      "problema_id": "OPO_P002",
+      "area_id": "OPO_A001",
+      "nombre": "Temario demasiado amplio",
+      "alias": "Sobrecarga de temario",
+      "descripcion": "Sensación de imposibilidad por volumen de temas o bloques.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "medio",
+      "fuente_ids": "OPO_SRC002"
+    },
+    {
+      "problema_id": "OPO_P003",
+      "area_id": "OPO_A001",
+      "nombre": "No llega a la fecha de examen",
+      "alias": "Planificación insuficiente",
+      "descripcion": "El ritmo actual no permite cubrir o repasar antes de la fecha objetivo.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "medio",
+      "fuente_ids": "OPO_SRC002"
+    },
+    {
+      "problema_id": "OPO_P004",
+      "area_id": "OPO_A001",
+      "nombre": "No controla vueltas de repaso",
+      "alias": "Vueltas desordenadas",
+      "descripcion": "No sabe qué temas están vistos, repasados, débiles u olvidados.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "bajo",
+      "fuente_ids": "OPO_SRC002;OPO_SRC003"
+    },
+    {
+      "problema_id": "OPO_P005",
+      "area_id": "OPO_A001",
+      "nombre": "Priorización incorrecta",
+      "alias": "Estudia sin ponderar",
+      "descripcion": "Dedica tiempo a temas de bajo rendimiento o evita los importantes/difíciles.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "medio",
+      "fuente_ids": "OPO_SRC002"
+    },
+    {
+      "problema_id": "OPO_P006",
+      "area_id": "OPO_A002",
+      "nombre": "Estudio pasivo",
+      "alias": "Leer/subrayar sin comprobar",
+      "descripcion": "Estudia releyendo o subrayando, pero sin recuperación activa ni evaluación.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "bajo",
+      "fuente_ids": "OPO_SRC003;OPO_SRC004;OPO_SRC006"
+    },
+    {
+      "problema_id": "OPO_P007",
+      "area_id": "OPO_A002",
+      "nombre": "No entiende el tema",
+      "alias": "Comprensión superficial",
+      "descripcion": "Memoriza sin comprender estructura, conceptos o relaciones.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "medio",
+      "fuente_ids": "OPO_SRC004"
+    },
+    {
+      "problema_id": "OPO_P008",
+      "area_id": "OPO_A002",
+      "nombre": "Apuntes poco útiles",
+      "alias": "Material desorganizado",
+      "descripcion": "Los apuntes no facilitan repaso, recuperación ni simulacros.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "bajo",
+      "fuente_ids": "OPO_SRC002;OPO_SRC009"
+    },
+    {
+      "problema_id": "OPO_P009",
+      "area_id": "OPO_A002",
+      "nombre": "Subrayado excesivo",
+      "alias": "Todo parece importante",
+      "descripcion": "Marca demasiado contenido y no distingue ideas clave.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "bajo",
+      "fuente_ids": "OPO_SRC004"
+    },
+    {
+      "problema_id": "OPO_P010",
+      "area_id": "OPO_A003",
+      "nombre": "Olvida lo estudiado",
+      "alias": "Baja retención",
+      "descripcion": "Estudia, pero olvida al cabo de días o semanas.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "medio",
+      "fuente_ids": "OPO_SRC003;OPO_SRC004;OPO_SRC005"
+    },
+    {
+      "problema_id": "OPO_P011",
+      "area_id": "OPO_A003",
+      "nombre": "No usa repaso espaciado",
+      "alias": "Repasos concentrados",
+      "descripcion": "Repasa demasiado tarde o todo junto antes del examen.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "bajo",
+      "fuente_ids": "OPO_SRC003;OPO_SRC004;OPO_SRC005"
+    },
+    {
+      "problema_id": "OPO_P012",
+      "area_id": "OPO_A003",
+      "nombre": "Falla al recordar sin mirar",
+      "alias": "Recuperación débil",
+      "descripcion": "Tiene sensación de saberlo, pero no puede evocarlo en blanco.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "medio",
+      "fuente_ids": "OPO_SRC003;OPO_SRC004"
+    },
+    {
+      "problema_id": "OPO_P013",
+      "area_id": "OPO_A003",
+      "nombre": "Confunde temas similares",
+      "alias": "Interferencia",
+      "descripcion": "Mezcla conceptos, normas, plazos, autores o artículos parecidos.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "medio",
+      "fuente_ids": "OPO_SRC003;OPO_SRC004"
+    },
+    {
+      "problema_id": "OPO_P014",
+      "area_id": "OPO_A004",
+      "nombre": "Mal resultado en test",
+      "alias": "Test bajo",
+      "descripcion": "Resultados bajos por desconocimiento, lectura, despistes o estrategia.",
+      "poblacion": "Tipo test",
+      "nivel_riesgo": "medio",
+      "fuente_ids": "OPO_SRC007"
+    },
+    {
+      "problema_id": "OPO_P015",
+      "area_id": "OPO_A004",
+      "nombre": "Muchos errores por despiste",
+      "alias": "Despistes en test",
+      "descripcion": "Errores por leer rápido, no revisar enunciado o marcar mal.",
+      "poblacion": "Tipo test",
+      "nivel_riesgo": "bajo",
+      "fuente_ids": "OPO_SRC002"
+    },
+    {
+      "problema_id": "OPO_P016",
+      "area_id": "OPO_A004",
+      "nombre": "Duda demasiado en test",
+      "alias": "Inseguridad en opciones",
+      "descripcion": "Pierde tiempo o cambia respuestas correctas por inseguridad.",
+      "poblacion": "Tipo test",
+      "nivel_riesgo": "medio",
+      "fuente_ids": "OPO_SRC007;OPO_SRC008"
+    },
+    {
+      "problema_id": "OPO_P017",
+      "area_id": "OPO_A004",
+      "nombre": "No controla penalización",
+      "alias": "Estrategia de riesgo",
+      "descripcion": "No sabe cuándo responder, dejar blanco o arriesgar según baremo.",
+      "poblacion": "Tipo test",
+      "nivel_riesgo": "medio",
+      "fuente_ids": "OPO_SRC007"
+    },
+    {
+      "problema_id": "OPO_P018",
+      "area_id": "OPO_A004",
+      "nombre": "No entrena con tiempo real",
+      "alias": "Falta de simulacro",
+      "descripcion": "Estudia contenido pero no practica condiciones de examen.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "medio",
+      "fuente_ids": "OPO_SRC007"
+    },
+    {
+      "problema_id": "OPO_P019",
+      "area_id": "OPO_A005",
+      "nombre": "No sabe desarrollar temas",
+      "alias": "Desarrollo escrito débil",
+      "descripcion": "Tiene contenido pero no estructura respuesta escrita completa.",
+      "poblacion": "Desarrollo",
+      "nivel_riesgo": "medio",
+      "fuente_ids": "OPO_SRC002"
+    },
+    {
+      "problema_id": "OPO_P020",
+      "area_id": "OPO_A005",
+      "nombre": "Redacción lenta",
+      "alias": "No termina examen",
+      "descripcion": "Sabe el contenido, pero no llega por velocidad o estructura.",
+      "poblacion": "Desarrollo",
+      "nivel_riesgo": "medio",
+      "fuente_ids": "OPO_SRC002"
+    },
+    {
+      "problema_id": "OPO_P021",
+      "area_id": "OPO_A005",
+      "nombre": "Respuesta sin estructura",
+      "alias": "Desarrollo desordenado",
+      "descripcion": "No usa epígrafes, introducción, cierre ni jerarquía clara.",
+      "poblacion": "Desarrollo",
+      "nivel_riesgo": "bajo",
+      "fuente_ids": "OPO_SRC002"
+    },
+    {
+      "problema_id": "OPO_P022",
+      "area_id": "OPO_A006",
+      "nombre": "Dificultad en supuestos prácticos",
+      "alias": "Caso práctico",
+      "descripcion": "No sabe detectar problema, norma aplicable, criterio o estructura de respuesta.",
+      "poblacion": "Supuestos",
+      "nivel_riesgo": "medio",
+      "fuente_ids": "OPO_SRC002"
+    },
+    {
+      "problema_id": "OPO_P023",
+      "area_id": "OPO_A006",
+      "nombre": "No justifica respuestas",
+      "alias": "Falta argumentación",
+      "descripcion": "Resuelve sin explicar criterio, fundamento o pasos.",
+      "poblacion": "Supuestos/Desarrollo",
+      "nivel_riesgo": "medio",
+      "fuente_ids": "OPO_SRC002"
+    },
+    {
+      "problema_id": "OPO_P024",
+      "area_id": "OPO_A007",
+      "nombre": "Rutina irregular",
+      "alias": "Hábito inestable",
+      "descripcion": "Estudia algunos días mucho y otros nada; no hay sistema sostenible.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "bajo",
+      "fuente_ids": "OPO_SRC002"
+    },
+    {
+      "problema_id": "OPO_P025",
+      "area_id": "OPO_A007",
+      "nombre": "Procrastinación",
+      "alias": "Posposición",
+      "descripcion": "Retrasa el inicio o evita tareas difíciles.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "medio",
+      "fuente_ids": "OPO_SRC002;OPO_SRC006"
+    },
+    {
+      "problema_id": "OPO_P026",
+      "area_id": "OPO_A007",
+      "nombre": "Cansancio acumulado",
+      "alias": "Fatiga de estudio",
+      "descripcion": "Baja energía, saturación y menor rendimiento por exceso o mala distribución.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "medio",
+      "fuente_ids": "OPO_SRC002"
+    },
+    {
+      "problema_id": "OPO_P027",
+      "area_id": "OPO_A008",
+      "nombre": "No entrega tareas al preparador",
+      "alias": "Baja adherencia",
+      "descripcion": "No cumple tareas semanales o no reporta avances.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "bajo",
+      "fuente_ids": "OPO_SRC002"
+    },
+    {
+      "problema_id": "OPO_P028",
+      "area_id": "OPO_A008",
+      "nombre": "No hay datos de progreso",
+      "alias": "Seguimiento insuficiente",
+      "descripcion": "No se registran notas, fallos, temas vistos o evolución.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "bajo",
+      "fuente_ids": "OPO_SRC002"
+    },
+    {
+      "problema_id": "OPO_P029",
+      "area_id": "OPO_A008",
+      "nombre": "Estancamiento de rendimiento",
+      "alias": "Meseta",
+      "descripcion": "Las notas no mejoran pese a estudiar.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "medio",
+      "fuente_ids": "OPO_SRC002;OPO_SRC004"
+    },
+    {
+      "problema_id": "OPO_P030",
+      "area_id": "OPO_A009",
+      "nombre": "Pérdida de motivación",
+      "alias": "Desgaste",
+      "descripcion": "Disminuye constancia por falta de resultados, cansancio o horizonte largo.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "medio",
+      "fuente_ids": "OPO_SRC002"
+    },
+    {
+      "problema_id": "OPO_P031",
+      "area_id": "OPO_A009",
+      "nombre": "Frustración tras suspender",
+      "alias": "Post-suspenso",
+      "descripcion": "Baja ánimo o abandono tras mal resultado.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "medio",
+      "fuente_ids": "OPO_SRC002;OPO_SRC008"
+    },
+    {
+      "problema_id": "OPO_P032",
+      "area_id": "OPO_A009",
+      "nombre": "Objetivos poco realistas",
+      "alias": "Expectativas mal calibradas",
+      "descripcion": "Quiere avanzar más de lo posible con el tiempo disponible.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "bajo",
+      "fuente_ids": "OPO_SRC002"
+    },
+    {
+      "problema_id": "OPO_P033",
+      "area_id": "OPO_A010",
+      "nombre": "Ansiedad ante examen",
+      "alias": "Ansiedad evaluativa",
+      "descripcion": "Activación o miedo que interfiere con preparación o rendimiento.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "medio",
+      "fuente_ids": "OPO_SRC006;OPO_SRC007;OPO_SRC008"
+    },
+    {
+      "problema_id": "OPO_P034",
+      "area_id": "OPO_A010",
+      "nombre": "Bloqueo en simulacros",
+      "alias": "Quedarse en blanco",
+      "descripcion": "Dificultad para recuperar información bajo presión.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "medio",
+      "fuente_ids": "OPO_SRC007;OPO_SRC008"
+    },
+    {
+      "problema_id": "OPO_P035",
+      "area_id": "OPO_A010",
+      "nombre": "Evita hacer simulacros",
+      "alias": "Evitación",
+      "descripcion": "No practica examen real por miedo al resultado.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "medio",
+      "fuente_ids": "OPO_SRC006;OPO_SRC007"
+    },
+    {
+      "problema_id": "OPO_P036",
+      "area_id": "OPO_A011",
+      "nombre": "Mala gestión del tiempo de estudio",
+      "alias": "Tiempo mal distribuido",
+      "descripcion": "Invierte demasiado o poco tiempo en bloques concretos.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "bajo",
+      "fuente_ids": "OPO_SRC002"
+    },
+    {
+      "problema_id": "OPO_P037",
+      "area_id": "OPO_A011",
+      "nombre": "Mala gestión del tiempo en examen",
+      "alias": "Ritmo de examen",
+      "descripcion": "Se atasca, no reserva revisión o no termina.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "medio",
+      "fuente_ids": "OPO_SRC007"
+    },
+    {
+      "problema_id": "OPO_P038",
+      "area_id": "OPO_A011",
+      "nombre": "No reserva tiempo de repaso",
+      "alias": "Sin consolidación",
+      "descripcion": "Planifica estudio nuevo pero no repasos suficientes.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "bajo",
+      "fuente_ids": "OPO_SRC003;OPO_SRC005"
+    },
+    {
+      "problema_id": "OPO_P039",
+      "area_id": "OPO_A012",
+      "nombre": "Material desactualizado",
+      "alias": "Cambios normativos",
+      "descripcion": "Estudia contenido antiguo o sin control de versiones.",
+      "poblacion": "Jurídicas/Administrativas",
+      "nivel_riesgo": "alto",
+      "fuente_ids": "OPO_SRC001"
+    },
+    {
+      "problema_id": "OPO_P040",
+      "area_id": "OPO_A012",
+      "nombre": "Demasiadas fuentes",
+      "alias": "Fuentes dispersas",
+      "descripcion": "Usa varios temarios, vídeos y apuntes sin criterio, generando ruido.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "bajo",
+      "fuente_ids": "OPO_SRC002"
+    },
+    {
+      "problema_id": "OPO_P041",
+      "area_id": "OPO_A012",
+      "nombre": "No registra cambios de temario",
+      "alias": "Versionado débil",
+      "descripcion": "No sabe qué temas se han actualizado o cuándo.",
+      "poblacion": "Todos",
+      "nivel_riesgo": "medio",
+      "fuente_ids": "OPO_SRC001"
+    }
+  ],
+  "tecnicas_metodos": [
+    {
+      "tecnica_id": "OPO_T001",
+      "nombre": "Diagnóstico inicial del opositor",
+      "descripcion": "Estado de temario, tiempo disponible, formato de examen, hábitos, fortalezas y debilidades.",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "tecnica_id": "OPO_T002",
+      "nombre": "Planificación inversa",
+      "descripcion": "Diseñar calendario desde fecha objetivo hacia atrás con bloques, vueltas y simulacros.",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "tecnica_id": "OPO_T003",
+      "nombre": "Priorización por impacto/riesgo",
+      "descripcion": "Ordenar temas según peso, dificultad, frecuencia, dominio y fecha.",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "tecnica_id": "OPO_T004",
+      "nombre": "Sistema de vueltas",
+      "descripcion": "Organizar primera vuelta, repasos, consolidación y fase final.",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "tecnica_id": "OPO_T005",
+      "nombre": "Lectura activa",
+      "descripcion": "Convertir lectura en preguntas, estructura, objetivos y comprobación.",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "tecnica_id": "OPO_T006",
+      "nombre": "Recuperación activa",
+      "descripcion": "Recordar sin mirar mediante preguntas, tarjetas, test o desarrollo en blanco.",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "tecnica_id": "OPO_T007",
+      "nombre": "Repaso espaciado",
+      "descripcion": "Programar repasos a intervalos crecientes para consolidar.",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "tecnica_id": "OPO_T008",
+      "nombre": "Intercalado",
+      "descripcion": "Mezclar temas/tipos de ejercicio para discriminar conceptos y reducir interferencia.",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "tecnica_id": "OPO_T009",
+      "nombre": "Elaboración",
+      "descripcion": "Explicar el porqué, relacionar conceptos y generar ejemplos propios.",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "tecnica_id": "OPO_T010",
+      "nombre": "Codificación dual",
+      "descripcion": "Combinar texto, esquemas, tablas, mapas y visuales.",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "tecnica_id": "OPO_T011",
+      "nombre": "Esquemas y mapas funcionales",
+      "descripcion": "Resumir estructura para repaso rápido y recuperación.",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "tecnica_id": "OPO_T012",
+      "nombre": "Tarjetas tipo Anki",
+      "descripcion": "Preguntas-respuestas breves con revisión espaciada.",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "tecnica_id": "OPO_T013",
+      "nombre": "Banco de errores",
+      "descripcion": "Registro de fallos, causa, corrección y repaso específico.",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "tecnica_id": "OPO_T014",
+      "nombre": "Simulacros periódicos",
+      "descripcion": "Pruebas con tiempo, condiciones reales y corrección analítica.",
+      "nivel_riesgo": "medio"
+    },
+    {
+      "tecnica_id": "OPO_T015",
+      "nombre": "Estrategia de test",
+      "descripcion": "Lectura, descarte, control de riesgo, gestión de dudas y penalización.",
+      "nivel_riesgo": "medio"
+    },
+    {
+      "tecnica_id": "OPO_T016",
+      "nombre": "Estrategia de desarrollo escrito",
+      "descripcion": "Estructura, epígrafes, tiempo, memoria de esquema y redacción.",
+      "nivel_riesgo": "medio"
+    },
+    {
+      "tecnica_id": "OPO_T017",
+      "nombre": "Estrategia de supuesto práctico",
+      "descripcion": "Identificar hechos, norma, criterio, estructura y respuesta final.",
+      "nivel_riesgo": "medio"
+    },
+    {
+      "tecnica_id": "OPO_T018",
+      "nombre": "Gestión del tiempo",
+      "descripcion": "Bloques, temporizador, límites por tarea y control del ritmo.",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "tecnica_id": "OPO_T019",
+      "nombre": "Metacognición",
+      "descripcion": "Planificar, monitorizar y evaluar aprendizaje y rendimiento.",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "tecnica_id": "OPO_T020",
+      "nombre": "Objetivos SMART",
+      "descripcion": "Objetivos semanales concretos, medibles, realistas y revisables.",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "tecnica_id": "OPO_T021",
+      "nombre": "Gestión de procrastinación",
+      "descripcion": "Reducir fricción, primer paso, bloques cortos, compromiso y revisión.",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "tecnica_id": "OPO_T022",
+      "nombre": "Pacing y descanso",
+      "descripcion": "Distribución sostenible de carga, pausas y prevención de fatiga.",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "tecnica_id": "OPO_T023",
+      "nombre": "Afrontamiento de ansiedad ante examen",
+      "descripcion": "Respiración, exposición a simulacros, preparación y reencuadre.",
+      "nivel_riesgo": "medio"
+    },
+    {
+      "tecnica_id": "OPO_T024",
+      "nombre": "Análisis post-simulacro",
+      "descripcion": "Clasificar errores, detectar patrones y decidir tareas correctivas.",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "tecnica_id": "OPO_T025",
+      "nombre": "Seguimiento de métricas",
+      "descripcion": "Notas, aciertos, fallos, temas, horas, cumplimiento y tendencia.",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "tecnica_id": "OPO_T026",
+      "nombre": "Control de materiales y versiones",
+      "descripcion": "Fuente única, cambios, fecha de actualización y revisión de temario.",
+      "nivel_riesgo": "medio"
+    },
+    {
+      "tecnica_id": "OPO_T027",
+      "nombre": "Coaching académico / adherencia",
+      "descripcion": "Revisión semanal, obstáculos, compromiso, motivación y ajuste de plan.",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "tecnica_id": "OPO_T028",
+      "nombre": "Preparación fase final",
+      "descripcion": "Repaso selectivo, simulacros, descanso, logística y estrategia de examen.",
+      "nivel_riesgo": "medio"
+    },
+    {
+      "tecnica_id": "OPO_T029",
+      "nombre": "Informe de evolución del opositor",
+      "descripcion": "Resumen de avance, rendimiento, tareas, riesgos y próximos pasos.",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "tecnica_id": "OPO_T030",
+      "nombre": "Derivación / límites profesionales",
+      "descripcion": "Identificar ansiedad clínica, agotamiento severo u otras señales que requieren profesional sanitario.",
+      "nivel_riesgo": "alto"
+    }
+  ],
+  "tareas_pautas": [
+    {
+      "tarea_id": "OPO_TA001",
+      "titulo": "Ficha inicial del opositor",
+      "descripcion": "Registrar oposición, convocatoria, temario, formato, tiempo disponible y disponibilidad semanal.",
+      "objetivo": "Definir punto de partida.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "30 min",
+      "tecnica_id": "OPO_T001"
+    },
+    {
+      "tarea_id": "OPO_TA002",
+      "titulo": "Test diagnóstico inicial",
+      "descripcion": "Realizar prueba breve o simulacro parcial para estimar nivel.",
+      "objetivo": "Detectar base real.",
+      "nivel_riesgo": "medio",
+      "duracion_estimada": "30-90 min",
+      "tecnica_id": "OPO_T001"
+    },
+    {
+      "tarea_id": "OPO_TA003",
+      "titulo": "Mapa completo del temario",
+      "descripcion": "Listar bloques, temas, peso estimado, dificultad y estado.",
+      "objetivo": "Visualizar carga total.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "60 min",
+      "tecnica_id": "OPO_T001"
+    },
+    {
+      "tarea_id": "OPO_TA004",
+      "titulo": "Calendario inverso hasta examen",
+      "descripcion": "Crear calendario desde la fecha de examen hacia atrás.",
+      "objetivo": "Asegurar cobertura y repasos.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "45 min",
+      "tecnica_id": "OPO_T002"
+    },
+    {
+      "tarea_id": "OPO_TA005",
+      "titulo": "Plan semanal de estudio",
+      "descripcion": "Asignar bloques concretos por día con tema, técnica y objetivo.",
+      "objetivo": "Ejecutar planificación.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "semanal",
+      "tecnica_id": "OPO_T002"
+    },
+    {
+      "tarea_id": "OPO_TA006",
+      "titulo": "Tabla de prioridad de temas",
+      "descripcion": "Puntuar cada tema por peso, dificultad, dominio y urgencia.",
+      "objetivo": "Priorizar con criterio.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "30 min",
+      "tecnica_id": "OPO_T003"
+    },
+    {
+      "tarea_id": "OPO_TA007",
+      "titulo": "Semáforo de temas",
+      "descripcion": "Marcar tema en rojo/ámbar/verde según dominio.",
+      "objetivo": "Control visual de avance.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "semanal",
+      "tecnica_id": "OPO_T003"
+    },
+    {
+      "tarea_id": "OPO_TA008",
+      "titulo": "Plan de primera vuelta",
+      "descripcion": "Dividir temario en bloques de primera lectura/comprensión.",
+      "objetivo": "Completar base inicial.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "variable",
+      "tecnica_id": "OPO_T004"
+    },
+    {
+      "tarea_id": "OPO_TA009",
+      "titulo": "Plan de segunda vuelta",
+      "descripcion": "Programar recuperación y repasos por bloques ya vistos.",
+      "objetivo": "Consolidar contenido.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "variable",
+      "tecnica_id": "OPO_T004"
+    },
+    {
+      "tarea_id": "OPO_TA010",
+      "titulo": "Lectura con preguntas previas",
+      "descripcion": "Antes de leer, formular 3 preguntas del tema.",
+      "objetivo": "Activar lectura activa.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "por tema",
+      "tecnica_id": "OPO_T005"
+    },
+    {
+      "tarea_id": "OPO_TA011",
+      "titulo": "Convertir epígrafes en preguntas",
+      "descripcion": "Transformar títulos en preguntas de examen.",
+      "objetivo": "Preparar recuperación activa.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "por tema",
+      "tecnica_id": "OPO_T005"
+    },
+    {
+      "tarea_id": "OPO_TA012",
+      "titulo": "Recitar tema sin mirar",
+      "descripcion": "Intentar explicar o escribir esquema del tema en blanco.",
+      "objetivo": "Comprobar recuerdo real.",
+      "nivel_riesgo": "medio",
+      "duracion_estimada": "10-20 min",
+      "tecnica_id": "OPO_T006"
+    },
+    {
+      "tarea_id": "OPO_TA013",
+      "titulo": "Mini-test de recuperación",
+      "descripcion": "Responder 10-20 preguntas sin apuntes antes de revisar.",
+      "objetivo": "Fortalecer memoria.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "diario",
+      "tecnica_id": "OPO_T006"
+    },
+    {
+      "tarea_id": "OPO_TA014",
+      "titulo": "Tarjetas pregunta-respuesta",
+      "descripcion": "Crear tarjetas con conceptos, plazos, artículos o definiciones.",
+      "objetivo": "Facilitar repaso espaciado.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "por tema",
+      "tecnica_id": "OPO_T012"
+    },
+    {
+      "tarea_id": "OPO_TA015",
+      "titulo": "Programar repasos 1-3-7-14",
+      "descripcion": "Agendar repasos tras estudiar cada tema.",
+      "objetivo": "Evitar olvido.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "continuo",
+      "tecnica_id": "OPO_T007"
+    },
+    {
+      "tarea_id": "OPO_TA016",
+      "titulo": "Repaso acumulativo semanal",
+      "descripcion": "Repasar temas antiguos junto a temas nuevos.",
+      "objetivo": "Consolidar vueltas.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "semanal",
+      "tecnica_id": "OPO_T007"
+    },
+    {
+      "tarea_id": "OPO_TA017",
+      "titulo": "Intercalar temas similares",
+      "descripcion": "Estudiar temas parecidos alternándolos con comparación explícita.",
+      "objetivo": "Reducir confusiones.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "semanal",
+      "tecnica_id": "OPO_T008"
+    },
+    {
+      "tarea_id": "OPO_TA018",
+      "titulo": "Tabla de diferencias",
+      "descripcion": "Crear tabla comparativa de conceptos/plazos/normas similares.",
+      "objetivo": "Evitar interferencias.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "30 min",
+      "tecnica_id": "OPO_T008"
+    },
+    {
+      "tarea_id": "OPO_TA019",
+      "titulo": "Explicar tema en voz alta",
+      "descripcion": "Explicar tema como si enseñaras a otra persona.",
+      "objetivo": "Profundizar comprensión.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "10-15 min",
+      "tecnica_id": "OPO_T009"
+    },
+    {
+      "tarea_id": "OPO_TA020",
+      "titulo": "Crear ejemplo propio",
+      "descripcion": "Asociar cada concepto difícil a ejemplo práctico.",
+      "objetivo": "Mejorar elaboración.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "por concepto",
+      "tecnica_id": "OPO_T009"
+    },
+    {
+      "tarea_id": "OPO_TA021",
+      "titulo": "Esquema visual del tema",
+      "descripcion": "Crear mapa, tabla o diagrama de estructura del tema.",
+      "objetivo": "Mejorar organización.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "por tema",
+      "tecnica_id": "OPO_T010"
+    },
+    {
+      "tarea_id": "OPO_TA022",
+      "titulo": "Resumen de una página",
+      "descripcion": "Reducir tema a una hoja de estructura clave.",
+      "objetivo": "Facilitar repaso final.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "por tema",
+      "tecnica_id": "OPO_T011"
+    },
+    {
+      "tarea_id": "OPO_TA023",
+      "titulo": "Banco de errores semanal",
+      "descripcion": "Registrar fallo, causa, respuesta correcta y próximo repaso.",
+      "objetivo": "Corregir patrones.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "semanal",
+      "tecnica_id": "OPO_T013"
+    },
+    {
+      "tarea_id": "OPO_TA024",
+      "titulo": "Simulacro parcial",
+      "descripcion": "Hacer prueba de bloque con tiempo y corrección.",
+      "objetivo": "Medir dominio por bloques.",
+      "nivel_riesgo": "medio",
+      "duracion_estimada": "semanal",
+      "tecnica_id": "OPO_T014"
+    },
+    {
+      "tarea_id": "OPO_TA025",
+      "titulo": "Simulacro completo",
+      "descripcion": "Realizar examen completo en condiciones reales.",
+      "objetivo": "Entrenar rendimiento real.",
+      "nivel_riesgo": "medio",
+      "duracion_estimada": "quincenal/mensual",
+      "tecnica_id": "OPO_T014"
+    },
+    {
+      "tarea_id": "OPO_TA026",
+      "titulo": "Plantilla de análisis de test",
+      "descripcion": "Clasificar errores: contenido, despiste, tiempo, duda, estrategia.",
+      "objetivo": "Mejorar test.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "tras simulacro",
+      "tecnica_id": "OPO_T024"
+    },
+    {
+      "tarea_id": "OPO_TA027",
+      "titulo": "Entrenar descarte de opciones",
+      "descripcion": "Practicar razonamiento de descarte y justificación.",
+      "objetivo": "Mejorar estrategia test.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "semanal",
+      "tecnica_id": "OPO_T015"
+    },
+    {
+      "tarea_id": "OPO_TA028",
+      "titulo": "Calcular umbral de riesgo",
+      "descripcion": "Definir cuándo responder o dejar blanco según penalización.",
+      "objetivo": "Optimizar nota esperada.",
+      "nivel_riesgo": "medio",
+      "duracion_estimada": "antes de simulacro",
+      "tecnica_id": "OPO_T015"
+    },
+    {
+      "tarea_id": "OPO_TA029",
+      "titulo": "Cronometrar bloques de test",
+      "descripcion": "Practicar ritmo por pregunta y reserva de revisión.",
+      "objetivo": "Mejorar tiempo de examen.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "semanal",
+      "tecnica_id": "OPO_T018"
+    },
+    {
+      "tarea_id": "OPO_TA030",
+      "titulo": "Esquema de desarrollo en 5 minutos",
+      "descripcion": "Antes de escribir tema, hacer esquema rápido.",
+      "objetivo": "Ordenar respuesta.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "por práctica",
+      "tecnica_id": "OPO_T016"
+    },
+    {
+      "tarea_id": "OPO_TA031",
+      "titulo": "Redactar introducción y cierre tipo",
+      "descripcion": "Preparar fórmulas adaptables para temas de desarrollo.",
+      "objetivo": "Mejorar estructura.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "por bloque",
+      "tecnica_id": "OPO_T016"
+    },
+    {
+      "tarea_id": "OPO_TA032",
+      "titulo": "Simulacro de tema escrito",
+      "descripcion": "Escribir tema completo con tiempo real.",
+      "objetivo": "Entrenar desarrollo.",
+      "nivel_riesgo": "medio",
+      "duracion_estimada": "semanal",
+      "tecnica_id": "OPO_T016"
+    },
+    {
+      "tarea_id": "OPO_TA033",
+      "titulo": "Rúbrica de desarrollo",
+      "descripcion": "Valorar estructura, precisión, normativa, claridad y tiempo.",
+      "objetivo": "Mejorar redacción.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "tras tema",
+      "tecnica_id": "OPO_T016"
+    },
+    {
+      "tarea_id": "OPO_TA034",
+      "titulo": "Lectura guiada del supuesto",
+      "descripcion": "Subrayar hechos, pregunta, norma y criterio antes de responder.",
+      "objetivo": "Mejorar casos prácticos.",
+      "nivel_riesgo": "medio",
+      "duracion_estimada": "por supuesto",
+      "tecnica_id": "OPO_T017"
+    },
+    {
+      "tarea_id": "OPO_TA035",
+      "titulo": "Plantilla de supuesto práctico",
+      "descripcion": "Usar estructura fija: hechos, norma, aplicación, conclusión.",
+      "objetivo": "Ordenar respuesta aplicada.",
+      "nivel_riesgo": "medio",
+      "duracion_estimada": "por supuesto",
+      "tecnica_id": "OPO_T017"
+    },
+    {
+      "tarea_id": "OPO_TA036",
+      "titulo": "Bloques Pomodoro adaptados",
+      "descripcion": "Trabajar 25-50 min con descanso programado.",
+      "objetivo": "Mejorar adherencia.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "diario",
+      "tecnica_id": "OPO_T018"
+    },
+    {
+      "tarea_id": "OPO_TA037",
+      "titulo": "Registro real de horas útiles",
+      "descripcion": "Registrar tiempo efectivo, no solo tiempo sentado.",
+      "objetivo": "Medir dedicación real.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "diario",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "tarea_id": "OPO_TA038",
+      "titulo": "Autoevaluación al cerrar sesión",
+      "descripcion": "Responder: qué hice, qué recuerdo, qué toca después.",
+      "objetivo": "Mejorar metacognición.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "diario",
+      "tecnica_id": "OPO_T019"
+    },
+    {
+      "tarea_id": "OPO_TA039",
+      "titulo": "Objetivo SMART semanal",
+      "descripcion": "Definir objetivo concreto de avance/repaso/simulacro.",
+      "objetivo": "Aumentar foco.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "semanal",
+      "tecnica_id": "OPO_T020"
+    },
+    {
+      "tarea_id": "OPO_TA040",
+      "titulo": "Primer paso de 5 minutos",
+      "descripcion": "Iniciar tarea difícil con solo 5 minutos obligatorios.",
+      "objetivo": "Romper procrastinación.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "cuando haya bloqueo",
+      "tecnica_id": "OPO_T021"
+    },
+    {
+      "tarea_id": "OPO_TA041",
+      "titulo": "Eliminar fricción de inicio",
+      "descripcion": "Dejar material preparado y tarea exacta definida el día anterior.",
+      "objetivo": "Facilitar hábito.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "diario",
+      "tecnica_id": "OPO_T021"
+    },
+    {
+      "tarea_id": "OPO_TA042",
+      "titulo": "Plan de descanso semanal",
+      "descripcion": "Programar descanso real y sueño suficiente.",
+      "objetivo": "Prevenir fatiga.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "semanal",
+      "tecnica_id": "OPO_T022"
+    },
+    {
+      "tarea_id": "OPO_TA043",
+      "titulo": "Registro de fatiga y rendimiento",
+      "descripcion": "Valorar energía, sueño, horas útiles y resultado.",
+      "objetivo": "Ajustar carga.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "diario/semanal",
+      "tecnica_id": "OPO_T022"
+    },
+    {
+      "tarea_id": "OPO_TA044",
+      "titulo": "Respiración previa a simulacro",
+      "descripcion": "Practicar 2-3 minutos de respiración antes de prueba.",
+      "objetivo": "Reducir activación.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "antes de prueba",
+      "tecnica_id": "OPO_T023"
+    },
+    {
+      "tarea_id": "OPO_TA045",
+      "titulo": "Exposición gradual a simulacros",
+      "descripcion": "Empezar por mini-simulacros y subir a prueba completa.",
+      "objetivo": "Reducir evitación.",
+      "nivel_riesgo": "medio",
+      "duracion_estimada": "semanal",
+      "tecnica_id": "OPO_T023"
+    },
+    {
+      "tarea_id": "OPO_TA046",
+      "titulo": "Plan anti-bloqueo",
+      "descripcion": "Definir protocolo: parar, respirar, pregunta fácil, volver.",
+      "objetivo": "Gestionar bloqueo.",
+      "nivel_riesgo": "medio",
+      "duracion_estimada": "antes de examen",
+      "tecnica_id": "OPO_T023"
+    },
+    {
+      "tarea_id": "OPO_TA047",
+      "titulo": "Informe semanal del preparador",
+      "descripcion": "Resumen de avance, tareas cumplidas, fallos y próximos objetivos.",
+      "objetivo": "Mejorar seguimiento.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "semanal",
+      "tecnica_id": "OPO_T029"
+    },
+    {
+      "tarea_id": "OPO_TA048",
+      "titulo": "Dashboard de métricas",
+      "descripcion": "Registrar temas vistos, repasos, simulacros, nota y cumplimiento.",
+      "objetivo": "Visualizar evolución.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "continuo",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "tarea_id": "OPO_TA049",
+      "titulo": "Revisión de meseta",
+      "descripcion": "Comparar últimas notas y tipos de error para decidir intervención.",
+      "objetivo": "Superar estancamiento.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "mensual",
+      "tecnica_id": "OPO_T024"
+    },
+    {
+      "tarea_id": "OPO_TA050",
+      "titulo": "Control de versiones del temario",
+      "descripcion": "Guardar fecha, fuente y cambios de cada tema actualizado.",
+      "objetivo": "Evitar material obsoleto.",
+      "nivel_riesgo": "medio",
+      "duracion_estimada": "cuando cambie",
+      "tecnica_id": "OPO_T026"
+    },
+    {
+      "tarea_id": "OPO_TA051",
+      "titulo": "Fuente única de verdad",
+      "descripcion": "Elegir temario principal y registrar fuentes complementarias.",
+      "objetivo": "Reducir dispersión.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "inicial",
+      "tecnica_id": "OPO_T026"
+    },
+    {
+      "tarea_id": "OPO_TA052",
+      "titulo": "Alerta de actualización normativa",
+      "descripcion": "Revisar cambios normativos en calendario fijo.",
+      "objetivo": "Mantener actualizado.",
+      "nivel_riesgo": "medio",
+      "duracion_estimada": "semanal/mensual",
+      "tecnica_id": "OPO_T026"
+    },
+    {
+      "tarea_id": "OPO_TA053",
+      "titulo": "Revisión post-suspenso",
+      "descripcion": "Analizar resultado, errores, plan, estado emocional y siguiente ciclo.",
+      "objetivo": "Reformular estrategia.",
+      "nivel_riesgo": "medio",
+      "duracion_estimada": "tras convocatoria",
+      "tecnica_id": "OPO_T027"
+    },
+    {
+      "tarea_id": "OPO_TA054",
+      "titulo": "Contrato de adherencia",
+      "descripcion": "Acordar tareas mínimas, reporte y revisión semanal.",
+      "objetivo": "Mejorar compromiso.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "semanal",
+      "tecnica_id": "OPO_T027"
+    },
+    {
+      "tarea_id": "OPO_TA055",
+      "titulo": "Plan fase final 30 días",
+      "descripcion": "Definir repasos, simulacros, descanso y logística del último mes.",
+      "objetivo": "Llegar afinado.",
+      "nivel_riesgo": "medio",
+      "duracion_estimada": "último mes",
+      "tecnica_id": "OPO_T028"
+    },
+    {
+      "tarea_id": "OPO_TA056",
+      "titulo": "Checklist día de examen",
+      "descripcion": "Documentación, horario, ruta, material, comida, sueño y estrategia.",
+      "objetivo": "Reducir imprevistos.",
+      "nivel_riesgo": "bajo",
+      "duracion_estimada": "semana examen",
+      "tecnica_id": "OPO_T028"
+    },
+    {
+      "tarea_id": "OPO_TA057",
+      "titulo": "Checklist de derivación",
+      "descripcion": "Valorar ansiedad intensa, insomnio severo, crisis, abandono funcional o ánimo muy bajo.",
+      "objetivo": "Cuidar límites profesionales.",
+      "nivel_riesgo": "alto",
+      "duracion_estimada": "cuando proceda",
+      "tecnica_id": "OPO_T030"
+    }
+  ],
+  "problema_tecnica": [
+    {
+      "problema_id": "OPO_P001",
+      "tecnica_id": "OPO_T001"
+    },
+    {
+      "problema_id": "OPO_P001",
+      "tecnica_id": "OPO_T002"
+    },
+    {
+      "problema_id": "OPO_P001",
+      "tecnica_id": "OPO_T003"
+    },
+    {
+      "problema_id": "OPO_P001",
+      "tecnica_id": "OPO_T004"
+    },
+    {
+      "problema_id": "OPO_P001",
+      "tecnica_id": "OPO_T020"
+    },
+    {
+      "problema_id": "OPO_P001",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "problema_id": "OPO_P002",
+      "tecnica_id": "OPO_T001"
+    },
+    {
+      "problema_id": "OPO_P002",
+      "tecnica_id": "OPO_T002"
+    },
+    {
+      "problema_id": "OPO_P002",
+      "tecnica_id": "OPO_T003"
+    },
+    {
+      "problema_id": "OPO_P002",
+      "tecnica_id": "OPO_T004"
+    },
+    {
+      "problema_id": "OPO_P002",
+      "tecnica_id": "OPO_T020"
+    },
+    {
+      "problema_id": "OPO_P002",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "problema_id": "OPO_P003",
+      "tecnica_id": "OPO_T001"
+    },
+    {
+      "problema_id": "OPO_P003",
+      "tecnica_id": "OPO_T002"
+    },
+    {
+      "problema_id": "OPO_P003",
+      "tecnica_id": "OPO_T003"
+    },
+    {
+      "problema_id": "OPO_P003",
+      "tecnica_id": "OPO_T004"
+    },
+    {
+      "problema_id": "OPO_P003",
+      "tecnica_id": "OPO_T020"
+    },
+    {
+      "problema_id": "OPO_P003",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "problema_id": "OPO_P004",
+      "tecnica_id": "OPO_T001"
+    },
+    {
+      "problema_id": "OPO_P004",
+      "tecnica_id": "OPO_T002"
+    },
+    {
+      "problema_id": "OPO_P004",
+      "tecnica_id": "OPO_T003"
+    },
+    {
+      "problema_id": "OPO_P004",
+      "tecnica_id": "OPO_T004"
+    },
+    {
+      "problema_id": "OPO_P004",
+      "tecnica_id": "OPO_T020"
+    },
+    {
+      "problema_id": "OPO_P004",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "problema_id": "OPO_P005",
+      "tecnica_id": "OPO_T001"
+    },
+    {
+      "problema_id": "OPO_P005",
+      "tecnica_id": "OPO_T002"
+    },
+    {
+      "problema_id": "OPO_P005",
+      "tecnica_id": "OPO_T003"
+    },
+    {
+      "problema_id": "OPO_P005",
+      "tecnica_id": "OPO_T004"
+    },
+    {
+      "problema_id": "OPO_P005",
+      "tecnica_id": "OPO_T020"
+    },
+    {
+      "problema_id": "OPO_P005",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "problema_id": "OPO_P006",
+      "tecnica_id": "OPO_T005"
+    },
+    {
+      "problema_id": "OPO_P006",
+      "tecnica_id": "OPO_T006"
+    },
+    {
+      "problema_id": "OPO_P006",
+      "tecnica_id": "OPO_T009"
+    },
+    {
+      "problema_id": "OPO_P006",
+      "tecnica_id": "OPO_T010"
+    },
+    {
+      "problema_id": "OPO_P006",
+      "tecnica_id": "OPO_T011"
+    },
+    {
+      "problema_id": "OPO_P006",
+      "tecnica_id": "OPO_T019"
+    },
+    {
+      "problema_id": "OPO_P007",
+      "tecnica_id": "OPO_T005"
+    },
+    {
+      "problema_id": "OPO_P007",
+      "tecnica_id": "OPO_T006"
+    },
+    {
+      "problema_id": "OPO_P007",
+      "tecnica_id": "OPO_T009"
+    },
+    {
+      "problema_id": "OPO_P007",
+      "tecnica_id": "OPO_T010"
+    },
+    {
+      "problema_id": "OPO_P007",
+      "tecnica_id": "OPO_T011"
+    },
+    {
+      "problema_id": "OPO_P007",
+      "tecnica_id": "OPO_T019"
+    },
+    {
+      "problema_id": "OPO_P008",
+      "tecnica_id": "OPO_T005"
+    },
+    {
+      "problema_id": "OPO_P008",
+      "tecnica_id": "OPO_T006"
+    },
+    {
+      "problema_id": "OPO_P008",
+      "tecnica_id": "OPO_T009"
+    },
+    {
+      "problema_id": "OPO_P008",
+      "tecnica_id": "OPO_T010"
+    },
+    {
+      "problema_id": "OPO_P008",
+      "tecnica_id": "OPO_T011"
+    },
+    {
+      "problema_id": "OPO_P008",
+      "tecnica_id": "OPO_T019"
+    },
+    {
+      "problema_id": "OPO_P009",
+      "tecnica_id": "OPO_T005"
+    },
+    {
+      "problema_id": "OPO_P009",
+      "tecnica_id": "OPO_T006"
+    },
+    {
+      "problema_id": "OPO_P009",
+      "tecnica_id": "OPO_T009"
+    },
+    {
+      "problema_id": "OPO_P009",
+      "tecnica_id": "OPO_T010"
+    },
+    {
+      "problema_id": "OPO_P009",
+      "tecnica_id": "OPO_T011"
+    },
+    {
+      "problema_id": "OPO_P009",
+      "tecnica_id": "OPO_T019"
+    },
+    {
+      "problema_id": "OPO_P010",
+      "tecnica_id": "OPO_T006"
+    },
+    {
+      "problema_id": "OPO_P010",
+      "tecnica_id": "OPO_T007"
+    },
+    {
+      "problema_id": "OPO_P010",
+      "tecnica_id": "OPO_T008"
+    },
+    {
+      "problema_id": "OPO_P010",
+      "tecnica_id": "OPO_T012"
+    },
+    {
+      "problema_id": "OPO_P010",
+      "tecnica_id": "OPO_T013"
+    },
+    {
+      "problema_id": "OPO_P010",
+      "tecnica_id": "OPO_T019"
+    },
+    {
+      "problema_id": "OPO_P011",
+      "tecnica_id": "OPO_T006"
+    },
+    {
+      "problema_id": "OPO_P011",
+      "tecnica_id": "OPO_T007"
+    },
+    {
+      "problema_id": "OPO_P011",
+      "tecnica_id": "OPO_T008"
+    },
+    {
+      "problema_id": "OPO_P011",
+      "tecnica_id": "OPO_T012"
+    },
+    {
+      "problema_id": "OPO_P011",
+      "tecnica_id": "OPO_T013"
+    },
+    {
+      "problema_id": "OPO_P011",
+      "tecnica_id": "OPO_T019"
+    },
+    {
+      "problema_id": "OPO_P012",
+      "tecnica_id": "OPO_T006"
+    },
+    {
+      "problema_id": "OPO_P012",
+      "tecnica_id": "OPO_T007"
+    },
+    {
+      "problema_id": "OPO_P012",
+      "tecnica_id": "OPO_T008"
+    },
+    {
+      "problema_id": "OPO_P012",
+      "tecnica_id": "OPO_T012"
+    },
+    {
+      "problema_id": "OPO_P012",
+      "tecnica_id": "OPO_T013"
+    },
+    {
+      "problema_id": "OPO_P012",
+      "tecnica_id": "OPO_T019"
+    },
+    {
+      "problema_id": "OPO_P013",
+      "tecnica_id": "OPO_T006"
+    },
+    {
+      "problema_id": "OPO_P013",
+      "tecnica_id": "OPO_T007"
+    },
+    {
+      "problema_id": "OPO_P013",
+      "tecnica_id": "OPO_T008"
+    },
+    {
+      "problema_id": "OPO_P013",
+      "tecnica_id": "OPO_T012"
+    },
+    {
+      "problema_id": "OPO_P013",
+      "tecnica_id": "OPO_T013"
+    },
+    {
+      "problema_id": "OPO_P013",
+      "tecnica_id": "OPO_T019"
+    },
+    {
+      "problema_id": "OPO_P014",
+      "tecnica_id": "OPO_T014"
+    },
+    {
+      "problema_id": "OPO_P014",
+      "tecnica_id": "OPO_T015"
+    },
+    {
+      "problema_id": "OPO_P014",
+      "tecnica_id": "OPO_T018"
+    },
+    {
+      "problema_id": "OPO_P014",
+      "tecnica_id": "OPO_T024"
+    },
+    {
+      "problema_id": "OPO_P014",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "problema_id": "OPO_P015",
+      "tecnica_id": "OPO_T014"
+    },
+    {
+      "problema_id": "OPO_P015",
+      "tecnica_id": "OPO_T015"
+    },
+    {
+      "problema_id": "OPO_P015",
+      "tecnica_id": "OPO_T018"
+    },
+    {
+      "problema_id": "OPO_P015",
+      "tecnica_id": "OPO_T024"
+    },
+    {
+      "problema_id": "OPO_P015",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "problema_id": "OPO_P016",
+      "tecnica_id": "OPO_T014"
+    },
+    {
+      "problema_id": "OPO_P016",
+      "tecnica_id": "OPO_T015"
+    },
+    {
+      "problema_id": "OPO_P016",
+      "tecnica_id": "OPO_T018"
+    },
+    {
+      "problema_id": "OPO_P016",
+      "tecnica_id": "OPO_T024"
+    },
+    {
+      "problema_id": "OPO_P016",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "problema_id": "OPO_P017",
+      "tecnica_id": "OPO_T014"
+    },
+    {
+      "problema_id": "OPO_P017",
+      "tecnica_id": "OPO_T015"
+    },
+    {
+      "problema_id": "OPO_P017",
+      "tecnica_id": "OPO_T018"
+    },
+    {
+      "problema_id": "OPO_P017",
+      "tecnica_id": "OPO_T024"
+    },
+    {
+      "problema_id": "OPO_P017",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "problema_id": "OPO_P018",
+      "tecnica_id": "OPO_T014"
+    },
+    {
+      "problema_id": "OPO_P018",
+      "tecnica_id": "OPO_T015"
+    },
+    {
+      "problema_id": "OPO_P018",
+      "tecnica_id": "OPO_T018"
+    },
+    {
+      "problema_id": "OPO_P018",
+      "tecnica_id": "OPO_T024"
+    },
+    {
+      "problema_id": "OPO_P018",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "problema_id": "OPO_P019",
+      "tecnica_id": "OPO_T016"
+    },
+    {
+      "problema_id": "OPO_P019",
+      "tecnica_id": "OPO_T018"
+    },
+    {
+      "problema_id": "OPO_P019",
+      "tecnica_id": "OPO_T024"
+    },
+    {
+      "problema_id": "OPO_P019",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "problema_id": "OPO_P020",
+      "tecnica_id": "OPO_T016"
+    },
+    {
+      "problema_id": "OPO_P020",
+      "tecnica_id": "OPO_T018"
+    },
+    {
+      "problema_id": "OPO_P020",
+      "tecnica_id": "OPO_T024"
+    },
+    {
+      "problema_id": "OPO_P020",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "problema_id": "OPO_P021",
+      "tecnica_id": "OPO_T016"
+    },
+    {
+      "problema_id": "OPO_P021",
+      "tecnica_id": "OPO_T018"
+    },
+    {
+      "problema_id": "OPO_P021",
+      "tecnica_id": "OPO_T024"
+    },
+    {
+      "problema_id": "OPO_P021",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "problema_id": "OPO_P022",
+      "tecnica_id": "OPO_T017"
+    },
+    {
+      "problema_id": "OPO_P022",
+      "tecnica_id": "OPO_T024"
+    },
+    {
+      "problema_id": "OPO_P022",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "problema_id": "OPO_P023",
+      "tecnica_id": "OPO_T017"
+    },
+    {
+      "problema_id": "OPO_P023",
+      "tecnica_id": "OPO_T024"
+    },
+    {
+      "problema_id": "OPO_P023",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "problema_id": "OPO_P024",
+      "tecnica_id": "OPO_T018"
+    },
+    {
+      "problema_id": "OPO_P024",
+      "tecnica_id": "OPO_T020"
+    },
+    {
+      "problema_id": "OPO_P024",
+      "tecnica_id": "OPO_T021"
+    },
+    {
+      "problema_id": "OPO_P024",
+      "tecnica_id": "OPO_T022"
+    },
+    {
+      "problema_id": "OPO_P024",
+      "tecnica_id": "OPO_T027"
+    },
+    {
+      "problema_id": "OPO_P024",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "problema_id": "OPO_P025",
+      "tecnica_id": "OPO_T018"
+    },
+    {
+      "problema_id": "OPO_P025",
+      "tecnica_id": "OPO_T020"
+    },
+    {
+      "problema_id": "OPO_P025",
+      "tecnica_id": "OPO_T021"
+    },
+    {
+      "problema_id": "OPO_P025",
+      "tecnica_id": "OPO_T022"
+    },
+    {
+      "problema_id": "OPO_P025",
+      "tecnica_id": "OPO_T027"
+    },
+    {
+      "problema_id": "OPO_P025",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "problema_id": "OPO_P026",
+      "tecnica_id": "OPO_T018"
+    },
+    {
+      "problema_id": "OPO_P026",
+      "tecnica_id": "OPO_T020"
+    },
+    {
+      "problema_id": "OPO_P026",
+      "tecnica_id": "OPO_T021"
+    },
+    {
+      "problema_id": "OPO_P026",
+      "tecnica_id": "OPO_T022"
+    },
+    {
+      "problema_id": "OPO_P026",
+      "tecnica_id": "OPO_T027"
+    },
+    {
+      "problema_id": "OPO_P026",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "problema_id": "OPO_P027",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "problema_id": "OPO_P027",
+      "tecnica_id": "OPO_T027"
+    },
+    {
+      "problema_id": "OPO_P027",
+      "tecnica_id": "OPO_T029"
+    },
+    {
+      "problema_id": "OPO_P027",
+      "tecnica_id": "OPO_T024"
+    },
+    {
+      "problema_id": "OPO_P028",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "problema_id": "OPO_P028",
+      "tecnica_id": "OPO_T027"
+    },
+    {
+      "problema_id": "OPO_P028",
+      "tecnica_id": "OPO_T029"
+    },
+    {
+      "problema_id": "OPO_P028",
+      "tecnica_id": "OPO_T024"
+    },
+    {
+      "problema_id": "OPO_P029",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "problema_id": "OPO_P029",
+      "tecnica_id": "OPO_T027"
+    },
+    {
+      "problema_id": "OPO_P029",
+      "tecnica_id": "OPO_T029"
+    },
+    {
+      "problema_id": "OPO_P029",
+      "tecnica_id": "OPO_T024"
+    },
+    {
+      "problema_id": "OPO_P030",
+      "tecnica_id": "OPO_T020"
+    },
+    {
+      "problema_id": "OPO_P030",
+      "tecnica_id": "OPO_T021"
+    },
+    {
+      "problema_id": "OPO_P030",
+      "tecnica_id": "OPO_T022"
+    },
+    {
+      "problema_id": "OPO_P030",
+      "tecnica_id": "OPO_T027"
+    },
+    {
+      "problema_id": "OPO_P030",
+      "tecnica_id": "OPO_T019"
+    },
+    {
+      "problema_id": "OPO_P031",
+      "tecnica_id": "OPO_T020"
+    },
+    {
+      "problema_id": "OPO_P031",
+      "tecnica_id": "OPO_T021"
+    },
+    {
+      "problema_id": "OPO_P031",
+      "tecnica_id": "OPO_T022"
+    },
+    {
+      "problema_id": "OPO_P031",
+      "tecnica_id": "OPO_T027"
+    },
+    {
+      "problema_id": "OPO_P031",
+      "tecnica_id": "OPO_T019"
+    },
+    {
+      "problema_id": "OPO_P032",
+      "tecnica_id": "OPO_T020"
+    },
+    {
+      "problema_id": "OPO_P032",
+      "tecnica_id": "OPO_T021"
+    },
+    {
+      "problema_id": "OPO_P032",
+      "tecnica_id": "OPO_T022"
+    },
+    {
+      "problema_id": "OPO_P032",
+      "tecnica_id": "OPO_T027"
+    },
+    {
+      "problema_id": "OPO_P032",
+      "tecnica_id": "OPO_T019"
+    },
+    {
+      "problema_id": "OPO_P033",
+      "tecnica_id": "OPO_T023"
+    },
+    {
+      "problema_id": "OPO_P033",
+      "tecnica_id": "OPO_T014"
+    },
+    {
+      "problema_id": "OPO_P033",
+      "tecnica_id": "OPO_T028"
+    },
+    {
+      "problema_id": "OPO_P033",
+      "tecnica_id": "OPO_T030"
+    },
+    {
+      "problema_id": "OPO_P034",
+      "tecnica_id": "OPO_T023"
+    },
+    {
+      "problema_id": "OPO_P034",
+      "tecnica_id": "OPO_T014"
+    },
+    {
+      "problema_id": "OPO_P034",
+      "tecnica_id": "OPO_T028"
+    },
+    {
+      "problema_id": "OPO_P034",
+      "tecnica_id": "OPO_T030"
+    },
+    {
+      "problema_id": "OPO_P035",
+      "tecnica_id": "OPO_T023"
+    },
+    {
+      "problema_id": "OPO_P035",
+      "tecnica_id": "OPO_T014"
+    },
+    {
+      "problema_id": "OPO_P035",
+      "tecnica_id": "OPO_T028"
+    },
+    {
+      "problema_id": "OPO_P035",
+      "tecnica_id": "OPO_T030"
+    },
+    {
+      "problema_id": "OPO_P036",
+      "tecnica_id": "OPO_T002"
+    },
+    {
+      "problema_id": "OPO_P036",
+      "tecnica_id": "OPO_T018"
+    },
+    {
+      "problema_id": "OPO_P036",
+      "tecnica_id": "OPO_T014"
+    },
+    {
+      "problema_id": "OPO_P036",
+      "tecnica_id": "OPO_T028"
+    },
+    {
+      "problema_id": "OPO_P036",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "problema_id": "OPO_P037",
+      "tecnica_id": "OPO_T002"
+    },
+    {
+      "problema_id": "OPO_P037",
+      "tecnica_id": "OPO_T018"
+    },
+    {
+      "problema_id": "OPO_P037",
+      "tecnica_id": "OPO_T014"
+    },
+    {
+      "problema_id": "OPO_P037",
+      "tecnica_id": "OPO_T028"
+    },
+    {
+      "problema_id": "OPO_P037",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "problema_id": "OPO_P038",
+      "tecnica_id": "OPO_T002"
+    },
+    {
+      "problema_id": "OPO_P038",
+      "tecnica_id": "OPO_T018"
+    },
+    {
+      "problema_id": "OPO_P038",
+      "tecnica_id": "OPO_T014"
+    },
+    {
+      "problema_id": "OPO_P038",
+      "tecnica_id": "OPO_T028"
+    },
+    {
+      "problema_id": "OPO_P038",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "problema_id": "OPO_P039",
+      "tecnica_id": "OPO_T026"
+    },
+    {
+      "problema_id": "OPO_P039",
+      "tecnica_id": "OPO_T003"
+    },
+    {
+      "problema_id": "OPO_P039",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "problema_id": "OPO_P040",
+      "tecnica_id": "OPO_T026"
+    },
+    {
+      "problema_id": "OPO_P040",
+      "tecnica_id": "OPO_T003"
+    },
+    {
+      "problema_id": "OPO_P040",
+      "tecnica_id": "OPO_T025"
+    },
+    {
+      "problema_id": "OPO_P041",
+      "tecnica_id": "OPO_T026"
+    },
+    {
+      "problema_id": "OPO_P041",
+      "tecnica_id": "OPO_T003"
+    },
+    {
+      "problema_id": "OPO_P041",
+      "tecnica_id": "OPO_T025"
+    }
+  ],
+  "recomendaciones": [
+    {
+      "recomendacion_id": "OPO_R0001",
+      "problema_id": "OPO_P001",
+      "tecnica_id": "OPO_T001",
+      "tarea_id": "OPO_TA001",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0002",
+      "problema_id": "OPO_P001",
+      "tecnica_id": "OPO_T001",
+      "tarea_id": "OPO_TA002",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0003",
+      "problema_id": "OPO_P001",
+      "tecnica_id": "OPO_T001",
+      "tarea_id": "OPO_TA003",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0004",
+      "problema_id": "OPO_P001",
+      "tecnica_id": "OPO_T002",
+      "tarea_id": "OPO_TA004",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0005",
+      "problema_id": "OPO_P001",
+      "tecnica_id": "OPO_T002",
+      "tarea_id": "OPO_TA005",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0006",
+      "problema_id": "OPO_P001",
+      "tecnica_id": "OPO_T003",
+      "tarea_id": "OPO_TA006",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0007",
+      "problema_id": "OPO_P001",
+      "tecnica_id": "OPO_T003",
+      "tarea_id": "OPO_TA007",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0008",
+      "problema_id": "OPO_P001",
+      "tecnica_id": "OPO_T004",
+      "tarea_id": "OPO_TA008",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0009",
+      "problema_id": "OPO_P001",
+      "tecnica_id": "OPO_T004",
+      "tarea_id": "OPO_TA009",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0010",
+      "problema_id": "OPO_P001",
+      "tecnica_id": "OPO_T020",
+      "tarea_id": "OPO_TA039",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0011",
+      "problema_id": "OPO_P001",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA037",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0012",
+      "problema_id": "OPO_P001",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA048",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0013",
+      "problema_id": "OPO_P002",
+      "tecnica_id": "OPO_T001",
+      "tarea_id": "OPO_TA001",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0014",
+      "problema_id": "OPO_P002",
+      "tecnica_id": "OPO_T001",
+      "tarea_id": "OPO_TA002",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0015",
+      "problema_id": "OPO_P002",
+      "tecnica_id": "OPO_T001",
+      "tarea_id": "OPO_TA003",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0016",
+      "problema_id": "OPO_P002",
+      "tecnica_id": "OPO_T002",
+      "tarea_id": "OPO_TA004",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0017",
+      "problema_id": "OPO_P002",
+      "tecnica_id": "OPO_T002",
+      "tarea_id": "OPO_TA005",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0018",
+      "problema_id": "OPO_P002",
+      "tecnica_id": "OPO_T003",
+      "tarea_id": "OPO_TA006",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0019",
+      "problema_id": "OPO_P002",
+      "tecnica_id": "OPO_T003",
+      "tarea_id": "OPO_TA007",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0020",
+      "problema_id": "OPO_P002",
+      "tecnica_id": "OPO_T004",
+      "tarea_id": "OPO_TA008",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0021",
+      "problema_id": "OPO_P002",
+      "tecnica_id": "OPO_T004",
+      "tarea_id": "OPO_TA009",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0022",
+      "problema_id": "OPO_P002",
+      "tecnica_id": "OPO_T020",
+      "tarea_id": "OPO_TA039",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0023",
+      "problema_id": "OPO_P002",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA037",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0024",
+      "problema_id": "OPO_P002",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA048",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0025",
+      "problema_id": "OPO_P003",
+      "tecnica_id": "OPO_T001",
+      "tarea_id": "OPO_TA001",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0026",
+      "problema_id": "OPO_P003",
+      "tecnica_id": "OPO_T001",
+      "tarea_id": "OPO_TA002",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0027",
+      "problema_id": "OPO_P003",
+      "tecnica_id": "OPO_T001",
+      "tarea_id": "OPO_TA003",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0028",
+      "problema_id": "OPO_P003",
+      "tecnica_id": "OPO_T002",
+      "tarea_id": "OPO_TA004",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0029",
+      "problema_id": "OPO_P003",
+      "tecnica_id": "OPO_T002",
+      "tarea_id": "OPO_TA005",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0030",
+      "problema_id": "OPO_P003",
+      "tecnica_id": "OPO_T003",
+      "tarea_id": "OPO_TA006",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0031",
+      "problema_id": "OPO_P003",
+      "tecnica_id": "OPO_T003",
+      "tarea_id": "OPO_TA007",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0032",
+      "problema_id": "OPO_P003",
+      "tecnica_id": "OPO_T004",
+      "tarea_id": "OPO_TA008",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0033",
+      "problema_id": "OPO_P003",
+      "tecnica_id": "OPO_T004",
+      "tarea_id": "OPO_TA009",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0034",
+      "problema_id": "OPO_P003",
+      "tecnica_id": "OPO_T020",
+      "tarea_id": "OPO_TA039",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0035",
+      "problema_id": "OPO_P003",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA037",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0036",
+      "problema_id": "OPO_P003",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA048",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0037",
+      "problema_id": "OPO_P004",
+      "tecnica_id": "OPO_T001",
+      "tarea_id": "OPO_TA001",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0038",
+      "problema_id": "OPO_P004",
+      "tecnica_id": "OPO_T001",
+      "tarea_id": "OPO_TA002",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0039",
+      "problema_id": "OPO_P004",
+      "tecnica_id": "OPO_T001",
+      "tarea_id": "OPO_TA003",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0040",
+      "problema_id": "OPO_P004",
+      "tecnica_id": "OPO_T002",
+      "tarea_id": "OPO_TA004",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0041",
+      "problema_id": "OPO_P004",
+      "tecnica_id": "OPO_T002",
+      "tarea_id": "OPO_TA005",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0042",
+      "problema_id": "OPO_P004",
+      "tecnica_id": "OPO_T003",
+      "tarea_id": "OPO_TA006",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0043",
+      "problema_id": "OPO_P004",
+      "tecnica_id": "OPO_T003",
+      "tarea_id": "OPO_TA007",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0044",
+      "problema_id": "OPO_P004",
+      "tecnica_id": "OPO_T004",
+      "tarea_id": "OPO_TA008",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0045",
+      "problema_id": "OPO_P004",
+      "tecnica_id": "OPO_T004",
+      "tarea_id": "OPO_TA009",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0046",
+      "problema_id": "OPO_P004",
+      "tecnica_id": "OPO_T020",
+      "tarea_id": "OPO_TA039",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0047",
+      "problema_id": "OPO_P004",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA037",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0048",
+      "problema_id": "OPO_P004",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA048",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0049",
+      "problema_id": "OPO_P005",
+      "tecnica_id": "OPO_T001",
+      "tarea_id": "OPO_TA001",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0050",
+      "problema_id": "OPO_P005",
+      "tecnica_id": "OPO_T001",
+      "tarea_id": "OPO_TA002",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0051",
+      "problema_id": "OPO_P005",
+      "tecnica_id": "OPO_T001",
+      "tarea_id": "OPO_TA003",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0052",
+      "problema_id": "OPO_P005",
+      "tecnica_id": "OPO_T002",
+      "tarea_id": "OPO_TA004",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0053",
+      "problema_id": "OPO_P005",
+      "tecnica_id": "OPO_T002",
+      "tarea_id": "OPO_TA005",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0054",
+      "problema_id": "OPO_P005",
+      "tecnica_id": "OPO_T003",
+      "tarea_id": "OPO_TA006",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0055",
+      "problema_id": "OPO_P005",
+      "tecnica_id": "OPO_T003",
+      "tarea_id": "OPO_TA007",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0056",
+      "problema_id": "OPO_P005",
+      "tecnica_id": "OPO_T004",
+      "tarea_id": "OPO_TA008",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0057",
+      "problema_id": "OPO_P005",
+      "tecnica_id": "OPO_T004",
+      "tarea_id": "OPO_TA009",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0058",
+      "problema_id": "OPO_P005",
+      "tecnica_id": "OPO_T020",
+      "tarea_id": "OPO_TA039",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0059",
+      "problema_id": "OPO_P005",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA037",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0060",
+      "problema_id": "OPO_P005",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA048",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0061",
+      "problema_id": "OPO_P006",
+      "tecnica_id": "OPO_T005",
+      "tarea_id": "OPO_TA010",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0062",
+      "problema_id": "OPO_P006",
+      "tecnica_id": "OPO_T005",
+      "tarea_id": "OPO_TA011",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0063",
+      "problema_id": "OPO_P006",
+      "tecnica_id": "OPO_T006",
+      "tarea_id": "OPO_TA012",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0064",
+      "problema_id": "OPO_P006",
+      "tecnica_id": "OPO_T006",
+      "tarea_id": "OPO_TA013",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0065",
+      "problema_id": "OPO_P006",
+      "tecnica_id": "OPO_T009",
+      "tarea_id": "OPO_TA019",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0066",
+      "problema_id": "OPO_P006",
+      "tecnica_id": "OPO_T009",
+      "tarea_id": "OPO_TA020",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0067",
+      "problema_id": "OPO_P006",
+      "tecnica_id": "OPO_T010",
+      "tarea_id": "OPO_TA021",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0068",
+      "problema_id": "OPO_P006",
+      "tecnica_id": "OPO_T011",
+      "tarea_id": "OPO_TA022",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0069",
+      "problema_id": "OPO_P006",
+      "tecnica_id": "OPO_T019",
+      "tarea_id": "OPO_TA038",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0070",
+      "problema_id": "OPO_P007",
+      "tecnica_id": "OPO_T005",
+      "tarea_id": "OPO_TA010",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0071",
+      "problema_id": "OPO_P007",
+      "tecnica_id": "OPO_T005",
+      "tarea_id": "OPO_TA011",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0072",
+      "problema_id": "OPO_P007",
+      "tecnica_id": "OPO_T006",
+      "tarea_id": "OPO_TA012",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0073",
+      "problema_id": "OPO_P007",
+      "tecnica_id": "OPO_T006",
+      "tarea_id": "OPO_TA013",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0074",
+      "problema_id": "OPO_P007",
+      "tecnica_id": "OPO_T009",
+      "tarea_id": "OPO_TA019",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0075",
+      "problema_id": "OPO_P007",
+      "tecnica_id": "OPO_T009",
+      "tarea_id": "OPO_TA020",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0076",
+      "problema_id": "OPO_P007",
+      "tecnica_id": "OPO_T010",
+      "tarea_id": "OPO_TA021",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0077",
+      "problema_id": "OPO_P007",
+      "tecnica_id": "OPO_T011",
+      "tarea_id": "OPO_TA022",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0078",
+      "problema_id": "OPO_P007",
+      "tecnica_id": "OPO_T019",
+      "tarea_id": "OPO_TA038",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0079",
+      "problema_id": "OPO_P008",
+      "tecnica_id": "OPO_T005",
+      "tarea_id": "OPO_TA010",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0080",
+      "problema_id": "OPO_P008",
+      "tecnica_id": "OPO_T005",
+      "tarea_id": "OPO_TA011",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0081",
+      "problema_id": "OPO_P008",
+      "tecnica_id": "OPO_T006",
+      "tarea_id": "OPO_TA012",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0082",
+      "problema_id": "OPO_P008",
+      "tecnica_id": "OPO_T006",
+      "tarea_id": "OPO_TA013",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0083",
+      "problema_id": "OPO_P008",
+      "tecnica_id": "OPO_T009",
+      "tarea_id": "OPO_TA019",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0084",
+      "problema_id": "OPO_P008",
+      "tecnica_id": "OPO_T009",
+      "tarea_id": "OPO_TA020",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0085",
+      "problema_id": "OPO_P008",
+      "tecnica_id": "OPO_T010",
+      "tarea_id": "OPO_TA021",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0086",
+      "problema_id": "OPO_P008",
+      "tecnica_id": "OPO_T011",
+      "tarea_id": "OPO_TA022",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0087",
+      "problema_id": "OPO_P008",
+      "tecnica_id": "OPO_T019",
+      "tarea_id": "OPO_TA038",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0088",
+      "problema_id": "OPO_P009",
+      "tecnica_id": "OPO_T005",
+      "tarea_id": "OPO_TA010",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0089",
+      "problema_id": "OPO_P009",
+      "tecnica_id": "OPO_T005",
+      "tarea_id": "OPO_TA011",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0090",
+      "problema_id": "OPO_P009",
+      "tecnica_id": "OPO_T006",
+      "tarea_id": "OPO_TA012",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0091",
+      "problema_id": "OPO_P009",
+      "tecnica_id": "OPO_T006",
+      "tarea_id": "OPO_TA013",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0092",
+      "problema_id": "OPO_P009",
+      "tecnica_id": "OPO_T009",
+      "tarea_id": "OPO_TA019",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0093",
+      "problema_id": "OPO_P009",
+      "tecnica_id": "OPO_T009",
+      "tarea_id": "OPO_TA020",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0094",
+      "problema_id": "OPO_P009",
+      "tecnica_id": "OPO_T010",
+      "tarea_id": "OPO_TA021",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0095",
+      "problema_id": "OPO_P009",
+      "tecnica_id": "OPO_T011",
+      "tarea_id": "OPO_TA022",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0096",
+      "problema_id": "OPO_P009",
+      "tecnica_id": "OPO_T019",
+      "tarea_id": "OPO_TA038",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0097",
+      "problema_id": "OPO_P010",
+      "tecnica_id": "OPO_T006",
+      "tarea_id": "OPO_TA012",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0098",
+      "problema_id": "OPO_P010",
+      "tecnica_id": "OPO_T006",
+      "tarea_id": "OPO_TA013",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0099",
+      "problema_id": "OPO_P010",
+      "tecnica_id": "OPO_T007",
+      "tarea_id": "OPO_TA015",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0100",
+      "problema_id": "OPO_P010",
+      "tecnica_id": "OPO_T007",
+      "tarea_id": "OPO_TA016",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0101",
+      "problema_id": "OPO_P010",
+      "tecnica_id": "OPO_T008",
+      "tarea_id": "OPO_TA017",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0102",
+      "problema_id": "OPO_P010",
+      "tecnica_id": "OPO_T008",
+      "tarea_id": "OPO_TA018",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0103",
+      "problema_id": "OPO_P010",
+      "tecnica_id": "OPO_T012",
+      "tarea_id": "OPO_TA014",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0104",
+      "problema_id": "OPO_P010",
+      "tecnica_id": "OPO_T013",
+      "tarea_id": "OPO_TA023",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0105",
+      "problema_id": "OPO_P010",
+      "tecnica_id": "OPO_T019",
+      "tarea_id": "OPO_TA038",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0106",
+      "problema_id": "OPO_P011",
+      "tecnica_id": "OPO_T006",
+      "tarea_id": "OPO_TA012",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0107",
+      "problema_id": "OPO_P011",
+      "tecnica_id": "OPO_T006",
+      "tarea_id": "OPO_TA013",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0108",
+      "problema_id": "OPO_P011",
+      "tecnica_id": "OPO_T007",
+      "tarea_id": "OPO_TA015",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0109",
+      "problema_id": "OPO_P011",
+      "tecnica_id": "OPO_T007",
+      "tarea_id": "OPO_TA016",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0110",
+      "problema_id": "OPO_P011",
+      "tecnica_id": "OPO_T008",
+      "tarea_id": "OPO_TA017",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0111",
+      "problema_id": "OPO_P011",
+      "tecnica_id": "OPO_T008",
+      "tarea_id": "OPO_TA018",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0112",
+      "problema_id": "OPO_P011",
+      "tecnica_id": "OPO_T012",
+      "tarea_id": "OPO_TA014",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0113",
+      "problema_id": "OPO_P011",
+      "tecnica_id": "OPO_T013",
+      "tarea_id": "OPO_TA023",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0114",
+      "problema_id": "OPO_P011",
+      "tecnica_id": "OPO_T019",
+      "tarea_id": "OPO_TA038",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0115",
+      "problema_id": "OPO_P012",
+      "tecnica_id": "OPO_T006",
+      "tarea_id": "OPO_TA012",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0116",
+      "problema_id": "OPO_P012",
+      "tecnica_id": "OPO_T006",
+      "tarea_id": "OPO_TA013",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0117",
+      "problema_id": "OPO_P012",
+      "tecnica_id": "OPO_T007",
+      "tarea_id": "OPO_TA015",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0118",
+      "problema_id": "OPO_P012",
+      "tecnica_id": "OPO_T007",
+      "tarea_id": "OPO_TA016",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0119",
+      "problema_id": "OPO_P012",
+      "tecnica_id": "OPO_T008",
+      "tarea_id": "OPO_TA017",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0120",
+      "problema_id": "OPO_P012",
+      "tecnica_id": "OPO_T008",
+      "tarea_id": "OPO_TA018",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0121",
+      "problema_id": "OPO_P012",
+      "tecnica_id": "OPO_T012",
+      "tarea_id": "OPO_TA014",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0122",
+      "problema_id": "OPO_P012",
+      "tecnica_id": "OPO_T013",
+      "tarea_id": "OPO_TA023",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0123",
+      "problema_id": "OPO_P012",
+      "tecnica_id": "OPO_T019",
+      "tarea_id": "OPO_TA038",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0124",
+      "problema_id": "OPO_P013",
+      "tecnica_id": "OPO_T006",
+      "tarea_id": "OPO_TA012",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0125",
+      "problema_id": "OPO_P013",
+      "tecnica_id": "OPO_T006",
+      "tarea_id": "OPO_TA013",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0126",
+      "problema_id": "OPO_P013",
+      "tecnica_id": "OPO_T007",
+      "tarea_id": "OPO_TA015",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0127",
+      "problema_id": "OPO_P013",
+      "tecnica_id": "OPO_T007",
+      "tarea_id": "OPO_TA016",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0128",
+      "problema_id": "OPO_P013",
+      "tecnica_id": "OPO_T008",
+      "tarea_id": "OPO_TA017",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0129",
+      "problema_id": "OPO_P013",
+      "tecnica_id": "OPO_T008",
+      "tarea_id": "OPO_TA018",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0130",
+      "problema_id": "OPO_P013",
+      "tecnica_id": "OPO_T012",
+      "tarea_id": "OPO_TA014",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0131",
+      "problema_id": "OPO_P013",
+      "tecnica_id": "OPO_T013",
+      "tarea_id": "OPO_TA023",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0132",
+      "problema_id": "OPO_P013",
+      "tecnica_id": "OPO_T019",
+      "tarea_id": "OPO_TA038",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0133",
+      "problema_id": "OPO_P014",
+      "tecnica_id": "OPO_T014",
+      "tarea_id": "OPO_TA024",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0134",
+      "problema_id": "OPO_P014",
+      "tecnica_id": "OPO_T014",
+      "tarea_id": "OPO_TA025",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0135",
+      "problema_id": "OPO_P014",
+      "tecnica_id": "OPO_T015",
+      "tarea_id": "OPO_TA027",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0136",
+      "problema_id": "OPO_P014",
+      "tecnica_id": "OPO_T015",
+      "tarea_id": "OPO_TA028",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0137",
+      "problema_id": "OPO_P014",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA029",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0138",
+      "problema_id": "OPO_P014",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA036",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0139",
+      "problema_id": "OPO_P014",
+      "tecnica_id": "OPO_T024",
+      "tarea_id": "OPO_TA026",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0140",
+      "problema_id": "OPO_P014",
+      "tecnica_id": "OPO_T024",
+      "tarea_id": "OPO_TA049",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0141",
+      "problema_id": "OPO_P014",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA037",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0142",
+      "problema_id": "OPO_P014",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA048",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0143",
+      "problema_id": "OPO_P015",
+      "tecnica_id": "OPO_T014",
+      "tarea_id": "OPO_TA024",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0144",
+      "problema_id": "OPO_P015",
+      "tecnica_id": "OPO_T014",
+      "tarea_id": "OPO_TA025",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0145",
+      "problema_id": "OPO_P015",
+      "tecnica_id": "OPO_T015",
+      "tarea_id": "OPO_TA027",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0146",
+      "problema_id": "OPO_P015",
+      "tecnica_id": "OPO_T015",
+      "tarea_id": "OPO_TA028",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0147",
+      "problema_id": "OPO_P015",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA029",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0148",
+      "problema_id": "OPO_P015",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA036",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0149",
+      "problema_id": "OPO_P015",
+      "tecnica_id": "OPO_T024",
+      "tarea_id": "OPO_TA026",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0150",
+      "problema_id": "OPO_P015",
+      "tecnica_id": "OPO_T024",
+      "tarea_id": "OPO_TA049",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0151",
+      "problema_id": "OPO_P015",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA037",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0152",
+      "problema_id": "OPO_P015",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA048",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0153",
+      "problema_id": "OPO_P016",
+      "tecnica_id": "OPO_T014",
+      "tarea_id": "OPO_TA024",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0154",
+      "problema_id": "OPO_P016",
+      "tecnica_id": "OPO_T014",
+      "tarea_id": "OPO_TA025",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0155",
+      "problema_id": "OPO_P016",
+      "tecnica_id": "OPO_T015",
+      "tarea_id": "OPO_TA027",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0156",
+      "problema_id": "OPO_P016",
+      "tecnica_id": "OPO_T015",
+      "tarea_id": "OPO_TA028",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0157",
+      "problema_id": "OPO_P016",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA029",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0158",
+      "problema_id": "OPO_P016",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA036",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0159",
+      "problema_id": "OPO_P016",
+      "tecnica_id": "OPO_T024",
+      "tarea_id": "OPO_TA026",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0160",
+      "problema_id": "OPO_P016",
+      "tecnica_id": "OPO_T024",
+      "tarea_id": "OPO_TA049",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0161",
+      "problema_id": "OPO_P016",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA037",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0162",
+      "problema_id": "OPO_P016",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA048",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0163",
+      "problema_id": "OPO_P017",
+      "tecnica_id": "OPO_T014",
+      "tarea_id": "OPO_TA024",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0164",
+      "problema_id": "OPO_P017",
+      "tecnica_id": "OPO_T014",
+      "tarea_id": "OPO_TA025",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0165",
+      "problema_id": "OPO_P017",
+      "tecnica_id": "OPO_T015",
+      "tarea_id": "OPO_TA027",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0166",
+      "problema_id": "OPO_P017",
+      "tecnica_id": "OPO_T015",
+      "tarea_id": "OPO_TA028",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0167",
+      "problema_id": "OPO_P017",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA029",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0168",
+      "problema_id": "OPO_P017",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA036",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0169",
+      "problema_id": "OPO_P017",
+      "tecnica_id": "OPO_T024",
+      "tarea_id": "OPO_TA026",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0170",
+      "problema_id": "OPO_P017",
+      "tecnica_id": "OPO_T024",
+      "tarea_id": "OPO_TA049",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0171",
+      "problema_id": "OPO_P017",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA037",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0172",
+      "problema_id": "OPO_P017",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA048",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0173",
+      "problema_id": "OPO_P018",
+      "tecnica_id": "OPO_T014",
+      "tarea_id": "OPO_TA024",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0174",
+      "problema_id": "OPO_P018",
+      "tecnica_id": "OPO_T014",
+      "tarea_id": "OPO_TA025",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0175",
+      "problema_id": "OPO_P018",
+      "tecnica_id": "OPO_T015",
+      "tarea_id": "OPO_TA027",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0176",
+      "problema_id": "OPO_P018",
+      "tecnica_id": "OPO_T015",
+      "tarea_id": "OPO_TA028",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0177",
+      "problema_id": "OPO_P018",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA029",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0178",
+      "problema_id": "OPO_P018",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA036",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0179",
+      "problema_id": "OPO_P018",
+      "tecnica_id": "OPO_T024",
+      "tarea_id": "OPO_TA026",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0180",
+      "problema_id": "OPO_P018",
+      "tecnica_id": "OPO_T024",
+      "tarea_id": "OPO_TA049",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0181",
+      "problema_id": "OPO_P018",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA037",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0182",
+      "problema_id": "OPO_P018",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA048",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0183",
+      "problema_id": "OPO_P019",
+      "tecnica_id": "OPO_T016",
+      "tarea_id": "OPO_TA030",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0184",
+      "problema_id": "OPO_P019",
+      "tecnica_id": "OPO_T016",
+      "tarea_id": "OPO_TA031",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0185",
+      "problema_id": "OPO_P019",
+      "tecnica_id": "OPO_T016",
+      "tarea_id": "OPO_TA032",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0186",
+      "problema_id": "OPO_P019",
+      "tecnica_id": "OPO_T016",
+      "tarea_id": "OPO_TA033",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0187",
+      "problema_id": "OPO_P019",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA029",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0188",
+      "problema_id": "OPO_P019",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA036",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0189",
+      "problema_id": "OPO_P019",
+      "tecnica_id": "OPO_T024",
+      "tarea_id": "OPO_TA026",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0190",
+      "problema_id": "OPO_P019",
+      "tecnica_id": "OPO_T024",
+      "tarea_id": "OPO_TA049",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0191",
+      "problema_id": "OPO_P019",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA037",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0192",
+      "problema_id": "OPO_P019",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA048",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0193",
+      "problema_id": "OPO_P020",
+      "tecnica_id": "OPO_T016",
+      "tarea_id": "OPO_TA030",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0194",
+      "problema_id": "OPO_P020",
+      "tecnica_id": "OPO_T016",
+      "tarea_id": "OPO_TA031",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0195",
+      "problema_id": "OPO_P020",
+      "tecnica_id": "OPO_T016",
+      "tarea_id": "OPO_TA032",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0196",
+      "problema_id": "OPO_P020",
+      "tecnica_id": "OPO_T016",
+      "tarea_id": "OPO_TA033",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0197",
+      "problema_id": "OPO_P020",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA029",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0198",
+      "problema_id": "OPO_P020",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA036",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0199",
+      "problema_id": "OPO_P020",
+      "tecnica_id": "OPO_T024",
+      "tarea_id": "OPO_TA026",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0200",
+      "problema_id": "OPO_P020",
+      "tecnica_id": "OPO_T024",
+      "tarea_id": "OPO_TA049",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0201",
+      "problema_id": "OPO_P020",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA037",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0202",
+      "problema_id": "OPO_P020",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA048",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0203",
+      "problema_id": "OPO_P021",
+      "tecnica_id": "OPO_T016",
+      "tarea_id": "OPO_TA030",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0204",
+      "problema_id": "OPO_P021",
+      "tecnica_id": "OPO_T016",
+      "tarea_id": "OPO_TA031",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0205",
+      "problema_id": "OPO_P021",
+      "tecnica_id": "OPO_T016",
+      "tarea_id": "OPO_TA032",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0206",
+      "problema_id": "OPO_P021",
+      "tecnica_id": "OPO_T016",
+      "tarea_id": "OPO_TA033",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0207",
+      "problema_id": "OPO_P021",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA029",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0208",
+      "problema_id": "OPO_P021",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA036",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0209",
+      "problema_id": "OPO_P021",
+      "tecnica_id": "OPO_T024",
+      "tarea_id": "OPO_TA026",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0210",
+      "problema_id": "OPO_P021",
+      "tecnica_id": "OPO_T024",
+      "tarea_id": "OPO_TA049",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0211",
+      "problema_id": "OPO_P021",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA037",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0212",
+      "problema_id": "OPO_P021",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA048",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0213",
+      "problema_id": "OPO_P022",
+      "tecnica_id": "OPO_T017",
+      "tarea_id": "OPO_TA034",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0214",
+      "problema_id": "OPO_P022",
+      "tecnica_id": "OPO_T017",
+      "tarea_id": "OPO_TA035",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0215",
+      "problema_id": "OPO_P022",
+      "tecnica_id": "OPO_T024",
+      "tarea_id": "OPO_TA026",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0216",
+      "problema_id": "OPO_P022",
+      "tecnica_id": "OPO_T024",
+      "tarea_id": "OPO_TA049",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0217",
+      "problema_id": "OPO_P022",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA037",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0218",
+      "problema_id": "OPO_P022",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA048",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0219",
+      "problema_id": "OPO_P023",
+      "tecnica_id": "OPO_T017",
+      "tarea_id": "OPO_TA034",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0220",
+      "problema_id": "OPO_P023",
+      "tecnica_id": "OPO_T017",
+      "tarea_id": "OPO_TA035",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0221",
+      "problema_id": "OPO_P023",
+      "tecnica_id": "OPO_T024",
+      "tarea_id": "OPO_TA026",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0222",
+      "problema_id": "OPO_P023",
+      "tecnica_id": "OPO_T024",
+      "tarea_id": "OPO_TA049",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0223",
+      "problema_id": "OPO_P023",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA037",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0224",
+      "problema_id": "OPO_P023",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA048",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0225",
+      "problema_id": "OPO_P024",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA029",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0226",
+      "problema_id": "OPO_P024",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA036",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0227",
+      "problema_id": "OPO_P024",
+      "tecnica_id": "OPO_T020",
+      "tarea_id": "OPO_TA039",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0228",
+      "problema_id": "OPO_P024",
+      "tecnica_id": "OPO_T021",
+      "tarea_id": "OPO_TA040",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0229",
+      "problema_id": "OPO_P024",
+      "tecnica_id": "OPO_T021",
+      "tarea_id": "OPO_TA041",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0230",
+      "problema_id": "OPO_P024",
+      "tecnica_id": "OPO_T022",
+      "tarea_id": "OPO_TA042",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0231",
+      "problema_id": "OPO_P024",
+      "tecnica_id": "OPO_T022",
+      "tarea_id": "OPO_TA043",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0232",
+      "problema_id": "OPO_P024",
+      "tecnica_id": "OPO_T027",
+      "tarea_id": "OPO_TA053",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0233",
+      "problema_id": "OPO_P024",
+      "tecnica_id": "OPO_T027",
+      "tarea_id": "OPO_TA054",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0234",
+      "problema_id": "OPO_P024",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA037",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0235",
+      "problema_id": "OPO_P024",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA048",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0236",
+      "problema_id": "OPO_P025",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA029",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0237",
+      "problema_id": "OPO_P025",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA036",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0238",
+      "problema_id": "OPO_P025",
+      "tecnica_id": "OPO_T020",
+      "tarea_id": "OPO_TA039",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0239",
+      "problema_id": "OPO_P025",
+      "tecnica_id": "OPO_T021",
+      "tarea_id": "OPO_TA040",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0240",
+      "problema_id": "OPO_P025",
+      "tecnica_id": "OPO_T021",
+      "tarea_id": "OPO_TA041",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0241",
+      "problema_id": "OPO_P025",
+      "tecnica_id": "OPO_T022",
+      "tarea_id": "OPO_TA042",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0242",
+      "problema_id": "OPO_P025",
+      "tecnica_id": "OPO_T022",
+      "tarea_id": "OPO_TA043",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0243",
+      "problema_id": "OPO_P025",
+      "tecnica_id": "OPO_T027",
+      "tarea_id": "OPO_TA053",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0244",
+      "problema_id": "OPO_P025",
+      "tecnica_id": "OPO_T027",
+      "tarea_id": "OPO_TA054",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0245",
+      "problema_id": "OPO_P025",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA037",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0246",
+      "problema_id": "OPO_P025",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA048",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0247",
+      "problema_id": "OPO_P026",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA029",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0248",
+      "problema_id": "OPO_P026",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA036",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0249",
+      "problema_id": "OPO_P026",
+      "tecnica_id": "OPO_T020",
+      "tarea_id": "OPO_TA039",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0250",
+      "problema_id": "OPO_P026",
+      "tecnica_id": "OPO_T021",
+      "tarea_id": "OPO_TA040",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0251",
+      "problema_id": "OPO_P026",
+      "tecnica_id": "OPO_T021",
+      "tarea_id": "OPO_TA041",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0252",
+      "problema_id": "OPO_P026",
+      "tecnica_id": "OPO_T022",
+      "tarea_id": "OPO_TA042",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0253",
+      "problema_id": "OPO_P026",
+      "tecnica_id": "OPO_T022",
+      "tarea_id": "OPO_TA043",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0254",
+      "problema_id": "OPO_P026",
+      "tecnica_id": "OPO_T027",
+      "tarea_id": "OPO_TA053",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0255",
+      "problema_id": "OPO_P026",
+      "tecnica_id": "OPO_T027",
+      "tarea_id": "OPO_TA054",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0256",
+      "problema_id": "OPO_P026",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA037",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0257",
+      "problema_id": "OPO_P026",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA048",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0258",
+      "problema_id": "OPO_P027",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA037",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0259",
+      "problema_id": "OPO_P027",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA048",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0260",
+      "problema_id": "OPO_P027",
+      "tecnica_id": "OPO_T027",
+      "tarea_id": "OPO_TA053",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0261",
+      "problema_id": "OPO_P027",
+      "tecnica_id": "OPO_T027",
+      "tarea_id": "OPO_TA054",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0262",
+      "problema_id": "OPO_P027",
+      "tecnica_id": "OPO_T029",
+      "tarea_id": "OPO_TA047",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0263",
+      "problema_id": "OPO_P027",
+      "tecnica_id": "OPO_T024",
+      "tarea_id": "OPO_TA026",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0264",
+      "problema_id": "OPO_P027",
+      "tecnica_id": "OPO_T024",
+      "tarea_id": "OPO_TA049",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0265",
+      "problema_id": "OPO_P028",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA037",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0266",
+      "problema_id": "OPO_P028",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA048",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0267",
+      "problema_id": "OPO_P028",
+      "tecnica_id": "OPO_T027",
+      "tarea_id": "OPO_TA053",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0268",
+      "problema_id": "OPO_P028",
+      "tecnica_id": "OPO_T027",
+      "tarea_id": "OPO_TA054",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0269",
+      "problema_id": "OPO_P028",
+      "tecnica_id": "OPO_T029",
+      "tarea_id": "OPO_TA047",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0270",
+      "problema_id": "OPO_P028",
+      "tecnica_id": "OPO_T024",
+      "tarea_id": "OPO_TA026",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0271",
+      "problema_id": "OPO_P028",
+      "tecnica_id": "OPO_T024",
+      "tarea_id": "OPO_TA049",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0272",
+      "problema_id": "OPO_P029",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA037",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0273",
+      "problema_id": "OPO_P029",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA048",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0274",
+      "problema_id": "OPO_P029",
+      "tecnica_id": "OPO_T027",
+      "tarea_id": "OPO_TA053",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0275",
+      "problema_id": "OPO_P029",
+      "tecnica_id": "OPO_T027",
+      "tarea_id": "OPO_TA054",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0276",
+      "problema_id": "OPO_P029",
+      "tecnica_id": "OPO_T029",
+      "tarea_id": "OPO_TA047",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0277",
+      "problema_id": "OPO_P029",
+      "tecnica_id": "OPO_T024",
+      "tarea_id": "OPO_TA026",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0278",
+      "problema_id": "OPO_P029",
+      "tecnica_id": "OPO_T024",
+      "tarea_id": "OPO_TA049",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0279",
+      "problema_id": "OPO_P030",
+      "tecnica_id": "OPO_T020",
+      "tarea_id": "OPO_TA039",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0280",
+      "problema_id": "OPO_P030",
+      "tecnica_id": "OPO_T021",
+      "tarea_id": "OPO_TA040",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0281",
+      "problema_id": "OPO_P030",
+      "tecnica_id": "OPO_T021",
+      "tarea_id": "OPO_TA041",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0282",
+      "problema_id": "OPO_P030",
+      "tecnica_id": "OPO_T022",
+      "tarea_id": "OPO_TA042",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0283",
+      "problema_id": "OPO_P030",
+      "tecnica_id": "OPO_T022",
+      "tarea_id": "OPO_TA043",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0284",
+      "problema_id": "OPO_P030",
+      "tecnica_id": "OPO_T027",
+      "tarea_id": "OPO_TA053",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0285",
+      "problema_id": "OPO_P030",
+      "tecnica_id": "OPO_T027",
+      "tarea_id": "OPO_TA054",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0286",
+      "problema_id": "OPO_P030",
+      "tecnica_id": "OPO_T019",
+      "tarea_id": "OPO_TA038",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0287",
+      "problema_id": "OPO_P031",
+      "tecnica_id": "OPO_T020",
+      "tarea_id": "OPO_TA039",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0288",
+      "problema_id": "OPO_P031",
+      "tecnica_id": "OPO_T021",
+      "tarea_id": "OPO_TA040",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0289",
+      "problema_id": "OPO_P031",
+      "tecnica_id": "OPO_T021",
+      "tarea_id": "OPO_TA041",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0290",
+      "problema_id": "OPO_P031",
+      "tecnica_id": "OPO_T022",
+      "tarea_id": "OPO_TA042",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0291",
+      "problema_id": "OPO_P031",
+      "tecnica_id": "OPO_T022",
+      "tarea_id": "OPO_TA043",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0292",
+      "problema_id": "OPO_P031",
+      "tecnica_id": "OPO_T027",
+      "tarea_id": "OPO_TA053",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0293",
+      "problema_id": "OPO_P031",
+      "tecnica_id": "OPO_T027",
+      "tarea_id": "OPO_TA054",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0294",
+      "problema_id": "OPO_P031",
+      "tecnica_id": "OPO_T019",
+      "tarea_id": "OPO_TA038",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0295",
+      "problema_id": "OPO_P032",
+      "tecnica_id": "OPO_T020",
+      "tarea_id": "OPO_TA039",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0296",
+      "problema_id": "OPO_P032",
+      "tecnica_id": "OPO_T021",
+      "tarea_id": "OPO_TA040",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0297",
+      "problema_id": "OPO_P032",
+      "tecnica_id": "OPO_T021",
+      "tarea_id": "OPO_TA041",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0298",
+      "problema_id": "OPO_P032",
+      "tecnica_id": "OPO_T022",
+      "tarea_id": "OPO_TA042",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0299",
+      "problema_id": "OPO_P032",
+      "tecnica_id": "OPO_T022",
+      "tarea_id": "OPO_TA043",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0300",
+      "problema_id": "OPO_P032",
+      "tecnica_id": "OPO_T027",
+      "tarea_id": "OPO_TA053",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0301",
+      "problema_id": "OPO_P032",
+      "tecnica_id": "OPO_T027",
+      "tarea_id": "OPO_TA054",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0302",
+      "problema_id": "OPO_P032",
+      "tecnica_id": "OPO_T019",
+      "tarea_id": "OPO_TA038",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0303",
+      "problema_id": "OPO_P033",
+      "tecnica_id": "OPO_T023",
+      "tarea_id": "OPO_TA044",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0304",
+      "problema_id": "OPO_P033",
+      "tecnica_id": "OPO_T023",
+      "tarea_id": "OPO_TA045",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0305",
+      "problema_id": "OPO_P033",
+      "tecnica_id": "OPO_T023",
+      "tarea_id": "OPO_TA046",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0306",
+      "problema_id": "OPO_P033",
+      "tecnica_id": "OPO_T014",
+      "tarea_id": "OPO_TA024",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0307",
+      "problema_id": "OPO_P033",
+      "tecnica_id": "OPO_T014",
+      "tarea_id": "OPO_TA025",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0308",
+      "problema_id": "OPO_P033",
+      "tecnica_id": "OPO_T028",
+      "tarea_id": "OPO_TA055",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0309",
+      "problema_id": "OPO_P033",
+      "tecnica_id": "OPO_T028",
+      "tarea_id": "OPO_TA056",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0310",
+      "problema_id": "OPO_P033",
+      "tecnica_id": "OPO_T030",
+      "tarea_id": "OPO_TA057",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0311",
+      "problema_id": "OPO_P034",
+      "tecnica_id": "OPO_T023",
+      "tarea_id": "OPO_TA044",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0312",
+      "problema_id": "OPO_P034",
+      "tecnica_id": "OPO_T023",
+      "tarea_id": "OPO_TA045",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0313",
+      "problema_id": "OPO_P034",
+      "tecnica_id": "OPO_T023",
+      "tarea_id": "OPO_TA046",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0314",
+      "problema_id": "OPO_P034",
+      "tecnica_id": "OPO_T014",
+      "tarea_id": "OPO_TA024",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0315",
+      "problema_id": "OPO_P034",
+      "tecnica_id": "OPO_T014",
+      "tarea_id": "OPO_TA025",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0316",
+      "problema_id": "OPO_P034",
+      "tecnica_id": "OPO_T028",
+      "tarea_id": "OPO_TA055",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0317",
+      "problema_id": "OPO_P034",
+      "tecnica_id": "OPO_T028",
+      "tarea_id": "OPO_TA056",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0318",
+      "problema_id": "OPO_P034",
+      "tecnica_id": "OPO_T030",
+      "tarea_id": "OPO_TA057",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0319",
+      "problema_id": "OPO_P035",
+      "tecnica_id": "OPO_T023",
+      "tarea_id": "OPO_TA044",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0320",
+      "problema_id": "OPO_P035",
+      "tecnica_id": "OPO_T023",
+      "tarea_id": "OPO_TA045",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0321",
+      "problema_id": "OPO_P035",
+      "tecnica_id": "OPO_T023",
+      "tarea_id": "OPO_TA046",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0322",
+      "problema_id": "OPO_P035",
+      "tecnica_id": "OPO_T014",
+      "tarea_id": "OPO_TA024",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0323",
+      "problema_id": "OPO_P035",
+      "tecnica_id": "OPO_T014",
+      "tarea_id": "OPO_TA025",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0324",
+      "problema_id": "OPO_P035",
+      "tecnica_id": "OPO_T028",
+      "tarea_id": "OPO_TA055",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0325",
+      "problema_id": "OPO_P035",
+      "tecnica_id": "OPO_T028",
+      "tarea_id": "OPO_TA056",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0326",
+      "problema_id": "OPO_P035",
+      "tecnica_id": "OPO_T030",
+      "tarea_id": "OPO_TA057",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0327",
+      "problema_id": "OPO_P036",
+      "tecnica_id": "OPO_T002",
+      "tarea_id": "OPO_TA004",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0328",
+      "problema_id": "OPO_P036",
+      "tecnica_id": "OPO_T002",
+      "tarea_id": "OPO_TA005",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0329",
+      "problema_id": "OPO_P036",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA029",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0330",
+      "problema_id": "OPO_P036",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA036",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0331",
+      "problema_id": "OPO_P036",
+      "tecnica_id": "OPO_T014",
+      "tarea_id": "OPO_TA024",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0332",
+      "problema_id": "OPO_P036",
+      "tecnica_id": "OPO_T014",
+      "tarea_id": "OPO_TA025",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0333",
+      "problema_id": "OPO_P036",
+      "tecnica_id": "OPO_T028",
+      "tarea_id": "OPO_TA055",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0334",
+      "problema_id": "OPO_P036",
+      "tecnica_id": "OPO_T028",
+      "tarea_id": "OPO_TA056",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0335",
+      "problema_id": "OPO_P036",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA037",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0336",
+      "problema_id": "OPO_P036",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA048",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0337",
+      "problema_id": "OPO_P037",
+      "tecnica_id": "OPO_T002",
+      "tarea_id": "OPO_TA004",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0338",
+      "problema_id": "OPO_P037",
+      "tecnica_id": "OPO_T002",
+      "tarea_id": "OPO_TA005",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0339",
+      "problema_id": "OPO_P037",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA029",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0340",
+      "problema_id": "OPO_P037",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA036",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0341",
+      "problema_id": "OPO_P037",
+      "tecnica_id": "OPO_T014",
+      "tarea_id": "OPO_TA024",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0342",
+      "problema_id": "OPO_P037",
+      "tecnica_id": "OPO_T014",
+      "tarea_id": "OPO_TA025",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0343",
+      "problema_id": "OPO_P037",
+      "tecnica_id": "OPO_T028",
+      "tarea_id": "OPO_TA055",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0344",
+      "problema_id": "OPO_P037",
+      "tecnica_id": "OPO_T028",
+      "tarea_id": "OPO_TA056",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0345",
+      "problema_id": "OPO_P037",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA037",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0346",
+      "problema_id": "OPO_P037",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA048",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0347",
+      "problema_id": "OPO_P038",
+      "tecnica_id": "OPO_T002",
+      "tarea_id": "OPO_TA004",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0348",
+      "problema_id": "OPO_P038",
+      "tecnica_id": "OPO_T002",
+      "tarea_id": "OPO_TA005",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0349",
+      "problema_id": "OPO_P038",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA029",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0350",
+      "problema_id": "OPO_P038",
+      "tecnica_id": "OPO_T018",
+      "tarea_id": "OPO_TA036",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0351",
+      "problema_id": "OPO_P038",
+      "tecnica_id": "OPO_T014",
+      "tarea_id": "OPO_TA024",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0352",
+      "problema_id": "OPO_P038",
+      "tecnica_id": "OPO_T014",
+      "tarea_id": "OPO_TA025",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0353",
+      "problema_id": "OPO_P038",
+      "tecnica_id": "OPO_T028",
+      "tarea_id": "OPO_TA055",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0354",
+      "problema_id": "OPO_P038",
+      "tecnica_id": "OPO_T028",
+      "tarea_id": "OPO_TA056",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0355",
+      "problema_id": "OPO_P038",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA037",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0356",
+      "problema_id": "OPO_P038",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA048",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0357",
+      "problema_id": "OPO_P039",
+      "tecnica_id": "OPO_T026",
+      "tarea_id": "OPO_TA050",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0358",
+      "problema_id": "OPO_P039",
+      "tecnica_id": "OPO_T026",
+      "tarea_id": "OPO_TA051",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0359",
+      "problema_id": "OPO_P039",
+      "tecnica_id": "OPO_T026",
+      "tarea_id": "OPO_TA052",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0360",
+      "problema_id": "OPO_P039",
+      "tecnica_id": "OPO_T003",
+      "tarea_id": "OPO_TA006",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0361",
+      "problema_id": "OPO_P039",
+      "tecnica_id": "OPO_T003",
+      "tarea_id": "OPO_TA007",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0362",
+      "problema_id": "OPO_P039",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA037",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0363",
+      "problema_id": "OPO_P039",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA048",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0364",
+      "problema_id": "OPO_P040",
+      "tecnica_id": "OPO_T026",
+      "tarea_id": "OPO_TA050",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0365",
+      "problema_id": "OPO_P040",
+      "tecnica_id": "OPO_T026",
+      "tarea_id": "OPO_TA051",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0366",
+      "problema_id": "OPO_P040",
+      "tecnica_id": "OPO_T026",
+      "tarea_id": "OPO_TA052",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0367",
+      "problema_id": "OPO_P040",
+      "tecnica_id": "OPO_T003",
+      "tarea_id": "OPO_TA006",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0368",
+      "problema_id": "OPO_P040",
+      "tecnica_id": "OPO_T003",
+      "tarea_id": "OPO_TA007",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0369",
+      "problema_id": "OPO_P040",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA037",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0370",
+      "problema_id": "OPO_P040",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA048",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0371",
+      "problema_id": "OPO_P041",
+      "tecnica_id": "OPO_T026",
+      "tarea_id": "OPO_TA050",
+      "prioridad": "alta",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0372",
+      "problema_id": "OPO_P041",
+      "tecnica_id": "OPO_T026",
+      "tarea_id": "OPO_TA051",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0373",
+      "problema_id": "OPO_P041",
+      "tecnica_id": "OPO_T026",
+      "tarea_id": "OPO_TA052",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0374",
+      "problema_id": "OPO_P041",
+      "tecnica_id": "OPO_T003",
+      "tarea_id": "OPO_TA006",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0375",
+      "problema_id": "OPO_P041",
+      "tecnica_id": "OPO_T003",
+      "tarea_id": "OPO_TA007",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0376",
+      "problema_id": "OPO_P041",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA037",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    },
+    {
+      "recomendacion_id": "OPO_R0377",
+      "problema_id": "OPO_P041",
+      "tecnica_id": "OPO_T025",
+      "tarea_id": "OPO_TA048",
+      "prioridad": "media",
+      "nota_profesional": "El preparador debe adaptar la pauta a oposición, convocatoria, formato de examen, nivel real, disponibilidad y estado del alumno."
+    }
+  ],
+  "evaluaciones": [
+    {
+      "evaluacion_id": "OPO_E001",
+      "problema_id": "OPO_P001",
+      "nombre": "Ficha inicial de oposición",
+      "area_uso": "Inicial",
+      "tipo": "Formulario",
+      "notas": "Oposición, convocatoria, temario, disponibilidad, experiencia y objetivo.",
+      "fuente_ids": "OPO_SRC001"
+    },
+    {
+      "evaluacion_id": "OPO_E002",
+      "problema_id": "OPO_P003",
+      "nombre": "Proyección de avance",
+      "area_uso": "Planificación",
+      "tipo": "Indicador",
+      "notas": "Compara ritmo actual con fecha de examen.",
+      "fuente_ids": "OPO_SRC002"
+    },
+    {
+      "evaluacion_id": "OPO_E003",
+      "problema_id": "OPO_P006",
+      "nombre": "Checklist de estudio activo",
+      "area_uso": "Técnica",
+      "tipo": "Checklist",
+      "notas": "Evalúa si usa recuperación, preguntas, ejemplos y autoevaluación.",
+      "fuente_ids": "OPO_SRC003;OPO_SRC004"
+    },
+    {
+      "evaluacion_id": "OPO_E004",
+      "problema_id": "OPO_P010",
+      "nombre": "Curva de repaso por tema",
+      "area_uso": "Memoria",
+      "tipo": "Seguimiento",
+      "notas": "Tema, fecha estudio, repasos y nivel de recuerdo.",
+      "fuente_ids": "OPO_SRC003;OPO_SRC005"
+    },
+    {
+      "evaluacion_id": "OPO_E005",
+      "problema_id": "OPO_P014",
+      "nombre": "Nota de simulacro tipo test",
+      "area_uso": "Simulacro",
+      "tipo": "Indicador",
+      "notas": "Aciertos, fallos, blancos, nota, tiempo y penalización.",
+      "fuente_ids": "OPO_SRC007"
+    },
+    {
+      "evaluacion_id": "OPO_E006",
+      "problema_id": "OPO_P015",
+      "nombre": "Clasificación de errores de test",
+      "area_uso": "Errores",
+      "tipo": "Registro",
+      "notas": "Contenido, despiste, lectura, tiempo, duda o estrategia.",
+      "fuente_ids": "OPO_SRC007"
+    },
+    {
+      "evaluacion_id": "OPO_E007",
+      "problema_id": "OPO_P019",
+      "nombre": "Rúbrica de tema desarrollado",
+      "area_uso": "Desarrollo",
+      "tipo": "Rúbrica",
+      "notas": "Estructura, precisión, claridad, tiempo y completitud.",
+      "fuente_ids": "OPO_SRC002"
+    },
+    {
+      "evaluacion_id": "OPO_E008",
+      "problema_id": "OPO_P022",
+      "nombre": "Rúbrica de supuesto práctico",
+      "area_uso": "Supuestos",
+      "tipo": "Rúbrica",
+      "notas": "Hechos, norma, aplicación, conclusión y argumentación.",
+      "fuente_ids": "OPO_SRC002"
+    },
+    {
+      "evaluacion_id": "OPO_E009",
+      "problema_id": "OPO_P024",
+      "nombre": "Cumplimiento semanal",
+      "area_uso": "Adherencia",
+      "tipo": "Indicador",
+      "notas": "Tareas hechas / tareas planificadas.",
+      "fuente_ids": "OPO_SRC002"
+    },
+    {
+      "evaluacion_id": "OPO_E010",
+      "problema_id": "OPO_P029",
+      "nombre": "Tendencia de rendimiento",
+      "area_uso": "Progreso",
+      "tipo": "Indicador",
+      "notas": "Media móvil de notas o porcentajes por bloque.",
+      "fuente_ids": "OPO_SRC002"
+    },
+    {
+      "evaluacion_id": "OPO_E011",
+      "problema_id": "OPO_P033",
+      "nombre": "Escala ansiedad examen 0-10",
+      "area_uso": "Ansiedad",
+      "tipo": "Autorregistro",
+      "notas": "No clínica; si intensidad alta, derivar.",
+      "fuente_ids": "OPO_SRC006;OPO_SRC008"
+    },
+    {
+      "evaluacion_id": "OPO_E012",
+      "problema_id": "OPO_P036",
+      "nombre": "Registro de horas útiles",
+      "area_uso": "Tiempo",
+      "tipo": "Autorregistro",
+      "notas": "Horas efectivas por bloque, no solo presencia.",
+      "fuente_ids": "OPO_SRC002"
+    },
+    {
+      "evaluacion_id": "OPO_E013",
+      "problema_id": "OPO_P039",
+      "nombre": "Registro de actualización normativa",
+      "area_uso": "Materiales",
+      "tipo": "Control",
+      "notas": "Tema, fecha, fuente, cambio y revisión pendiente.",
+      "fuente_ids": "OPO_SRC001"
+    }
+  ],
+  "documentos": [
+    {
+      "documento_id": "OPO_DOC001",
+      "nombre": "Ficha inicial del opositor",
+      "tipo": "Formulario",
+      "descripcion": "Datos de oposición, convocatoria, disponibilidad, temario y objetivo.",
+      "problema_ids": "Todos",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "documento_id": "OPO_DOC002",
+      "nombre": "Plan maestro de preparación",
+      "tipo": "Plan",
+      "descripcion": "Calendario, vueltas, simulacros, repasos y prioridades.",
+      "problema_ids": "Todos",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "documento_id": "OPO_DOC003",
+      "nombre": "Plan semanal de tareas",
+      "tipo": "Plan",
+      "descripcion": "Tareas concretas por día, técnica, tema y evidencia de cumplimiento.",
+      "problema_ids": "Todos",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "documento_id": "OPO_DOC004",
+      "nombre": "Informe semanal de seguimiento",
+      "tipo": "Informe",
+      "descripcion": "Avance, tareas, métricas, incidencias y próximos pasos.",
+      "problema_ids": "Todos",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "documento_id": "OPO_DOC005",
+      "nombre": "Informe mensual de evolución",
+      "tipo": "Informe",
+      "descripcion": "Tendencias, simulacros, adherencia, riesgos y ajustes.",
+      "problema_ids": "Todos",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "documento_id": "OPO_DOC006",
+      "nombre": "Plantilla de análisis de simulacro",
+      "tipo": "Documento",
+      "descripcion": "Nota, aciertos, fallos, blancos, tiempo y clasificación de errores.",
+      "problema_ids": "Tipo test",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "documento_id": "OPO_DOC007",
+      "nombre": "Plantilla de banco de errores",
+      "tipo": "Documento",
+      "descripcion": "Error, causa, corrección, tema relacionado y fecha de repaso.",
+      "problema_ids": "Todos",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "documento_id": "OPO_DOC008",
+      "nombre": "Plan de repaso espaciado",
+      "tipo": "Plan",
+      "descripcion": "Fechas de repaso por tema y nivel de recuerdo.",
+      "problema_ids": "Todos",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "documento_id": "OPO_DOC009",
+      "nombre": "Rúbrica de tema desarrollado",
+      "tipo": "Rúbrica",
+      "descripcion": "Estructura, contenido, precisión, claridad, tiempo y presentación.",
+      "problema_ids": "Desarrollo",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "documento_id": "OPO_DOC010",
+      "nombre": "Rúbrica de supuesto práctico",
+      "tipo": "Rúbrica",
+      "descripcion": "Hechos, normativa, razonamiento, conclusión y claridad.",
+      "problema_ids": "Supuestos",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "documento_id": "OPO_DOC011",
+      "nombre": "Plan fase final / último mes",
+      "tipo": "Plan",
+      "descripcion": "Repasos críticos, simulacros, descanso, logística y estrategia.",
+      "problema_ids": "Todos",
+      "nivel_riesgo": "medio"
+    },
+    {
+      "documento_id": "OPO_DOC012",
+      "nombre": "Checklist día de examen",
+      "tipo": "Checklist",
+      "descripcion": "Documentación, horario, desplazamiento, material, descanso y estrategia.",
+      "problema_ids": "Todos",
+      "nivel_riesgo": "bajo"
+    },
+    {
+      "documento_id": "OPO_DOC013",
+      "nombre": "Control de versiones del temario",
+      "tipo": "Documento",
+      "descripcion": "Tema, fuente, fecha, cambios, responsable y estado.",
+      "problema_ids": "Jurídicas/Administrativas",
+      "nivel_riesgo": "medio"
+    },
+    {
+      "documento_id": "OPO_DOC014",
+      "nombre": "Hoja de derivación por ansiedad/bloqueo",
+      "tipo": "Documento",
+      "descripcion": "Señales observadas, recomendación de derivación y límites del servicio.",
+      "problema_ids": "Todos",
+      "nivel_riesgo": "alto"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+﻿documento_id;nombre;tipo;descripcion;problema_ids;nivel_riesgo
+PSP_DOC001;Informe psicopedagógico inicial;Informe;Motivo, contexto, observación, necesidades, objetivos, pautas y plan.;Todos;medio
+PSP_DOC002;Plan de intervención psicopedagógica;Plan;Objetivos, técnicas, tareas, frecuencia, familia/colegio y revisión.;Todos;bajo
+PSP_DOC003;Informe de evolución académica;Informe;Progreso, tareas, resultados, adherencia y ajustes.;Todos;bajo
+PSP_DOC004;Informe escolar / coordinación docente;Informe escolar;Necesidades, apoyos, adaptaciones, pautas de aula y seguimiento.;"PSP_P031;PSP_P036";medio
+PSP_DOC005;Plan de estudio personalizado;Plan;Horario, técnicas, repasos, simulacros y seguimiento.;"PSP_P023;PSP_P024;PSP_P025";bajo
+PSP_DOC006;Plan lector personalizado;Plan;Objetivo lector, textos, frecuencia, estrategia y medición.;"PSP_P001;PSP_P002;PSP_P003;PSP_P005";bajo
+PSP_DOC007;Plan de escritura;Plan;Planificación, producción, revisión, ortografía y rúbricas.;"PSP_P009;PSP_P010;PSP_P011;PSP_P012";bajo
+PSP_DOC008;Plan matemático individual;Plan;Sentido numérico, cálculo, problemas, práctica y progreso.;"PSP_P014;PSP_P015;PSP_P016";bajo
+PSP_DOC009;Plan de funciones ejecutivas;Plan;Agenda, checklist, memoria, planificación, impulsividad y seguimiento.;"PSP_P018;PSP_P019;PSP_P020;PSP_P021";medio
+PSP_DOC010;Hoja de pautas familiares;Documento;Pautas concretas para apoyar en casa sin sobreayudar.;PSP_P037;bajo
+PSP_DOC011;Informe de derivación/coordinación;Documento;Motivo, observaciones, señales, profesionales sugeridos y límites.;PSP_P030;alto
+PSP_DOC012;Consentimiento/hoja informativa psicopedagogía;Documento legal;Alcance del servicio, datos, límites, coordinación y consentimiento.;Todos;medio

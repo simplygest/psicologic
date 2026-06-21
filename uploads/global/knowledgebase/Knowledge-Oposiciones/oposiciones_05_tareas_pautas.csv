@@ -1,0 +1,58 @@
+﻿tarea_id;titulo;descripcion;objetivo;nivel_riesgo;duracion_estimada;tecnica_id
+OPO_TA001;Ficha inicial del opositor;Registrar oposición, convocatoria, temario, formato, tiempo disponible y disponibilidad semanal.;Definir punto de partida.;bajo;30 min;OPO_T001
+OPO_TA002;Test diagnóstico inicial;Realizar prueba breve o simulacro parcial para estimar nivel.;Detectar base real.;medio;30-90 min;OPO_T001
+OPO_TA003;Mapa completo del temario;Listar bloques, temas, peso estimado, dificultad y estado.;Visualizar carga total.;bajo;60 min;OPO_T001
+OPO_TA004;Calendario inverso hasta examen;Crear calendario desde la fecha de examen hacia atrás.;Asegurar cobertura y repasos.;bajo;45 min;OPO_T002
+OPO_TA005;Plan semanal de estudio;Asignar bloques concretos por día con tema, técnica y objetivo.;Ejecutar planificación.;bajo;semanal;OPO_T002
+OPO_TA006;Tabla de prioridad de temas;Puntuar cada tema por peso, dificultad, dominio y urgencia.;Priorizar con criterio.;bajo;30 min;OPO_T003
+OPO_TA007;Semáforo de temas;Marcar tema en rojo/ámbar/verde según dominio.;Control visual de avance.;bajo;semanal;OPO_T003
+OPO_TA008;Plan de primera vuelta;Dividir temario en bloques de primera lectura/comprensión.;Completar base inicial.;bajo;variable;OPO_T004
+OPO_TA009;Plan de segunda vuelta;Programar recuperación y repasos por bloques ya vistos.;Consolidar contenido.;bajo;variable;OPO_T004
+OPO_TA010;Lectura con preguntas previas;Antes de leer, formular 3 preguntas del tema.;Activar lectura activa.;bajo;por tema;OPO_T005
+OPO_TA011;Convertir epígrafes en preguntas;Transformar títulos en preguntas de examen.;Preparar recuperación activa.;bajo;por tema;OPO_T005
+OPO_TA012;Recitar tema sin mirar;Intentar explicar o escribir esquema del tema en blanco.;Comprobar recuerdo real.;medio;10-20 min;OPO_T006
+OPO_TA013;Mini-test de recuperación;Responder 10-20 preguntas sin apuntes antes de revisar.;Fortalecer memoria.;bajo;diario;OPO_T006
+OPO_TA014;Tarjetas pregunta-respuesta;Crear tarjetas con conceptos, plazos, artículos o definiciones.;Facilitar repaso espaciado.;bajo;por tema;OPO_T012
+OPO_TA015;Programar repasos 1-3-7-14;Agendar repasos tras estudiar cada tema.;Evitar olvido.;bajo;continuo;OPO_T007
+OPO_TA016;Repaso acumulativo semanal;Repasar temas antiguos junto a temas nuevos.;Consolidar vueltas.;bajo;semanal;OPO_T007
+OPO_TA017;Intercalar temas similares;Estudiar temas parecidos alternándolos con comparación explícita.;Reducir confusiones.;bajo;semanal;OPO_T008
+OPO_TA018;Tabla de diferencias;Crear tabla comparativa de conceptos/plazos/normas similares.;Evitar interferencias.;bajo;30 min;OPO_T008
+OPO_TA019;Explicar tema en voz alta;Explicar tema como si enseñaras a otra persona.;Profundizar comprensión.;bajo;10-15 min;OPO_T009
+OPO_TA020;Crear ejemplo propio;Asociar cada concepto difícil a ejemplo práctico.;Mejorar elaboración.;bajo;por concepto;OPO_T009
+OPO_TA021;Esquema visual del tema;Crear mapa, tabla o diagrama de estructura del tema.;Mejorar organización.;bajo;por tema;OPO_T010
+OPO_TA022;Resumen de una página;Reducir tema a una hoja de estructura clave.;Facilitar repaso final.;bajo;por tema;OPO_T011
+OPO_TA023;Banco de errores semanal;Registrar fallo, causa, respuesta correcta y próximo repaso.;Corregir patrones.;bajo;semanal;OPO_T013
+OPO_TA024;Simulacro parcial;Hacer prueba de bloque con tiempo y corrección.;Medir dominio por bloques.;medio;semanal;OPO_T014
+OPO_TA025;Simulacro completo;Realizar examen completo en condiciones reales.;Entrenar rendimiento real.;medio;quincenal/mensual;OPO_T014
+OPO_TA026;Plantilla de análisis de test;Clasificar errores: contenido, despiste, tiempo, duda, estrategia.;Mejorar test.;bajo;tras simulacro;OPO_T024
+OPO_TA027;Entrenar descarte de opciones;Practicar razonamiento de descarte y justificación.;Mejorar estrategia test.;bajo;semanal;OPO_T015
+OPO_TA028;Calcular umbral de riesgo;Definir cuándo responder o dejar blanco según penalización.;Optimizar nota esperada.;medio;antes de simulacro;OPO_T015
+OPO_TA029;Cronometrar bloques de test;Practicar ritmo por pregunta y reserva de revisión.;Mejorar tiempo de examen.;bajo;semanal;OPO_T018
+OPO_TA030;Esquema de desarrollo en 5 minutos;Antes de escribir tema, hacer esquema rápido.;Ordenar respuesta.;bajo;por práctica;OPO_T016
+OPO_TA031;Redactar introducción y cierre tipo;Preparar fórmulas adaptables para temas de desarrollo.;Mejorar estructura.;bajo;por bloque;OPO_T016
+OPO_TA032;Simulacro de tema escrito;Escribir tema completo con tiempo real.;Entrenar desarrollo.;medio;semanal;OPO_T016
+OPO_TA033;Rúbrica de desarrollo;Valorar estructura, precisión, normativa, claridad y tiempo.;Mejorar redacción.;bajo;tras tema;OPO_T016
+OPO_TA034;Lectura guiada del supuesto;Subrayar hechos, pregunta, norma y criterio antes de responder.;Mejorar casos prácticos.;medio;por supuesto;OPO_T017
+OPO_TA035;Plantilla de supuesto práctico;Usar estructura fija: hechos, norma, aplicación, conclusión.;Ordenar respuesta aplicada.;medio;por supuesto;OPO_T017
+OPO_TA036;Bloques Pomodoro adaptados;Trabajar 25-50 min con descanso programado.;Mejorar adherencia.;bajo;diario;OPO_T018
+OPO_TA037;Registro real de horas útiles;Registrar tiempo efectivo, no solo tiempo sentado.;Medir dedicación real.;bajo;diario;OPO_T025
+OPO_TA038;Autoevaluación al cerrar sesión;Responder: qué hice, qué recuerdo, qué toca después.;Mejorar metacognición.;bajo;diario;OPO_T019
+OPO_TA039;Objetivo SMART semanal;Definir objetivo concreto de avance/repaso/simulacro.;Aumentar foco.;bajo;semanal;OPO_T020
+OPO_TA040;Primer paso de 5 minutos;Iniciar tarea difícil con solo 5 minutos obligatorios.;Romper procrastinación.;bajo;cuando haya bloqueo;OPO_T021
+OPO_TA041;Eliminar fricción de inicio;Dejar material preparado y tarea exacta definida el día anterior.;Facilitar hábito.;bajo;diario;OPO_T021
+OPO_TA042;Plan de descanso semanal;Programar descanso real y sueño suficiente.;Prevenir fatiga.;bajo;semanal;OPO_T022
+OPO_TA043;Registro de fatiga y rendimiento;Valorar energía, sueño, horas útiles y resultado.;Ajustar carga.;bajo;diario/semanal;OPO_T022
+OPO_TA044;Respiración previa a simulacro;Practicar 2-3 minutos de respiración antes de prueba.;Reducir activación.;bajo;antes de prueba;OPO_T023
+OPO_TA045;Exposición gradual a simulacros;Empezar por mini-simulacros y subir a prueba completa.;Reducir evitación.;medio;semanal;OPO_T023
+OPO_TA046;Plan anti-bloqueo;Definir protocolo: parar, respirar, pregunta fácil, volver.;Gestionar bloqueo.;medio;antes de examen;OPO_T023
+OPO_TA047;Informe semanal del preparador;Resumen de avance, tareas cumplidas, fallos y próximos objetivos.;Mejorar seguimiento.;bajo;semanal;OPO_T029
+OPO_TA048;Dashboard de métricas;Registrar temas vistos, repasos, simulacros, nota y cumplimiento.;Visualizar evolución.;bajo;continuo;OPO_T025
+OPO_TA049;Revisión de meseta;Comparar últimas notas y tipos de error para decidir intervención.;Superar estancamiento.;bajo;mensual;OPO_T024
+OPO_TA050;Control de versiones del temario;Guardar fecha, fuente y cambios de cada tema actualizado.;Evitar material obsoleto.;medio;cuando cambie;OPO_T026
+OPO_TA051;Fuente única de verdad;Elegir temario principal y registrar fuentes complementarias.;Reducir dispersión.;bajo;inicial;OPO_T026
+OPO_TA052;Alerta de actualización normativa;Revisar cambios normativos en calendario fijo.;Mantener actualizado.;medio;semanal/mensual;OPO_T026
+OPO_TA053;Revisión post-suspenso;Analizar resultado, errores, plan, estado emocional y siguiente ciclo.;Reformular estrategia.;medio;tras convocatoria;OPO_T027
+OPO_TA054;Contrato de adherencia;Acordar tareas mínimas, reporte y revisión semanal.;Mejorar compromiso.;bajo;semanal;OPO_T027
+OPO_TA055;Plan fase final 30 días;Definir repasos, simulacros, descanso y logística del último mes.;Llegar afinado.;medio;último mes;OPO_T028
+OPO_TA056;Checklist día de examen;Documentación, horario, ruta, material, comida, sueño y estrategia.;Reducir imprevistos.;bajo;semana examen;OPO_T028
+OPO_TA057;Checklist de derivación;Valorar ansiedad intensa, insomnio severo, crisis, abandono funcional o ánimo muy bajo.;Cuidar límites profesionales.;alto;cuando proceda;OPO_T030

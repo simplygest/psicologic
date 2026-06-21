@@ -1,0 +1,13 @@
+﻿area_id;nombre;descripcion
+OPO_A001;Planificación del temario;Calendario, bloques, prioridades, vueltas y control de avance.
+OPO_A002;Técnicas de estudio;Lectura activa, comprensión, esquemas, resúmenes, recuperación y repaso.
+OPO_A003;Memorización y retención;Repaso espaciado, tarjetas, recuperación activa, intercalado y olvido.
+OPO_A004;Simulacros y exámenes tipo test;Práctica con tiempo, corrección, análisis de errores y estrategia de examen.
+OPO_A005;Exámenes de desarrollo / temas;Estructura, redacción, tiempos, epígrafes y práctica escrita.
+OPO_A006;Supuestos prácticos / casos;Lectura del caso, estructura de respuesta, normativa, criterio y entrenamiento aplicado.
+OPO_A007;Organización diaria y hábitos;Rutinas, horario, energía, descansos, lugar de estudio y adherencia.
+OPO_A008;Seguimiento del alumno;Notas, progreso, asistencia, tareas, cumplimiento, incidencias y evolución.
+OPO_A009;Motivación y disciplina;Objetivos, constancia, bloqueo, frustración, recaídas y sostenibilidad.
+OPO_A010;Ansiedad ante examen;Nervios, bloqueo, activación, evitación, práctica bajo presión y afrontamiento.
+OPO_A011;Gestión del tiempo;Ritmo de estudio, tiempo por tema, tiempo de examen y priorización.
+OPO_A012;Materiales y actualización normativa;Control de versiones, cambios legislativos, apuntes, fuentes y actualizaciones.

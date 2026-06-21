@@ -1,0 +1,14 @@
+﻿evaluacion_id;problema_id;nombre;area_uso;tipo;notas;fuente_ids
+OPO_E001;OPO_P001;Ficha inicial de oposición;Inicial;Formulario;Oposición, convocatoria, temario, disponibilidad, experiencia y objetivo.;OPO_SRC001
+OPO_E002;OPO_P003;Proyección de avance;Planificación;Indicador;Compara ritmo actual con fecha de examen.;OPO_SRC002
+OPO_E003;OPO_P006;Checklist de estudio activo;Técnica;Checklist;Evalúa si usa recuperación, preguntas, ejemplos y autoevaluación.;"OPO_SRC003;OPO_SRC004"
+OPO_E004;OPO_P010;Curva de repaso por tema;Memoria;Seguimiento;Tema, fecha estudio, repasos y nivel de recuerdo.;"OPO_SRC003;OPO_SRC005"
+OPO_E005;OPO_P014;Nota de simulacro tipo test;Simulacro;Indicador;Aciertos, fallos, blancos, nota, tiempo y penalización.;OPO_SRC007
+OPO_E006;OPO_P015;Clasificación de errores de test;Errores;Registro;Contenido, despiste, lectura, tiempo, duda o estrategia.;OPO_SRC007
+OPO_E007;OPO_P019;Rúbrica de tema desarrollado;Desarrollo;Rúbrica;Estructura, precisión, claridad, tiempo y completitud.;OPO_SRC002
+OPO_E008;OPO_P022;Rúbrica de supuesto práctico;Supuestos;Rúbrica;Hechos, norma, aplicación, conclusión y argumentación.;OPO_SRC002
+OPO_E009;OPO_P024;Cumplimiento semanal;Adherencia;Indicador;Tareas hechas / tareas planificadas.;OPO_SRC002
+OPO_E010;OPO_P029;Tendencia de rendimiento;Progreso;Indicador;Media móvil de notas o porcentajes por bloque.;OPO_SRC002
+OPO_E011;OPO_P033;Escala ansiedad examen 0-10;Ansiedad;Autorregistro;"No clínica; si intensidad alta, derivar.";"OPO_SRC006;OPO_SRC008"
+OPO_E012;OPO_P036;Registro de horas útiles;Tiempo;Autorregistro;Horas efectivas por bloque, no solo presencia.;OPO_SRC002
+OPO_E013;OPO_P039;Registro de actualización normativa;Materiales;Control;Tema, fecha, fuente, cambio y revisión pendiente.;OPO_SRC001

@@ -1,0 +1,13 @@
+﻿documento_id;nombre;tipo;descripcion;problema_ids;nivel_riesgo
+TO_DOC001;Informe de valoración ocupacional inicial;Informe;Perfil ocupacional, prioridades, desempeño, entorno, barreras, objetivos y plan.;Todos;bajo
+TO_DOC002;Plan de intervención ocupacional;Plan;Objetivos funcionales, actividades, frecuencia, entorno, tareas domiciliarias y criterios de revisión.;Todos;bajo
+TO_DOC003;Informe de evolución funcional;Informe;Cambios en desempeño, ayuda necesaria, satisfacción, barreras y próximos pasos.;Todos;bajo
+TO_DOC004;Informe de alta / mantenimiento;Informe;Logros, objetivos alcanzados, recomendaciones, pautas de mantenimiento y señales de revisión.;Todos;bajo
+TO_DOC005;Informe de adaptación del hogar;Informe técnico;Riesgos, barreras, facilitadores, accesibilidad y ayudas técnicas.;"TO_P039;TO_P041";alto
+TO_DOC006;Informe de ayudas técnicas;Informe técnico;Producto de apoyo recomendado, objetivo, entrenamiento, seguimiento y observaciones.;TO_P040;medio
+TO_DOC007;Informe escolar de terapia ocupacional;Informe escolar;Participación escolar, motricidad, escritura, organización, adaptaciones y pautas.;"TO_P027;TO_P028;TO_P029";medio
+TO_DOC008;Informe de retorno laboral;Informe laboral;Demandas del puesto, capacidad funcional, adaptaciones, progresión y recomendaciones.;"TO_P036;TO_P037";medio
+TO_DOC009;Plan de prevención de caídas;Plan de seguridad;Riesgos identificados, adaptaciones, entrenamiento y pautas familiares.;"TO_P012;TO_P041";alto
+TO_DOC010;Plan de rutina en demencia;Plan familiar;Rutina, orientación, actividades significativas, seguridad y pautas al cuidador.;"TO_P021;TO_P022;TO_P023";alto
+TO_DOC011;Plan de conservación de energía;Plan;Priorización, pacing, descansos, simplificación y adaptación de tareas.;"TO_P042;TO_P044";bajo
+TO_DOC012;Consentimiento/hoja informativa de terapia ocupacional;Documento legal;Alcance de intervención, protección de datos, límites, coordinación y consentimiento.;Todos;medio

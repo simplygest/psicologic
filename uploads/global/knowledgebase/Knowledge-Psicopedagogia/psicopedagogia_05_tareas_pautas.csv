@@ -1,0 +1,65 @@
+﻿tarea_id;titulo;descripcion;objetivo;nivel_riesgo;duracion_estimada;tecnica_id
+PSP_TA001;Entrevista inicial familia/alumno;Recoger demanda, historia escolar, fortalezas, dificultades y objetivos.;Definir caso y prioridades.;bajo;30-45 min;PSP_T001
+PSP_TA002;Registro semanal de tareas escolares;Anotar deberes, entregas, tiempo invertido, ayuda y dificultades.;Detectar patrón académico.;bajo;7 días;PSP_T001
+PSP_TA003;Muestra de lectura/escritura/cálculo;Recoger muestra breve de rendimiento en área objetivo.;Observar errores funcionales.;medio;15-20 min;PSP_T001
+PSP_TA004;Descomponer una tarea difícil;Separar una tarea escolar en pasos y demandas.;Reducir bloqueo y planificar apoyos.;bajo;15 min;PSP_T002
+PSP_TA005;Modelado del primer ejercicio;El profesional resuelve un ejemplo verbalizando pasos y decisiones.;Aprender procedimiento.;bajo;10 min;PSP_T003
+PSP_TA006;Práctica guiada con retirada de ayuda;Resolver ejercicios con apoyos que se retiran gradualmente.;Aumentar autonomía.;bajo;15-20 min;PSP_T004
+PSP_TA007;Corrección con feedback específico;Revisar error indicando qué cambiar y cómo intentarlo de nuevo.;Mejorar aprendizaje por error.;bajo;10 min;PSP_T005
+PSP_TA008;Ejercicios de rimas;Identificar y crear palabras que riman.;Mejorar conciencia fonológica.;bajo;10 min/día;PSP_T006
+PSP_TA009;Segmentación silábica/fonémica;Separar palabras en sílabas o sonidos con apoyo visual.;Mejorar base lectora.;bajo;10 min/día;PSP_T006
+PSP_TA010;Mezcla de sonidos;Unir sonidos o sílabas para formar palabras.;Apoyar decodificación.;bajo;10 min/día;PSP_T006
+PSP_TA011;Lectura repetida breve;Leer el mismo texto 2-3 veces registrando precisión y comodidad.;Mejorar fluidez.;bajo;10 min/día;PSP_T007
+PSP_TA012;Lista de palabras objetivo;Practicar palabras frecuentes o con patrón trabajado.;Automatizar lectura.;bajo;10 min/día;PSP_T007
+PSP_TA013;Lectura cronometrada amable;Medir avance sin presión, comparando progreso propio.;Mejorar fluidez y motivación.;bajo;5-10 min;PSP_T007
+PSP_TA014;Preguntas antes-durante-después;Responder preguntas de predicción, comprensión y reflexión.;Mejorar comprensión.;bajo;15 min;PSP_T008
+PSP_TA015;Subrayar idea principal;Marcar idea principal y detalles de apoyo en un párrafo.;Mejorar extracción de información.;bajo;10-15 min;PSP_T008
+PSP_TA016;Resumen de 3 frases;Escribir resumen breve con quién/qué, idea principal y conclusión.;Mejorar síntesis.;bajo;10 min;PSP_T008
+PSP_TA017;Mapa semántico de vocabulario;Palabra, definición propia, ejemplo, dibujo, antónimo/sinónimo.;Mejorar vocabulario académico.;bajo;10 min;PSP_T009
+PSP_TA018;Tarjetas de vocabulario;Crear tarjetas con palabra, significado, ejemplo y recuperación.;Consolidar vocabulario.;bajo;10 min/día;PSP_T009
+PSP_TA019;Organizador previo de texto;Completar esquema antes de escribir: inicio, ideas, argumentos, cierre.;Planificar escritura.;bajo;15 min;PSP_T010
+PSP_TA020;Plantilla de párrafo;Usar estructura: idea, explicación, ejemplo, cierre.;Mejorar coherencia escrita.;bajo;15 min;PSP_T010
+PSP_TA021;Checklist de revisión;Revisar contenido, orden, puntuación, ortografía y presentación.;Mejorar revisión autónoma.;bajo;10 min;PSP_T011
+PSP_TA022;Lectura en voz alta del propio texto;Leer texto para detectar errores y frases raras.;Mejorar autocorrección.;bajo;5 min;PSP_T011
+PSP_TA023;Dictado estructurado;Practicar palabras/frases con regla o patrón objetivo.;Mejorar ortografía.;bajo;10 min/día;PSP_T012
+PSP_TA024;Cuaderno de errores ortográficos;Registrar error, corrección, regla y ejemplo propio.;Reducir errores repetidos.;bajo;semanal;PSP_T012
+PSP_TA025;Recta numérica;Representar operaciones o comparaciones en recta numérica.;Fortalecer sentido numérico.;bajo;10 min;PSP_T013
+PSP_TA026;Descomposición de números;Separar números en unidades, decenas, centenas o partes equivalentes.;Comprender valor posicional.;bajo;10 min;PSP_T013
+PSP_TA027;Representar problema con dibujo/esquema;Dibujar datos, relación y pregunta antes de operar.;Mejorar comprensión matemática.;bajo;10 min;PSP_T014
+PSP_TA028;Método cuatro pasos en problemas;Leer, representar, planificar, resolver y comprobar.;Estructurar resolución.;bajo;15 min;PSP_T014
+PSP_TA029;Diario de errores matemáticos;Registrar tipo de error y estrategia para evitarlo.;Mejorar autocorrección.;bajo;semanal;PSP_T014
+PSP_TA030;Práctica breve de hechos básicos;5 minutos de recuperación de operaciones básicas adaptadas.;Automatizar cálculo.;bajo;5 min/día;PSP_T015
+PSP_TA031;Checklist de inicio de tarea;Antes de empezar: objetivo, materiales, tiempo, primer paso.;Mejorar planificación.;bajo;diario;PSP_T016
+PSP_TA032;Autoinstrucciones paso a paso;Decirse: leo, pienso, hago, reviso.;Mejorar control ejecutivo.;bajo;diario;PSP_T016
+PSP_TA033;Semáforo de impulsividad;Parar-pensar-actuar-revisar antes de responder.;Reducir errores por prisa.;bajo;diario;PSP_T016
+PSP_TA034;Agenda semanal de entregas;Registrar exámenes, trabajos, deberes y materiales.;Organizar obligaciones.;bajo;semanal;PSP_T017
+PSP_TA035;Sistema de carpetas/materiales;Crear organización física/digital por asignatura.;Reducir pérdidas y olvidos.;bajo;30 min;PSP_T017
+PSP_TA036;Temporizador de trabajo;Usar temporizador para bloque de estudio o tarea.;Mejorar atención sostenida.;bajo;diario;PSP_T020
+PSP_TA037;Plan de repaso espaciado;Programar repasos al día 1, 3, 7 y 14.;Aumentar retención.;bajo;2 semanas;PSP_T018
+PSP_TA038;Tarjetas de recuperación activa;Crear preguntas/respuestas y repasarlas sin mirar apuntes.;Mejorar memoria.;bajo;10-15 min/día;PSP_T019
+PSP_TA039;Mini-test sin apuntes;Responder 5-10 preguntas antes de revisar.;Practicar recuperación.;bajo;10 min;PSP_T019
+PSP_TA040;Plan Pomodoro adaptado;Estudiar en bloques cortos con descansos programados.;Aumentar adherencia.;bajo;1 semana;PSP_T020
+PSP_TA041;Autoevaluación al final de sesión;Valorar qué hice, qué entendí, qué falta y próximo paso.;Mejorar metacognición.;bajo;5 min;PSP_T021
+PSP_TA042;Antes-después de estudiar;Predecir dificultad y después comparar con resultado real.;Ajustar percepción de aprendizaje.;bajo;semanal;PSP_T021
+PSP_TA043;Objetivo SMART semanal;Definir objetivo concreto, medible, alcanzable y revisable.;Mejorar motivación.;bajo;semanal;PSP_T022
+PSP_TA044;Registro de esfuerzo/progreso;Anotar esfuerzo, estrategia usada y avance visible.;Reforzar autoeficacia.;bajo;semanal;PSP_T022
+PSP_TA045;Plan ante bloqueo;Elegir pasos: pausa, respiración, pedir pista, cambiar estrategia, volver.;Reducir abandono.;medio;diario;PSP_T023
+PSP_TA046;Respiración breve antes de examen;Practicar respiración 2-3 minutos antes de prueba o simulacro.;Reducir activación.;bajo;antes de examen;PSP_T023
+PSP_TA047;Simulacro con tiempo;Realizar prueba similar al examen con tiempo y corrección posterior.;Entrenar formato real.;bajo;semanal;PSP_T024
+PSP_TA048;Análisis de errores de examen;Clasificar errores: contenido, lectura, cálculo, tiempo, despiste.;Mejorar preparación.;bajo;tras prueba;PSP_T024
+PSP_TA049;Menú de opciones para demostrar aprendizaje;Permitir respuesta oral, esquema, texto, dibujo o presentación según objetivo.;Reducir barreras UDL.;bajo;según tarea;PSP_T025
+PSP_TA050;Material con doble formato;Preparar contenido en texto + esquema/audio/visual.;Mejorar acceso.;bajo;según tarea;PSP_T025
+PSP_TA051;Adaptación de tiempo/formato;Proponer ajuste razonable de tiempo, fragmentación o formato.;Facilitar evaluación justa.;medio;según caso;PSP_T026
+PSP_TA052;Hoja de pautas para familia;Redactar 3 pautas concretas para apoyar sin sobreayudar.;Generalizar intervención.;bajo;15 min;PSP_T027
+PSP_TA053;Coordinación con tutor/profesor;Preparar resumen de necesidades, objetivos y apoyos.;Alinear contextos.;medio;20 min;PSP_T027
+PSP_TA054;Informe psicopedagógico base;Preparar estructura: motivo, evaluación, resultados, necesidades, recomendaciones.;Documentar intervención.;medio;variable;PSP_T028
+PSP_TA055;Gráfica de progreso;Registrar resultados breves por semana y mostrar tendencia.;Visualizar evolución.;bajo;semanal;PSP_T029
+PSP_TA056;Revisión mensual de objetivos;Revisar logros, barreras y nuevos objetivos.;Actualizar plan.;bajo;mensual;PSP_T029
+PSP_TA057;Checklist de derivación;Revisar señales de posible necesidad clínica/logopédica/neuropsicológica.;Cuidar límites profesionales.;alto;supervisado;PSP_T030
+PSP_TA058;Plan de lectura en casa;10 minutos de lectura adaptada con pauta específica.;Consolidar intervención lectora.;bajo;diario;PSP_T007
+PSP_TA059;Plan de escritura semanal;Una producción breve por semana con planificación y revisión.;Mejorar escritura funcional.;bajo;semanal;PSP_T010
+PSP_TA060;Contrato de estudio realista;Acordar horario, descansos, objetivos y recompensa saludable.;Mejorar hábito.;bajo;semanal;PSP_T022
+PSP_TA061;Lista de comprobación de mochila;Checklist visual de materiales por día/asignatura.;Reducir olvidos.;bajo;diario;PSP_T017
+PSP_TA062;Rutina de inicio de deberes;Mismo lugar, materiales, primer paso y temporizador.;Automatizar comienzo.;bajo;diario;PSP_T017
+PSP_TA063;Exposición graduada a participación;Realizar participación pequeña en clase o sesión y aumentar dificultad.;Mejorar participación.;medio;semanal;PSP_T023
+PSP_TA064;Reencuadre de error como pista;Registrar error y convertirlo en estrategia de mejora.;Mejorar tolerancia a frustración.;bajo;semanal;PSP_T023

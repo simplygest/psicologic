@@ -1,0 +1,31 @@
+﻿tecnica_id;nombre;descripcion;nivel_riesgo
+OPO_T001;Diagnóstico inicial del opositor;Estado de temario, tiempo disponible, formato de examen, hábitos, fortalezas y debilidades.;bajo
+OPO_T002;Planificación inversa;Diseñar calendario desde fecha objetivo hacia atrás con bloques, vueltas y simulacros.;bajo
+OPO_T003;Priorización por impacto/riesgo;Ordenar temas según peso, dificultad, frecuencia, dominio y fecha.;bajo
+OPO_T004;Sistema de vueltas;Organizar primera vuelta, repasos, consolidación y fase final.;bajo
+OPO_T005;Lectura activa;Convertir lectura en preguntas, estructura, objetivos y comprobación.;bajo
+OPO_T006;Recuperación activa;Recordar sin mirar mediante preguntas, tarjetas, test o desarrollo en blanco.;bajo
+OPO_T007;Repaso espaciado;Programar repasos a intervalos crecientes para consolidar.;bajo
+OPO_T008;Intercalado;Mezclar temas/tipos de ejercicio para discriminar conceptos y reducir interferencia.;bajo
+OPO_T009;Elaboración;Explicar el porqué, relacionar conceptos y generar ejemplos propios.;bajo
+OPO_T010;Codificación dual;Combinar texto, esquemas, tablas, mapas y visuales.;bajo
+OPO_T011;Esquemas y mapas funcionales;Resumir estructura para repaso rápido y recuperación.;bajo
+OPO_T012;Tarjetas tipo Anki;Preguntas-respuestas breves con revisión espaciada.;bajo
+OPO_T013;Banco de errores;Registro de fallos, causa, corrección y repaso específico.;bajo
+OPO_T014;Simulacros periódicos;Pruebas con tiempo, condiciones reales y corrección analítica.;medio
+OPO_T015;Estrategia de test;Lectura, descarte, control de riesgo, gestión de dudas y penalización.;medio
+OPO_T016;Estrategia de desarrollo escrito;Estructura, epígrafes, tiempo, memoria de esquema y redacción.;medio
+OPO_T017;Estrategia de supuesto práctico;Identificar hechos, norma, criterio, estructura y respuesta final.;medio
+OPO_T018;Gestión del tiempo;Bloques, temporizador, límites por tarea y control del ritmo.;bajo
+OPO_T019;Metacognición;Planificar, monitorizar y evaluar aprendizaje y rendimiento.;bajo
+OPO_T020;Objetivos SMART;Objetivos semanales concretos, medibles, realistas y revisables.;bajo
+OPO_T021;Gestión de procrastinación;Reducir fricción, primer paso, bloques cortos, compromiso y revisión.;bajo
+OPO_T022;Pacing y descanso;Distribución sostenible de carga, pausas y prevención de fatiga.;bajo
+OPO_T023;Afrontamiento de ansiedad ante examen;Respiración, exposición a simulacros, preparación y reencuadre.;medio
+OPO_T024;Análisis post-simulacro;Clasificar errores, detectar patrones y decidir tareas correctivas.;bajo
+OPO_T025;Seguimiento de métricas;Notas, aciertos, fallos, temas, horas, cumplimiento y tendencia.;bajo
+OPO_T026;Control de materiales y versiones;Fuente única, cambios, fecha de actualización y revisión de temario.;medio
+OPO_T027;Coaching académico / adherencia;Revisión semanal, obstáculos, compromiso, motivación y ajuste de plan.;bajo
+OPO_T028;Preparación fase final;Repaso selectivo, simulacros, descanso, logística y estrategia de examen.;medio
+OPO_T029;Informe de evolución del opositor;Resumen de avance, rendimiento, tareas, riesgos y próximos pasos.;bajo
+OPO_T030;Derivación / límites profesionales;Identificar ansiedad clínica, agotamiento severo u otras señales que requieren profesional sanitario.;alto

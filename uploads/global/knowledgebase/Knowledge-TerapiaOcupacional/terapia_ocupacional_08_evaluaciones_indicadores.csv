@@ -1,0 +1,17 @@
+﻿evaluacion_id;problema_id;nombre;area_uso;tipo;notas;fuente_ids
+TO_E001;TO_P001;COPM / Medida Canadiense de Desempeño Ocupacional;Desempeño y satisfacción;Entrevista/medida;Revisar licencia/condiciones antes de integrar completo.;TO_SRC001
+TO_E002;TO_P001;Índice de Barthel;ABVD;Escala funcional;"Útil para independencia en ABVD; revisar versión/licencia.";TO_SRC001
+TO_E003;TO_P006;Lawton IADL;AIVD;Escala funcional;"Mide actividades instrumentales; revisar versión/licencia.";TO_SRC012
+TO_E004;TO_P011;FIM / medida de independencia funcional;Independencia funcional;Escala funcional;"Puede tener restricciones de licencia; no copiar formulario completo sin revisar.";TO_SRC001
+TO_E005;TO_P012;Checklist de riesgo de caídas en hogar;Seguridad;Checklist;Puede ser herramienta interna basada en observación funcional.;TO_SRC006
+TO_E006;TO_P014;Box and Block Test / prueba destreza manual;Destreza manual;Prueba funcional;Revisar protocolo/licencia.;TO_SRC001
+TO_E007;TO_P014;Nine Hole Peg Test;Destreza fina;Prueba funcional;Revisar protocolo/licencia antes de incluir materiales completos.;TO_SRC001
+TO_E008;TO_P018;MoCA/MMSE aportado o coordinación;Cognición;Cribado médico/cognitivo;"No diagnosticar; usar solo como dato aportado o coordinado.";TO_SRC006
+TO_E009;TO_P021;Registro de rutina y orientación;Demencia;Seguimiento funcional;Herramienta propia para rutina, orientación y participación.;"TO_SRC008;TO_SRC009"
+TO_E010;TO_P024;Evaluación funcional post-ictus;Ictus;Valoración funcional;Combinar observación, ocupaciones y herramientas validadas.;TO_SRC007
+TO_E011;TO_P027;Observación de motricidad fina en juego;Pediatría;Observación;Registro propio o prueba estandarizada según profesional.;TO_SRC001
+TO_E012;TO_P030;Perfil sensorial / registro sensorial;Procesamiento sensorial;Cuestionario/registro;Revisar licencias de herramientas estandarizadas.;TO_SRC001
+TO_E013;TO_P036;Work Ability Index / entrevista laboral;Trabajo;Cuestionario/entrevista;"Revisar condiciones; puede usarse entrevista propia.";TO_SRC006
+TO_E014;TO_P042;Escala de fatiga / registro actividad-descanso;Fatiga;Autorregistro;Puede ser registro interno semanal.;TO_SRC005
+TO_E015;TO_P045;IMPACT-S / participación y actividades;Participación;Cuestionario;"Medida ICF de participación y actividades; revisar condiciones de uso.";TO_SRC010
+TO_E016;TO_P047;Goal Attainment Scaling;Objetivos;Medida de resultados;"Útil para objetivos individualizados; requiere diseño profesional.";TO_SRC001
