@@ -1,0 +1,82 @@
+﻿problema_id;area_id;nombre;descripcion;poblacion;tipo_intervencion;nivel_riesgo;fuente_ids
+NUT2_P001;NUT2_A001;Mejorar alimentación general;Objetivo de construir un patrón alimentario más equilibrado y sostenible.;general;educativa;bajo;"NUT2_SRC001;NUT2_SRC010;NUT2_SRC011"
+NUT2_P002;NUT2_A001;Bajo consumo de frutas y verduras;Ingesta insuficiente de alimentos vegetales y variedad.;general;educativa;bajo;"NUT2_SRC001;NUT2_SRC010"
+NUT2_P003;NUT2_A001;Exceso de ultraprocesados;Consumo frecuente de productos de alta densidad energética, sal, azúcar o grasas de baja calidad.;general;educativa;medio;"NUT2_SRC001;NUT2_SRC011"
+NUT2_P004;NUT2_A001;Desconocimiento de raciones;Dificultad para estimar cantidades adecuadas sin pesar todo.;general;educativa;bajo;"NUT2_SRC004;NUT2_SRC010"
+NUT2_P005;NUT2_A001;Lectura de etiquetas insuficiente;Dificultad para interpretar calorías, raciones, azúcar, fibra, sal o ingredientes.;general;educativa;bajo;"NUT2_SRC004;NUT2_SRC011"
+NUT2_P006;NUT2_A001;Desayunos o cenas desequilibradas;Comidas repetitivas con baja proteína/fibra o exceso de opciones poco saciantes.;general;educativa;bajo;"NUT2_SRC010;NUT2_SRC014"
+NUT2_P007;NUT2_A001;Picoteo poco planificado;Ingestas entre comidas por disponibilidad, hambre, aburrimiento o hábito.;general;hábitos;bajo;"NUT2_SRC010;NUT2_SRC012"
+NUT2_P008;NUT2_A002;Pérdida de grasa corporal;Objetivo de reducir grasa preservando salud, músculo y adherencia.;adultos;control_peso;medio;"NUT2_SRC003;NUT2_SRC012"
+NUT2_P009;NUT2_A002;Sobrepeso con baja adherencia;Dificultad para mantener cambios más allá de pocas semanas.;adultos;control_peso;medio;"NUT2_SRC003;NUT2_SRC009"
+NUT2_P010;NUT2_A002;Estancamiento de peso;Peso o medidas sin cambios tras periodo suficiente de seguimiento.;adultos;control_peso;bajo;"NUT2_SRC003;NUT2_SRC012"
+NUT2_P011;NUT2_A002;Hambre elevada en déficit;Sensación de hambre persistente que dificulta pérdida de grasa.;adultos;control_peso;medio;"NUT2_SRC012;NUT2_SRC014"
+NUT2_P012;NUT2_A002;Baja saciedad en comidas;Comidas poco saciantes por baja proteína, fibra, volumen o estructura.;general;control_peso;bajo;"NUT2_SRC001;NUT2_SRC014"
+NUT2_P013;NUT2_A002;Miedo al efecto rebote;Preocupación por recuperar peso tras dieta o intentos previos.;adultos;control_peso;medio;"NUT2_SRC003;NUT2_SRC012"
+NUT2_P014;NUT2_A002;Control de cintura abdominal;Necesidad de seguimiento de perímetro abdominal como indicador de adiposidad central.;adultos;seguimiento;medio;NUT2_SRC003
+NUT2_P015;NUT2_A003;Ganancia de masa muscular;Objetivo de apoyar hipertrofia con energía, proteína y constancia.;deportistas/general;deportiva;bajo;NUT2_SRC016
+NUT2_P016;NUT2_A003;Proteína insuficiente;Ingesta proteica baja para objetivos de fuerza, saciedad o mantenimiento muscular.;general/deportistas;deportiva;bajo;NUT2_SRC016
+NUT2_P017;NUT2_A003;Energía insuficiente para entrenar;Entrenamientos con fatiga por baja ingesta, horarios o distribución alimentaria.;deportistas/general;deportiva;medio;"NUT2_SRC016;NUT2_SRC009"
+NUT2_P018;NUT2_A003;Recuperación post-entreno mejorable;Dudas sobre comida posterior, proteína, hidratos, hidratación y descanso.;deportistas/general;deportiva;bajo;NUT2_SRC016
+NUT2_P019;NUT2_A003;Dudas sobre suplementos deportivos;Interés en proteína, creatina, cafeína u otros suplementos con seguridad.;deportistas/general;deportiva;medio;NUT2_SRC016
+NUT2_P020;NUT2_A003;Nutrición para resistencia/cardio;Necesidad de adaptar energía e hidratación a sesiones largas o frecuentes.;deportistas;deportiva;medio;NUT2_SRC016
+NUT2_P021;NUT2_A004;Recomposición corporal;Reducir grasa y mantener/ganar músculo simultáneamente.;adultos/deportistas;composición_corporal;medio;"NUT2_SRC016;NUT2_SRC003"
+NUT2_P022;NUT2_A004;Ganar músculo sin subir demasiada grasa;Controlar superávit, proteína y seguimiento de medidas.;adultos/deportistas;composición_corporal;bajo;NUT2_SRC016
+NUT2_P023;NUT2_A004;Definición muscular;Reducir grasa preservando rendimiento y masa muscular.;adultos/deportistas;composición_corporal;medio;"NUT2_SRC016;NUT2_SRC003"
+NUT2_P024;NUT2_A004;Seguimiento de composición corporal;Uso de peso, perímetros, fotos y rendimiento sin obsesión.;adultos;seguimiento;bajo;"NUT2_SRC003;NUT2_SRC012"
+NUT2_P025;NUT2_A005;Prediabetes / riesgo de diabetes tipo 2;Necesidad de hábitos alimentarios y actividad para reducir riesgo metabólico.;adultos;metabólica;alto;"NUT2_SRC007;NUT2_SRC008"
+NUT2_P026;NUT2_A005;Diabetes tipo 2 - educación alimentaria;Apoyo no médico para alimentación equilibrada coordinada con equipo sanitario.;adultos;metabólica;alto;"NUT2_SRC006;NUT2_SRC008"
+NUT2_P027;NUT2_A005;Resistencia a la insulina referida;Objetivo de mejorar hábitos, peso si procede y calidad alimentaria.;adultos;metabólica;alto;"NUT2_SRC007;NUT2_SRC008"
+NUT2_P028;NUT2_A005;Triglicéridos elevados referidos;Necesidad de orientación alimentaria y derivación/coordinación sanitaria.;adultos;metabólica;alto;"NUT2_SRC013;NUT2_SRC014"
+NUT2_P029;NUT2_A005;Bebidas azucaradas frecuentes;Consumo habitual de refrescos, zumos o bebidas con azúcar.;general;metabólica;medio;"NUT2_SRC001;NUT2_SRC007"
+NUT2_P030;NUT2_A005;Hidratos de baja calidad predominantes;Predominio de harinas refinadas/dulces y baja fibra.;general;metabólica;medio;"NUT2_SRC001;NUT2_SRC007"
+NUT2_P031;NUT2_A006;Colesterol LDL elevado referido;Necesidad de orientación sobre grasas, fibra y patrón alimentario, coordinada con médico.;adultos;cardiovascular;alto;"NUT2_SRC013;NUT2_SRC014"
+NUT2_P032;NUT2_A006;Hipertensión referida;Necesidad de reducir sal, mejorar patrón dietético y coordinar con sanitario.;adultos;cardiovascular;alto;"NUT2_SRC001;NUT2_SRC013"
+NUT2_P033;NUT2_A006;Consumo elevado de sal;Uso frecuente de sal, productos salados o comidas preparadas.;general;cardiovascular;medio;"NUT2_SRC001;NUT2_SRC011"
+NUT2_P034;NUT2_A006;Baja ingesta de fibra;Consumo bajo de legumbres, frutas, verduras, cereales integrales o frutos secos.;general;cardiovascular/digestiva;bajo;"NUT2_SRC001;NUT2_SRC013"
+NUT2_P035;NUT2_A006;Grasas saturadas elevadas;Patrón con exceso de carnes procesadas, bollería, fritos o lácteos grasos.;general;cardiovascular;medio;"NUT2_SRC001;NUT2_SRC013"
+NUT2_P036;NUT2_A006;Patrón mediterráneo mejorable;Necesidad de reforzar aceite de oliva, legumbres, pescado, vegetales y alimentos frescos.;adultos;cardiovascular;bajo;"NUT2_SRC013;NUT2_SRC014"
+NUT2_P037;NUT2_A007;Síntomas digestivos inespecíficos;Hinchazón, gases o molestias que requieren registro y posible derivación.;adultos;digestiva;medio;"NUT2_SRC014;NUT2_SRC017"
+NUT2_P038;NUT2_A007;Estreñimiento funcional leve;Baja frecuencia o dificultad evacuatoria sin señales de alarma.;adultos;digestiva;medio;"NUT2_SRC014;NUT2_SRC011"
+NUT2_P039;NUT2_A007;Diarrea recurrente no explicada;Síntomas persistentes o alternantes que requieren valoración sanitaria.;adultos;derivación;alto;NUT2_SRC014
+NUT2_P040;NUT2_A007;Sospecha de intolerancia a lactosa;Molestias tras lácteos que requieren evaluación y prueba estructurada.;adultos;digestiva;medio;NUT2_SRC014
+NUT2_P041;NUT2_A007;Sospecha de sensibilidad digestiva a FODMAP;Síntomas compatibles que requieren supervisión dietética.;adultos;digestiva;medio;NUT2_SRC017
+NUT2_P042;NUT2_A007;Celiaquía diagnosticada / dieta sin gluten;Necesidad de adherencia estricta y prevención de contaminación cruzada.;adultos/niños;digestiva;alto;NUT2_SRC018
+NUT2_P043;NUT2_A007;Reintroducción alimentaria estructurada;Necesidad de identificar tolerancias sin restricciones innecesarias.;adultos;digestiva;medio;"NUT2_SRC017;NUT2_SRC014"
+NUT2_P044;NUT2_A008;Comer emocional;Ingestas asociadas a estrés, tristeza, ansiedad o aburrimiento.;adultos;conductual;medio;"NUT2_SRC014;NUT2_SRC004"
+NUT2_P045;NUT2_A008;Ansiedad por comida;Preocupación recurrente por comida, control, hambre o elección alimentaria.;adultos;conductual;medio;NUT2_SRC014
+NUT2_P046;NUT2_A008;Culpa tras comer;Malestar o autocrítica intensa tras comer ciertos alimentos.;adultos;conductual;medio;NUT2_SRC014
+NUT2_P047;NUT2_A008;Restricción excesiva;Eliminación rígida de alimentos o grupos sin indicación clara.;adultos;conductual;alto;NUT2_SRC014
+NUT2_P048;NUT2_A008;Atracones o pérdida de control referida;Episodios de ingesta con sensación de pérdida de control que requieren valoración especializada.;adultos;derivación;alto;NUT2_SRC014
+NUT2_P049;NUT2_A008;Pensamiento todo/nada en dieta;Alternar control rígido y abandono por errores puntuales.;adultos;conductual;medio;"NUT2_SRC012;NUT2_SRC014"
+NUT2_P050;NUT2_A008;Miedo a comer fuera;Ansiedad por restaurantes, eventos o comidas sociales.;adultos;conductual;medio;NUT2_SRC014
+NUT2_P051;NUT2_A009;Falta de planificación semanal;Improvisación que lleva a elecciones poco alineadas con objetivos.;general;planificación;bajo;"NUT2_SRC010;NUT2_SRC011"
+NUT2_P052;NUT2_A009;Compra poco organizada;Lista de compra ausente o desconectada del menú previsto.;general;planificación;bajo;NUT2_SRC010
+NUT2_P053;NUT2_A009;Poco tiempo para cocinar;Necesidad de comidas rápidas y saludables.;general;planificación;bajo;"NUT2_SRC011;NUT2_SRC014"
+NUT2_P054;NUT2_A009;Comidas fuera frecuentes;Necesidad de elegir mejor en restaurantes, cafeterías o trabajo.;general;planificación;bajo;"NUT2_SRC010;NUT2_SRC011"
+NUT2_P055;NUT2_A009;Turnos laborales y alimentación;Horarios irregulares que alteran comidas, hambre y planificación.;adultos;planificación;medio;NUT2_SRC014
+NUT2_P056;NUT2_A009;Batch cooking inicial;Objetivo de preparar bases alimentarias para varios días.;general;planificación;bajo;"NUT2_SRC010;NUT2_SRC011"
+NUT2_P057;NUT2_A010;Nutrición en adolescencia activa;Necesidades de energía, proteína y hábitos en crecimiento y actividad.;adolescentes;etapa_vital;medio;"NUT2_SRC001;NUT2_SRC014"
+NUT2_P058;NUT2_A010;Nutrición en embarazo;Alimentación y seguridad alimentaria que requieren coordinación sanitaria.;embarazo;derivación/coordinación;alto;NUT2_SRC014
+NUT2_P059;NUT2_A010;Nutrición en posparto/lactancia;Necesidades, energía, hidratación y apoyo, coordinando con profesional sanitario.;posparto;etapa_vital;medio;NUT2_SRC014
+NUT2_P060;NUT2_A010;Nutrición en menopausia;Cambios de composición corporal, saciedad, calcio, proteína y salud cardiovascular.;adultas;etapa_vital;medio;"NUT2_SRC013;NUT2_SRC014"
+NUT2_P061;NUT2_A010;Nutrición en mayores;Riesgo de baja proteína, pérdida muscular, hidratación y apetito bajo.;mayores;etapa_vital;alto;"NUT2_SRC015;NUT2_SRC014"
+NUT2_P062;NUT2_A010;Pérdida de apetito en mayores;Disminución de ingesta que puede afectar peso y masa muscular.;mayores;derivación/coordinación;alto;NUT2_SRC015
+NUT2_P063;NUT2_A011;Dieta vegetariana equilibrada;Planificar proteína, hierro, B12, omega-3 y variedad.;general;dieta_especial;medio;"NUT2_SRC014;NUT2_SRC004"
+NUT2_P064;NUT2_A011;Dieta vegana equilibrada;Planificación de B12, proteína, hierro, calcio, omega-3 y alimentos clave.;general;dieta_especial;alto;"NUT2_SRC014;NUT2_SRC004"
+NUT2_P065;NUT2_A011;Dieta sin gluten por celiaquía;Adherencia y contaminación cruzada tras diagnóstico confirmado.;general;dieta_especial;alto;NUT2_SRC018
+NUT2_P066;NUT2_A011;Dieta sin lactosa no planificada;Evitar lácteos sin estrategia de calcio/proteína o sin prueba clara.;general;dieta_especial;medio;NUT2_SRC014
+NUT2_P067;NUT2_A011;Adaptación cultural/religiosa;Ajustar pauta a cultura, religión, horarios o disponibilidad de alimentos.;general;dieta_especial;bajo;"NUT2_SRC010;NUT2_SRC004"
+NUT2_P068;NUT2_A012;Bajo peso o pérdida involuntaria;Peso bajo o pérdida no intencional que requiere valoración sanitaria.;adultos/mayores;derivación;alto;NUT2_SRC015
+NUT2_P069;NUT2_A012;Riesgo de desnutrición;Ingesta insuficiente, fragilidad o enfermedad con riesgo nutricional.;adultos/mayores;derivación;alto;NUT2_SRC015
+NUT2_P070;NUT2_A012;Señales de TCA;Restricción extrema, atracones, purgas, miedo intenso a peso o distorsión corporal.;general;derivación;alto;NUT2_SRC014
+NUT2_P071;NUT2_A012;Dietas extremas o detox;Prácticas restrictivas, promesas rápidas o eliminación innecesaria de grupos.;general;seguridad;medio;"NUT2_SRC005;NUT2_SRC014"
+NUT2_P072;NUT2_A012;Síntomas físicos asociados a dieta;Mareos, debilidad, amenorrea, caída de pelo o fatiga marcada.;general;derivación;alto;"NUT2_SRC014;NUT2_SRC015"
+NUT2_P073;NUT2_A013;Hidratación insuficiente;Baja ingesta de agua o dificultad para mantener hidratación.;general;hábitos;bajo;"NUT2_SRC011;NUT2_SRC009"
+NUT2_P074;NUT2_A013;Consumo frecuente de alcohol;Alcohol frecuente que afecta energía, sueño, peso o salud.;adultos;hábitos;medio;"NUT2_SRC001;NUT2_SRC011"
+NUT2_P075;NUT2_A013;Refrescos azucarados frecuentes;Bebidas azucaradas como fuente relevante de energía y azúcar.;general;hábitos;medio;"NUT2_SRC001;NUT2_SRC007"
+NUT2_P076;NUT2_A013;Cafeína desorganizada;Consumo de cafeína que afecta sueño, ansiedad o entrenamientos.;adultos;hábitos;bajo;NUT2_SRC014
+NUT2_P077;NUT2_A014;Uso de proteína en polvo;Interés en usar proteína como ayuda práctica, no sustituto de dieta.;general/deportistas;suplementación;bajo;NUT2_SRC016
+NUT2_P078;NUT2_A014;Uso de creatina;Interés en creatina y pautas generales de seguridad/expectativas.;deportistas/general;suplementación;medio;NUT2_SRC016
+NUT2_P079;NUT2_A014;Vitamina B12 en dieta vegana;Necesidad de suplementación/seguimiento en dieta vegana.;veganos;suplementación;alto;NUT2_SRC014
+NUT2_P080;NUT2_A014;Vitamina D o hierro bajos referidos;Resultados o sospecha que requieren coordinación sanitaria.;general;derivación/coordinación;alto;NUT2_SRC014
+NUT2_P081;NUT2_A014;Exceso de suplementos innecesarios;Uso de múltiples suplementos sin indicación, expectativa o control claro.;general;suplementación;medio;"NUT2_SRC005;NUT2_SRC014"

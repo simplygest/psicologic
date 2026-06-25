@@ -17,17 +17,19 @@ if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['admin',
     exit;
 }
 
-ensure_patient_management_tables($mysqli);
-ensure_patient_evolution_tables($mysqli);
-ensure_patient_document_tables($mysqli);
-ensure_patient_work_plan_tables($mysqli);
-ensure_work_plan_task_template_tables($mysqli);
-ensure_appointment_payment_columns($mysqli);
-ensure_appointment_services_tables($mysqli);
-ensure_bonus_tables($mysqli);
-ensure_payment_attempts_table($mysqli);
-ensure_cabinet_schema($mysqli);
-ensure_knowledge_base_sector_schema($mysqli);
+if (function_exists('app_auto_schema_migrations_enabled') && app_auto_schema_migrations_enabled()) {
+    ensure_patient_management_tables($mysqli);
+    ensure_patient_evolution_tables($mysqli);
+    ensure_patient_document_tables($mysqli);
+    ensure_patient_work_plan_tables($mysqli);
+    ensure_work_plan_task_template_tables($mysqli);
+    ensure_appointment_payment_columns($mysqli);
+    ensure_appointment_services_tables($mysqli);
+    ensure_bonus_tables($mysqli);
+    ensure_payment_attempts_table($mysqli);
+    ensure_cabinet_schema($mysqli);
+    ensure_knowledge_base_sector_schema($mysqli);
+}
 
 $action = $_GET['action'] ?? '';
 $tenant_id = current_tenant_id();
@@ -38,6 +40,16 @@ function ensure_action_feature($mysqli, $feature, $error)
         echo json_encode(['success' => false, 'error' => $error]);
         exit;
     }
+}
+
+function work_plan_task_status_enabled($mysqli)
+{
+    $tenant_id = current_tenant_id();
+    $res = $mysqli->query("SELECT work_plan_task_status_enabled FROM payment_settings WHERE tenant_id = $tenant_id LIMIT 1");
+    if ($res && ($row = $res->fetch_assoc())) {
+        return (int) ($row['work_plan_task_status_enabled'] ?? 1) === 1;
+    }
+    return true;
 }
 
 function table_exists($mysqli, $table_name)
@@ -89,9 +101,112 @@ function ensure_fitness_exercise_media_columns($mysqli)
     if (!column_exists($mysqli, 'fitness_exercises', 'workoutx_equipment')) {
         $mysqli->query("ALTER TABLE fitness_exercises ADD workoutx_equipment VARCHAR(120) DEFAULT NULL AFTER workoutx_target");
     }
+    if (!column_exists($mysqli, 'fitness_exercises', 'description_en')) {
+        $mysqli->query("ALTER TABLE fitness_exercises ADD description_en TEXT DEFAULT NULL AFTER description_es");
+    }
+    if (!column_exists($mysqli, 'fitness_exercises', 'instructions_en')) {
+        $mysqli->query("ALTER TABLE fitness_exercises ADD instructions_en LONGTEXT DEFAULT NULL AFTER cues_es");
+    }
+    if (!column_exists($mysqli, 'fitness_exercises', 'instructions_es')) {
+        $mysqli->query("ALTER TABLE fitness_exercises ADD instructions_es LONGTEXT DEFAULT NULL AFTER instructions_en");
+    }
+    if (!column_exists($mysqli, 'fitness_exercises', 'secondary_muscles_en')) {
+        $mysqli->query("ALTER TABLE fitness_exercises ADD secondary_muscles_en TEXT DEFAULT NULL AFTER instructions_es");
+    }
+    if (!column_exists($mysqli, 'fitness_exercises', 'calories_per_min')) {
+        $mysqli->query("ALTER TABLE fitness_exercises ADD calories_per_min DECIMAL(6,2) DEFAULT NULL AFTER secondary_muscles_en");
+    }
+    if (!column_exists($mysqli, 'fitness_exercises', 'workoutx_raw_json')) {
+        $mysqli->query("ALTER TABLE fitness_exercises ADD workoutx_raw_json LONGTEXT DEFAULT NULL AFTER workoutx_equipment");
+    }
+    if (!column_exists($mysqli, 'fitness_exercises', 'workoutx_details_synced_at')) {
+        $mysqli->query("ALTER TABLE fitness_exercises ADD workoutx_details_synced_at DATETIME DEFAULT NULL AFTER workoutx_raw_json");
+    }
     if (!index_exists($mysqli, 'fitness_exercises', 'idx_fitness_exercises_external')) {
         $mysqli->query("ALTER TABLE fitness_exercises ADD INDEX idx_fitness_exercises_external (external_source, external_id)");
     }
+}
+
+function workoutx_remote_value(array $remote, array $keys)
+{
+    foreach ($keys as $key) {
+        if (isset($remote[$key]) && trim((string) $remote[$key]) !== '') {
+            $value = $remote[$key];
+            if (is_array($value)) {
+                $value = implode(', ', array_filter(array_map('strval', $value)));
+            }
+            return trim((string) $value);
+        }
+    }
+    return '';
+}
+
+function workoutx_local_exercise_id_from_remote(array $remote)
+{
+    $external_id = workoutx_remote_value($remote, ['id', 'exerciseId', 'exercise_id']);
+    $seed = $external_id !== '' ? $external_id : workoutx_remote_value($remote, ['name']);
+    $seed = preg_replace('/[^a-z0-9]+/i', '_', $seed);
+    $seed = trim((string) $seed, '_');
+    if ($seed === '') {
+        $seed = substr(sha1(json_encode($remote)), 0, 16);
+    }
+    return 'WX_' . substr($seed, 0, 27);
+}
+
+function ensure_workoutx_exercise_local(mysqli $mysqli, array $remote)
+{
+    if (!table_exists($mysqli, 'fitness_exercises')) {
+        return '';
+    }
+    ensure_fitness_exercise_media_columns($mysqli);
+
+    $external_id = workoutx_remote_value($remote, ['id', 'exerciseId', 'exercise_id']);
+    if ($external_id !== '') {
+        $stmt = $mysqli->prepare("SELECT exercise_id FROM fitness_exercises WHERE external_source = 'workoutx' AND external_id = ? LIMIT 1");
+        $stmt->bind_param("s", $external_id);
+        $stmt->execute();
+        $existing = $stmt->get_result()->fetch_assoc();
+        if ($existing && !empty($existing['exercise_id'])) {
+            return (string) $existing['exercise_id'];
+        }
+    }
+
+    $exercise_id = workoutx_local_exercise_id_from_remote($remote);
+    $name = workoutx_remote_value($remote, ['name']);
+    if ($name === '') {
+        return '';
+    }
+    $body_part = workoutx_remote_value($remote, ['bodyPart', 'body_part']);
+    $target = workoutx_remote_value($remote, ['target', 'targetMuscle', 'target_muscle']);
+    $equipment = workoutx_remote_value($remote, ['equipment', 'equipmentName', 'equipment_name']);
+    $difficulty = workoutx_remote_value($remote, ['difficulty', 'level']);
+    $gif_url = workoutx_remote_value($remote, ['gifUrl', 'gif_url', 'imageUrl', 'image_url']);
+    $description = workoutx_remote_value($remote, ['description']);
+    if ($description === '' && !empty($remote['instructions']) && is_array($remote['instructions'])) {
+        $description = implode("\n", array_filter(array_map('strval', $remote['instructions'])));
+    }
+    $aliases = $name;
+    $source = 'workoutx';
+
+    $stmt = $mysqli->prepare("
+        INSERT INTO fitness_exercises
+            (exercise_id, name_en, name_es, category, difficulty, description_es, cues_es, image_url, aliases, external_source, external_id, workoutx_body_part, workoutx_target, workoutx_equipment, active)
+        VALUES
+            (?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, 1)
+        ON DUPLICATE KEY UPDATE
+            image_url = COALESCE(NULLIF(VALUES(image_url), ''), image_url),
+            aliases = COALESCE(NULLIF(VALUES(aliases), ''), aliases),
+            external_source = 'workoutx',
+            external_id = COALESCE(NULLIF(VALUES(external_id), ''), external_id),
+            workoutx_body_part = COALESCE(NULLIF(VALUES(workoutx_body_part), ''), workoutx_body_part),
+            workoutx_target = COALESCE(NULLIF(VALUES(workoutx_target), ''), workoutx_target),
+            workoutx_equipment = COALESCE(NULLIF(VALUES(workoutx_equipment), ''), workoutx_equipment),
+            updated_at = CURRENT_TIMESTAMP
+    ");
+    $stmt->bind_param("sssssssssssss", $exercise_id, $name, $name, $body_part, $difficulty, $description, $gif_url, $aliases, $source, $external_id, $body_part, $target, $equipment);
+    $stmt->execute();
+
+    return $exercise_id;
 }
 
 function ensure_knowledge_table_sector_key($mysqli, $table_name)
@@ -147,6 +262,10 @@ function ensure_knowledge_sector_code_unique($mysqli, $table_name, $code_column)
 
 function ensure_knowledge_base_sector_schema($mysqli)
 {
+    if (function_exists('app_auto_schema_migrations_enabled') && !app_auto_schema_migrations_enabled()) {
+        return;
+    }
+
     $mysqli->query("
         CREATE TABLE IF NOT EXISTS knowledge_areas (
             id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -299,6 +418,180 @@ function current_knowledge_sector_key($mysqli)
     return sector_texts_validate_key($sector_key) ? $sector_key : sector_texts_default_key();
 }
 
+function professional_knowledge_sector_columns_available($mysqli)
+{
+    return column_exists($mysqli, 'professional_settings', 'knowledge_sector_mode')
+        && column_exists($mysqli, 'professional_settings', 'knowledge_sector_keys_json');
+}
+
+function knowledge_multi_sector_enabled($mysqli)
+{
+    return app_feature_enabled_from_db($mysqli, 'knowledgeBase.enabled', false)
+        && (app_feature_enabled_from_db($mysqli, 'knowledgeBase.multiSector', false)
+            || app_feature_enabled_from_db($mysqli, 'ui.customization', false));
+}
+
+function knowledge_related_sector_presets()
+{
+    return [
+        'psicologia' => ['psicopedagogia', 'logopedia', 'sexologia'],
+        'sexologia' => ['psicologia'],
+        'psicopedagogia' => ['psicologia', 'logopedia'],
+        'logopedia' => ['psicopedagogia'],
+        'fisioterapia' => ['fitness', 'osteopatia', 'quiropractica'],
+        'fitness' => ['fisioterapia', 'nutricion'],
+        'nutricion' => ['fitness'],
+        'osteopatia' => ['fisioterapia', 'quiropractica', 'fitness'],
+        'quiropractica' => ['fisioterapia', 'osteopatia', 'fitness'],
+        'terapia_ocupacional' => ['fisioterapia', 'psicopedagogia'],
+        'preparacion_oposiciones' => ['psicopedagogia'],
+        'oposiciones' => ['psicopedagogia']
+    ];
+}
+
+function knowledge_sector_label_map()
+{
+    $labels = [];
+    foreach (sector_texts_available() as $sector) {
+        $key = (string) ($sector['key'] ?? '');
+        if ($key !== '') {
+            $labels[$key] = (string) ($sector['name'] ?? ucfirst(str_replace('_', ' ', $key)));
+        }
+    }
+    return $labels;
+}
+
+function available_knowledge_sectors($mysqli)
+{
+    $labels = knowledge_sector_label_map();
+    $sectors = [];
+    $res = $mysqli->query("
+        SELECT sector_key, COUNT(*) AS total
+        FROM knowledge_problems
+        WHERE sector_key IS NOT NULL AND sector_key <> ''
+        GROUP BY sector_key
+        ORDER BY sector_key ASC
+    ");
+    if ($res) {
+        while ($row = $res->fetch_assoc()) {
+            $key = (string) ($row['sector_key'] ?? '');
+            if (!sector_texts_validate_key($key)) {
+                continue;
+            }
+            $sectors[$key] = [
+                'key' => $key,
+                'name' => $labels[$key] ?? ucfirst(str_replace(['_', '-'], ' ', $key)),
+                'total' => (int) ($row['total'] ?? 0)
+            ];
+        }
+    }
+    uasort($sectors, fn($a, $b) => strcmp($a['name'], $b['name']));
+    return array_values($sectors);
+}
+
+function knowledge_sector_names_by_key($mysqli)
+{
+    $names = [];
+    foreach (available_knowledge_sectors($mysqli) as $sector) {
+        $names[$sector['key']] = $sector['name'];
+    }
+    return $names;
+}
+
+function normalize_knowledge_sector_keys($keys)
+{
+    if (is_string($keys)) {
+        $decoded = json_decode($keys, true);
+        $keys = is_array($decoded) ? $decoded : explode(',', $keys);
+    }
+    if (!is_array($keys)) {
+        return [];
+    }
+    $normalized = [];
+    foreach ($keys as $key) {
+        $key = trim((string) $key);
+        if (sector_texts_validate_key($key) && !in_array($key, $normalized, true)) {
+            $normalized[] = $key;
+        }
+    }
+    return $normalized;
+}
+
+function current_professional_knowledge_settings($mysqli, $professional_id = 0)
+{
+    $professional_id = $professional_id > 0
+        ? (int) $professional_id
+        : current_professional_id_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0));
+    $settings = [
+        'mode' => 'own',
+        'keys' => []
+    ];
+    if ($professional_id <= 0) {
+        return $settings;
+    }
+    if (!professional_knowledge_sector_columns_available($mysqli)) {
+        return $settings;
+    }
+    $tenant_id = current_tenant_id();
+    $stmt = $mysqli->prepare("
+        SELECT knowledge_sector_mode, knowledge_sector_keys_json
+        FROM professional_settings
+        WHERE tenant_id = ? AND professional_id = ?
+        LIMIT 1
+    ");
+    if (!$stmt) {
+        return $settings;
+    }
+    $stmt->bind_param("ii", $tenant_id, $professional_id);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    if (!$row) {
+        return $settings;
+    }
+    $mode = (string) ($row['knowledge_sector_mode'] ?? 'own');
+    if (!in_array($mode, ['own', 'related', 'custom'], true)) {
+        $mode = 'own';
+    }
+    return [
+        'mode' => $mode,
+        'keys' => normalize_knowledge_sector_keys($row['knowledge_sector_keys_json'] ?? '')
+    ];
+}
+
+function allowed_knowledge_sector_keys($mysqli, $professional_id = 0)
+{
+    $main_sector = current_knowledge_sector_key($mysqli);
+    $available = array_column(available_knowledge_sectors($mysqli), 'key');
+    if (!in_array($main_sector, $available, true)) {
+        $available[] = $main_sector;
+    }
+    $keys = [$main_sector];
+    if (knowledge_multi_sector_enabled($mysqli)) {
+        $settings = current_professional_knowledge_settings($mysqli, $professional_id);
+        if ($settings['mode'] === 'related') {
+            $related = knowledge_related_sector_presets()[$main_sector] ?? [];
+            $keys = array_merge($keys, $related);
+        } elseif ($settings['mode'] === 'custom') {
+            $keys = array_merge($keys, $settings['keys']);
+        }
+    }
+    $keys = array_values(array_unique(array_filter($keys, static function ($key) use ($available) {
+        return sector_texts_validate_key($key) && in_array($key, $available, true);
+    })));
+    return $keys ?: [$main_sector];
+}
+
+function knowledge_sector_in_sql($mysqli, array $sector_keys)
+{
+    $safe = [];
+    foreach ($sector_keys as $key) {
+        if (sector_texts_validate_key($key)) {
+            $safe[] = "'" . $mysqli->real_escape_string($key) . "'";
+        }
+    }
+    return $safe ? implode(',', array_unique($safe)) : "'" . $mysqli->real_escape_string(current_knowledge_sector_key($mysqli)) . "'";
+}
+
 function current_professional_id_for_user($mysqli, $user_id)
 {
     ensure_cabinet_schema($mysqli);
@@ -447,6 +740,58 @@ function report_age($birth_date)
     }
 }
 
+function patient_report_definition($report_key)
+{
+    $definitions = [
+        'internal_summary' => [
+            'report_type' => 'internal',
+            'title' => 'Informe interno',
+            'payment_mode' => 'free',
+            'payment_status' => 'paid',
+            'visibility' => 'internal',
+            'implemented' => true
+        ],
+        'patient_summary' => [
+            'report_type' => 'patient',
+            'title' => 'Informe paciente',
+            'payment_mode' => 'free',
+            'payment_status' => 'paid',
+            'visibility' => 'internal',
+            'implemented' => true
+        ],
+        'clinical_summary' => [
+            'report_type' => 'clinical',
+            'title' => 'Informe clínico',
+            'payment_mode' => 'paid',
+            'payment_status' => 'pending',
+            'visibility' => 'internal',
+            'implemented' => true
+        ],
+        'evolution_report' => [
+            'report_type' => 'evolution',
+            'title' => 'Informe de evolución',
+            'payment_mode' => 'included',
+            'payment_status' => 'paid',
+            'visibility' => 'internal',
+            'implemented' => true
+        ]
+    ];
+    $report_key = (string) $report_key;
+    return $definitions[$report_key] ?? null;
+}
+
+function patient_report_public_url($report)
+{
+    $patient_id = (int) ($report['patient_id'] ?? 0);
+    $report_id = (int) ($report['id'] ?? 0);
+    $definition = patient_report_definition($report['report_key'] ?? '');
+    if (!$patient_id || !$definition || empty($definition['implemented'])) {
+        return '';
+    }
+    $type = in_array($definition['report_type'], ['patient', 'clinical', 'evolution'], true) ? $definition['report_type'] : 'internal';
+    return 'api/admin.php?action=patient_report&patient_id=' . $patient_id . '&type=' . $type . ($report_id ? '&report_id=' . $report_id : '');
+}
+
 function patient_status_label($status)
 {
     $labels = [
@@ -511,8 +856,8 @@ function appointment_patient_knowledge_problem_payload($mysqli, $patient_id)
         ];
     }
 
-    $sector_key = current_knowledge_sector_key($mysqli);
-    if (!knowledge_base_sector_has_data($mysqli, $sector_key)) {
+    $allowed_sectors = allowed_knowledge_sector_keys($mysqli);
+    if (!$allowed_sectors) {
         return [
             'enabled' => false,
             'status' => 'no_sector_data'
@@ -521,23 +866,26 @@ function appointment_patient_knowledge_problem_payload($mysqli, $patient_id)
 
     $tenant_id = current_tenant_id();
     $stmt = $mysqli->prepare("
-        SELECT kp.id, kp.name, kp.short_name, kp.area, kp.category, kp.risk_level, kp.target_population
+        SELECT kp.id, kp.sector_key, kp.name, kp.alias AS short_name, ka.name AS area, kp.population AS category, kp.risk_level, kp.population AS target_population
         FROM patient_profiles pp
         LEFT JOIN knowledge_problems kp
           ON kp.id = pp.knowledge_problem_id
-         AND kp.sector_key = ?
+         AND kp.sector_key IN (" . knowledge_sector_in_sql($mysqli, $allowed_sectors) . ")
+        LEFT JOIN knowledge_areas ka
+          ON ka.id = kp.area_id
+         AND ka.sector_key = kp.sector_key
         WHERE pp.tenant_id = ?
           AND pp.user_id = ?
         LIMIT 1
     ");
-    $stmt->bind_param("sii", $sector_key, $tenant_id, $patient_id);
+    $stmt->bind_param("ii", $tenant_id, $patient_id);
     $stmt->execute();
     $problem = $stmt->get_result()->fetch_assoc();
     if (!$problem || empty($problem['id'])) {
         return [
             'enabled' => true,
             'status' => 'pending',
-            'sector_key' => $sector_key,
+            'sector_key' => current_knowledge_sector_key($mysqli),
             'id' => 0,
             'name' => '',
             'short_name' => '',
@@ -551,7 +899,7 @@ function appointment_patient_knowledge_problem_payload($mysqli, $patient_id)
     return [
         'enabled' => true,
         'status' => 'assigned',
-        'sector_key' => $sector_key,
+        'sector_key' => $problem['sector_key'] ?? current_knowledge_sector_key($mysqli),
         'id' => (int) $problem['id'],
         'name' => $problem['name'] ?? '',
         'short_name' => $problem['short_name'] ?? '',
@@ -613,7 +961,7 @@ function knowledge_priority_to_work_plan($priority)
 function import_knowledge_recommendation_task($mysqli, $patient_id, $recommendation_id, $appointment_id = 0)
 {
     $tenant_id = current_tenant_id();
-    $sector_key = current_knowledge_sector_key($mysqli);
+    $sector_sql = knowledge_sector_in_sql($mysqli, allowed_knowledge_sector_keys($mysqli));
     $stmt = $mysqli->prepare("
         SELECT r.id, r.priority, r.clinical_note,
                t.title, t.description, t.objective, t.estimated_duration,
@@ -621,10 +969,10 @@ function import_knowledge_recommendation_task($mysqli, $patient_id, $recommendat
         FROM knowledge_recommendations r
         INNER JOIN knowledge_tasks t ON t.id = r.task_id
         INNER JOIN knowledge_techniques te ON te.id = r.technique_id
-        WHERE r.id = ? AND r.sector_key = ?
+        WHERE r.id = ? AND r.sector_key IN ($sector_sql)
         LIMIT 1
     ");
-    $stmt->bind_param("is", $recommendation_id, $sector_key);
+    $stmt->bind_param("i", $recommendation_id);
     $stmt->execute();
     $rec = $stmt->get_result()->fetch_assoc();
     if (!$rec) {
@@ -713,6 +1061,10 @@ function professional_photo_with_dashboard_fallback($row, $dashboard_photo)
 
 function admin_ensure_password_reset_table($mysqli)
 {
+    if (function_exists('app_auto_schema_migrations_enabled') && !app_auto_schema_migrations_enabled()) {
+        return;
+    }
+
     $tenant_id = current_tenant_id();
     $mysqli->query("
         CREATE TABLE IF NOT EXISTS password_resets (
@@ -767,6 +1119,10 @@ function send_professional_password_setup_email($mysqli, $user_id, $name, $email
 
 function ensure_payment_settings_table($mysqli)
 {
+    if (function_exists('app_auto_schema_migrations_enabled') && !app_auto_schema_migrations_enabled()) {
+        return;
+    }
+
     $tenant_id = current_tenant_id();
     $mysqli->query("
         CREATE TABLE IF NOT EXISTS payment_settings (
@@ -789,6 +1145,7 @@ function ensure_payment_settings_table($mysqli)
             dashboard_config_mode VARCHAR(16) NOT NULL DEFAULT 'simple',
             sector_texts_key VARCHAR(32) NOT NULL DEFAULT 'psicologia',
             patient_tasks_visible_default TINYINT(1) NOT NULL DEFAULT 0,
+            work_plan_task_status_enabled TINYINT(1) NOT NULL DEFAULT 1,
             bonuses_enabled TINYINT(1) NOT NULL DEFAULT 0,
             create_compensation_bonus_on_paid_cancel TINYINT(1) NOT NULL DEFAULT 1,
             online_payment_enabled TINYINT(1) NOT NULL DEFAULT 0,
@@ -883,6 +1240,7 @@ function ensure_payment_settings_table($mysqli)
         'online_booking_enabled' => "ALTER TABLE payment_settings ADD online_booking_enabled TINYINT(1) NOT NULL DEFAULT 1 AFTER show_contact_public",
         'patient_registration_mode' => "ALTER TABLE payment_settings ADD patient_registration_mode VARCHAR(16) NOT NULL DEFAULT 'invite' AFTER online_booking_enabled",
         'patient_tasks_visible_default' => "ALTER TABLE payment_settings ADD patient_tasks_visible_default TINYINT(1) NOT NULL DEFAULT 0 AFTER patient_registration_mode",
+        'work_plan_task_status_enabled' => "ALTER TABLE payment_settings ADD work_plan_task_status_enabled TINYINT(1) NOT NULL DEFAULT 1 AFTER patient_tasks_visible_default",
         'initial_calendar_view' => "ALTER TABLE payment_settings ADD initial_calendar_view VARCHAR(12) NOT NULL DEFAULT 'month' AFTER online_booking_enabled",
         'bonuses_enabled' => "ALTER TABLE payment_settings ADD bonuses_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER show_prices_public",
         'create_compensation_bonus_on_paid_cancel' => "ALTER TABLE payment_settings ADD create_compensation_bonus_on_paid_cancel TINYINT(1) NOT NULL DEFAULT 1 AFTER bonuses_enabled",
@@ -975,8 +1333,28 @@ function bind_params_dynamic($stmt, $types, $values)
     call_user_func_array([$stmt, 'bind_param'], $refs);
 }
 
+function nullable_decimal_value($value, $max = null)
+{
+    $value = str_replace(',', '.', trim((string) $value));
+    if ($value === '' || !is_numeric($value)) {
+        return null;
+    }
+    $number = (float) $value;
+    if ($number < 0) {
+        return null;
+    }
+    if ($max !== null && $number > (float) $max) {
+        return null;
+    }
+    return number_format($number, 2, '.', '');
+}
+
 function ensure_patient_management_tables($mysqli)
 {
+    if (function_exists('app_auto_schema_migrations_enabled') && !app_auto_schema_migrations_enabled()) {
+        return;
+    }
+
     $res = $mysqli->query("SHOW COLUMNS FROM users LIKE 'password_hash'");
     if ($res && $res->num_rows > 0) {
         $mysqli->query("ALTER TABLE users MODIFY password_hash VARCHAR(255) NULL");
@@ -1002,6 +1380,22 @@ function ensure_patient_management_tables($mysqli)
             emergency_contact_relation VARCHAR(80) DEFAULT NULL,
             admission_date DATE DEFAULT NULL,
             notes LONGTEXT DEFAULT NULL,
+            physical_sex VARCHAR(12) DEFAULT NULL,
+            weight_kg DECIMAL(6,2) DEFAULT NULL,
+            height_cm DECIMAL(6,2) DEFAULT NULL,
+            body_fat_percentage DECIMAL(5,2) DEFAULT NULL,
+            waist_cm DECIMAL(6,2) DEFAULT NULL,
+            hip_cm DECIMAL(6,2) DEFAULT NULL,
+            chest_cm DECIMAL(6,2) DEFAULT NULL,
+            thigh_cm DECIMAL(6,2) DEFAULT NULL,
+            biceps_cm DECIMAL(6,2) DEFAULT NULL,
+            calf_cm DECIMAL(6,2) DEFAULT NULL,
+            skinfold_triceps_mm DECIMAL(6,2) DEFAULT NULL,
+            skinfold_subscapular_mm DECIMAL(6,2) DEFAULT NULL,
+            skinfold_suprailiac_mm DECIMAL(6,2) DEFAULT NULL,
+            skinfold_abdominal_mm DECIMAL(6,2) DEFAULT NULL,
+            skinfold_chest_mm DECIMAL(6,2) DEFAULT NULL,
+            skinfold_thigh_mm DECIMAL(6,2) DEFAULT NULL,
             photo_path VARCHAR(255) DEFAULT NULL,
             document_path VARCHAR(255) DEFAULT NULL,
             document_name VARCHAR(255) DEFAULT NULL,
@@ -1022,6 +1416,22 @@ function ensure_patient_management_tables($mysqli)
         'emergency_contact_name' => "ALTER TABLE patient_profiles ADD emergency_contact_name VARCHAR(150) DEFAULT NULL AFTER initial_consultation_reason",
         'emergency_contact_phone' => "ALTER TABLE patient_profiles ADD emergency_contact_phone VARCHAR(40) DEFAULT NULL AFTER emergency_contact_name",
         'emergency_contact_relation' => "ALTER TABLE patient_profiles ADD emergency_contact_relation VARCHAR(80) DEFAULT NULL AFTER emergency_contact_phone",
+        'physical_sex' => "ALTER TABLE patient_profiles ADD physical_sex VARCHAR(12) DEFAULT NULL AFTER notes",
+        'weight_kg' => "ALTER TABLE patient_profiles ADD weight_kg DECIMAL(6,2) DEFAULT NULL AFTER physical_sex",
+        'height_cm' => "ALTER TABLE patient_profiles ADD height_cm DECIMAL(6,2) DEFAULT NULL AFTER weight_kg",
+        'body_fat_percentage' => "ALTER TABLE patient_profiles ADD body_fat_percentage DECIMAL(5,2) DEFAULT NULL AFTER height_cm",
+        'waist_cm' => "ALTER TABLE patient_profiles ADD waist_cm DECIMAL(6,2) DEFAULT NULL AFTER body_fat_percentage",
+        'hip_cm' => "ALTER TABLE patient_profiles ADD hip_cm DECIMAL(6,2) DEFAULT NULL AFTER waist_cm",
+        'chest_cm' => "ALTER TABLE patient_profiles ADD chest_cm DECIMAL(6,2) DEFAULT NULL AFTER hip_cm",
+        'thigh_cm' => "ALTER TABLE patient_profiles ADD thigh_cm DECIMAL(6,2) DEFAULT NULL AFTER chest_cm",
+        'biceps_cm' => "ALTER TABLE patient_profiles ADD biceps_cm DECIMAL(6,2) DEFAULT NULL AFTER thigh_cm",
+        'calf_cm' => "ALTER TABLE patient_profiles ADD calf_cm DECIMAL(6,2) DEFAULT NULL AFTER biceps_cm",
+        'skinfold_triceps_mm' => "ALTER TABLE patient_profiles ADD skinfold_triceps_mm DECIMAL(6,2) DEFAULT NULL AFTER calf_cm",
+        'skinfold_subscapular_mm' => "ALTER TABLE patient_profiles ADD skinfold_subscapular_mm DECIMAL(6,2) DEFAULT NULL AFTER skinfold_triceps_mm",
+        'skinfold_suprailiac_mm' => "ALTER TABLE patient_profiles ADD skinfold_suprailiac_mm DECIMAL(6,2) DEFAULT NULL AFTER skinfold_subscapular_mm",
+        'skinfold_abdominal_mm' => "ALTER TABLE patient_profiles ADD skinfold_abdominal_mm DECIMAL(6,2) DEFAULT NULL AFTER skinfold_suprailiac_mm",
+        'skinfold_chest_mm' => "ALTER TABLE patient_profiles ADD skinfold_chest_mm DECIMAL(6,2) DEFAULT NULL AFTER skinfold_abdominal_mm",
+        'skinfold_thigh_mm' => "ALTER TABLE patient_profiles ADD skinfold_thigh_mm DECIMAL(6,2) DEFAULT NULL AFTER skinfold_chest_mm",
         'photo_path' => "ALTER TABLE patient_profiles ADD photo_path VARCHAR(255) DEFAULT NULL AFTER notes",
         'document_path' => "ALTER TABLE patient_profiles ADD document_path VARCHAR(255) DEFAULT NULL AFTER notes",
         'document_name' => "ALTER TABLE patient_profiles ADD document_name VARCHAR(255) DEFAULT NULL AFTER document_path"
@@ -1040,6 +1450,10 @@ function ensure_patient_management_tables($mysqli)
 
 function ensure_patient_evolution_tables($mysqli)
 {
+    if (function_exists('app_auto_schema_migrations_enabled') && !app_auto_schema_migrations_enabled()) {
+        return;
+    }
+
     $tenant_id = current_tenant_id();
     $mysqli->query("
         CREATE TABLE IF NOT EXISTS patient_evolution_notes (
@@ -1053,6 +1467,21 @@ function ensure_patient_evolution_tables($mysqli)
             description LONGTEXT DEFAULT NULL,
             observations LONGTEXT DEFAULT NULL,
             next_steps LONGTEXT DEFAULT NULL,
+            weight_kg DECIMAL(6,2) DEFAULT NULL,
+            height_cm DECIMAL(6,2) DEFAULT NULL,
+            body_fat_percentage DECIMAL(5,2) DEFAULT NULL,
+            waist_cm DECIMAL(6,2) DEFAULT NULL,
+            hip_cm DECIMAL(6,2) DEFAULT NULL,
+            chest_cm DECIMAL(6,2) DEFAULT NULL,
+            thigh_cm DECIMAL(6,2) DEFAULT NULL,
+            biceps_cm DECIMAL(6,2) DEFAULT NULL,
+            calf_cm DECIMAL(6,2) DEFAULT NULL,
+            skinfold_triceps_mm DECIMAL(6,2) DEFAULT NULL,
+            skinfold_subscapular_mm DECIMAL(6,2) DEFAULT NULL,
+            skinfold_suprailiac_mm DECIMAL(6,2) DEFAULT NULL,
+            skinfold_abdominal_mm DECIMAL(6,2) DEFAULT NULL,
+            skinfold_chest_mm DECIMAL(6,2) DEFAULT NULL,
+            skinfold_thigh_mm DECIMAL(6,2) DEFAULT NULL,
             created_by INT UNSIGNED DEFAULT NULL,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -1086,10 +1515,36 @@ function ensure_patient_evolution_tables($mysqli)
     if (!column_exists($mysqli, 'patient_evolution_files', 'tenant_id')) {
         $mysqli->query("ALTER TABLE patient_evolution_files ADD tenant_id INT UNSIGNED NOT NULL DEFAULT $tenant_id AFTER id");
     }
+    $columns = [
+        'weight_kg' => "ALTER TABLE patient_evolution_notes ADD weight_kg DECIMAL(6,2) DEFAULT NULL AFTER next_steps",
+        'height_cm' => "ALTER TABLE patient_evolution_notes ADD height_cm DECIMAL(6,2) DEFAULT NULL AFTER weight_kg",
+        'body_fat_percentage' => "ALTER TABLE patient_evolution_notes ADD body_fat_percentage DECIMAL(5,2) DEFAULT NULL AFTER height_cm",
+        'waist_cm' => "ALTER TABLE patient_evolution_notes ADD waist_cm DECIMAL(6,2) DEFAULT NULL AFTER body_fat_percentage",
+        'hip_cm' => "ALTER TABLE patient_evolution_notes ADD hip_cm DECIMAL(6,2) DEFAULT NULL AFTER waist_cm",
+        'chest_cm' => "ALTER TABLE patient_evolution_notes ADD chest_cm DECIMAL(6,2) DEFAULT NULL AFTER hip_cm",
+        'thigh_cm' => "ALTER TABLE patient_evolution_notes ADD thigh_cm DECIMAL(6,2) DEFAULT NULL AFTER chest_cm",
+        'biceps_cm' => "ALTER TABLE patient_evolution_notes ADD biceps_cm DECIMAL(6,2) DEFAULT NULL AFTER thigh_cm",
+        'calf_cm' => "ALTER TABLE patient_evolution_notes ADD calf_cm DECIMAL(6,2) DEFAULT NULL AFTER biceps_cm",
+        'skinfold_triceps_mm' => "ALTER TABLE patient_evolution_notes ADD skinfold_triceps_mm DECIMAL(6,2) DEFAULT NULL AFTER calf_cm",
+        'skinfold_subscapular_mm' => "ALTER TABLE patient_evolution_notes ADD skinfold_subscapular_mm DECIMAL(6,2) DEFAULT NULL AFTER skinfold_triceps_mm",
+        'skinfold_suprailiac_mm' => "ALTER TABLE patient_evolution_notes ADD skinfold_suprailiac_mm DECIMAL(6,2) DEFAULT NULL AFTER skinfold_subscapular_mm",
+        'skinfold_abdominal_mm' => "ALTER TABLE patient_evolution_notes ADD skinfold_abdominal_mm DECIMAL(6,2) DEFAULT NULL AFTER skinfold_suprailiac_mm",
+        'skinfold_chest_mm' => "ALTER TABLE patient_evolution_notes ADD skinfold_chest_mm DECIMAL(6,2) DEFAULT NULL AFTER skinfold_abdominal_mm",
+        'skinfold_thigh_mm' => "ALTER TABLE patient_evolution_notes ADD skinfold_thigh_mm DECIMAL(6,2) DEFAULT NULL AFTER skinfold_chest_mm"
+    ];
+    foreach ($columns as $column => $sql) {
+        if (!column_exists($mysqli, 'patient_evolution_notes', $column)) {
+            $mysqli->query($sql);
+        }
+    }
 }
 
 function ensure_patient_document_tables($mysqli)
 {
+    if (function_exists('app_auto_schema_migrations_enabled') && !app_auto_schema_migrations_enabled()) {
+        return;
+    }
+
     $tenant_id = current_tenant_id();
     $mysqli->query("
         CREATE TABLE IF NOT EXISTS patient_documents (
@@ -1183,6 +1638,10 @@ function ensure_patient_document_tables($mysqli)
 
 function ensure_patient_work_plan_tables($mysqli)
 {
+    if (function_exists('app_auto_schema_migrations_enabled') && !app_auto_schema_migrations_enabled()) {
+        return;
+    }
+
     $tenant_id = current_tenant_id();
     $mysqli->query("
         CREATE TABLE IF NOT EXISTS patient_work_plan_tasks (
@@ -1196,6 +1655,7 @@ function ensure_patient_work_plan_tables($mysqli)
             status VARCHAR(20) NOT NULL DEFAULT 'pending',
             priority TINYINT UNSIGNED NOT NULL DEFAULT 2,
             visible_to_patient TINYINT(1) NOT NULL DEFAULT 0,
+            fitness_exercise_id VARCHAR(40) DEFAULT NULL,
             created_by INT UNSIGNED DEFAULT NULL,
             completed_at DATETIME DEFAULT NULL,
             completed_by INT UNSIGNED DEFAULT NULL,
@@ -1204,6 +1664,7 @@ function ensure_patient_work_plan_tables($mysqli)
             INDEX idx_work_plan_appointment (appointment_id),
             INDEX idx_work_plan_patient_status (patient_id, status),
             INDEX idx_work_plan_professional (professional_id),
+            INDEX idx_work_plan_fitness_exercise (fitness_exercise_id),
             INDEX idx_work_plan_priority (priority)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     ");
@@ -1211,7 +1672,8 @@ function ensure_patient_work_plan_tables($mysqli)
     $columns = [
         'tenant_id' => "ALTER TABLE patient_work_plan_tasks ADD tenant_id INT UNSIGNED NOT NULL DEFAULT $tenant_id AFTER id",
         'appointment_id' => "ALTER TABLE patient_work_plan_tasks ADD appointment_id INT UNSIGNED DEFAULT NULL AFTER patient_id",
-        'visible_to_patient' => "ALTER TABLE patient_work_plan_tasks ADD visible_to_patient TINYINT(1) NOT NULL DEFAULT 0 AFTER priority"
+        'visible_to_patient' => "ALTER TABLE patient_work_plan_tasks ADD visible_to_patient TINYINT(1) NOT NULL DEFAULT 0 AFTER priority",
+        'fitness_exercise_id' => "ALTER TABLE patient_work_plan_tasks ADD fitness_exercise_id VARCHAR(40) DEFAULT NULL AFTER visible_to_patient"
     ];
     foreach ($columns as $column => $sql) {
         $res = $mysqli->query("SHOW COLUMNS FROM patient_work_plan_tasks LIKE '$column'");
@@ -1223,10 +1685,17 @@ function ensure_patient_work_plan_tables($mysqli)
     if ($index_res && $index_res->num_rows === 0) {
         $mysqli->query("ALTER TABLE patient_work_plan_tasks ADD INDEX idx_work_plan_appointment (appointment_id)");
     }
+    if (!index_exists($mysqli, 'patient_work_plan_tasks', 'idx_work_plan_fitness_exercise')) {
+        $mysqli->query("ALTER TABLE patient_work_plan_tasks ADD INDEX idx_work_plan_fitness_exercise (fitness_exercise_id)");
+    }
 }
 
 function ensure_work_plan_task_template_tables($mysqli)
 {
+    if (function_exists('app_auto_schema_migrations_enabled') && !app_auto_schema_migrations_enabled()) {
+        return;
+    }
+
     $tenant_id = current_tenant_id();
     $mysqli->query("
         CREATE TABLE IF NOT EXISTS work_plan_task_templates (
@@ -1256,6 +1725,7 @@ function ensure_work_plan_task_template_tables($mysqli)
             title VARCHAR(180) NOT NULL,
             description LONGTEXT DEFAULT NULL,
             priority TINYINT UNSIGNED NOT NULL DEFAULT 2,
+            fitness_exercise_id VARCHAR(40) DEFAULT NULL,
             sort_order INT UNSIGNED NOT NULL DEFAULT 0,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -1269,11 +1739,255 @@ function ensure_work_plan_task_template_tables($mysqli)
     if (!column_exists($mysqli, 'work_plan_task_template_items', 'tenant_id')) {
         $mysqli->query("ALTER TABLE work_plan_task_template_items ADD tenant_id INT UNSIGNED NOT NULL DEFAULT $tenant_id AFTER id");
     }
+    if (!column_exists($mysqli, 'work_plan_task_template_items', 'fitness_exercise_id')) {
+        $mysqli->query("ALTER TABLE work_plan_task_template_items ADD fitness_exercise_id VARCHAR(40) DEFAULT NULL AFTER priority");
+    }
 }
 
 function patient_has_portal_access($row)
 {
     return !empty($row['email']) && !empty($row['password_hash']);
+}
+
+function patient_physical_metric_columns()
+{
+    return [
+        'weight_kg',
+        'height_cm',
+        'body_fat_percentage',
+        'waist_cm',
+        'hip_cm',
+        'chest_cm',
+        'thigh_cm',
+        'biceps_cm',
+        'calf_cm',
+        'skinfold_triceps_mm',
+        'skinfold_subscapular_mm',
+        'skinfold_suprailiac_mm',
+        'skinfold_abdominal_mm',
+        'skinfold_chest_mm',
+        'skinfold_thigh_mm'
+    ];
+}
+
+function patient_physical_metrics_have_values(array $metrics)
+{
+    foreach (patient_physical_metric_columns() as $column) {
+        if (isset($metrics[$column]) && $metrics[$column] !== null && $metrics[$column] !== '') {
+            return true;
+        }
+    }
+    return false;
+}
+
+function normalize_patient_physical_value($value)
+{
+    if ($value === null || $value === '') {
+        return '';
+    }
+    if (is_numeric($value)) {
+        $normalized = rtrim(rtrim(number_format((float) $value, 2, '.', ''), '0'), '.');
+        return $normalized === '-0' ? '0' : $normalized;
+    }
+    return trim((string) $value);
+}
+
+function patient_physical_metrics_changed(?array $current, array $metrics, $physical_sex)
+{
+    if ($current === null) {
+        return patient_physical_metrics_have_values($metrics) || normalize_patient_physical_value($physical_sex) !== '';
+    }
+    if (normalize_patient_physical_value($current['physical_sex'] ?? '') !== normalize_patient_physical_value($physical_sex)) {
+        return true;
+    }
+    foreach (patient_physical_metric_columns() as $column) {
+        if (normalize_patient_physical_value($current[$column] ?? '') !== normalize_patient_physical_value($metrics[$column] ?? '')) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function bind_stmt_dynamic_params($stmt, string $types, array $values)
+{
+    $refs = [$types];
+    foreach ($values as $key => $value) {
+        $refs[] = &$values[$key];
+    }
+    call_user_func_array([$stmt, 'bind_param'], $refs);
+}
+
+function update_patient_profile_physical_metrics($mysqli, $tenant_id, $patient_id, array $metrics, $physical_sex = null)
+{
+    $sets = [];
+    $types = '';
+    $values = [];
+    if ($physical_sex !== '__keep__') {
+        $sets[] = 'physical_sex = ?';
+        $types .= 's';
+        $values[] = $physical_sex;
+    }
+    foreach (patient_physical_metric_columns() as $column) {
+        $sets[] = "$column = ?";
+        $types .= 's';
+        $values[] = $metrics[$column] ?? null;
+    }
+    if (!$sets) {
+        return;
+    }
+    $types .= 'ii';
+    $values[] = $tenant_id;
+    $values[] = $patient_id;
+    $stmt = $mysqli->prepare("UPDATE patient_profiles SET " . implode(', ', $sets) . " WHERE tenant_id = ? AND user_id = ?");
+    bind_stmt_dynamic_params($stmt, $types, $values);
+    $stmt->execute();
+}
+
+function create_initial_patient_evolution_if_needed($mysqli, $tenant_id, $patient_id, $professional_id, $admission_date, array $metrics, $created_by)
+{
+    if (!patient_physical_metrics_have_values($metrics)) {
+        return;
+    }
+    $stmt = $mysqli->prepare("SELECT id FROM patient_evolution_notes WHERE tenant_id = ? AND patient_id = ? LIMIT 1");
+    $stmt->bind_param("ii", $tenant_id, $patient_id);
+    $stmt->execute();
+    if ($stmt->get_result()->fetch_assoc()) {
+        return;
+    }
+    $note_date = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $admission_date) ? $admission_date : date('Y-m-d');
+    $title = 'Medicion inicial';
+    $description = 'Registro inicial creado desde la ficha.';
+    $observations = '';
+    $next_steps = '';
+    $appointment_id = null;
+    $professional_id = $professional_id > 0 ? $professional_id : null;
+    $stmt = $mysqli->prepare("
+        INSERT INTO patient_evolution_notes
+            (tenant_id, patient_id, appointment_id, professional_id, note_date, title, description, observations, next_steps,
+             weight_kg, height_cm, body_fat_percentage, waist_cm, hip_cm, chest_cm, thigh_cm, biceps_cm, calf_cm,
+             skinfold_triceps_mm, skinfold_subscapular_mm, skinfold_suprailiac_mm, skinfold_abdominal_mm, skinfold_chest_mm, skinfold_thigh_mm, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ");
+    $values = [];
+    foreach (patient_physical_metric_columns() as $column) {
+        $values[] = $metrics[$column] ?? null;
+    }
+    $bind_values = array_merge(
+        [$tenant_id, $patient_id, $appointment_id, $professional_id, $note_date, $title, $description, $observations, $next_steps],
+        $values,
+        [$created_by]
+    );
+    bind_stmt_dynamic_params($stmt, "iiiissssssssssssssssssssi", $bind_values);
+    $stmt->execute();
+}
+
+function upsert_today_patient_evolution_from_profile_metrics($mysqli, $tenant_id, $patient_id, $professional_id, array $metrics, $created_by)
+{
+    if (!patient_physical_metrics_have_values($metrics)) {
+        return;
+    }
+
+    $note_date = date('Y-m-d');
+    $stmt = $mysqli->prepare("
+        SELECT id
+        FROM patient_evolution_notes
+        WHERE tenant_id = ?
+          AND patient_id = ?
+          AND note_date = ?
+        ORDER BY id DESC
+        LIMIT 1
+    ");
+    $stmt->bind_param("iis", $tenant_id, $patient_id, $note_date);
+    $stmt->execute();
+    $existing = $stmt->get_result()->fetch_assoc();
+    $professional_id = $professional_id > 0 ? $professional_id : null;
+
+    if ($existing) {
+        $sets = ['professional_id = COALESCE(?, professional_id)'];
+        $types = 'i';
+        $values = [$professional_id];
+        foreach (patient_physical_metric_columns() as $column) {
+            $sets[] = "$column = ?";
+            $types .= 's';
+            $values[] = $metrics[$column] ?? null;
+        }
+        $types .= 'ii';
+        $values[] = $tenant_id;
+        $values[] = (int) $existing['id'];
+        $stmt = $mysqli->prepare("UPDATE patient_evolution_notes SET " . implode(', ', $sets) . " WHERE tenant_id = ? AND id = ?");
+        bind_stmt_dynamic_params($stmt, $types, $values);
+        $stmt->execute();
+        return;
+    }
+
+    $title = 'Medicion de seguimiento';
+    $description = 'Registro creado desde la ficha.';
+    $observations = '';
+    $next_steps = '';
+    $appointment_id = null;
+    $stmt = $mysqli->prepare("
+        INSERT INTO patient_evolution_notes
+            (tenant_id, patient_id, appointment_id, professional_id, note_date, title, description, observations, next_steps,
+             weight_kg, height_cm, body_fat_percentage, waist_cm, hip_cm, chest_cm, thigh_cm, biceps_cm, calf_cm,
+             skinfold_triceps_mm, skinfold_subscapular_mm, skinfold_suprailiac_mm, skinfold_abdominal_mm, skinfold_chest_mm, skinfold_thigh_mm, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ");
+    $metric_values = [];
+    foreach (patient_physical_metric_columns() as $column) {
+        $metric_values[] = $metrics[$column] ?? null;
+    }
+    $bind_values = array_merge(
+        [$tenant_id, $patient_id, $appointment_id, $professional_id, $note_date, $title, $description, $observations, $next_steps],
+        $metric_values,
+        [$created_by]
+    );
+    bind_stmt_dynamic_params($stmt, "iiiissssssssssssssssssssi", $bind_values);
+    $stmt->execute();
+}
+
+function create_initial_patient_evolution_from_profile_if_needed($mysqli, $tenant_id, $patient_id, $created_by)
+{
+    $stmt = $mysqli->prepare("
+        SELECT u.created_at AS user_created_at,
+               pp.admission_date, pp.created_at AS profile_created_at,
+               COALESCE(ppf.professional_id, pp.professional_id) AS professional_id,
+               pp.weight_kg, pp.height_cm, pp.body_fat_percentage, pp.waist_cm, pp.hip_cm, pp.chest_cm, pp.thigh_cm, pp.biceps_cm, pp.calf_cm,
+               pp.skinfold_triceps_mm, pp.skinfold_subscapular_mm, pp.skinfold_suprailiac_mm,
+               pp.skinfold_abdominal_mm, pp.skinfold_chest_mm, pp.skinfold_thigh_mm
+        FROM users u
+        LEFT JOIN patient_profiles pp
+          ON pp.user_id = u.id
+         AND pp.tenant_id = u.tenant_id
+        LEFT JOIN patient_professionals ppf
+          ON ppf.patient_id = u.id
+         AND ppf.tenant_id = u.tenant_id
+         AND ppf.is_primary = 1
+        WHERE u.tenant_id = ?
+          AND u.id = ?
+          AND u.role = 'patient'
+        LIMIT 1
+    ");
+    $stmt->bind_param("ii", $tenant_id, $patient_id);
+    $stmt->execute();
+    $profile = $stmt->get_result()->fetch_assoc();
+    if (!$profile) {
+        return;
+    }
+
+    $metrics = [];
+    foreach (patient_physical_metric_columns() as $column) {
+        $metrics[$column] = $profile[$column] ?? null;
+    }
+    $admission_date = $profile['admission_date'] ?: substr((string) ($profile['profile_created_at'] ?: $profile['user_created_at'] ?: date('Y-m-d')), 0, 10);
+    create_initial_patient_evolution_if_needed(
+        $mysqli,
+        $tenant_id,
+        $patient_id,
+        (int) ($profile['professional_id'] ?? 0),
+        $admission_date,
+        $metrics,
+        $created_by
+    );
 }
 
 function stored_upload_full_path($relative_path)
@@ -1771,12 +2485,45 @@ if ($action === 'generate_invite') {
         SELECT u.id, u.name, u.email, u.phone, u.created_at, u.password_hash,
                pp.patient_type, pp.patient_status, pp.birth_date, pp.referral_source, pp.knowledge_problem_id, pp.initial_consultation_reason,
                pp.emergency_contact_name, pp.emergency_contact_phone, pp.emergency_contact_relation,
-               pp.admission_date, pp.notes, pp.photo_path, pp.document_path, pp.document_name, pp.created_by_admin,
+               pp.admission_date, pp.notes, pp.physical_sex,
+               COALESCE(pen_latest.weight_kg, pp.weight_kg) AS weight_kg,
+               COALESCE(pen_latest.height_cm, pp.height_cm) AS height_cm,
+               COALESCE(pen_latest.body_fat_percentage, pp.body_fat_percentage) AS body_fat_percentage,
+               COALESCE(pen_latest.waist_cm, pp.waist_cm) AS waist_cm,
+               COALESCE(pen_latest.hip_cm, pp.hip_cm) AS hip_cm,
+               COALESCE(pen_latest.chest_cm, pp.chest_cm) AS chest_cm,
+               COALESCE(pen_latest.thigh_cm, pp.thigh_cm) AS thigh_cm,
+               COALESCE(pen_latest.biceps_cm, pp.biceps_cm) AS biceps_cm,
+               COALESCE(pen_latest.calf_cm, pp.calf_cm) AS calf_cm,
+               COALESCE(pen_latest.skinfold_triceps_mm, pp.skinfold_triceps_mm) AS skinfold_triceps_mm,
+               COALESCE(pen_latest.skinfold_subscapular_mm, pp.skinfold_subscapular_mm) AS skinfold_subscapular_mm,
+               COALESCE(pen_latest.skinfold_suprailiac_mm, pp.skinfold_suprailiac_mm) AS skinfold_suprailiac_mm,
+               COALESCE(pen_latest.skinfold_abdominal_mm, pp.skinfold_abdominal_mm) AS skinfold_abdominal_mm,
+               COALESCE(pen_latest.skinfold_chest_mm, pp.skinfold_chest_mm) AS skinfold_chest_mm,
+               COALESCE(pen_latest.skinfold_thigh_mm, pp.skinfold_thigh_mm) AS skinfold_thigh_mm,
+               pp.photo_path, pp.document_path, pp.document_name, pp.created_by_admin,
                COALESCE(ppf.professional_id, pp.professional_id) AS professional_id,
                p.display_name AS professional_name, p.public_photo_path AS professional_photo_path,
                pu.role AS professional_user_role
         FROM users u
         LEFT JOIN patient_profiles pp ON pp.user_id = u.id AND pp.tenant_id = u.tenant_id
+        LEFT JOIN patient_evolution_notes pen_latest
+          ON pen_latest.id = (
+              SELECT n2.id
+              FROM patient_evolution_notes n2
+              WHERE n2.tenant_id = u.tenant_id
+                AND n2.patient_id = u.id
+                AND (
+                    n2.weight_kg IS NOT NULL OR n2.height_cm IS NOT NULL OR n2.body_fat_percentage IS NOT NULL OR
+                    n2.waist_cm IS NOT NULL OR n2.hip_cm IS NOT NULL OR n2.chest_cm IS NOT NULL OR
+                    n2.thigh_cm IS NOT NULL OR n2.biceps_cm IS NOT NULL OR n2.calf_cm IS NOT NULL OR
+                    n2.skinfold_triceps_mm IS NOT NULL OR n2.skinfold_subscapular_mm IS NOT NULL OR
+                    n2.skinfold_suprailiac_mm IS NOT NULL OR n2.skinfold_abdominal_mm IS NOT NULL OR
+                    n2.skinfold_chest_mm IS NOT NULL OR n2.skinfold_thigh_mm IS NOT NULL
+                )
+              ORDER BY n2.note_date DESC, n2.id DESC
+              LIMIT 1
+          )
         LEFT JOIN patient_professionals ppf ON ppf.patient_id = u.id AND ppf.tenant_id = u.tenant_id AND ppf.is_primary = 1
         LEFT JOIN professionals p ON p.id = COALESCE(ppf.professional_id, pp.professional_id) AND p.tenant_id = u.tenant_id
         LEFT JOIN users pu ON pu.id = p.user_id AND pu.tenant_id = u.tenant_id
@@ -1804,6 +2551,22 @@ if ($action === 'generate_invite') {
             'emergency_contact_relation' => $row['emergency_contact_relation'] ?? '',
             'admission_date' => $row['admission_date'] ?? substr((string) $row['created_at'], 0, 10),
             'notes' => $row['notes'] ?? '',
+            'physical_sex' => $row['physical_sex'] ?? '',
+            'weight_kg' => $row['weight_kg'] ?? '',
+            'height_cm' => $row['height_cm'] ?? '',
+            'body_fat_percentage' => $row['body_fat_percentage'] ?? '',
+            'waist_cm' => $row['waist_cm'] ?? '',
+            'hip_cm' => $row['hip_cm'] ?? '',
+            'chest_cm' => $row['chest_cm'] ?? '',
+            'thigh_cm' => $row['thigh_cm'] ?? '',
+            'biceps_cm' => $row['biceps_cm'] ?? '',
+            'calf_cm' => $row['calf_cm'] ?? '',
+            'skinfold_triceps_mm' => $row['skinfold_triceps_mm'] ?? '',
+            'skinfold_subscapular_mm' => $row['skinfold_subscapular_mm'] ?? '',
+            'skinfold_suprailiac_mm' => $row['skinfold_suprailiac_mm'] ?? '',
+            'skinfold_abdominal_mm' => $row['skinfold_abdominal_mm'] ?? '',
+            'skinfold_chest_mm' => $row['skinfold_chest_mm'] ?? '',
+            'skinfold_thigh_mm' => $row['skinfold_thigh_mm'] ?? '',
             'photo_path' => $row['photo_path'] ?? '',
             'document_path' => $row['document_path'] ?? '',
             'document_name' => $row['document_name'] ?? '',
@@ -2432,9 +3195,732 @@ if ($action === 'generate_invite') {
         $mysqli->rollback();
         echo json_encode(['success' => false, 'error' => 'No se pudo eliminar la nota.']);
     }
+} elseif ($action === 'patient_reports') {
+    $patient_id = (int) ($_GET['patient_id'] ?? 0);
+    if (!admin_can_access_patient($mysqli, $patient_id)) {
+        echo json_encode(['success' => false, 'error' => 'No autorizado para ver los informes.']);
+        exit;
+    }
+
+    $stmt = $mysqli->prepare("
+        SELECT r.id, r.patient_id, r.professional_id, r.report_key, r.source_type, r.source_document_id, r.title, r.status, r.visibility,
+               r.payment_mode, r.payment_status, r.price, r.paid_at, r.generated_at, r.final_document_id, r.official_document_id,
+               COALESCE(r.portal_available, 0) AS portal_available,
+               r.created_at, r.updated_at,
+               d.original_file_name AS final_document_name,
+               d.file_size AS final_document_size,
+               sd.original_file_name AS source_document_name,
+               sd.file_size AS source_document_size
+        FROM patient_reports r
+        LEFT JOIN patient_documents d ON d.id = COALESCE(r.official_document_id, r.final_document_id) AND d.tenant_id = r.tenant_id AND d.patient_id = r.patient_id
+        LEFT JOIN patient_documents sd ON sd.id = r.source_document_id AND sd.tenant_id = r.tenant_id AND sd.patient_id = r.patient_id
+        WHERE r.tenant_id = ?
+          AND r.patient_id = ?
+        ORDER BY COALESCE(r.generated_at, r.created_at) DESC, r.id DESC
+    ");
+    $stmt->bind_param("ii", $tenant_id, $patient_id);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $reports = [];
+    while ($row = $res->fetch_assoc()) {
+        $row['id'] = (int) $row['id'];
+        $row['patient_id'] = (int) $row['patient_id'];
+        $row['professional_id'] = $row['professional_id'] !== null ? (int) $row['professional_id'] : null;
+        $row['source_document_id'] = $row['source_document_id'] !== null ? (int) $row['source_document_id'] : null;
+        $row['final_document_id'] = $row['final_document_id'] !== null ? (int) $row['final_document_id'] : null;
+        $row['official_document_id'] = $row['official_document_id'] !== null ? (int) $row['official_document_id'] : null;
+        $row['portal_available'] = (int) ($row['portal_available'] ?? 0);
+        $row['price'] = $row['price'] !== null ? (float) $row['price'] : null;
+        $row['url'] = patient_report_public_url($row);
+        $download_document_id = !empty($row['official_document_id']) ? $row['official_document_id'] : $row['final_document_id'];
+        $row['final_url'] = !empty($download_document_id) ? 'api/admin.php?action=download_patient_document_file&id=' . (int) $download_document_id : '';
+        $row['source_url'] = !empty($row['source_document_id']) ? 'api/admin.php?action=download_patient_document_file&id=' . (int) $row['source_document_id'] : '';
+        $reports[] = $row;
+    }
+    echo json_encode(['success' => true, 'reports' => $reports]);
+} elseif ($action === 'create_patient_report') {
+    $patient_id = (int) ($_POST['patient_id'] ?? 0);
+    $report_key = trim((string) ($_POST['report_key'] ?? ''));
+    if (!admin_can_access_patient($mysqli, $patient_id)) {
+        echo json_encode(['success' => false, 'error' => 'No autorizado para generar informes.']);
+        exit;
+    }
+
+    $definition = patient_report_definition($report_key);
+    if (!$definition) {
+        echo json_encode(['success' => false, 'error' => 'Tipo de informe no reconocido.']);
+        exit;
+    }
+    if (empty($definition['implemented'])) {
+        echo json_encode(['success' => false, 'error' => 'Este informe todavia esta en preparacion.']);
+        exit;
+    }
+
+    $professional_id = current_professional_id_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0));
+    if ($professional_id <= 0) {
+        $professional_id = null;
+    }
+    $title = $definition['title'];
+    if ($report_key === 'patient_summary' && function_exists('sector_texts_for_db')) {
+        $sector_texts = sector_texts_for_db($mysqli);
+        $patient_label = $sector_texts['labels']['patient']['singular'] ?? 'paciente';
+        $title = 'Informe ' . $patient_label;
+    }
+    $status = 'generated';
+    $visibility = $definition['visibility'];
+    $source_type = 'app_generated';
+    $payment_mode = $definition['payment_mode'];
+    $payment_status = $definition['payment_status'];
+    $price = null;
+    $created_by = (int) ($_SESSION['user_id'] ?? 0);
+    $snapshot = json_encode([
+        'report_key' => $report_key,
+        'generated_at' => date('c'),
+        'generated_by' => $created_by
+    ], JSON_UNESCAPED_UNICODE);
+
+    $stmt = $mysqli->prepare("
+        SELECT id
+        FROM patient_reports
+        WHERE tenant_id = ?
+          AND patient_id = ?
+          AND report_key = ?
+        ORDER BY COALESCE(generated_at, created_at) DESC, id DESC
+        LIMIT 1
+    ");
+    $stmt->bind_param("iis", $tenant_id, $patient_id, $report_key);
+    $stmt->execute();
+    $existing_report = $stmt->get_result()->fetch_assoc();
+
+    try {
+        if ($existing_report) {
+            $report_id = (int) $existing_report['id'];
+            $stmt = $mysqli->prepare("
+                UPDATE patient_reports
+                SET professional_id = ?,
+                    source_type = ?,
+                    title = ?,
+                    status = CASE WHEN COALESCE(official_document_id, final_document_id) IS NULL THEN ? ELSE 'final_uploaded' END,
+                    visibility = ?,
+                    generated_at = NOW(),
+                    source_snapshot_json = ?,
+                    updated_by = ?,
+                    updated_at = NOW()
+                WHERE tenant_id = ?
+                  AND id = ?
+            ");
+            if (!$stmt) {
+                throw new \Exception($mysqli->error ?: 'No se pudo preparar la actualizacion del informe.');
+            }
+            $stmt->bind_param(
+                "isssssiii",
+                $professional_id,
+                $source_type,
+                $title,
+                $status,
+                $visibility,
+                $snapshot,
+                $created_by,
+                $tenant_id,
+                $report_id
+            );
+        } else {
+            $stmt = $mysqli->prepare("
+                INSERT INTO patient_reports
+                    (tenant_id, patient_id, professional_id, report_key, source_type, title, status, visibility,
+                     payment_mode, payment_status, price, generated_at, source_snapshot_json, created_by, updated_by)
+                VALUES
+                    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)
+            ");
+            if (!$stmt) {
+                throw new \Exception($mysqli->error ?: 'No se pudo preparar la consulta del informe.');
+            }
+            $stmt->bind_param(
+                "iiisssssssdsii",
+                $tenant_id,
+                $patient_id,
+                $professional_id,
+                $report_key,
+                $source_type,
+                $title,
+                $status,
+                $visibility,
+                $payment_mode,
+                $payment_status,
+                $price,
+                $snapshot,
+                $created_by,
+                $created_by
+            );
+        }
+        if (!$stmt->execute()) {
+            throw new \Exception($stmt->error ?: 'No se pudo registrar el informe.');
+        }
+        if (!$existing_report) {
+            $report_id = (int) $stmt->insert_id;
+        }
+    } catch (\Throwable $e) {
+        echo json_encode(['success' => false, 'error' => 'No se pudo registrar el informe.']);
+        exit;
+    }
+    $report = [
+        'id' => $report_id,
+        'patient_id' => $patient_id,
+        'report_key' => $report_key
+    ];
+    echo json_encode([
+        'success' => true,
+        'message' => 'Informe generado correctamente.',
+        'report_id' => $report_id,
+        'url' => patient_report_public_url($report)
+    ]);
+} elseif ($action === 'create_custom_patient_report') {
+    $patient_id = (int) ($_POST['patient_id'] ?? 0);
+    if (!admin_can_access_patient($mysqli, $patient_id)) {
+        echo json_encode(['success' => false, 'error' => 'No autorizado para crear informes.']);
+        exit;
+    }
+
+    $title = trim((string) ($_POST['title'] ?? ''));
+    if ($title === '') {
+        echo json_encode(['success' => false, 'error' => 'Indica un titulo para el informe.']);
+        exit;
+    }
+
+    $uploaded = save_patient_document_file_upload($_FILES['source_document'] ?? null, $patient_id);
+    if (!$uploaded) {
+        echo json_encode(['success' => false, 'error' => 'Sube el archivo del informe propio.']);
+        exit;
+    }
+
+    $payment_mode = trim((string) ($_POST['payment_mode'] ?? 'free'));
+    if (!in_array($payment_mode, ['free', 'included', 'paid'], true)) {
+        $payment_mode = 'free';
+    }
+    $payment_status = trim((string) ($_POST['payment_status'] ?? 'not_required'));
+    if (!in_array($payment_status, ['not_required', 'pending', 'paid'], true)) {
+        $payment_status = $payment_mode === 'paid' ? 'pending' : 'not_required';
+    }
+    if ($payment_mode !== 'paid' && $payment_status === 'pending') {
+        $payment_status = 'not_required';
+    }
+    $price_raw = str_replace(',', '.', trim((string) ($_POST['price'] ?? '')));
+    $price = $payment_mode === 'paid' && $price_raw !== '' ? max(0, (float) $price_raw) : null;
+    $portal_available = !empty($_POST['portal_available']) ? 1 : 0;
+    $document_portal_visible = ($portal_available === 1 && !($payment_mode === 'paid' && $payment_status !== 'paid')) ? 1 : 0;
+    $created_by = (int) ($_SESSION['user_id'] ?? 0);
+    $professional_id = current_professional_id_for_user($mysqli, $created_by);
+    if ($professional_id <= 0) {
+        $professional_id = null;
+    }
+    $paid_at_sql = $payment_status === 'paid' ? 'NOW()' : 'NULL';
+
+    $mysqli->begin_transaction();
+    try {
+        $document_type = 'file';
+        $description = 'Plantilla de informe subida por el profesional.';
+        $document_date = date('Y-m-d');
+        $score = '';
+        $result_label = '';
+        $observations = '';
+        $document_status = 'completed';
+        $stmt = $mysqli->prepare("
+            INSERT INTO patient_documents
+                (tenant_id, patient_id, professional_id, document_type, title, description, document_date,
+                 score, result_label, observations, file_path, original_file_name, file_size, mime_type,
+                 visible_to_patient, result_visible_to_patient, status, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+        ");
+        $stmt->bind_param(
+            "iiissssssssisisii",
+            $tenant_id,
+            $patient_id,
+            $professional_id,
+            $document_type,
+            $title,
+            $description,
+            $document_date,
+            $score,
+            $result_label,
+            $observations,
+            $uploaded['path'],
+            $uploaded['name'],
+            $uploaded['size'],
+            $uploaded['mime'],
+            $document_portal_visible,
+            $document_status,
+            $created_by
+        );
+        $stmt->execute();
+        $source_document_id = (int) $stmt->insert_id;
+
+        $report_key = 'custom_upload';
+        $source_type = 'custom_upload';
+        $status = 'generated';
+        $visibility = 'internal';
+        $snapshot = json_encode([
+            'source' => 'custom_upload',
+            'uploaded_at' => date('c'),
+            'uploaded_by' => $created_by,
+            'source_document_id' => $source_document_id
+        ], JSON_UNESCAPED_UNICODE);
+        $stmt = $mysqli->prepare("
+            INSERT INTO patient_reports
+                (tenant_id, patient_id, professional_id, report_key, source_type, source_document_id, title, status, visibility,
+                 payment_mode, payment_status, price, paid_at, portal_available, generated_at, source_snapshot_json, created_by, updated_by)
+            VALUES
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, $paid_at_sql, ?, NOW(), ?, ?, ?)
+        ");
+        $stmt->bind_param(
+            "iiississsssdiiii",
+            $tenant_id,
+            $patient_id,
+            $professional_id,
+            $report_key,
+            $source_type,
+            $source_document_id,
+            $title,
+            $status,
+            $visibility,
+            $payment_mode,
+            $payment_status,
+            $price,
+            $portal_available,
+            $snapshot,
+            $created_by,
+            $created_by
+        );
+        $stmt->execute();
+        $report_id = (int) $stmt->insert_id;
+        $mysqli->commit();
+        echo json_encode(['success' => true, 'message' => 'Plantilla de informe subida correctamente.', 'report_id' => $report_id]);
+    } catch (\Exception $e) {
+        $mysqli->rollback();
+        echo json_encode(['success' => false, 'error' => 'No se pudo subir la plantilla de informe.']);
+    }
+} elseif ($action === 'patient_report_suggestions') {
+    $patient_id = (int) ($_GET['patient_id'] ?? 0);
+    $knowledge_problem_id = (int) ($_GET['knowledge_problem_id'] ?? 0);
+    if (!admin_can_access_patient($mysqli, $patient_id)) {
+        echo json_encode(['success' => false, 'error' => 'No autorizado para ver informes sugeridos.']);
+        exit;
+    }
+
+    if ($knowledge_problem_id <= 0) {
+        $stmt = $mysqli->prepare("
+            SELECT knowledge_problem_id
+            FROM patient_profiles
+            WHERE tenant_id = ?
+              AND user_id = ?
+            LIMIT 1
+        ");
+        $stmt->bind_param("ii", $tenant_id, $patient_id);
+        $stmt->execute();
+        $patient_profile = $stmt->get_result()->fetch_assoc();
+        $knowledge_problem_id = (int) ($patient_profile['knowledge_problem_id'] ?? 0);
+    }
+    if ($knowledge_problem_id <= 0) {
+        echo json_encode(['success' => false, 'error' => 'Selecciona un diagnóstico/objetivo para ver informes sugeridos.']);
+        exit;
+    }
+
+    $stmt = $mysqli->prepare("
+        SELECT MAX(r.id) AS id,
+               r.report_key,
+               r.source_type,
+               r.source_document_id,
+               r.title,
+               r.payment_mode,
+               r.payment_status,
+               r.price,
+               COUNT(DISTINCT r.patient_id) AS used_count,
+               MAX(COALESCE(r.generated_at, r.created_at)) AS last_used_at,
+               sd.original_file_name AS source_document_name
+        FROM patient_reports r
+        INNER JOIN patient_profiles pp
+          ON pp.tenant_id = r.tenant_id
+         AND pp.user_id = r.patient_id
+         AND pp.knowledge_problem_id = ?
+        LEFT JOIN patient_documents sd
+          ON sd.id = r.source_document_id
+         AND sd.tenant_id = r.tenant_id
+         AND sd.patient_id = r.patient_id
+        LEFT JOIN patient_reports existing
+          ON existing.tenant_id = r.tenant_id
+         AND existing.patient_id = ?
+         AND (
+              (r.report_key <> 'custom_upload' AND existing.report_key = r.report_key)
+              OR
+              (r.report_key = 'custom_upload' AND existing.report_key = 'custom_upload' AND LOWER(existing.title) = LOWER(r.title))
+         )
+        WHERE r.tenant_id = ?
+          AND r.patient_id <> ?
+          AND r.status <> 'cancelled'
+          AND existing.id IS NULL
+          AND (r.report_key <> 'custom_upload' OR r.source_document_id IS NOT NULL)
+        GROUP BY r.report_key, r.source_type, r.source_document_id, r.title, r.payment_mode, r.payment_status, r.price, sd.original_file_name
+        ORDER BY used_count DESC, last_used_at DESC
+        LIMIT 25
+    ");
+    $stmt->bind_param("iiii", $knowledge_problem_id, $patient_id, $tenant_id, $patient_id);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $suggestions = [];
+    while ($row = $res->fetch_assoc()) {
+        $suggestions[] = [
+            'id' => (int) $row['id'],
+            'report_key' => $row['report_key'] ?? '',
+            'source_type' => $row['source_type'] ?? '',
+            'source_document_id' => $row['source_document_id'] !== null ? (int) $row['source_document_id'] : null,
+            'title' => $row['title'] ?? 'Informe',
+            'payment_mode' => $row['payment_mode'] ?? 'free',
+            'payment_status' => $row['payment_status'] ?? 'not_required',
+            'price' => $row['price'] !== null ? (float) $row['price'] : null,
+            'used_count' => (int) ($row['used_count'] ?? 0),
+            'last_used_at' => $row['last_used_at'] ?? '',
+            'source_document_name' => $row['source_document_name'] ?? ''
+        ];
+    }
+    echo json_encode(['success' => true, 'suggestions' => $suggestions]);
+} elseif ($action === 'add_suggested_patient_report') {
+    $patient_id = (int) ($_POST['patient_id'] ?? 0);
+    $source_report_id = (int) ($_POST['source_report_id'] ?? 0);
+    $knowledge_problem_id = (int) ($_POST['knowledge_problem_id'] ?? 0);
+    if (!admin_can_access_patient($mysqli, $patient_id)) {
+        echo json_encode(['success' => false, 'error' => 'No autorizado para anadir informes sugeridos.']);
+        exit;
+    }
+
+    if ($knowledge_problem_id <= 0) {
+        $stmt = $mysqli->prepare("
+            SELECT knowledge_problem_id
+            FROM patient_profiles
+            WHERE tenant_id = ?
+              AND user_id = ?
+            LIMIT 1
+        ");
+        $stmt->bind_param("ii", $tenant_id, $patient_id);
+        $stmt->execute();
+        $patient_profile = $stmt->get_result()->fetch_assoc();
+        $knowledge_problem_id = (int) ($patient_profile['knowledge_problem_id'] ?? 0);
+    }
+    if ($knowledge_problem_id <= 0) {
+        echo json_encode(['success' => false, 'error' => 'Selecciona un diagnóstico/objetivo para añadir el informe sugerido.']);
+        exit;
+    }
+
+    $stmt = $mysqli->prepare("
+        SELECT r.*, pp.knowledge_problem_id
+        FROM patient_reports r
+        INNER JOIN patient_profiles pp
+          ON pp.tenant_id = r.tenant_id
+         AND pp.user_id = r.patient_id
+        WHERE r.tenant_id = ?
+          AND r.id = ?
+          AND r.patient_id <> ?
+          AND pp.knowledge_problem_id = ?
+          AND r.status <> 'cancelled'
+        LIMIT 1
+    ");
+    $stmt->bind_param("iiii", $tenant_id, $source_report_id, $patient_id, $knowledge_problem_id);
+    $stmt->execute();
+    $source_report = $stmt->get_result()->fetch_assoc();
+    if (!$source_report) {
+        echo json_encode(['success' => false, 'error' => 'No se pudo localizar la plantilla sugerida.']);
+        exit;
+    }
+
+    $report_key = (string) ($source_report['report_key'] ?? '');
+    $source_type = (string) ($source_report['source_type'] ?? '');
+    $title = trim((string) ($source_report['title'] ?? 'Informe'));
+    if ($title === '') {
+        $title = 'Informe';
+    }
+    $created_by = (int) ($_SESSION['user_id'] ?? 0);
+    $professional_id = current_professional_id_for_user($mysqli, $created_by);
+    if ($professional_id <= 0) {
+        $professional_id = null;
+    }
+
+    if ($report_key === 'custom_upload') {
+        $stmt = $mysqli->prepare("
+            SELECT id
+            FROM patient_reports
+            WHERE tenant_id = ?
+              AND patient_id = ?
+              AND report_key = 'custom_upload'
+              AND LOWER(title) = LOWER(?)
+            LIMIT 1
+        ");
+        $stmt->bind_param("iis", $tenant_id, $patient_id, $title);
+    } else {
+        $stmt = $mysqli->prepare("
+            SELECT id
+            FROM patient_reports
+            WHERE tenant_id = ?
+              AND patient_id = ?
+              AND report_key = ?
+            LIMIT 1
+        ");
+        $stmt->bind_param("iis", $tenant_id, $patient_id, $report_key);
+    }
+    $stmt->execute();
+    if ($stmt->get_result()->fetch_assoc()) {
+        echo json_encode(['success' => false, 'error' => 'Este informe ya esta asignado al paciente.']);
+        exit;
+    }
+
+    $mysqli->begin_transaction();
+    try {
+        $source_document_id = null;
+        if ($report_key === 'custom_upload') {
+            $original_document_id = (int) ($source_report['source_document_id'] ?? 0);
+            if ($original_document_id <= 0) {
+                throw new \Exception('La plantilla no tiene documento base.');
+            }
+            $stmt = $mysqli->prepare("
+                SELECT document_type, title, description, document_date, score, result_label, observations,
+                       file_path, original_file_name, file_size, mime_type, status, created_by
+                FROM patient_documents
+                WHERE tenant_id = ?
+                  AND patient_id = ?
+                  AND id = ?
+                LIMIT 1
+            ");
+            $source_patient_id = (int) ($source_report['patient_id'] ?? 0);
+            $stmt->bind_param("iii", $tenant_id, $source_patient_id, $original_document_id);
+            $stmt->execute();
+            $document = $stmt->get_result()->fetch_assoc();
+            if (!$document) {
+                throw new \Exception('No se encontro el documento base de la plantilla.');
+            }
+            $document_type = $document['document_type'] ?? 'file';
+            $document_title = $document['title'] ?? $title;
+            $description = $document['description'] ?? 'Plantilla de informe sugerida.';
+            $document_date = date('Y-m-d');
+            $score = '';
+            $result_label = '';
+            $observations = $document['observations'] ?? '';
+            $visible_to_patient = 0;
+            $result_visible_to_patient = 0;
+            $status = $document['status'] ?? 'completed';
+            $stmt = $mysqli->prepare("
+                INSERT INTO patient_documents
+                    (tenant_id, patient_id, professional_id, document_type, title, description, document_date,
+                     score, result_label, observations, file_path, original_file_name, file_size, mime_type,
+                     visible_to_patient, result_visible_to_patient, status, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ");
+            $stmt->bind_param(
+                "iiisssssssssisiisi",
+                $tenant_id,
+                $patient_id,
+                $professional_id,
+                $document_type,
+                $document_title,
+                $description,
+                $document_date,
+                $score,
+                $result_label,
+                $observations,
+                $document['file_path'],
+                $document['original_file_name'],
+                $document['file_size'],
+                $document['mime_type'],
+                $visible_to_patient,
+                $result_visible_to_patient,
+                $status,
+                $created_by
+            );
+            $stmt->execute();
+            $source_document_id = (int) $stmt->insert_id;
+        }
+
+        $payment_mode = $source_report['payment_mode'] ?? 'free';
+        if (!in_array($payment_mode, ['free', 'included', 'paid'], true)) {
+            $payment_mode = 'free';
+        }
+        $payment_status = $payment_mode === 'paid' ? 'pending' : 'not_required';
+        if (($source_report['payment_status'] ?? '') === 'paid' && $payment_mode === 'paid') {
+            $payment_status = 'pending';
+        }
+        $price = $payment_mode === 'paid' && $source_report['price'] !== null ? max(0, (float) $source_report['price']) : null;
+        $portal_available = 0;
+        $status = $report_key === 'custom_upload' ? 'generated' : 'draft';
+        $visibility = $source_report['visibility'] ?? 'internal';
+        $snapshot = json_encode([
+            'source' => 'suggested_report',
+            'source_report_id' => $source_report_id,
+            'source_patient_id' => (int) ($source_report['patient_id'] ?? 0),
+            'copied_at' => date('c'),
+            'copied_by' => $created_by
+        ], JSON_UNESCAPED_UNICODE);
+
+        $stmt = $mysqli->prepare("
+            INSERT INTO patient_reports
+                (tenant_id, patient_id, professional_id, report_key, source_type, source_document_id, title, status, visibility,
+                 payment_mode, payment_status, price, portal_available, generated_at, source_snapshot_json, created_by, updated_by)
+            VALUES
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)
+        ");
+        $stmt->bind_param(
+            "iiississsssdisii",
+            $tenant_id,
+            $patient_id,
+            $professional_id,
+            $report_key,
+            $source_type,
+            $source_document_id,
+            $title,
+            $status,
+            $visibility,
+            $payment_mode,
+            $payment_status,
+            $price,
+            $portal_available,
+            $snapshot,
+            $created_by,
+            $created_by
+        );
+        $stmt->execute();
+        $mysqli->commit();
+        echo json_encode(['success' => true, 'message' => 'Informe sugerido anadido correctamente.']);
+    } catch (\Exception $e) {
+        $mysqli->rollback();
+        echo json_encode(['success' => false, 'error' => 'No se pudo anadir el informe sugerido.']);
+    }
+} elseif ($action === 'update_patient_report') {
+    $report_id = (int) ($_POST['report_id'] ?? 0);
+    $stmt = $mysqli->prepare("
+        SELECT id, patient_id, title, source_document_id, final_document_id, official_document_id
+        FROM patient_reports
+        WHERE tenant_id = ? AND id = ?
+        LIMIT 1
+    ");
+    $stmt->bind_param("ii", $tenant_id, $report_id);
+    $stmt->execute();
+    $report_row = $stmt->get_result()->fetch_assoc();
+    if (!$report_row || !admin_can_access_patient($mysqli, (int) $report_row['patient_id'])) {
+        echo json_encode(['success' => false, 'error' => 'No autorizado para modificar este informe.']);
+        exit;
+    }
+
+    $title = trim((string) ($_POST['title'] ?? ''));
+    if ($title === '') {
+        $title = (string) ($report_row['title'] ?: 'Informe');
+    }
+    $payment_mode = trim((string) ($_POST['payment_mode'] ?? 'free'));
+    if (!in_array($payment_mode, ['free', 'included', 'paid'], true)) {
+        $payment_mode = 'free';
+    }
+    $payment_status = trim((string) ($_POST['payment_status'] ?? 'not_required'));
+    if (!in_array($payment_status, ['not_required', 'pending', 'paid'], true)) {
+        $payment_status = $payment_mode === 'paid' ? 'pending' : 'not_required';
+    }
+    if ($payment_mode !== 'paid' && $payment_status === 'pending') {
+        $payment_status = 'not_required';
+    }
+    $price_raw = str_replace(',', '.', trim((string) ($_POST['price'] ?? '')));
+    $price = $payment_mode === 'paid' && $price_raw !== '' ? max(0, (float) $price_raw) : null;
+    $portal_available = !empty($_POST['portal_available']) ? 1 : 0;
+    $document_portal_visible = ($portal_available === 1 && !($payment_mode === 'paid' && $payment_status !== 'paid')) ? 1 : 0;
+    $updated_by = (int) ($_SESSION['user_id'] ?? 0);
+    $paid_at_sql = $payment_status === 'paid' ? 'COALESCE(paid_at, NOW())' : 'NULL';
+
+    $mysqli->begin_transaction();
+    try {
+        $final_document_id = null;
+        $uploaded = save_patient_document_file_upload($_FILES['final_document'] ?? null, (int) $report_row['patient_id']);
+        if ($uploaded) {
+            $document_type = 'file';
+            $title = 'Informe final - ' . ($report_row['title'] ?: 'Informe');
+            $description = 'Versión final/oficial asociada al informe.';
+            $document_date = date('Y-m-d');
+            $score = '';
+            $result_label = '';
+            $observations = '';
+            $status = 'completed';
+            $stmt = $mysqli->prepare("
+                INSERT INTO patient_documents
+                    (tenant_id, patient_id, professional_id, document_type, title, description, document_date,
+                     score, result_label, observations, file_path, original_file_name, file_size, mime_type,
+                     visible_to_patient, result_visible_to_patient, status, created_by)
+                VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+            ");
+            $stmt->bind_param(
+                "iisssssssssisisi",
+                $tenant_id,
+                $report_row['patient_id'],
+                $document_type,
+                $title,
+                $description,
+                $document_date,
+                $score,
+                $result_label,
+                $observations,
+                $uploaded['path'],
+                $uploaded['name'],
+                $uploaded['size'],
+                $uploaded['mime'],
+                $document_portal_visible,
+                $status,
+                $updated_by
+            );
+            $stmt->execute();
+            $final_document_id = (int) $stmt->insert_id;
+        }
+
+        if ($final_document_id) {
+            $stmt = $mysqli->prepare("
+                UPDATE patient_reports
+                SET title = ?, payment_mode = ?, payment_status = ?, price = ?, paid_at = $paid_at_sql,
+                    portal_available = ?, final_document_id = ?, official_document_id = ?, status = 'final_uploaded',
+                    updated_by = ?, updated_at = NOW()
+                WHERE tenant_id = ? AND id = ?
+            ");
+            $stmt->bind_param("sssdiiiiii", $title, $payment_mode, $payment_status, $price, $portal_available, $final_document_id, $final_document_id, $updated_by, $tenant_id, $report_id);
+        } else {
+            $stmt = $mysqli->prepare("
+                UPDATE patient_reports
+                SET title = ?, payment_mode = ?, payment_status = ?, price = ?, paid_at = $paid_at_sql,
+                    portal_available = ?, updated_by = ?, updated_at = NOW()
+                WHERE tenant_id = ? AND id = ?
+            ");
+            $stmt->bind_param("sssdiiii", $title, $payment_mode, $payment_status, $price, $portal_available, $updated_by, $tenant_id, $report_id);
+        }
+        $stmt->execute();
+        $document_ids_to_sync = array_values(array_filter(array_unique([
+            (int) ($final_document_id ?: 0),
+            (int) ($report_row['source_document_id'] ?? 0),
+            (int) ($report_row['final_document_id'] ?? 0),
+            (int) ($report_row['official_document_id'] ?? 0)
+        ])));
+        if ($document_ids_to_sync) {
+            $stmt = $mysqli->prepare("
+                UPDATE patient_documents
+                SET visible_to_patient = ?
+                WHERE tenant_id = ?
+                  AND patient_id = ?
+                  AND id = ?
+            ");
+            foreach ($document_ids_to_sync as $document_id_to_sync) {
+                $stmt->bind_param("iiii", $document_portal_visible, $tenant_id, $report_row['patient_id'], $document_id_to_sync);
+                $stmt->execute();
+            }
+        }
+        $mysqli->commit();
+        echo json_encode(['success' => true, 'message' => 'Informe actualizado correctamente.']);
+    } catch (\Exception $e) {
+        $mysqli->rollback();
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
 } elseif ($action === 'patient_report') {
     $patient_id = (int) ($_GET['patient_id'] ?? 0);
-    $report_type = ($_GET['type'] ?? 'internal') === 'patient' ? 'patient' : 'internal';
+    $report_id = (int) ($_GET['report_id'] ?? 0);
+    $report_type = (string) ($_GET['type'] ?? 'internal');
+    if (!in_array($report_type, ['internal', 'patient', 'clinical', 'evolution'], true)) {
+        $report_type = 'internal';
+    }
     if (!admin_can_access_patient($mysqli, $patient_id)) {
         http_response_code(403);
         header_remove('Content-Type');
@@ -2442,10 +3928,22 @@ if ($action === 'generate_invite') {
         echo 'No autorizado';
         exit;
     }
+    if ($report_id > 0) {
+        $stmt = $mysqli->prepare("SELECT id FROM patient_reports WHERE tenant_id = ? AND id = ? AND patient_id = ? LIMIT 1");
+        $stmt->bind_param("iii", $tenant_id, $report_id, $patient_id);
+        $stmt->execute();
+        if (!$stmt->get_result()->fetch_assoc()) {
+            http_response_code(404);
+            header_remove('Content-Type');
+            header('Content-Type: text/plain; charset=UTF-8');
+            echo 'Informe no encontrado';
+            exit;
+        }
+    }
 
     $stmt = $mysqli->prepare("
         SELECT u.id, u.name, u.email, u.phone, u.created_at,
-               pp.patient_type, pp.patient_status, pp.birth_date, pp.referral_source, pp.initial_consultation_reason,
+               pp.patient_type, pp.patient_status, pp.birth_date, pp.referral_source, pp.knowledge_problem_id, pp.initial_consultation_reason,
                pp.emergency_contact_name, pp.emergency_contact_phone, pp.emergency_contact_relation,
                pp.admission_date, pp.notes, pp.document_name,
                p.display_name AS professional_name, p.professional_title, p.license_number
@@ -2471,6 +3969,44 @@ if ($action === 'generate_invite') {
         header('Content-Type: text/plain; charset=UTF-8');
         echo 'Paciente no encontrado';
         exit;
+    }
+
+    $knowledge_problem = null;
+    $knowledge_recommendations = [];
+    if (!empty($patient['knowledge_problem_id']) && app_feature_enabled_from_db($mysqli, 'knowledgeBase.enabled', false)) {
+        $sector_sql = knowledge_sector_in_sql($mysqli, allowed_knowledge_sector_keys($mysqli));
+        $stmt = $mysqli->prepare("
+            SELECT kp.id, kp.sector_key, kp.name, kp.alias, kp.description, kp.population, kp.risk_level,
+                   ka.name AS area_name
+            FROM knowledge_problems kp
+            LEFT JOIN knowledge_areas ka ON ka.id = kp.area_id AND ka.sector_key = kp.sector_key
+            WHERE kp.id = ? AND kp.sector_key IN ($sector_sql)
+            LIMIT 1
+        ");
+        $knowledge_problem_id = (int) $patient['knowledge_problem_id'];
+        $stmt->bind_param("i", $knowledge_problem_id);
+        $stmt->execute();
+        $knowledge_problem = $stmt->get_result()->fetch_assoc();
+        if ($knowledge_problem) {
+            $sector_key = (string) ($knowledge_problem['sector_key'] ?? current_knowledge_sector_key($mysqli));
+            $stmt = $mysqli->prepare("
+                SELECT te.name AS technique_name, te.description AS technique_description,
+                       t.title AS task_title, t.description AS task_description, t.objective, t.estimated_duration AS duration, t.risk_level AS task_risk_level,
+                       r.priority, r.clinical_note
+                FROM knowledge_recommendations r
+                INNER JOIN knowledge_techniques te ON te.id = r.technique_id AND te.sector_key = r.sector_key
+                INNER JOIN knowledge_tasks t ON t.id = r.task_id AND t.sector_key = r.sector_key
+                WHERE r.problem_id = ? AND r.sector_key = ?
+                ORDER BY te.name ASC, FIELD(r.priority, 'alta', 'media', 'baja') ASC, t.title ASC
+                LIMIT 160
+            ");
+            $stmt->bind_param("is", $knowledge_problem_id, $sector_key);
+            $stmt->execute();
+            $recommendations_res = $stmt->get_result();
+            while ($row = $recommendations_res->fetch_assoc()) {
+                $knowledge_recommendations[] = $row;
+            }
+        }
     }
 
     $stmt = $mysqli->prepare("
@@ -2552,6 +4088,23 @@ if ($action === 'generate_invite') {
             $evolution_files_by_note[$note_id] = [];
         }
         $evolution_files_by_note[$note_id][] = $file;
+    }
+
+    $patient_documents = [];
+    $stmt = $mysqli->prepare("
+        SELECT document_type, title, description, document_date, score, result_label, observations,
+               original_file_name, status, updated_at
+        FROM patient_documents
+        WHERE tenant_id = ?
+          AND patient_id = ?
+        ORDER BY COALESCE(document_date, DATE(updated_at), DATE(created_at)) DESC, updated_at DESC, id DESC
+        LIMIT 120
+    ");
+    $stmt->bind_param("ii", $tenant_id, $patient_id);
+    $stmt->execute();
+    $documents_res = $stmt->get_result();
+    while ($row = $documents_res->fetch_assoc()) {
+        $patient_documents[] = $row;
     }
 
     $stmt = $mysqli->prepare("
@@ -2691,6 +4244,12 @@ if ($action === 'generate_invite') {
         exit;
     }
 
+    $report_heading = [
+        'clinical' => 'Informe clínico',
+        'evolution' => 'Informe de evolución',
+        'internal' => 'Informe interno de paciente'
+    ][$report_type] ?? 'Informe interno de paciente';
+
     header_remove('Content-Type');
     header('Content-Type: text/html; charset=UTF-8');
     ?>
@@ -2700,7 +4259,7 @@ if ($action === 'generate_invite') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
-    <title>Informe interno de paciente - <?= report_h($patient['name']) ?></title>
+    <title><?= report_h($report_heading) ?> - <?= report_h($patient['name']) ?></title>
     <style>
         :root { color-scheme: light; }
         body { margin: 0; font-family: Arial, sans-serif; color: #1f2933; background: #f5f7fb; }
@@ -2711,6 +4270,7 @@ if ($action === 'generate_invite') {
         h1 { margin: 0 0 6px; font-size: 26px; }
         h2 { margin: 28px 0 12px; font-size: 18px; border-bottom: 1px solid #dfe5ef; padding-bottom: 8px; }
         h3 { margin: 18px 0 6px; font-size: 15px; }
+        h4 { margin: 14px 0 6px; font-size: 14px; }
         .meta { color: #6b7280; font-size: 13px; }
         .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 18px; margin-top: 18px; }
         .field span { display: block; color: #6b7280; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
@@ -2718,7 +4278,10 @@ if ($action === 'generate_invite') {
         table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
         th, td { border-bottom: 1px solid #e5e9f0; text-align: left; vertical-align: top; padding: 8px; }
         th { background: #f8fafc; color: #526071; }
-        .note, .task { border: 1px solid #e5e9f0; border-radius: 6px; padding: 12px; margin-bottom: 10px; }
+        .note, .task, .summary-box { border: 1px solid #e5e9f0; border-radius: 6px; padding: 12px; margin-bottom: 10px; }
+        .summary-box { background: #f8fafc; }
+        .tag { display: inline-block; border-radius: 999px; background: #eef2ff; color: #4f46e5; font-size: 12px; font-weight: 700; padding: 3px 8px; margin: 0 5px 5px 0; }
+        .section-note { color: #6b7280; font-size: 13px; margin-top: 4px; }
         .preline { white-space: pre-wrap; }
         .empty { color: #6b7280; font-style: italic; }
         @media print {
@@ -2737,7 +4300,7 @@ if ($action === 'generate_invite') {
         <button type="button" onclick="window.print()">Imprimir / Guardar PDF</button>
     </div>
     <article class="report-sheet">
-        <h1>Informe interno de paciente</h1>
+        <h1><?= report_h($report_heading) ?></h1>
         <div class="meta"><?= report_h($app_name) ?> · Generado el <?= report_datetime(date('Y-m-d H:i:s')) ?></div>
 
         <section>
@@ -2764,7 +4327,84 @@ if ($action === 'generate_invite') {
                 <h3>Notas internas</h3>
                 <div class="preline"><?= nl2br(report_h($patient['notes'])) ?></div>
             <?php endif; ?>
+            <?php if ($report_type === 'clinical'): ?>
+                <h3>Finalidad del borrador</h3>
+                <div class="preline">Este documento reune la informacion registrada en la aplicacion para servir como base de trabajo al profesional. La interpretacion clinica, conclusiones, recomendaciones y firma deben ser revisadas y completadas por el terapeuta antes de emitir cualquier version oficial.</div>
+            <?php endif; ?>
         </section>
+
+        <?php if ($report_type === 'clinical' || $knowledge_problem || $knowledge_recommendations): ?>
+        <section>
+            <h2>Diagnostico / problema asociado</h2>
+            <?php if ($knowledge_problem): ?>
+                <div class="summary-box">
+                    <?php if (!empty($knowledge_problem['area_name'])): ?><span class="tag"><?= report_h($knowledge_problem['area_name']) ?></span><?php endif; ?>
+                    <?php if (!empty($knowledge_problem['risk_level'])): ?><span class="tag">Riesgo: <?= report_h($knowledge_problem['risk_level']) ?></span><?php endif; ?>
+                    <?php if (!empty($knowledge_problem['population'])): ?><span class="tag"><?= report_h($knowledge_problem['population']) ?></span><?php endif; ?>
+                    <h3><?= report_h($knowledge_problem['name'] ?? '-') ?></h3>
+                    <?php if (!empty($knowledge_problem['alias'])): ?><div class="meta"><?= report_h($knowledge_problem['alias']) ?></div><?php endif; ?>
+                    <?php if (!empty($knowledge_problem['description'])): ?><div class="preline"><?= nl2br(report_h($knowledge_problem['description'])) ?></div><?php endif; ?>
+                </div>
+            <?php else: ?>
+                <p class="empty">No hay diagnostico o problema asociado en la ficha.</p>
+            <?php endif; ?>
+
+            <?php if ($knowledge_recommendations): ?>
+                <h3>Tecnicas, tareas y pautas recomendadas</h3>
+                <div class="section-note">Contenido obtenido de la base de conocimiento asociada al problema seleccionado.</div>
+                <?php $last_technique = null; ?>
+                <?php foreach ($knowledge_recommendations as $recommendation): ?>
+                    <?php if ($last_technique !== ($recommendation['technique_name'] ?? '')): ?>
+                        <?php $last_technique = $recommendation['technique_name'] ?? ''; ?>
+                        <h4><?= report_h($last_technique ?: 'Tecnica sin nombre') ?></h4>
+                        <?php if (!empty($recommendation['technique_description'])): ?><div class="preline"><?= nl2br(report_h($recommendation['technique_description'])) ?></div><?php endif; ?>
+                    <?php endif; ?>
+                    <div class="task">
+                        <strong><?= report_h($recommendation['task_title'] ?? '-') ?></strong>
+                        <div class="meta">
+                            <?= !empty($recommendation['priority']) ? 'Prioridad: ' . report_h($recommendation['priority']) : '' ?>
+                            <?= !empty($recommendation['task_risk_level']) ? ' · Riesgo: ' . report_h($recommendation['task_risk_level']) : '' ?>
+                            <?= !empty($recommendation['duration']) ? ' · Duracion: ' . report_h($recommendation['duration']) : '' ?>
+                        </div>
+                        <?php if (!empty($recommendation['objective'])): ?><div class="meta">Objetivo: <?= report_h($recommendation['objective']) ?></div><?php endif; ?>
+                        <?php if (!empty($recommendation['task_description'])): ?><div class="preline"><?= nl2br(report_h($recommendation['task_description'])) ?></div><?php endif; ?>
+                        <?php if (!empty($recommendation['clinical_note'])): ?><div class="section-note"><?= nl2br(report_h($recommendation['clinical_note'])) ?></div><?php endif; ?>
+                    </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </section>
+        <?php endif; ?>
+
+        <?php if ($report_type === 'clinical'): ?>
+        <section>
+            <h2>Cuestionarios y documentacion</h2>
+            <?php if ($patient_documents): ?>
+                <table>
+                    <thead><tr><th>Fecha</th><th>Tipo</th><th>Documento</th><th>Resultado / estado</th><th>Observaciones</th></tr></thead>
+                    <tbody>
+                    <?php foreach ($patient_documents as $document): ?>
+                        <tr>
+                            <td><?= report_date($document['document_date'] ?: $document['updated_at']) ?></td>
+                            <td><?= ($document['document_type'] ?? '') === 'questionnaire' ? 'Cuestionario' : 'Archivo' ?></td>
+                            <td>
+                                <strong><?= report_h($document['title'] ?: ($document['original_file_name'] ?: '-')) ?></strong>
+                                <?php if (!empty($document['description'])): ?><br><span class="meta"><?= report_h($document['description']) ?></span><?php endif; ?>
+                            </td>
+                            <td>
+                                <?= report_h($document['score'] ?: '-') ?>
+                                <?= !empty($document['result_label']) ? '<br><span class="meta">' . report_h($document['result_label']) . '</span>' : '' ?>
+                                <?= !empty($document['status']) ? '<br><span class="meta">Estado: ' . report_h($document['status']) . '</span>' : '' ?>
+                            </td>
+                            <td><?= !empty($document['observations']) ? nl2br(report_h($document['observations'])) : '-' ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php else: ?>
+                <p class="empty">No hay cuestionarios ni documentos registrados.</p>
+            <?php endif; ?>
+        </section>
+        <?php endif; ?>
 
         <section>
             <h2>Historial de citas</h2>
@@ -2849,6 +4489,27 @@ if ($action === 'generate_invite') {
                 <p class="empty">No hay bonos registrados.</p>
             <?php endif; ?>
         </section>
+
+        <?php if ($report_type === 'clinical'): ?>
+        <section>
+            <h2>Interpretacion clinica</h2>
+            <p class="empty">Espacio reservado para que el profesional complete la interpretacion clinica a partir de la historia registrada, resultados de cuestionarios, evolucion observada y criterio profesional.</p>
+        </section>
+
+        <section>
+            <h2>Conclusiones y recomendaciones</h2>
+            <p class="empty">Espacio reservado para conclusiones, recomendaciones, plan de seguimiento, derivaciones o indicaciones finales antes de emitir la version oficial.</p>
+        </section>
+
+        <section>
+            <h2>Firma profesional</h2>
+            <div class="grid">
+                <div class="field"><span>Profesional</span><strong><?= report_h($patient['professional_name'] ?: '-') ?></strong></div>
+                <div class="field"><span>Titulacion / cargo</span><strong><?= report_h($patient['professional_title'] ?: '-') ?></strong></div>
+                <div class="field"><span>Nº colegiado</span><strong><?= report_h($patient['license_number'] ?: '-') ?></strong></div>
+            </div>
+        </section>
+        <?php endif; ?>
     </article>
 </main>
 </body>
@@ -2861,12 +4522,16 @@ if ($action === 'generate_invite') {
         echo json_encode(['success' => false, 'error' => 'No autorizado para ver la evolucion.']);
         exit;
     }
+    create_initial_patient_evolution_from_profile_if_needed($mysqli, $tenant_id, $patient_id, (int) ($_SESSION['user_id'] ?? 0));
 
     $branding = get_public_branding_settings($mysqli);
     $dashboard_photo = $branding['profile_image_path'] ?? '';
     $stmt = $mysqli->prepare("
         SELECT n.id, n.patient_id, n.appointment_id, n.professional_id, n.note_date, n.title,
                n.description, n.observations, n.next_steps, n.created_at, n.updated_at,
+               n.weight_kg, n.height_cm, n.body_fat_percentage, n.waist_cm, n.hip_cm, n.chest_cm, n.thigh_cm, n.biceps_cm, n.calf_cm,
+               n.skinfold_triceps_mm, n.skinfold_subscapular_mm, n.skinfold_suprailiac_mm,
+               n.skinfold_abdominal_mm, n.skinfold_chest_mm, n.skinfold_thigh_mm,
                a.appointment_date, a.appointment_time,
                p.display_name AS professional_name, p.public_photo_path AS professional_photo_path,
                pu.role AS professional_user_role,
@@ -2899,6 +4564,21 @@ if ($action === 'generate_invite') {
             'description' => $row['description'] ?? '',
             'observations' => $row['observations'] ?? '',
             'next_steps' => $row['next_steps'] ?? '',
+            'weight_kg' => $row['weight_kg'] ?? '',
+            'height_cm' => $row['height_cm'] ?? '',
+            'body_fat_percentage' => $row['body_fat_percentage'] ?? '',
+            'waist_cm' => $row['waist_cm'] ?? '',
+            'hip_cm' => $row['hip_cm'] ?? '',
+            'chest_cm' => $row['chest_cm'] ?? '',
+            'thigh_cm' => $row['thigh_cm'] ?? '',
+            'biceps_cm' => $row['biceps_cm'] ?? '',
+            'calf_cm' => $row['calf_cm'] ?? '',
+            'skinfold_triceps_mm' => $row['skinfold_triceps_mm'] ?? '',
+            'skinfold_subscapular_mm' => $row['skinfold_subscapular_mm'] ?? '',
+            'skinfold_suprailiac_mm' => $row['skinfold_suprailiac_mm'] ?? '',
+            'skinfold_abdominal_mm' => $row['skinfold_abdominal_mm'] ?? '',
+            'skinfold_chest_mm' => $row['skinfold_chest_mm'] ?? '',
+            'skinfold_thigh_mm' => $row['skinfold_thigh_mm'] ?? '',
             'appointment_date' => $row['appointment_date'] ?? '',
             'appointment_time' => $row['appointment_time'] ? substr((string) $row['appointment_time'], 0, 5) : '',
             'file_count' => (int) ($row['file_count'] ?? 0),
@@ -2941,6 +4621,38 @@ if ($action === 'generate_invite') {
     $description = trim($_POST['description'] ?? '');
     $observations = trim($_POST['observations'] ?? '');
     $next_steps = trim($_POST['next_steps'] ?? '');
+    $weight_kg = nullable_decimal_value($_POST['weight_kg'] ?? '', 500);
+    $height_cm = nullable_decimal_value($_POST['height_cm'] ?? '', 280);
+    $body_fat_percentage = nullable_decimal_value($_POST['body_fat_percentage'] ?? '', 80);
+    $waist_cm = nullable_decimal_value($_POST['waist_cm'] ?? '', 300);
+    $hip_cm = nullable_decimal_value($_POST['hip_cm'] ?? '', 300);
+    $chest_cm = nullable_decimal_value($_POST['chest_cm'] ?? '', 300);
+    $thigh_cm = nullable_decimal_value($_POST['thigh_cm'] ?? '', 200);
+    $biceps_cm = nullable_decimal_value($_POST['biceps_cm'] ?? '', 120);
+    $calf_cm = nullable_decimal_value($_POST['calf_cm'] ?? '', 120);
+    $skinfold_triceps_mm = nullable_decimal_value($_POST['skinfold_triceps_mm'] ?? '', 120);
+    $skinfold_subscapular_mm = nullable_decimal_value($_POST['skinfold_subscapular_mm'] ?? '', 120);
+    $skinfold_suprailiac_mm = nullable_decimal_value($_POST['skinfold_suprailiac_mm'] ?? '', 120);
+    $skinfold_abdominal_mm = nullable_decimal_value($_POST['skinfold_abdominal_mm'] ?? '', 120);
+    $skinfold_chest_mm = nullable_decimal_value($_POST['skinfold_chest_mm'] ?? '', 120);
+    $skinfold_thigh_mm = nullable_decimal_value($_POST['skinfold_thigh_mm'] ?? '', 120);
+    $physical_metrics = [
+        'weight_kg' => $weight_kg,
+        'height_cm' => $height_cm,
+        'body_fat_percentage' => $body_fat_percentage,
+        'waist_cm' => $waist_cm,
+        'hip_cm' => $hip_cm,
+        'chest_cm' => $chest_cm,
+        'thigh_cm' => $thigh_cm,
+        'biceps_cm' => $biceps_cm,
+        'calf_cm' => $calf_cm,
+        'skinfold_triceps_mm' => $skinfold_triceps_mm,
+        'skinfold_subscapular_mm' => $skinfold_subscapular_mm,
+        'skinfold_suprailiac_mm' => $skinfold_suprailiac_mm,
+        'skinfold_abdominal_mm' => $skinfold_abdominal_mm,
+        'skinfold_chest_mm' => $skinfold_chest_mm,
+        'skinfold_thigh_mm' => $skinfold_thigh_mm
+    ];
 
     if (!admin_can_access_patient($mysqli, $patient_id)) {
         echo json_encode(['success' => false, 'error' => 'No autorizado para guardar esta evolucion.']);
@@ -2990,21 +4702,35 @@ if ($action === 'generate_invite') {
             }
             $stmt = $mysqli->prepare("
                 UPDATE patient_evolution_notes
-                SET appointment_id = ?, professional_id = ?, note_date = ?, title = ?, description = ?, observations = ?, next_steps = ?
+                SET appointment_id = ?, professional_id = ?, note_date = ?, title = ?, description = ?, observations = ?, next_steps = ?,
+                    weight_kg = ?, height_cm = ?, body_fat_percentage = ?, waist_cm = ?, hip_cm = ?, chest_cm = ?, thigh_cm = ?, biceps_cm = ?, calf_cm = ?,
+                    skinfold_triceps_mm = ?, skinfold_subscapular_mm = ?, skinfold_suprailiac_mm = ?, skinfold_abdominal_mm = ?, skinfold_chest_mm = ?, skinfold_thigh_mm = ?
                 WHERE tenant_id = ? AND id = ? AND patient_id = ?
             ");
-            $stmt->bind_param("iisssssiii", $appointment_id_db, $professional_id, $note_date, $title, $description, $observations, $next_steps, $tenant_id, $note_id, $patient_id);
+            $stmt->bind_param("iissssssssssssssssssssiii", $appointment_id_db, $professional_id, $note_date, $title, $description, $observations, $next_steps, $weight_kg, $height_cm, $body_fat_percentage, $waist_cm, $hip_cm, $chest_cm, $thigh_cm, $biceps_cm, $calf_cm, $skinfold_triceps_mm, $skinfold_subscapular_mm, $skinfold_suprailiac_mm, $skinfold_abdominal_mm, $skinfold_chest_mm, $skinfold_thigh_mm, $tenant_id, $note_id, $patient_id);
             $stmt->execute();
         } else {
             $stmt = $mysqli->prepare("
-                INSERT INTO patient_evolution_notes (tenant_id, patient_id, appointment_id, professional_id, note_date, title, description, observations, next_steps, created_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO patient_evolution_notes
+                    (tenant_id, patient_id, appointment_id, professional_id, note_date, title, description, observations, next_steps,
+                     weight_kg, height_cm, body_fat_percentage, waist_cm, hip_cm, chest_cm, thigh_cm, biceps_cm, calf_cm,
+                     skinfold_triceps_mm, skinfold_subscapular_mm, skinfold_suprailiac_mm, skinfold_abdominal_mm, skinfold_chest_mm, skinfold_thigh_mm, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
-            $stmt->bind_param("iiiisssssi", $tenant_id, $patient_id, $appointment_id_db, $professional_id, $note_date, $title, $description, $observations, $next_steps, $created_by);
+            $stmt->bind_param("iiiissssssssssssssssssssi", $tenant_id, $patient_id, $appointment_id_db, $professional_id, $note_date, $title, $description, $observations, $next_steps, $weight_kg, $height_cm, $body_fat_percentage, $waist_cm, $hip_cm, $chest_cm, $thigh_cm, $biceps_cm, $calf_cm, $skinfold_triceps_mm, $skinfold_subscapular_mm, $skinfold_suprailiac_mm, $skinfold_abdominal_mm, $skinfold_chest_mm, $skinfold_thigh_mm, $created_by);
             $stmt->execute();
             $note_id = $mysqli->insert_id;
         }
         $saved_files = save_patient_evolution_uploads($mysqli, $_FILES['evolution_files'] ?? null, $note_id, $patient_id);
+        if (patient_physical_metrics_have_values($physical_metrics)) {
+            $stmt = $mysqli->prepare("SELECT id FROM patient_evolution_notes WHERE tenant_id = ? AND patient_id = ? ORDER BY note_date DESC, id DESC LIMIT 1");
+            $stmt->bind_param("ii", $tenant_id, $patient_id);
+            $stmt->execute();
+            $latest_note = $stmt->get_result()->fetch_assoc();
+            if ($latest_note && (int) $latest_note['id'] === (int) $note_id) {
+                update_patient_profile_physical_metrics($mysqli, $tenant_id, $patient_id, $physical_metrics, '__keep__');
+            }
+        }
         $mysqli->commit();
         echo json_encode(['success' => true, 'message' => 'Evolucion guardada correctamente.', 'note_id' => $note_id, 'files_saved' => $saved_files]);
     } catch (\Exception $e) {
@@ -3307,22 +5033,37 @@ if ($action === 'generate_invite') {
         echo json_encode(['success' => false, 'error' => 'La base de conocimiento no esta disponible en este plan.']);
         exit;
     }
-    $sector_key = current_knowledge_sector_key($mysqli);
+    $sector_keys = allowed_knowledge_sector_keys($mysqli);
+    $sector_sql = knowledge_sector_in_sql($mysqli, $sector_keys);
+    $sector_names = knowledge_sector_names_by_key($mysqli);
+    $main_sector = current_knowledge_sector_key($mysqli);
     $stmt = $mysqli->prepare("
-        SELECT p.id, p.problem_code, p.name, p.alias, p.risk_level,
+        SELECT p.id, p.sector_key, p.problem_code, p.name, p.alias, p.risk_level,
                a.id AS area_id, a.name AS area_name
         FROM knowledge_problems p
         INNER JOIN knowledge_areas a ON a.id = p.area_id
-        WHERE p.sector_key = ?
-        ORDER BY a.name ASC, p.name ASC
+        WHERE p.sector_key IN ($sector_sql)
+        ORDER BY CASE WHEN p.sector_key = '" . $mysqli->real_escape_string($main_sector) . "' THEN 0 ELSE 1 END ASC,
+                 a.name ASC, p.name ASC
     ");
-    $stmt->bind_param("s", $sector_key);
     $stmt->execute();
     $res = $stmt->get_result();
     $problems = [];
+    $seen_problem_names = [];
     while ($row = $res->fetch_assoc()) {
+        $problem_name_for_dedupe = trim((string) ($row['name'] ?? ''));
+        $dedupe_key = function_exists('mb_strtolower') ? mb_strtolower($problem_name_for_dedupe, 'UTF-8') : strtolower($problem_name_for_dedupe);
+        if ($dedupe_key !== '' && isset($seen_problem_names[$dedupe_key])) {
+            continue;
+        }
+        if ($dedupe_key !== '') {
+            $seen_problem_names[$dedupe_key] = true;
+        }
+        $sector_key = (string) ($row['sector_key'] ?? '');
         $problems[] = [
             'id' => (int) $row['id'],
+            'sector_key' => $sector_key,
+            'sector_label' => $sector_names[$sector_key] ?? ucfirst(str_replace(['_', '-'], ' ', $sector_key)),
             'code' => $row['problem_code'],
             'name' => $row['name'],
             'alias' => $row['alias'] ?? '',
@@ -3331,15 +5072,17 @@ if ($action === 'generate_invite') {
             'area_name' => $row['area_name']
         ];
     }
-    echo json_encode(['success' => true, 'problems' => $problems]);
+    echo json_encode(['success' => true, 'problems' => array_values($problems), 'sectors' => $sector_keys]);
 } elseif ($action === 'knowledge_import_options') {
     if (!app_feature_enabled_from_db($mysqli, 'knowledgeBase.enabled', false) || !app_feature_enabled_from_db($mysqli, 'knowledgeBase.importTasks', false)) {
         echo json_encode(['success' => true, 'options' => []]);
         exit;
     }
-    $sector_key = current_knowledge_sector_key($mysqli);
+    $sector_keys = allowed_knowledge_sector_keys($mysqli);
+    $sector_sql = knowledge_sector_in_sql($mysqli, $sector_keys);
+    $sector_names = knowledge_sector_names_by_key($mysqli);
     $stmt = $mysqli->prepare("
-        SELECT p.id AS problem_id, p.name AS problem_name,
+        SELECT p.id AS problem_id, p.sector_key, p.name AS problem_name,
                a.name AS area_name,
                te.id AS technique_id, te.name AS technique_name,
                COUNT(r.id) AS task_count
@@ -3347,18 +5090,20 @@ if ($action === 'generate_invite') {
         INNER JOIN knowledge_problems p ON p.id = r.problem_id
         INNER JOIN knowledge_areas a ON a.id = p.area_id
         INNER JOIN knowledge_techniques te ON te.id = r.technique_id
-        WHERE r.sector_key = ?
-        GROUP BY p.id, p.name, a.name, te.id, te.name
+        WHERE r.sector_key IN ($sector_sql)
+        GROUP BY p.id, p.sector_key, p.name, a.name, te.id, te.name
         HAVING task_count > 0
-        ORDER BY a.name ASC, p.name ASC, te.name ASC
+        ORDER BY p.sector_key ASC, a.name ASC, p.name ASC, te.name ASC
     ");
-    $stmt->bind_param("s", $sector_key);
     $stmt->execute();
     $res = $stmt->get_result();
     $options = [];
     while ($row = $res->fetch_assoc()) {
+        $sector_key = (string) ($row['sector_key'] ?? '');
         $options[] = [
             'problem_id' => (int) $row['problem_id'],
+            'sector_key' => $sector_key,
+            'sector_label' => $sector_names[$sector_key] ?? ucfirst(str_replace(['_', '-'], ' ', $sector_key)),
             'problem_name' => $row['problem_name'],
             'area_name' => $row['area_name'] ?? '',
             'technique_id' => (int) $row['technique_id'],
@@ -3373,22 +5118,24 @@ if ($action === 'generate_invite') {
         exit;
     }
     $problem_id = (int) ($_GET['problem_id'] ?? 0);
-    $sector_key = current_knowledge_sector_key($mysqli);
+    $sector_sql = knowledge_sector_in_sql($mysqli, allowed_knowledge_sector_keys($mysqli));
+    $sector_names = knowledge_sector_names_by_key($mysqli);
     $stmt = $mysqli->prepare("
-        SELECT p.id, p.problem_code, p.name, p.alias, p.description, p.population, p.risk_level,
+        SELECT p.id, p.sector_key, p.problem_code, p.name, p.alias, p.description, p.population, p.risk_level,
                a.name AS area_name
         FROM knowledge_problems p
         INNER JOIN knowledge_areas a ON a.id = p.area_id
-        WHERE p.id = ? AND p.sector_key = ?
+        WHERE p.id = ? AND p.sector_key IN ($sector_sql)
         LIMIT 1
     ");
-    $stmt->bind_param("is", $problem_id, $sector_key);
+    $stmt->bind_param("i", $problem_id);
     $stmt->execute();
     $problem = $stmt->get_result()->fetch_assoc();
     if (!$problem) {
         echo json_encode(['success' => false, 'error' => 'No se encontro el problema o diagnostico.']);
         exit;
     }
+    $sector_key = (string) ($problem['sector_key'] ?? current_knowledge_sector_key($mysqli));
 
     $stmt = $mysqli->prepare("
         SELECT r.id AS recommendation_id, r.priority, r.clinical_note,
@@ -3484,6 +5231,8 @@ if ($action === 'generate_invite') {
         'success' => true,
         'problem' => [
             'id' => (int) $problem['id'],
+            'sector_key' => $sector_key,
+            'sector_label' => $sector_names[$sector_key] ?? ucfirst(str_replace(['_', '-'], ' ', $sector_key)),
             'code' => $problem['problem_code'],
             'name' => $problem['name'],
             'alias' => $problem['alias'] ?? '',
@@ -3625,13 +5374,53 @@ if ($action === 'generate_invite') {
         'muscles' => array_values($muscle_rows),
         'exercises' => array_values($exercises)
     ]);
+} elseif ($action === 'workoutx_exercise_gif') {
+    if (!app_feature_enabled_from_db($mysqli, 'knowledgeBase.enabled', false) || !workoutx_available()) {
+        http_response_code(404);
+        exit;
+    }
+    if (!table_exists($mysqli, 'fitness_exercises')) {
+        http_response_code(404);
+        exit;
+    }
+    ensure_fitness_exercise_media_columns($mysqli);
+    $exercise_id = trim((string) ($_GET['exercise_id'] ?? ''));
+    if ($exercise_id === '') {
+        http_response_code(400);
+        exit;
+    }
+    $stmt = $mysqli->prepare("
+        SELECT external_id
+        FROM fitness_exercises
+        WHERE exercise_id = ?
+          AND active = 1
+          AND external_source = 'workoutx'
+          AND external_id IS NOT NULL
+          AND external_id <> ''
+        LIMIT 1
+    ");
+    $stmt->bind_param("s", $exercise_id);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    if (!$row) {
+        http_response_code(404);
+        exit;
+    }
+    $gif = workoutx_fetch_gif($row['external_id']);
+    if (empty($gif['success'])) {
+        http_response_code((int) ($gif['status'] ?? 502) ?: 502);
+        exit;
+    }
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    header('Content-Type: ' . ($gif['content_type'] ?? 'image/gif'));
+    header('Cache-Control: private, max-age=86400');
+    echo $gif['body'];
+    exit;
 } elseif ($action === 'workoutx_exercise_media') {
     if (!app_feature_enabled_from_db($mysqli, 'knowledgeBase.enabled', false)) {
         echo json_encode(['success' => false, 'error' => 'La base de conocimiento no esta disponible en este plan.']);
-        exit;
-    }
-    if (!workoutx_available()) {
-        echo json_encode(['success' => false, 'error' => 'WorkoutX no esta configurado.']);
         exit;
     }
     if (!table_exists($mysqli, 'fitness_exercises')) {
@@ -3640,30 +5429,163 @@ if ($action === 'generate_invite') {
     }
     ensure_fitness_exercise_media_columns($mysqli);
     $exercise_id = trim((string) ($_GET['exercise_id'] ?? ''));
-    if ($exercise_id === '') {
+    $workoutx_external_id = trim((string) ($_GET['workoutx_external_id'] ?? ''));
+    if ($exercise_id === '' && $workoutx_external_id === '') {
         echo json_encode(['success' => false, 'error' => 'Falta el ejercicio.']);
         exit;
     }
-    $stmt = $mysqli->prepare("
-        SELECT exercise_id, name_en, name_es, aliases, image_url, external_source, external_id
-        FROM fitness_exercises
-        WHERE exercise_id = ?
-          AND active = 1
-        LIMIT 1
-    ");
-    $stmt->bind_param("s", $exercise_id);
+    if ($exercise_id !== '') {
+        $stmt = $mysqli->prepare("
+            SELECT exercise_id, name_en, name_es, description_es, description_en, cues_es,
+                   instructions_en, instructions_es, secondary_muscles_en, calories_per_min,
+                   aliases, image_url, external_source, external_id,
+                   workoutx_body_part, workoutx_target, workoutx_equipment, difficulty
+            FROM fitness_exercises
+            WHERE exercise_id = ?
+              AND active = 1
+            LIMIT 1
+        ");
+        $stmt->bind_param("s", $exercise_id);
+    } else {
+        $stmt = $mysqli->prepare("
+            SELECT exercise_id, name_en, name_es, description_es, description_en, cues_es,
+                   instructions_en, instructions_es, secondary_muscles_en, calories_per_min,
+                   aliases, image_url, external_source, external_id,
+                   workoutx_body_part, workoutx_target, workoutx_equipment, difficulty
+            FROM fitness_exercises
+            WHERE external_source = 'workoutx'
+              AND external_id = ?
+              AND active = 1
+            LIMIT 1
+        ");
+        $stmt->bind_param("s", $workoutx_external_id);
+    }
     $stmt->execute();
     $local_exercise = $stmt->get_result()->fetch_assoc();
+    if (!$local_exercise && $exercise_id === '' && $workoutx_external_id !== '' && workoutx_available()) {
+        $remote_by_id = workoutx_exercise_by_id($workoutx_external_id);
+        if (!empty($remote_by_id['success']) && is_array($remote_by_id['data'] ?? null)) {
+            $exercise_id = ensure_workoutx_exercise_local($mysqli, $remote_by_id['data']);
+            $stmt = $mysqli->prepare("
+                SELECT exercise_id, name_en, name_es, description_es, description_en, cues_es,
+                       instructions_en, instructions_es, secondary_muscles_en, calories_per_min,
+                       aliases, image_url, external_source, external_id,
+                       workoutx_body_part, workoutx_target, workoutx_equipment, difficulty
+                FROM fitness_exercises
+                WHERE exercise_id = ?
+                  AND active = 1
+                LIMIT 1
+            ");
+            $stmt->bind_param("s", $exercise_id);
+            $stmt->execute();
+            $local_exercise = $stmt->get_result()->fetch_assoc();
+        }
+    }
     if (!$local_exercise) {
         echo json_encode(['success' => false, 'error' => 'No se encontro el ejercicio local.']);
+        exit;
+    }
+    $exercise_id = (string) ($local_exercise['exercise_id'] ?? $exercise_id);
+
+    $cached_instructions = [];
+    $instructions_json = trim((string) ($local_exercise['instructions_es'] ?: $local_exercise['instructions_en'] ?: ''));
+    if ($instructions_json !== '') {
+        $decoded = json_decode($instructions_json, true);
+        if (is_array($decoded)) {
+            $cached_instructions = array_values(array_filter(array_map('strval', $decoded)));
+        } else {
+            $cached_instructions = array_values(array_filter(array_map('trim', preg_split('/\R+/', $instructions_json))));
+        }
+    }
+    if ($cached_instructions) {
+        $secondary_muscles = [];
+        $secondary_json = trim((string) ($local_exercise['secondary_muscles_en'] ?? ''));
+        if ($secondary_json !== '') {
+            $decoded_secondary = json_decode($secondary_json, true);
+            if (is_array($decoded_secondary)) {
+                $secondary_muscles = array_values(array_filter(array_map('strval', $decoded_secondary)));
+            }
+        }
+        echo json_encode([
+            'success' => true,
+            'exercise' => [
+                'localExerciseId' => $exercise_id,
+                'id' => $local_exercise['external_id'] ?? '',
+                'name' => $local_exercise['name_en'] ?? '',
+                'localNameEs' => $local_exercise['name_es'] ?? '',
+                'descriptionEs' => $local_exercise['description_es'] ?? '',
+                'descriptionEn' => $local_exercise['description_en'] ?? '',
+                'cuesEs' => $local_exercise['cues_es'] ?? '',
+                'bodyPart' => $local_exercise['workoutx_body_part'] ?? '',
+                'target' => $local_exercise['workoutx_target'] ?? '',
+                'equipment' => $local_exercise['workoutx_equipment'] ?? '',
+                'difficulty' => $local_exercise['difficulty'] ?? '',
+                'mechanic' => '',
+                'force' => '',
+                'gifUrl' => !empty($local_exercise['external_id']) ? 'api/admin.php?action=workoutx_exercise_gif&exercise_id=' . rawurlencode($exercise_id) : '',
+                'remoteGifUrl' => $local_exercise['image_url'] ?? '',
+                'instructions' => $cached_instructions,
+                'secondaryMuscles' => $secondary_muscles,
+                'caloriesPerMinute' => $local_exercise['calories_per_min'] ?? null
+            ],
+            'cached' => true,
+            'headers' => []
+        ]);
+        exit;
+    }
+
+    if (!workoutx_available()) {
+        echo json_encode([
+            'success' => true,
+            'exercise' => [
+                'localExerciseId' => $exercise_id,
+                'id' => $local_exercise['external_id'] ?? '',
+                'name' => $local_exercise['name_en'] ?? '',
+                'localNameEs' => $local_exercise['name_es'] ?? '',
+                'descriptionEs' => $local_exercise['description_es'] ?? '',
+                'cuesEs' => $local_exercise['cues_es'] ?? '',
+                'bodyPart' => $local_exercise['workoutx_body_part'] ?? '',
+                'target' => $local_exercise['workoutx_target'] ?? '',
+                'equipment' => $local_exercise['workoutx_equipment'] ?? '',
+                'difficulty' => $local_exercise['difficulty'] ?? '',
+                'mechanic' => '',
+                'force' => '',
+                'gifUrl' => '',
+                'remoteGifUrl' => $local_exercise['image_url'] ?? '',
+                'instructions' => [],
+                'secondaryMuscles' => [],
+                'caloriesPerMinute' => $local_exercise['calories_per_min'] ?? null
+            ],
+            'warning' => 'No hay instrucciones locales para este ejercicio.',
+            'headers' => []
+        ]);
         exit;
     }
 
     $match = workoutx_match_exercise($local_exercise);
     if (empty($match['success']) || !is_array($match['data'] ?? null)) {
         echo json_encode([
-            'success' => false,
-            'error' => $match['error'] ?? 'No se encontro un GIF asociado en WorkoutX.',
+            'success' => true,
+            'exercise' => [
+                'localExerciseId' => $exercise_id,
+                'id' => $local_exercise['external_id'] ?? '',
+                'name' => $local_exercise['name_en'] ?? '',
+                'localNameEs' => $local_exercise['name_es'] ?? '',
+                'descriptionEs' => $local_exercise['description_es'] ?? '',
+                'cuesEs' => $local_exercise['cues_es'] ?? '',
+                'bodyPart' => '',
+                'target' => '',
+                'equipment' => '',
+                'difficulty' => '',
+                'mechanic' => '',
+                'force' => '',
+                'gifUrl' => '',
+                'remoteGifUrl' => '',
+                'instructions' => [],
+                'secondaryMuscles' => [],
+                'caloriesPerMinute' => null
+            ],
+            'warning' => $match['error'] ?? 'No se encontro informacion adicional del ejercicio.',
             'headers' => $match['headers'] ?? []
         ]);
         exit;
@@ -3672,6 +5594,9 @@ if ($action === 'generate_invite') {
     $remote = $match['data'];
     $external_id = (string) ($remote['id'] ?? '');
     $gif_url = (string) ($remote['gifUrl'] ?? '');
+    $local_gif_url = $external_id !== ''
+        ? 'api/admin.php?action=workoutx_exercise_gif&exercise_id=' . rawurlencode($exercise_id)
+        : '';
     $aliases = trim((string) ($local_exercise['aliases'] ?? ''));
     $remote_name = trim((string) ($remote['name'] ?? ''));
     if ($remote_name !== '' && stripos(',' . $aliases . ',', ',' . $remote_name . ',') === false) {
@@ -3702,21 +5627,121 @@ if ($action === 'generate_invite') {
     echo json_encode([
         'success' => true,
         'exercise' => [
+            'localExerciseId' => $exercise_id,
             'id' => $external_id,
             'name' => $remote['name'] ?? '',
+            'localNameEs' => $local_exercise['name_es'] ?? '',
+            'descriptionEs' => $local_exercise['description_es'] ?? '',
+            'cuesEs' => $local_exercise['cues_es'] ?? '',
             'bodyPart' => $remote['bodyPart'] ?? '',
             'target' => $remote['target'] ?? '',
             'equipment' => $remote['equipment'] ?? '',
             'difficulty' => $remote['difficulty'] ?? '',
             'mechanic' => $remote['mechanic'] ?? '',
             'force' => $remote['force'] ?? '',
-            'gifUrl' => $gif_url,
+            'gifUrl' => $local_gif_url,
+            'remoteGifUrl' => $gif_url,
             'instructions' => $remote['instructions'] ?? [],
             'secondaryMuscles' => $remote['secondaryMuscles'] ?? [],
             'caloriesPerMinute' => $remote['caloriesPerMinute'] ?? null
         ],
         'matched_by' => $match['matched_by'] ?? '',
         'headers' => $match['headers'] ?? []
+    ]);
+} elseif ($action === 'workoutx_generate_plan') {
+    ensure_action_feature($mysqli, 'tasks.enabled', 'Las tareas no estan disponibles en este plan.');
+    if (!app_feature_enabled_from_db($mysqli, 'knowledgeBase.enabled', false)) {
+        echo json_encode(['success' => false, 'error' => 'La base de conocimiento no esta disponible en este plan.']);
+        exit;
+    }
+    if (!workoutx_available()) {
+        echo json_encode(['success' => false, 'error' => 'El generador de rutinas no esta configurado.']);
+        exit;
+    }
+    if (!table_exists($mysqli, 'fitness_exercises')) {
+        echo json_encode(['success' => false, 'error' => 'No hay ejercicios fitness importados.']);
+        exit;
+    }
+
+    $goal = trim((string) ($_GET['goal'] ?? 'muscle_gain'));
+    $duration = max(20, min(120, (int) ($_GET['duration'] ?? 45)));
+    $level = trim((string) ($_GET['level'] ?? 'intermediate'));
+    $split = trim((string) ($_GET['split'] ?? 'full_body'));
+    $equipment = trim((string) ($_GET['equipment'] ?? ''));
+    $body_focus = trim((string) ($_GET['bodyFocus'] ?? ''));
+    $seed = trim((string) ($_GET['seed'] ?? ''));
+
+    $allowed_goals = ['muscle_gain', 'strength', 'fat_loss', 'endurance', 'mobility'];
+    $allowed_levels = ['beginner', 'intermediate', 'advanced'];
+    $allowed_splits = ['full_body', 'upper', 'lower', 'push', 'pull', 'legs', 'push_pull_legs', 'upper_lower', 'core'];
+    if (!in_array($goal, $allowed_goals, true)) {
+        $goal = 'muscle_gain';
+    }
+    if (!in_array($level, $allowed_levels, true)) {
+        $level = 'intermediate';
+    }
+    if (!in_array($split, $allowed_splits, true)) {
+        $split = 'full_body';
+    }
+
+    $params = [
+        'goal' => $goal,
+        'duration' => (string) $duration,
+        'level' => $level,
+        'split' => $split
+    ];
+    if ($equipment !== '') {
+        $params['equipment'] = $equipment;
+    }
+    if ($body_focus !== '') {
+        $params['bodyFocus'] = $body_focus;
+    }
+    if ($seed !== '') {
+        $params['seed'] = $seed;
+    }
+
+    $response = workoutx_generate_workout($params);
+    if (empty($response['success']) || !is_array($response['data'] ?? null)) {
+        echo json_encode([
+            'success' => false,
+            'error' => $response['error'] ?? 'No se pudo generar la rutina.',
+            'headers' => $response['headers'] ?? []
+        ]);
+        exit;
+    }
+
+    $plan = $response['data'];
+    if (!empty($plan['exercises']) && is_array($plan['exercises'])) {
+        foreach ($plan['exercises'] as &$plan_exercise) {
+            if (!is_array($plan_exercise)) {
+                continue;
+            }
+            $remote_exercise = is_array($plan_exercise['exercise'] ?? null) ? $plan_exercise['exercise'] : $plan_exercise;
+            $external_id = workoutx_remote_value($remote_exercise, ['id', 'exerciseId', 'exercise_id']);
+            $local_id = '';
+            $local_name_es = '';
+            $local_name_en = '';
+            if ($external_id !== '') {
+                $stmt = $mysqli->prepare("SELECT exercise_id, name_es, name_en FROM fitness_exercises WHERE external_source = 'workoutx' AND external_id = ? LIMIT 1");
+                $stmt->bind_param("s", $external_id);
+                $stmt->execute();
+                $local = $stmt->get_result()->fetch_assoc();
+                $local_id = (string) ($local['exercise_id'] ?? '');
+                $local_name_es = (string) ($local['name_es'] ?? '');
+                $local_name_en = (string) ($local['name_en'] ?? '');
+            }
+            $plan_exercise['localExerciseId'] = $local_id;
+            $plan_exercise['workoutxExternalId'] = $external_id;
+            $plan_exercise['localNameEs'] = $local_name_es;
+            $plan_exercise['localNameEn'] = $local_name_en;
+        }
+        unset($plan_exercise);
+    }
+
+    echo json_encode([
+        'success' => true,
+        'plan' => $plan,
+        'headers' => $response['headers'] ?? []
     ]);
 } elseif ($action === 'import_knowledge_recommendation_task') {
     ensure_action_feature($mysqli, 'tasks.enabled', 'Las tareas no estan disponibles en este plan.');
@@ -3752,9 +5777,9 @@ if ($action === 'generate_invite') {
         exit;
     }
     ensure_patient_work_plan_tables($mysqli);
-    $sector_key = current_knowledge_sector_key($mysqli);
-    $stmt = $mysqli->prepare("SELECT id FROM knowledge_recommendations WHERE problem_id = ? AND sector_key = ? ORDER BY FIELD(priority, 'alta', 'media', 'baja') ASC, id ASC");
-    $stmt->bind_param("is", $problem_id, $sector_key);
+    $sector_sql = knowledge_sector_in_sql($mysqli, allowed_knowledge_sector_keys($mysqli));
+    $stmt = $mysqli->prepare("SELECT id FROM knowledge_recommendations WHERE problem_id = ? AND sector_key IN ($sector_sql) ORDER BY FIELD(priority, 'alta', 'media', 'baja') ASC, id ASC");
+    $stmt->bind_param("i", $problem_id);
     $stmt->execute();
     $res = $stmt->get_result();
     $count = 0;
@@ -3779,14 +5804,14 @@ if ($action === 'generate_invite') {
         exit;
     }
     ensure_patient_work_plan_tables($mysqli);
-    $sector_key = current_knowledge_sector_key($mysqli);
+    $sector_sql = knowledge_sector_in_sql($mysqli, allowed_knowledge_sector_keys($mysqli));
     $stmt = $mysqli->prepare("
         SELECT id
         FROM knowledge_recommendations
-        WHERE problem_id = ? AND technique_id = ? AND sector_key = ?
+        WHERE problem_id = ? AND technique_id = ? AND sector_key IN ($sector_sql)
         ORDER BY FIELD(priority, 'alta', 'media', 'baja') ASC, id ASC
     ");
-    $stmt->bind_param("iis", $problem_id, $technique_id, $sector_key);
+    $stmt->bind_param("ii", $problem_id, $technique_id);
     $stmt->execute();
     $res = $stmt->get_result();
     $count = 0;
@@ -3804,20 +5829,33 @@ if ($action === 'generate_invite') {
         exit;
     }
 
+    $has_fitness_exercises = table_exists($mysqli, 'fitness_exercises');
+    $fitness_select = $has_fitness_exercises
+        ? "fe.name_es AS fitness_name_es, fe.name_en AS fitness_name_en, fe.image_url AS fitness_image_url,
+               fe.external_source AS fitness_external_source, fe.external_id AS fitness_external_id"
+        : "NULL AS fitness_name_es, NULL AS fitness_name_en, NULL AS fitness_image_url,
+               NULL AS fitness_external_source, NULL AS fitness_external_id";
+    $fitness_join = $has_fitness_exercises
+        ? "LEFT JOIN fitness_exercises fe ON fe.exercise_id = t.fitness_exercise_id AND fe.active = 1"
+        : "";
     $stmt = $mysqli->prepare("
         SELECT t.id, t.patient_id, t.appointment_id, t.professional_id, t.title, t.description, t.status, t.priority, t.visible_to_patient,
+               t.fitness_exercise_id,
                t.completed_at, t.created_at, t.updated_at,
-               p.display_name AS professional_name
+               p.display_name AS professional_name,
+               $fitness_select
         FROM patient_work_plan_tasks t
-        LEFT JOIN professionals p ON p.id = t.professional_id
-        WHERE t.patient_id = ?
+        LEFT JOIN professionals p ON p.id = t.professional_id AND p.tenant_id = t.tenant_id
+        $fitness_join
+        WHERE t.tenant_id = ?
+          AND t.patient_id = ?
         ORDER BY
             CASE WHEN t.status = 'pending' THEN 0 ELSE 1 END,
             t.priority ASC,
             t.updated_at DESC,
             t.id DESC
     ");
-    $stmt->bind_param("i", $patient_id);
+    $stmt->bind_param("ii", $tenant_id, $patient_id);
     $stmt->execute();
     $res = $stmt->get_result();
     $tasks = [];
@@ -3833,6 +5871,15 @@ if ($action === 'generate_invite') {
             'status' => $row['status'],
             'priority' => (int) ($row['priority'] ?? 2),
             'visible_to_patient' => (int) ($row['visible_to_patient'] ?? 0),
+            'fitness_exercise_id' => $row['fitness_exercise_id'] ?? '',
+            'fitness_exercise' => !empty($row['fitness_exercise_id']) ? [
+                'exercise_id' => $row['fitness_exercise_id'] ?? '',
+                'name_es' => $row['fitness_name_es'] ?? '',
+                'name_en' => $row['fitness_name_en'] ?? '',
+                'image_url' => $row['fitness_image_url'] ?? '',
+                'external_source' => $row['fitness_external_source'] ?? '',
+                'external_id' => $row['fitness_external_id'] ?? ''
+            ] : null,
             'completed_at' => $row['completed_at'] ?? '',
             'created_at' => $row['created_at'] ?? '',
             'updated_at' => $row['updated_at'] ?? ''
@@ -3848,7 +5895,8 @@ if ($action === 'generate_invite') {
     $title = trim($_POST['title'] ?? '');
     $description = trim($_POST['description'] ?? '');
     $priority = (int) ($_POST['priority'] ?? 2);
-    $status = ($_POST['status'] ?? '') === 'completed' ? 'completed' : 'pending';
+    $task_status_enabled = work_plan_task_status_enabled($mysqli);
+    $status = $task_status_enabled && ($_POST['status'] ?? '') === 'completed' ? 'completed' : 'pending';
     $visible_to_patient = (int) ($_POST['visible_to_patient'] ?? 0) === 1 ? 1 : 0;
 
     if (!admin_can_access_patient($mysqli, $patient_id)) {
@@ -3889,6 +5937,9 @@ if ($action === 'generate_invite') {
             echo json_encode(['success' => false, 'error' => 'No se encontro la tarea.']);
             exit;
         }
+        if (!$task_status_enabled) {
+            $status = ($existing['status'] ?? '') === 'completed' ? 'completed' : 'pending';
+        }
         $existing_professional_id = (int) ($existing['professional_id'] ?? 0);
         if ($professional_id <= 0) {
             $professional_id = $existing_professional_id > 0 ? $existing_professional_id : null;
@@ -3928,8 +5979,89 @@ if ($action === 'generate_invite') {
         $task_id = $mysqli->insert_id;
     }
     echo json_encode(['success' => true, 'message' => 'Plan de trabajo guardado correctamente.', 'task_id' => $task_id]);
+} elseif ($action === 'add_fitness_exercise_to_work_plan') {
+    ensure_action_feature($mysqli, 'tasks.enabled', 'Las tareas no estan disponibles en este plan.');
+    ensure_patient_work_plan_tables($mysqli);
+    ensure_fitness_exercise_media_columns($mysqli);
+
+    $patient_id = (int) ($_POST['patient_id'] ?? 0);
+    $appointment_id = (int) ($_POST['appointment_id'] ?? 0);
+    $exercise_id = trim((string) ($_POST['exercise_id'] ?? ''));
+    $workoutx_external_id = trim((string) ($_POST['workoutx_external_id'] ?? ''));
+    $visible_to_patient = (int) ($_POST['visible_to_patient'] ?? 0) === 1 ? 1 : 0;
+    if (!admin_can_access_patient($mysqli, $patient_id)) {
+        echo json_encode(['success' => false, 'error' => 'No autorizado para asignar ejercicios a este paciente.']);
+        exit;
+    }
+    if ($exercise_id === '' && $workoutx_external_id !== '' && workoutx_available()) {
+        $remote = workoutx_exercise_by_id($workoutx_external_id);
+        if (!empty($remote['success']) && is_array($remote['data'] ?? null)) {
+            $exercise_id = ensure_workoutx_exercise_local($mysqli, $remote['data']);
+        }
+    }
+    if ($exercise_id === '' || !table_exists($mysqli, 'fitness_exercises')) {
+        echo json_encode(['success' => false, 'error' => 'No se pudo identificar el ejercicio.']);
+        exit;
+    }
+
+    $stmt = $mysqli->prepare("
+        SELECT exercise_id, name_es, name_en, description_es, cues_es
+        FROM fitness_exercises
+        WHERE exercise_id = ?
+          AND active = 1
+        LIMIT 1
+    ");
+    $stmt->bind_param("s", $exercise_id);
+    $stmt->execute();
+    $exercise = $stmt->get_result()->fetch_assoc();
+    if (!$exercise) {
+        echo json_encode(['success' => false, 'error' => 'No se encontro el ejercicio.']);
+        exit;
+    }
+
+    $appointment_id_db = null;
+    $session_user_id = (int) ($_SESSION['user_id'] ?? 0);
+    $professional_id = current_professional_id_for_user($mysqli, $session_user_id);
+    if ($appointment_id > 0) {
+        $appointment_manage_result = admin_can_manage_appointment_payment($mysqli, $appointment_id);
+        if (!$appointment_manage_result[0] || (int) ($appointment_manage_result[1]['user_id'] ?? 0) !== $patient_id) {
+            echo json_encode(['success' => false, 'error' => 'No autorizado para vincular esa cita.']);
+            exit;
+        }
+        $appointment_id_db = $appointment_id;
+        if (!empty($appointment_manage_result[1]['professional_id'])) {
+            $professional_id = (int) $appointment_manage_result[1]['professional_id'];
+        }
+    }
+    if ($professional_id <= 0) {
+        $professional_id = null;
+    }
+
+    $title = trim((string) ($exercise['name_es'] ?: $exercise['name_en'] ?: 'Ejercicio'));
+    $description_parts = array_filter([
+        trim((string) ($exercise['description_es'] ?? '')),
+        trim((string) ($exercise['cues_es'] ?? ''))
+    ]);
+    $description = implode("\n\n", $description_parts);
+    $priority = 2;
+    $stmt = $mysqli->prepare("
+        INSERT INTO patient_work_plan_tasks
+            (tenant_id, patient_id, appointment_id, professional_id, title, description, status, priority, visible_to_patient, fitness_exercise_id, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
+    ");
+    $stmt->bind_param("iiiissiisi", $tenant_id, $patient_id, $appointment_id_db, $professional_id, $title, $description, $priority, $visible_to_patient, $exercise_id, $session_user_id);
+    $stmt->execute();
+    echo json_encode([
+        'success' => true,
+        'message' => 'Ejercicio agregado al plan de trabajo.',
+        'task_id' => $mysqli->insert_id
+    ]);
 } elseif ($action === 'set_patient_work_plan_task_status') {
     ensure_action_feature($mysqli, 'tasks.enabled', 'Las tareas no estan disponibles en este plan.');
+    if (!work_plan_task_status_enabled($mysqli)) {
+        echo json_encode(['success' => false, 'error' => 'El cambio de estado de tareas esta desactivado.']);
+        exit;
+    }
     $task_id = (int) ($_POST['task_id'] ?? 0);
     $status = ($_POST['status'] ?? '') === 'completed' ? 'completed' : 'pending';
     $stmt = $mysqli->prepare("SELECT patient_id FROM patient_work_plan_tasks WHERE tenant_id = ? AND id = ? LIMIT 1");
@@ -4026,7 +6158,7 @@ if ($action === 'generate_invite') {
         $ids = array_map(fn($template) => (int) $template['id'], $templates);
         $ids_sql = implode(',', $ids);
         $items_res = $mysqli->query("
-            SELECT id, template_id, title, description, priority, sort_order
+            SELECT id, template_id, title, description, priority, fitness_exercise_id, sort_order
             FROM work_plan_task_template_items
             WHERE tenant_id = $tenant_id AND template_id IN ($ids_sql)
             ORDER BY template_id ASC, sort_order ASC, id ASC
@@ -4039,6 +6171,7 @@ if ($action === 'generate_invite') {
                 'title' => $item['title'] ?? '',
                 'description' => $item['description'] ?? '',
                 'priority' => (int) ($item['priority'] ?? 2),
+                'fitness_exercise_id' => $item['fitness_exercise_id'] ?? '',
                 'sort_order' => (int) ($item['sort_order'] ?? 0)
             ];
         }
@@ -4131,6 +6264,7 @@ if ($action === 'generate_invite') {
     $title = trim($_POST['title'] ?? '');
     $description = trim($_POST['description'] ?? '');
     $priority = (int) ($_POST['priority'] ?? 2);
+    $fitness_exercise_id = trim((string) ($_POST['fitness_exercise_id'] ?? ''));
     $session_user_id = (int) ($_SESSION['user_id'] ?? 0);
     $current_professional_id = current_professional_id_for_user($mysqli, $session_user_id);
 
@@ -4156,8 +6290,8 @@ if ($action === 'generate_invite') {
     }
 
     if ($item_id > 0) {
-        $stmt = $mysqli->prepare("UPDATE work_plan_task_template_items SET title = ?, description = ?, priority = ? WHERE tenant_id = ? AND id = ? AND template_id = ?");
-        $stmt->bind_param("ssiiii", $title, $description, $priority, $tenant_id, $item_id, $template_id);
+        $stmt = $mysqli->prepare("UPDATE work_plan_task_template_items SET title = ?, description = ?, priority = ?, fitness_exercise_id = NULLIF(?, '') WHERE tenant_id = ? AND id = ? AND template_id = ?");
+        $stmt->bind_param("ssisiii", $title, $description, $priority, $fitness_exercise_id, $tenant_id, $item_id, $template_id);
         $stmt->execute();
     } else {
         $sort_order = 0;
@@ -4166,8 +6300,8 @@ if ($action === 'generate_invite') {
         $stmt->execute();
         $sort_row = $stmt->get_result()->fetch_assoc();
         $sort_order = (int) ($sort_row['next_sort'] ?? 10);
-        $stmt = $mysqli->prepare("INSERT INTO work_plan_task_template_items (tenant_id, template_id, title, description, priority, sort_order) VALUES (?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("iissii", $tenant_id, $template_id, $title, $description, $priority, $sort_order);
+        $stmt = $mysqli->prepare("INSERT INTO work_plan_task_template_items (tenant_id, template_id, title, description, priority, fitness_exercise_id, sort_order) VALUES (?, ?, ?, ?, ?, NULLIF(?, ''), ?)");
+        $stmt->bind_param("iissisi", $tenant_id, $template_id, $title, $description, $priority, $fitness_exercise_id, $sort_order);
         $stmt->execute();
         $item_id = $mysqli->insert_id;
     }
@@ -4240,13 +6374,13 @@ if ($action === 'generate_invite') {
             $professional_id = (int) $appointment_manage_result[1]['professional_id'];
         }
     }
-    $stmt = $mysqli->prepare("SELECT title, description, priority FROM work_plan_task_template_items WHERE tenant_id = ? AND template_id = ? ORDER BY sort_order ASC, id ASC");
+    $stmt = $mysqli->prepare("SELECT title, description, priority, fitness_exercise_id FROM work_plan_task_template_items WHERE tenant_id = ? AND template_id = ? ORDER BY sort_order ASC, id ASC");
     $stmt->bind_param("ii", $tenant_id, $template_id);
     $stmt->execute();
     $items_res = $stmt->get_result();
     $insert = $mysqli->prepare("
-        INSERT INTO patient_work_plan_tasks (tenant_id, patient_id, appointment_id, professional_id, title, description, status, priority, visible_to_patient, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+        INSERT INTO patient_work_plan_tasks (tenant_id, patient_id, appointment_id, professional_id, title, description, status, priority, visible_to_patient, fitness_exercise_id, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, NULLIF(?, ''), ?)
     ");
     $inserted = 0;
     while ($item = $items_res->fetch_assoc()) {
@@ -4256,7 +6390,8 @@ if ($action === 'generate_invite') {
         }
         $description = $item['description'] ?? '';
         $priority = (int) ($item['priority'] ?? 2);
-        $insert->bind_param("iiiissiii", $tenant_id, $patient_id, $appointment_id_db, $professional_id, $title, $description, $priority, $visible_to_patient_default, $session_user_id);
+        $fitness_exercise_id = $item['fitness_exercise_id'] ?? '';
+        $insert->bind_param("iiiissiisi", $tenant_id, $patient_id, $appointment_id_db, $professional_id, $title, $description, $priority, $visible_to_patient_default, $fitness_exercise_id, $session_user_id);
         $insert->execute();
         $inserted++;
     }
@@ -4361,6 +6496,39 @@ if ($action === 'generate_invite') {
     $emergency_contact_relation = trim($_POST['emergency_contact_relation'] ?? '');
     $admission_date = trim($_POST['admission_date'] ?? '');
     $notes = trim($_POST['notes'] ?? '');
+    $physical_sex = trim((string) ($_POST['physical_sex'] ?? ''));
+    $weight_kg = nullable_decimal_value($_POST['weight_kg'] ?? '', 500);
+    $height_cm = nullable_decimal_value($_POST['height_cm'] ?? '', 280);
+    $body_fat_percentage = nullable_decimal_value($_POST['body_fat_percentage'] ?? '', 80);
+    $waist_cm = nullable_decimal_value($_POST['waist_cm'] ?? '', 300);
+    $hip_cm = nullable_decimal_value($_POST['hip_cm'] ?? '', 300);
+    $chest_cm = nullable_decimal_value($_POST['chest_cm'] ?? '', 300);
+    $thigh_cm = nullable_decimal_value($_POST['thigh_cm'] ?? '', 200);
+    $biceps_cm = nullable_decimal_value($_POST['biceps_cm'] ?? '', 120);
+    $calf_cm = nullable_decimal_value($_POST['calf_cm'] ?? '', 120);
+    $skinfold_triceps_mm = nullable_decimal_value($_POST['skinfold_triceps_mm'] ?? '', 120);
+    $skinfold_subscapular_mm = nullable_decimal_value($_POST['skinfold_subscapular_mm'] ?? '', 120);
+    $skinfold_suprailiac_mm = nullable_decimal_value($_POST['skinfold_suprailiac_mm'] ?? '', 120);
+    $skinfold_abdominal_mm = nullable_decimal_value($_POST['skinfold_abdominal_mm'] ?? '', 120);
+    $skinfold_chest_mm = nullable_decimal_value($_POST['skinfold_chest_mm'] ?? '', 120);
+    $skinfold_thigh_mm = nullable_decimal_value($_POST['skinfold_thigh_mm'] ?? '', 120);
+    $physical_metrics = [
+        'weight_kg' => $weight_kg,
+        'height_cm' => $height_cm,
+        'body_fat_percentage' => $body_fat_percentage,
+        'waist_cm' => $waist_cm,
+        'hip_cm' => $hip_cm,
+        'chest_cm' => $chest_cm,
+        'thigh_cm' => $thigh_cm,
+        'biceps_cm' => $biceps_cm,
+        'calf_cm' => $calf_cm,
+        'skinfold_triceps_mm' => $skinfold_triceps_mm,
+        'skinfold_subscapular_mm' => $skinfold_subscapular_mm,
+        'skinfold_suprailiac_mm' => $skinfold_suprailiac_mm,
+        'skinfold_abdominal_mm' => $skinfold_abdominal_mm,
+        'skinfold_chest_mm' => $skinfold_chest_mm,
+        'skinfold_thigh_mm' => $skinfold_thigh_mm
+    ];
     $professional_was_posted = array_key_exists('professional_id', $_POST);
     if ($is_superadmin && $professional_was_posted) {
         $selected_professional_id = max(0, (int) ($_POST['professional_id'] ?? 0));
@@ -4396,9 +6564,9 @@ if ($action === 'generate_invite') {
         $knowledge_problem_id = 0;
     }
     if ($knowledge_problem_id > 0) {
-        $sector_key = current_knowledge_sector_key($mysqli);
-        $stmt = $mysqli->prepare("SELECT id FROM knowledge_problems WHERE id = ? AND sector_key = ? LIMIT 1");
-        $stmt->bind_param("is", $knowledge_problem_id, $sector_key);
+        $sector_sql = knowledge_sector_in_sql($mysqli, allowed_knowledge_sector_keys($mysqli));
+        $stmt = $mysqli->prepare("SELECT id FROM knowledge_problems WHERE id = ? AND sector_key IN ($sector_sql) LIMIT 1");
+        $stmt->bind_param("i", $knowledge_problem_id);
         $stmt->execute();
         if (!$stmt->get_result()->fetch_assoc()) {
             echo json_encode(['success' => false, 'error' => 'El problema o diagnostico seleccionado no existe.']);
@@ -4412,6 +6580,9 @@ if ($action === 'generate_invite') {
     $emergency_contact_phone = $emergency_contact_phone !== '' ? $emergency_contact_phone : null;
     $emergency_contact_relation = $emergency_contact_relation !== '' ? $emergency_contact_relation : null;
     $admission_date = $admission_date !== '' ? $admission_date : date('Y-m-d');
+    if (!in_array($physical_sex, ['male', 'female'], true)) {
+        $physical_sex = null;
+    }
 
     if ($name === '') {
         echo json_encode(['success' => false, 'error' => 'Indica el nombre del paciente.']);
@@ -4450,10 +6621,26 @@ if ($action === 'generate_invite') {
         }
     }
 
+    $creating_patient = $patient_id <= 0;
     $password_setup_users = [];
     $mysqli->begin_transaction();
     $password_setup_users = [];
     try {
+        $previous_physical_metrics = null;
+        if (!$creating_patient) {
+            $stmt = $mysqli->prepare("
+                SELECT physical_sex, weight_kg, height_cm, body_fat_percentage, waist_cm, hip_cm, chest_cm, thigh_cm, biceps_cm, calf_cm,
+                       skinfold_triceps_mm, skinfold_subscapular_mm, skinfold_suprailiac_mm,
+                       skinfold_abdominal_mm, skinfold_chest_mm, skinfold_thigh_mm
+                FROM patient_profiles
+                WHERE tenant_id = ? AND user_id = ?
+                LIMIT 1
+            ");
+            $stmt->bind_param("ii", $tenant_id, $patient_id);
+            $stmt->execute();
+            $previous_physical_metrics = $stmt->get_result()->fetch_assoc();
+        }
+
         if ($patient_id > 0) {
             $stmt = $mysqli->prepare("UPDATE users SET name = ?, email = ?, phone = ? WHERE tenant_id = ? AND id = ? AND role = 'patient'");
             $stmt->bind_param("sssii", $name, $email, $phone, $tenant_id, $patient_id);
@@ -4511,6 +6698,48 @@ if ($action === 'generate_invite') {
             $notes
         );
         $stmt->execute();
+        $stmt = $mysqli->prepare("
+            UPDATE patient_profiles
+            SET physical_sex = ?,
+                weight_kg = ?,
+                height_cm = ?,
+                body_fat_percentage = ?,
+                waist_cm = ?,
+                hip_cm = ?,
+                chest_cm = ?,
+                thigh_cm = ?,
+                biceps_cm = ?,
+                calf_cm = ?,
+                skinfold_triceps_mm = ?,
+                skinfold_subscapular_mm = ?,
+                skinfold_suprailiac_mm = ?,
+                skinfold_abdominal_mm = ?,
+                skinfold_chest_mm = ?,
+                skinfold_thigh_mm = ?
+            WHERE tenant_id = ? AND user_id = ?
+        ");
+        $stmt->bind_param(
+            "ssssssssssssssssii",
+            $physical_sex,
+            $weight_kg,
+            $height_cm,
+            $body_fat_percentage,
+            $waist_cm,
+            $hip_cm,
+            $chest_cm,
+            $thigh_cm,
+            $biceps_cm,
+            $calf_cm,
+            $skinfold_triceps_mm,
+            $skinfold_subscapular_mm,
+            $skinfold_suprailiac_mm,
+            $skinfold_abdominal_mm,
+            $skinfold_chest_mm,
+            $skinfold_thigh_mm,
+            $tenant_id,
+            $patient_id
+        );
+        $stmt->execute();
         if ($selected_professional_id > 0) {
             $stmt = $mysqli->prepare("UPDATE patient_professionals SET is_primary = 0 WHERE tenant_id = ? AND patient_id = ?");
             $stmt->bind_param("ii", $tenant_id, $patient_id);
@@ -4538,6 +6767,11 @@ if ($action === 'generate_invite') {
             $stmt->bind_param("sii", $uploaded_photo_path, $tenant_id, $patient_id);
             $stmt->execute();
         }
+        if ($creating_patient) {
+            create_initial_patient_evolution_if_needed($mysqli, $tenant_id, $patient_id, $profile_professional_id, $admission_date, $physical_metrics, (int) ($_SESSION['user_id'] ?? 0));
+        } elseif (patient_physical_metrics_changed($previous_physical_metrics, $physical_metrics, $physical_sex)) {
+            upsert_today_patient_evolution_from_profile_metrics($mysqli, $tenant_id, $patient_id, $profile_professional_id, $physical_metrics, (int) ($_SESSION['user_id'] ?? 0));
+        }
         $mysqli->commit();
         echo json_encode(['success' => true, 'message' => 'Paciente guardado correctamente.', 'patient_id' => $patient_id]);
     } catch (\Exception $e) {
@@ -4546,7 +6780,7 @@ if ($action === 'generate_invite') {
     }
 } elseif ($action === 'transfer_patient_professional') {
     if (!$is_superadmin) {
-        echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede traspasar pacientes.']);
+        echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede realizar traspasos.']);
         exit;
     }
     ensure_cabinet_schema($mysqli);
@@ -4576,7 +6810,7 @@ if ($action === 'generate_invite') {
     }
     $current_professional_id = cabinet_patient_primary_professional_id($mysqli, $patient_id);
     if ($current_professional_id > 0 && (int) ($settings['allow_patient_transfer'] ?? 0) !== 1) {
-        echo json_encode(['success' => false, 'error' => 'El traspaso de pacientes no esta activado en configuracion.']);
+        echo json_encode(['success' => false, 'error' => 'El traspaso no esta activado en configuracion.']);
         exit;
     }
     if ($current_professional_id === $target_professional_id) {
@@ -4749,12 +6983,14 @@ if ($action === 'generate_invite') {
           AND a.status = 'booked'
           $professional_filter
     ";
-    $now_sql = $mysqli->real_escape_string(date('Y-m-d H:i:s'));
+    $today_sql = $mysqli->real_escape_string(date('Y-m-d'));
+    $now_time_sql = $mysqli->real_escape_string(date('H:i:s'));
 
     $current_res = $mysqli->query("
         $base_select
-          AND CONCAT(a.appointment_date, ' ', a.appointment_time) <= '$now_sql'
-          AND DATE_ADD(CONCAT(a.appointment_date, ' ', a.appointment_time), INTERVAL COALESCE(a.duration_minutes, so.duration_minutes, 60) MINUTE) > '$now_sql'
+          AND a.appointment_date = '$today_sql'
+          AND a.appointment_time <= '$now_time_sql'
+          AND ADDTIME(a.appointment_time, SEC_TO_TIME(COALESCE(a.duration_minutes, so.duration_minutes, 60) * 60)) > '$now_time_sql'
         ORDER BY a.appointment_date ASC, a.appointment_time ASC
         LIMIT 1
     ");
@@ -4762,7 +6998,7 @@ if ($action === 'generate_invite') {
     $exclude_current = $current ? " AND a.id <> " . (int) $current['id'] : '';
     $next_res = $mysqli->query("
         $base_select
-          AND CONCAT(a.appointment_date, ' ', a.appointment_time) > '$now_sql'
+          AND (a.appointment_date > '$today_sql' OR (a.appointment_date = '$today_sql' AND a.appointment_time > '$now_time_sql'))
           $exclude_current
         ORDER BY a.appointment_date ASC, a.appointment_time ASC
         LIMIT 1
@@ -5105,7 +7341,7 @@ if ($action === 'generate_invite') {
         SELECT COALESCE(a.payment_method, 'manual') AS payment_method,
                COALESCE(SUM(COALESCE(aso.price, 0)), 0) AS amount
         FROM appointments a
-        LEFT JOIN appointment_service_options aso ON aso.id = a.service_option_id
+        LEFT JOIN appointment_service_options aso ON aso.id = a.service_option_id AND aso.tenant_id = a.tenant_id
         WHERE a.status = 'booked'
           AND COALESCE(a.payment_status, 'pending') = 'paid'
           AND a.appointment_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
@@ -5184,10 +7420,10 @@ if ($action === 'generate_invite') {
                u.name AS patient_name, u.email AS patient_email, u.phone AS patient_phone,
                p.display_name AS professional_name
         FROM appointments a
-        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id
-        LEFT JOIN appointment_services s ON s.id = so.service_id
-        JOIN users u ON u.id = a.user_id
-        LEFT JOIN professionals p ON p.id = a.professional_id
+        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id AND so.tenant_id = a.tenant_id
+        LEFT JOIN appointment_services s ON s.id = so.service_id AND s.tenant_id = a.tenant_id
+        JOIN users u ON u.id = a.user_id AND u.tenant_id = a.tenant_id
+        LEFT JOIN professionals p ON p.id = a.professional_id AND p.tenant_id = a.tenant_id
         WHERE a.status = 'cancelled'
           AND COALESCE(a.cancelled_at, CONCAT(a.appointment_date, ' ', a.appointment_time)) >= DATE_SUB(NOW(), INTERVAL 30 DAY)
           $appointment_filter_a
@@ -5418,7 +7654,7 @@ if ($action === 'generate_invite') {
     echo json_encode(['success' => true, 'deleted' => $stmt->affected_rows]);
 } elseif ($action === 'get_cabinet_settings') {
     if (!$is_superadmin) {
-        echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede gestionar el modo gabinete.']);
+        echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede gestionar el equipo.']);
         exit;
     }
     ensure_payment_settings_table($mysqli);
@@ -5427,13 +7663,19 @@ if ($action === 'generate_invite') {
     $settings_res = $mysqli->query("SELECT show_team_public, allow_patient_transfer, new_patient_booking_mode, new_patient_fixed_professional_id, profile_image_path FROM payment_settings WHERE tenant_id = $tenant_id");
     $settings = $settings_res ? $settings_res->fetch_assoc() : ['show_team_public' => 0, 'allow_patient_transfer' => 0, 'new_patient_booking_mode' => 'day_first', 'new_patient_fixed_professional_id' => null];
     $dashboard_photo_path = $settings['profile_image_path'] ?? '';
+    $knowledge_columns_available = professional_knowledge_sector_columns_available($mysqli);
+    $knowledge_settings_select = $knowledge_columns_available
+        ? "ps.knowledge_sector_mode, ps.knowledge_sector_keys_json"
+        : "'own' AS knowledge_sector_mode, NULL AS knowledge_sector_keys_json";
     $res = $mysqli->query("
         SELECT p.id, p.user_id, p.display_name, p.professional_title, p.license_number, p.professional_specialty, p.public_bio,
                p.public_photo_path, p.public_email, p.public_phone, p.instagram_url, p.facebook_url, p.tiktok_url,
                p.appointment_summary_email_mode,
-               p.is_active, u.email AS login_email, u.role
+               p.is_active, u.email AS login_email, u.role,
+               $knowledge_settings_select
         FROM professionals p
         LEFT JOIN users u ON u.id = p.user_id AND u.tenant_id = p.tenant_id
+        LEFT JOIN professional_settings ps ON ps.professional_id = p.id AND ps.tenant_id = p.tenant_id
         WHERE p.tenant_id = $tenant_id
         ORDER BY p.sort_order ASC, p.display_name ASC
     ");
@@ -5458,6 +7700,8 @@ if ($action === 'generate_invite') {
             'facebook_url' => $row['facebook_url'] ?? '',
             'tiktok_url' => $row['tiktok_url'] ?? '',
             'appointment_summary_email_mode' => $row['appointment_summary_email_mode'] ?? 'on_booking',
+            'knowledge_sector_mode' => in_array($row['knowledge_sector_mode'] ?? 'own', ['own', 'related', 'custom'], true) ? $row['knowledge_sector_mode'] : 'own',
+            'knowledge_sector_keys' => normalize_knowledge_sector_keys($row['knowledge_sector_keys_json'] ?? ''),
             'role' => in_array($row['role'] ?? 'admin', ['superadmin', 'admin'], true) ? $row['role'] : 'admin',
             'is_active' => (int) ($row['is_active'] ?? 1),
             'is_current_user' => $is_current_user
@@ -5465,10 +7709,41 @@ if ($action === 'generate_invite') {
     }
 
     echo json_encode(['success' => true, 'settings' => $settings, 'professionals' => $professionals]);
+} elseif ($action === 'knowledge_sector_options') {
+    if (!$is_superadmin) {
+        echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede configurar el equipo.']);
+        exit;
+    }
+    if (!app_feature_enabled_from_db($mysqli, 'knowledgeBase.enabled', false)) {
+        echo json_encode(['success' => true, 'enabled' => false, 'multi_sector_enabled' => false, 'sectors' => []]);
+        exit;
+    }
+    $main_sector = current_knowledge_sector_key($mysqli);
+    $available = available_knowledge_sectors($mysqli);
+    $available_keys = array_column($available, 'key');
+    if (!in_array($main_sector, $available_keys, true)) {
+        $labels = knowledge_sector_label_map();
+        $available[] = [
+            'key' => $main_sector,
+            'name' => $labels[$main_sector] ?? ucfirst(str_replace(['_', '-'], ' ', $main_sector)),
+            'total' => 0
+        ];
+    }
+    $related = array_values(array_filter(knowledge_related_sector_presets()[$main_sector] ?? [], static function ($key) use ($available_keys) {
+        return in_array($key, $available_keys, true);
+    }));
+    echo json_encode([
+        'success' => true,
+        'enabled' => true,
+        'multi_sector_enabled' => knowledge_multi_sector_enabled($mysqli),
+        'main_sector' => $main_sector,
+        'related_sectors' => $related,
+        'sectors' => $available
+    ]);
 } elseif ($action === 'check_professional_delete') {
     ensure_action_feature($mysqli, 'team.enabled', 'El equipo de trabajo no esta disponible en este plan.');
     if (!$is_superadmin) {
-        echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede gestionar el modo gabinete.']);
+        echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede gestionar el equipo.']);
         exit;
     }
     ensure_cabinet_schema($mysqli);
@@ -5566,7 +7841,7 @@ if ($action === 'generate_invite') {
 } elseif ($action === 'delete_professional') {
     ensure_action_feature($mysqli, 'team.enabled', 'El equipo de trabajo no esta disponible en este plan.');
     if (!$is_superadmin) {
-        echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede gestionar el modo gabinete.']);
+        echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede gestionar el equipo.']);
         exit;
     }
     ensure_cabinet_schema($mysqli);
@@ -5633,7 +7908,7 @@ if ($action === 'generate_invite') {
 
     if ($usage_total > 0) {
         if ($target_professional_id <= 0 || $target_professional_id === $professional_id) {
-            echo json_encode(['success' => false, 'error' => 'Elige otro profesional para traspasar citas y pacientes antes de borrar.']);
+            echo json_encode(['success' => false, 'error' => 'Elige otro profesional para traspasar citas y registros asignados antes de borrar.']);
             exit;
         }
         $stmt = $mysqli->prepare("SELECT id FROM professionals WHERE tenant_id = ? AND id = ? AND is_active = 1 LIMIT 1");
@@ -5704,7 +7979,7 @@ if ($action === 'generate_invite') {
 } elseif ($action === 'save_cabinet_settings') {
     ensure_action_feature($mysqli, 'team.enabled', 'El equipo de trabajo no esta disponible en este plan.');
     if (!$is_superadmin) {
-        echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede gestionar el modo gabinete.']);
+        echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede gestionar el equipo.']);
         exit;
     }
     ensure_payment_settings_table($mysqli);
@@ -5723,7 +7998,7 @@ if ($action === 'generate_invite') {
     } elseif ($new_patient_fixed_professional_id <= 0) {
         $new_patient_fixed_professional_id = cabinet_superadmin_professional_id($mysqli);
         if ($new_patient_fixed_professional_id <= 0) {
-            echo json_encode(['success' => false, 'error' => 'No se pudo localizar el profesional administrador para derivar nuevos pacientes.']);
+            echo json_encode(['success' => false, 'error' => 'No se pudo localizar el profesional administrador para derivar nuevos registros.']);
             exit;
         }
     } else {
@@ -5778,6 +8053,17 @@ if ($action === 'generate_invite') {
             if (!in_array($summary_mode, ['disabled', 'tomorrow_evening', 'today_morning', 'on_booking'], true)) {
                 $summary_mode = 'on_booking';
             }
+            $knowledge_sector_mode = (string) ($professional['knowledge_sector_mode'] ?? 'own');
+            if (!knowledge_multi_sector_enabled($mysqli) || !in_array($knowledge_sector_mode, ['own', 'related', 'custom'], true)) {
+                $knowledge_sector_mode = 'own';
+            }
+            $knowledge_sector_keys = normalize_knowledge_sector_keys($professional['knowledge_sector_keys'] ?? []);
+            $available_knowledge_keys = array_column(available_knowledge_sectors($mysqli), 'key');
+            $main_knowledge_sector = current_knowledge_sector_key($mysqli);
+            $knowledge_sector_keys = array_values(array_unique(array_filter(array_merge([$main_knowledge_sector], $knowledge_sector_keys), static function ($key) use ($available_knowledge_keys, $main_knowledge_sector) {
+                return $key === $main_knowledge_sector || in_array($key, $available_knowledge_keys, true);
+            })));
+            $knowledge_sector_keys_json = $knowledge_sector_mode === 'custom' ? json_encode($knowledge_sector_keys, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null;
             $role = ($professional['role'] ?? 'admin') === 'superadmin' ? 'superadmin' : 'admin';
             $is_active = !empty($professional['is_active']) ? 1 : 0;
 
@@ -5844,6 +8130,15 @@ if ($action === 'generate_invite') {
             }
             if ($saved_professional_id > 0) {
                 cabinet_seed_professional_settings_from_superadmin($mysqli, $saved_professional_id);
+                if (professional_knowledge_sector_columns_available($mysqli)) {
+                    $stmt = $mysqli->prepare("
+                        UPDATE professional_settings
+                        SET knowledge_sector_mode = ?, knowledge_sector_keys_json = ?
+                        WHERE tenant_id = ? AND professional_id = ?
+                    ");
+                    $stmt->bind_param("ssii", $knowledge_sector_mode, $knowledge_sector_keys_json, $tenant_id, $saved_professional_id);
+                    $stmt->execute();
+                }
             }
 
             if ($photo_index === $index && isset($_FILES['professional_photo']) && ($_FILES['professional_photo']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
@@ -5896,7 +8191,7 @@ if ($action === 'generate_invite') {
     sector_texts_ensure_payment_column($mysqli);
 
     $res = $mysqli->query("
-        SELECT app_name, site_tagline, site_phone, profile_image_path, landing_image_path, primary_color, show_profile_image_public, show_prices_public, show_contact_public, plan_key, online_booking_enabled, patient_registration_mode, patient_tasks_visible_default, initial_calendar_view, bonuses_enabled, create_compensation_bonus_on_paid_cancel, online_payment_enabled, environment, merchant_code, terminal,
+        SELECT app_name, site_tagline, site_phone, profile_image_path, landing_image_path, primary_color, show_profile_image_public, show_prices_public, show_contact_public, plan_key, online_booking_enabled, patient_registration_mode, patient_tasks_visible_default, work_plan_task_status_enabled, initial_calendar_view, bonuses_enabled, create_compensation_bonus_on_paid_cancel, online_payment_enabled, environment, merchant_code, terminal,
                appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, admin_notification_email,
                appointment_delivery_mode, available_session_types, available_session_durations, display_effective_duration_enabled, display_duration_offset_minutes,
                appointment_reminder_enabled,
@@ -6210,6 +8505,7 @@ if ($action === 'generate_invite') {
     $show_contact_public = isset($_POST['show_contact_public']) && $_POST['show_contact_public'] === '1' ? 1 : 0;
     $online_booking_enabled = isset($_POST['online_booking_enabled']) && $_POST['online_booking_enabled'] === '1' ? 1 : 0;
     $patient_tasks_visible_default = isset($_POST['patient_tasks_visible_default']) && $_POST['patient_tasks_visible_default'] === '1' ? 1 : 0;
+    $work_plan_task_status_enabled = isset($_POST['work_plan_task_status_enabled']) && $_POST['work_plan_task_status_enabled'] === '1' ? 1 : 0;
     $patient_registration_mode = $_POST['patient_registration_mode'] ?? 'invite';
     if (!in_array($patient_registration_mode, ['invite', 'open'], true)) {
         $patient_registration_mode = 'invite';
@@ -6270,7 +8566,7 @@ if ($action === 'generate_invite') {
         exit;
     }
     $primary_color = strtolower($primary_color);
-    if (!in_array($initial_calendar_view, ['week', 'month'], true)) {
+    if (!in_array($initial_calendar_view, ['week', 'month', 'patients', 'upcoming'], true)) {
         $initial_calendar_view = 'month';
     }
 
@@ -6586,12 +8882,12 @@ if ($action === 'generate_invite') {
     }
 
     if ($uploaded_profile_image_path !== null) {
-        $stmt = $mysqli->prepare("UPDATE payment_settings SET profile_image_path = ?, show_profile_image_public = ?, show_prices_public = ?, show_contact_public = ?, online_booking_enabled = ?, patient_tasks_visible_default = ?, patient_registration_mode = ?, initial_calendar_view = ? WHERE tenant_id = $tenant_id");
-        $stmt->bind_param("siiiiiss", $uploaded_profile_image_path, $show_profile_image_public, $show_prices_public, $show_contact_public, $online_booking_enabled, $patient_tasks_visible_default, $patient_registration_mode, $initial_calendar_view);
+        $stmt = $mysqli->prepare("UPDATE payment_settings SET profile_image_path = ?, show_profile_image_public = ?, show_prices_public = ?, show_contact_public = ?, online_booking_enabled = ?, patient_tasks_visible_default = ?, work_plan_task_status_enabled = ?, patient_registration_mode = ?, initial_calendar_view = ? WHERE tenant_id = $tenant_id");
+        $stmt->bind_param("siiiiiiss", $uploaded_profile_image_path, $show_profile_image_public, $show_prices_public, $show_contact_public, $online_booking_enabled, $patient_tasks_visible_default, $work_plan_task_status_enabled, $patient_registration_mode, $initial_calendar_view);
         $stmt->execute();
     } else {
-        $stmt = $mysqli->prepare("UPDATE payment_settings SET show_profile_image_public = ?, show_prices_public = ?, show_contact_public = ?, online_booking_enabled = ?, patient_tasks_visible_default = ?, patient_registration_mode = ?, initial_calendar_view = ? WHERE tenant_id = $tenant_id");
-        $stmt->bind_param("iiiiiss", $show_profile_image_public, $show_prices_public, $show_contact_public, $online_booking_enabled, $patient_tasks_visible_default, $patient_registration_mode, $initial_calendar_view);
+        $stmt = $mysqli->prepare("UPDATE payment_settings SET show_profile_image_public = ?, show_prices_public = ?, show_contact_public = ?, online_booking_enabled = ?, patient_tasks_visible_default = ?, work_plan_task_status_enabled = ?, patient_registration_mode = ?, initial_calendar_view = ? WHERE tenant_id = $tenant_id");
+        $stmt->bind_param("iiiiiiss", $show_profile_image_public, $show_prices_public, $show_contact_public, $online_booking_enabled, $patient_tasks_visible_default, $work_plan_task_status_enabled, $patient_registration_mode, $initial_calendar_view);
         $stmt->execute();
     }
 

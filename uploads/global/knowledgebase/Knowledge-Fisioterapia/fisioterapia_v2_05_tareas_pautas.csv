@@ -1,0 +1,91 @@
+﻿tarea_id;titulo;descripcion;objetivo;nivel_riesgo;duracion_estimada;tipo_intervencion;tecnica_id
+FIS2_TA001;Ficha inicial de fisioterapia;Registrar motivo, historia, evolución, función, medicación declarada, actividad y objetivos.;Estructurar valoración inicial.;bajo;20-40 min;evaluación;FIS2_T001
+FIS2_TA002;Checklist de banderas rojas;Revisar síntomas de alarma y criterios de derivación antes de pautar ejercicio.;Aumentar seguridad.;alto;cada valoración;seguridad;FIS2_T002
+FIS2_TA003;Escala dolor-función;Registrar dolor 0-10, actividad limitada y objetivo funcional.;Medir evolución.;bajo;cada sesión;evaluación;FIS2_T004
+FIS2_TA004;Test funcional elegido;Seleccionar test relevante: sit-to-stand, escaleras, marcha, alcance, etc.;Vincular terapia a función real.;bajo;inicio/revisión;evaluación;FIS2_T003
+FIS2_TA005;Educación de dolor básica;Explicar que dolor no siempre equivale a daño y cómo dosificar actividad.;Reducir miedo y mejorar autocuidado.;bajo;sesión;educación;FIS2_T005
+FIS2_TA006;Plan de actividad gradual;Definir actividad base y progresión pequeña semanal.;Recuperar tolerancia.;bajo;semanal;ejercicio;FIS2_T006
+FIS2_TA007;Pacing diario;Planificar bloques de actividad-descanso evitando picos de sobreesfuerzo.;Regular síntomas persistentes.;bajo;diario;dolor_persistente;FIS2_T007
+FIS2_TA008;Programa domiciliario claro;Entregar 3-5 ejercicios con dosis, frecuencia y criterios de pausa.;Mejorar adherencia.;bajo;semanal;tareas;FIS2_T061
+FIS2_TA009;Registro de adherencia;Marcar ejercicios realizados, dolor antes/después y barreras.;Ajustar pauta.;bajo;semanal;hábitos;FIS2_T062
+FIS2_TA010;Semáforo de dolor 24h;Verde continuar, amarillo ajustar, rojo parar/consultar según evolución.;Dosificar con seguridad.;medio;cada ejercicio;seguridad;FIS2_T064
+FIS2_TA011;Retracción cervical suave;Ejercicio de control cervical en rango tolerado.;Mejorar control cervical.;bajo;diario;control_motor;FIS2_T011
+FIS2_TA012;Movilidad cervical en rangos cómodos;Flexión/extensión/rotación/inclinación suaves sin forzar.;Reducir rigidez cervical.;bajo;diario;movilidad;FIS2_T012
+FIS2_TA013;Pausas cervicales en pantalla;Micro-pausas con movimiento de cuello/hombros y cambio postural.;Reducir carga sostenida.;bajo;cada 45-60 min;ergonomía;FIS2_T056
+FIS2_TA014;Ajuste básico de pantalla;Revisar altura, distancia, silla, teclado y pausas.;Mejorar entorno de trabajo.;bajo;una vez/revisión;ergonomía;FIS2_T055
+FIS2_TA015;Extensión torácica sobre respaldo/toalla;Movilizar extensión dorsal de forma cómoda.;Mejorar movilidad torácica.;bajo;3-5 días/semana;movilidad;FIS2_T013
+FIS2_TA016;Rotación torácica en cuadrupedia;Rotaciones suaves coordinadas con respiración.;Mejorar rotación dorsal.;bajo;3-5 días/semana;movilidad;FIS2_T013
+FIS2_TA017;Respiración costal lateral;Practicar expansión costal y respiración lenta.;Mejorar control respiratorio.;medio;diario;respiratoria;FIS2_T014
+FIS2_TA018;Dead bug adaptado;Ejercicio de control lumbo-pélvico con extremidades.;Mejorar estabilidad lumbar.;bajo;3 días/semana;control_motor;FIS2_T015
+FIS2_TA019;Bird dog progresivo;Trabajo de estabilidad en cuadrupedia.;Mejorar coordinación tronco-extremidad.;bajo;3 días/semana;control_motor;FIS2_T015
+FIS2_TA020;Puente de glúteo;Extensión de cadera con control lumbar.;Mejorar fuerza y control lumbo-pélvico.;bajo;3 días/semana;fuerza;FIS2_T016
+FIS2_TA021;Plancha lateral modificada;Progresión de core lateral según tolerancia.;Mejorar estabilidad lateral.;bajo;2-3 días/semana;fuerza;FIS2_T016
+FIS2_TA022;Higiene de carga lumbar;Practicar acercar carga, variar postura y progresar peso.;Mejorar manejo de cargas.;bajo;según tarea;educación;FIS2_T017
+FIS2_TA023;Neurodinamia ciática suave;Movilización neural no provocativa si indicada.;Reducir sensibilidad neural.;medio;según pauta;neural;FIS2_T018
+FIS2_TA024;Exposición a flexión lumbar gradual;Reintroducir flexión de forma dosificada y segura si procede.;Reducir miedo al movimiento.;medio;semanal;dolor_persistente;FIS2_T054
+FIS2_TA025;Pendulares de hombro;Movimientos suaves de hombro en descarga si procede.;Mantener movilidad sin irritar.;medio;diario;movilidad;FIS2_T021
+FIS2_TA026;Movilidad asistida de hombro con bastón;Elevación/rotación asistida en rango tolerado.;Recuperar rango de hombro.;medio;diario;movilidad;FIS2_T021
+FIS2_TA027;Rotación externa con banda;Fortalecer manguito rotador de forma progresiva.;Mejorar estabilidad del hombro.;medio;3 días/semana;fuerza;FIS2_T020
+FIS2_TA028;Serrato en pared;Trabajo de control escapular y serrato anterior.;Mejorar escápula.;bajo;3 días/semana;fuerza/control;FIS2_T019
+FIS2_TA029;Remo con banda;Trabajo de tracción y control escapular.;Mejorar fuerza de espalda/hombro.;bajo;3 días/semana;fuerza/control;FIS2_T019
+FIS2_TA030;Progresión de elevación de brazo;Aumentar rango/carga de elevación según tolerancia.;Mejorar función de hombro.;medio;semanal;ejercicio;FIS2_T022
+FIS2_TA031;Isométrico de extensores de muñeca;Contracción de extensores de muñeca dosificada.;Mejorar tolerancia de codo lateral.;medio;diario/alterno;tendón;FIS2_T025
+FIS2_TA032;Excéntrico-concéntrico de muñeca;Carga progresiva de extensores/flexores según caso.;Fortalecer antebrazo.;medio;3 días/semana;fuerza;FIS2_T026
+FIS2_TA033;Prensión con pelota/toalla;Trabajo dosificado de agarre.;Mejorar fuerza funcional de mano.;bajo;3 días/semana;fuerza;FIS2_T023
+FIS2_TA034;Movilidad de muñeca/mano;Flexo-extensión, desviaciones y dedos en rango tolerado.;Mejorar movilidad distal.;bajo;diario;movilidad;FIS2_T009
+FIS2_TA035;Clamshell o abducción cadera;Fortalecer glúteo medio con control pélvico.;Mejorar estabilidad de cadera/rodilla.;bajo;3 días/semana;fuerza;FIS2_T027
+FIS2_TA036;Puente unilateral progresivo;Progresión de glúteo y control pélvico.;Mejorar fuerza posterior.;bajo;3 días/semana;fuerza;FIS2_T027
+FIS2_TA037;Movilidad 90/90 de cadera;Rotaciones de cadera en rango cómodo.;Mejorar movilidad de cadera.;bajo;3-5 días/semana;movilidad;FIS2_T028
+FIS2_TA038;Control de apoyo unipodal;Mantener pelvis estable en una pierna.;Mejorar control pélvico.;bajo;3 días/semana;control;FIS2_T037
+FIS2_TA039;Sentadilla a caja;Sentadilla parcial/progresiva a altura adecuada.;Mejorar fuerza funcional de rodilla.;medio;3 días/semana;fuerza;FIS2_T030
+FIS2_TA040;Step down controlado;Bajada de escalón con control de rodilla.;Mejorar control femoropatelar.;medio;2-3 días/semana;control_motor;FIS2_T029
+FIS2_TA041;Extensión terminal de rodilla;Trabajo de cuádriceps en rango final.;Mejorar control de extensión.;bajo;3 días/semana;fuerza;FIS2_T030
+FIS2_TA042;Curl femoral puente/deslizante;Trabajo progresivo de isquiosurales.;Mejorar cadena posterior.;bajo;2-3 días/semana;fuerza;FIS2_T031
+FIS2_TA043;Movilidad flexión-extensión rodilla;Rango de rodilla según tolerancia/fase.;Recuperar movilidad.;medio;diario;movilidad;FIS2_T032
+FIS2_TA044;Educación artrosis y ejercicio;Explicar beneficios de fuerza/actividad y manejo de brotes.;Mejorar autocuidado en artrosis.;medio;sesión;artrosis;FIS2_T066
+FIS2_TA045;Equilibrio monopodal con apoyo;Mantener equilibrio cerca de apoyo estable.;Mejorar propiocepción de tobillo.;medio;diario;propiocepción;FIS2_T033
+FIS2_TA046;Movilidad rodilla-pared tobillo;Dorsiflexión de tobillo dosificada.;Mejorar movilidad de tobillo.;bajo;diario;movilidad;FIS2_T034
+FIS2_TA047;Elevaciones de talón bilaterales;Trabajo de gemelo/sóleo progresivo.;Mejorar fuerza tríceps sural.;medio;3 días/semana;fuerza/tendón;FIS2_T035
+FIS2_TA048;Elevaciones de talón unilaterales progresivas;Progresión unilateral si tolera.;Rehabilitar Aquiles/pantorrilla.;medio;3 días/semana;fuerza/tendón;FIS2_T035
+FIS2_TA049;Short foot / arco activo;Control de intrínsecos del pie.;Mejorar soporte del pie.;bajo;3-5 días/semana;fuerza/control;FIS2_T036
+FIS2_TA050;Reeducación de marcha consciente;Practicar apoyo, cadencia y simetría.;Mejorar patrón de marcha.;medio;diario;funcional;FIS2_T037
+FIS2_TA051;Isométrico de tendón sintomático;Contracción sostenida en rango tolerado.;Mejorar tolerancia inicial de tendón.;medio;según pauta;tendón;FIS2_T025
+FIS2_TA052;Carga tendinosa progresiva;Subir carga/repeticiones de forma planificada.;Aumentar capacidad del tendón.;medio;semanal;tendón;FIS2_T024
+FIS2_TA053;Registro de carga y dolor 24h;Anotar ejercicio, dolor durante, después y al día siguiente.;Ajustar dosis de tendón.;medio;cada sesión;seguridad;FIS2_T064
+FIS2_TA054;Plan caminar-correr;Alternar caminata y carrera aumentando volumen lentamente.;Retornar a carrera.;medio;3 días/semana;readaptación;FIS2_T038
+FIS2_TA055;Saltos en el sitio progresivos;Iniciar pliometría baja con técnica y tolerancia.;Retornar a impacto.;medio;2 días/semana;readaptación;FIS2_T039
+FIS2_TA056;Aterrizaje controlado;Practicar caer con rodilla/cadera controladas.;Mejorar control de impacto.;medio;2 días/semana;readaptación;FIS2_T039
+FIS2_TA057;Cambios de dirección básicos;Progresar desplazamientos laterales, frenadas y giros.;Retornar a deporte.;medio;1-2 días/semana;readaptación;FIS2_T040
+FIS2_TA058;Checklist retorno deporte;Dolor, fuerza, confianza, test funcional y tolerancia al entrenamiento.;Tomar decisiones de retorno.;medio;revisión;readaptación;FIS2_T041
+FIS2_TA059;Revisión de protocolo quirúrgico;Registrar fase, restricciones, objetivos y autorización médica.;Respetar indicaciones quirúrgicas.;alto;cada revisión;postoperatorio;FIS2_T042
+FIS2_TA060;Movilidad autorizada postoperatoria;Ejercicios de rango permitidos según fase/protocolo.;Recuperar movimiento.;alto;diario;postoperatorio;FIS2_T044
+FIS2_TA061;Manejo de edema básico;Elevación, movilidad suave y medidas indicadas por profesional.;Controlar edema.;medio;diario;postoperatorio;FIS2_T043
+FIS2_TA062;Registro de signos postoperatorios;Vigilar fiebre, enrojecimiento, dolor progresivo, secreción o signos de alarma.;Detectar complicaciones.;alto;diario;seguridad;FIS2_T002
+FIS2_TA063;Práctica orientada a tarea neurológica;Repetir tarea funcional significativa con feedback.;Mejorar reaprendizaje motor.;alto;según plan;neurológica;FIS2_T045
+FIS2_TA064;Equilibrio seguro con apoyo;Ejercicios de equilibrio con protección y supervisión.;Mejorar estabilidad.;alto;según plan;neurológica;FIS2_T046
+FIS2_TA065;Marcha con señales externas;Caminar con ritmo, marcas o feedback si procede.;Mejorar marcha.;alto;según plan;neurológica;FIS2_T047
+FIS2_TA066;Sit-to-stand funcional;Levantarse/sentarse con asistencia/progresión.;Mejorar fuerza funcional.;medio;3 días/semana;funcional;FIS2_T048
+FIS2_TA067;Caminata graduada;Caminar a intensidad tolerada controlando esfuerzo y síntomas.;Mejorar tolerancia al esfuerzo.;medio;3-5 días/semana;cardiorrespiratoria;FIS2_T049
+FIS2_TA068;Escala de esfuerzo percibido;Registrar esfuerzo 0-10 y recuperación.;Dosificar actividad.;medio;cada sesión;seguridad;FIS2_T050
+FIS2_TA069;Respiración diafragmática/costal;Practicar respiración lenta y expansión costal.;Mejorar control respiratorio.;medio;diario;respiratoria;FIS2_T014
+FIS2_TA070;Sit-to-stand 30 segundos;Entrenar levantarse/sentarse con progresión.;Mejorar fuerza en mayores.;medio;3 días/semana;mayores;FIS2_T051
+FIS2_TA071;Equilibrio tándem con apoyo;Progresión de equilibrio cerca de soporte.;Reducir riesgo de caída.;alto;3-5 días/semana;mayores;FIS2_T052
+FIS2_TA072;Revisión entorno caídas;Identificar alfombras, iluminación, calzado, apoyos y obstáculos.;Mejorar seguridad en casa.;alto;mensual;mayores;FIS2_T052
+FIS2_TA073;Escalón funcional;Subir/bajar escalón controlado según tolerancia.;Mejorar autonomía.;medio;2-3 días/semana;funcional;FIS2_T068
+FIS2_TA074;Diario de dolor persistente;Registrar sueño, estrés, actividad, dolor, miedo y recuperación.;Identificar patrones biopsicosociales.;medio;7 días;dolor_persistente;FIS2_T053
+FIS2_TA075;Actividad valiosa graduada;Elegir actividad importante y progresarla en dosis pequeñas.;Recuperar participación.;medio;semanal;dolor_persistente;FIS2_T054
+FIS2_TA076;Plan de recaídas;Definir señales tempranas y ajustes antes de empeorar.;Prevenir recaídas.;bajo;mensual;prevención;FIS2_T065
+FIS2_TA077;Pausas activas laborales;2-5 minutos de movimiento durante jornada.;Reducir rigidez/fatiga.;bajo;diario;hábitos;FIS2_T056
+FIS2_TA078;Checklist ergonómico;Pantalla, silla, mesa, teclado, luz y pausas.;Mejorar entorno laboral.;bajo;mensual;ergonomía;FIS2_T055
+FIS2_TA079;Práctica de carga funcional;Levantar/cargar objeto adaptado con progresión.;Mejorar confianza y capacidad.;medio;semanal;ergonomía;FIS2_T057
+FIS2_TA080;Registro de sueño-recuperación;Anotar sueño, dolor, energía y actividad.;Relacionar recuperación y síntomas.;bajo;7 días;hábitos;FIS2_T058
+FIS2_TA081;Educación suelo pélvico básica;Explicar función, síntomas y cuándo derivar a especialista.;Orientar sin invadir especialidad.;medio;sesión;suelo_pélvico;FIS2_T059
+FIS2_TA082;Checklist derivación suelo pélvico;Incontinencia, dolor pélvico, posparto complicado, prolapsos o disfunción: derivar.;Detectar necesidad especializada.;alto;si procede;derivación;FIS2_T060
+FIS2_TA083;Coordinación interdisciplinar autorizada;Registrar consentimiento y profesional con quien coordinar.;Mejorar continuidad asistencial.;alto;según caso;seguridad;FIS2_T060
+FIS2_TA084;Mapa Body Muscles educativo;Marcar región implicada y objetivo de trabajo en mapa anatómico.;Mejorar comprensión del paciente.;bajo;sesión;educación;FIS2_T063
+FIS2_TA085;Revisión semanal de programa domiciliario;Ajustar ejercicios por adherencia, dolor, función y progreso.;Mantener eficacia del plan.;bajo;semanal;tareas;FIS2_T062
+FIS2_TA086;Plan de autocuidado del brote;Definir qué hacer ante aumento temporal de síntomas.;Reducir miedo y mejorar control.;medio;cuando proceda;prevención;FIS2_T065
+FIS2_TA087;Escala de confianza funcional;Valorar confianza 0-10 para tarea temida.;Medir miedo y progreso.;bajo;semanal;evaluación;FIS2_T004
+FIS2_TA088;Test de movilidad articular relevante;Medir rango con criterio simple y repetible.;Seguir movilidad.;bajo;inicio/revisión;evaluación;FIS2_T004
+FIS2_TA089;Test de fuerza funcional relevante;Usar test adaptado: 5x sit-to-stand, puente, elevación talón, etc.;Seguir fuerza funcional.;medio;inicio/revisión;evaluación;FIS2_T003
+FIS2_TA090;Plan de alta y mantenimiento;Definir ejercicios de mantenimiento, progresión y señales de consulta.;Cerrar proceso con autonomía.;bajo;alta;prevención;FIS2_T065

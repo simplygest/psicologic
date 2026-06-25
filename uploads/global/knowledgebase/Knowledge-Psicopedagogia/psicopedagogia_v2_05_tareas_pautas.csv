@@ -1,0 +1,63 @@
+tarea_id;titulo;descripcion;objetivo;nivel_riesgo;duracion_estimada;tecnica_id
+PSP2_TA001;Checklist de mochila y materiales;Lista visible para preparar mochila, deberes y materiales del día siguiente.;Reducir olvidos y dependencia adulta.;bajo;5-10 min diarios;PSP2_T003
+PSP2_TA002;Panel semanal de tareas;Organizar exámenes, deberes, entregas y actividades en un panel semanal.;Externalizar planificación.;bajo;15 min semanal;PSP2_T002
+PSP2_TA003;Pomodoro adaptado 10-5;Trabajar 10 minutos y descansar 5, ajustando según edad y tolerancia.;Sostener atención con descansos previstos.;bajo;diario;PSP2_T004
+PSP2_TA004;Primer paso visible;Escribir el primer paso mínimo de una tarea antes de empezar.;Reducir bloqueo de inicio.;bajo;cada tarea;PSP2_T005
+PSP2_TA005;Contrato de esfuerzo semanal;Acuerdo breve de conducta/objetivo con refuerzo específico.;Aumentar adherencia y motivación.;medio;semanal;PSP2_T007
+PSP2_TA006;Tarjeta de autoinstrucciones;Crear tarjeta: paro, leo, subrayo, hago, reviso.;Mejorar control ejecutivo.;bajo;diario;PSP2_T008
+PSP2_TA007;Registro de distractores;Anotar cuándo se distrae, por qué y qué ayuda a volver.;Detectar patrones de atención.;bajo;7 días;PSP2_T031
+PSP2_TA008;Juego de espera de turno;Practicar esperar turno en juego breve con refuerzo inmediato.;Reducir impulsividad.;bajo;2-3 veces/semana;PSP2_T006
+PSP2_TA009;Instrucciones de 1-2-3 pasos;Practicar seguir instrucciones graduadas y comprobar cumplimiento.;Mejorar memoria de trabajo.;bajo;diario;PSP2_T029
+PSP2_TA010;Objetivo SMART semanal;Definir objetivo concreto, medible y revisable para la semana.;Mejorar planificación.;bajo;semanal;PSP2_T030
+PSP2_TA011;Horario visual diario;Representar actividades del día con texto, pictos o colores.;Aumentar anticipación.;bajo;diario;PSP2_T011
+PSP2_TA012;Historia social de situación difícil;Crear historia social para recreo, cambio de clase, excursión o examen.;Anticipar conducta esperada.;bajo;antes de situación;PSP2_T012
+PSP2_TA013;Semáforo de sobrecarga sensorial;Identificar verde/amarillo/rojo y estrategia en cada nivel.;Prevenir crisis por sobrecarga.;medio;diario;PSP2_T014
+PSP2_TA014;Plan de transición;Aviso previo, temporizador, opción de cierre y siguiente actividad.;Facilitar cambios.;bajo;cada transición difícil;PSP2_T013
+PSP2_TA015;Guion para pedir ayuda;Practicar frases para pedir aclaración, pausa o ayuda.;Mejorar comunicación funcional.;bajo;semanal;PSP2_T015
+PSP2_TA016;Mapa de intereses como puente educativo;Usar un interés intenso para conectar con lectura, escritura o proyecto.;Aumentar motivación y participación.;bajo;semanal;PSP2_T018
+PSP2_TA017;Menú de pausas sensoriales;Seleccionar pausas posibles: agua, paseo, auriculares, rincón tranquilo.;Regular activación.;medio;diario;PSP2_T014
+PSP2_TA018;Preparar cambio imprevisto;Ensayar 'plan A/plan B' ante cambios habituales.;Aumentar flexibilidad.;bajo;semanal;PSP2_T032
+PSP2_TA019;Proyecto de enriquecimiento personal;Elegir tema, pregunta, producto final y calendario.;Aumentar reto cognitivo.;bajo;2-4 semanas;PSP2_T016
+PSP2_TA020;Compactación de ejercicios repetitivos;Reducir repetición si ya domina y sustituir por reto acordado.;Evitar aburrimiento curricular.;medio;según evaluación;PSP2_T017
+PSP2_TA021;Diario de errores útiles;Registrar un error y qué enseñó.;Reducir perfeccionismo.;bajo;semanal;PSP2_T032
+PSP2_TA022;Reto graduado;Elegir tarea ligeramente difícil pero alcanzable.;Trabajar frustración y esfuerzo.;bajo;semanal;PSP2_T030
+PSP2_TA023;Mapa de fortalezas y necesidades;Identificar fortalezas, dificultades y apoyos necesarios.;Comprender perfil 2e.;bajo;sesión;PSP2_T001
+PSP2_TA024;Conciencia fonológica con sílabas/fonemas;Juegos de segmentar, unir, quitar o cambiar sonidos.;Mejorar base fonológica.;medio;10 min diarios;PSP2_T019
+PSP2_TA025;Lectura de pseudopalabras graduada;Practicar decodificación de palabras nuevas sin memoria visual previa.;Mejorar decodificación.;medio;2-3 veces/semana;PSP2_T020
+PSP2_TA026;Lectura repetida cronometrada;Leer texto breve varias veces registrando precisión y fluidez.;Mejorar automatización.;bajo;3 veces/semana;PSP2_T021
+PSP2_TA027;Preguntas antes-durante-después;Responder predicción, idea principal e inferencia tras lectura.;Mejorar comprensión.;bajo;cada lectura;PSP2_T022
+PSP2_TA028;Resumen en tres frases;Extraer inicio, idea central y conclusión de texto breve.;Organizar comprensión.;bajo;semanal;PSP2_T022
+PSP2_TA029;Dictado preparado;Estudiar palabras objetivo antes del dictado y revisar patrón.;Mejorar ortografía funcional.;bajo;semanal;PSP2_T028
+PSP2_TA030;Recta numérica manipulativa;Ubicar números, saltos, comparaciones y operaciones en recta.;Desarrollar sentido numérico.;bajo;2-3 veces/semana;PSP2_T024
+PSP2_TA031;Descomposición de números;Representar números con decenas/unidades, bloques o dibujos.;Comprender composición numérica.;bajo;2-3 veces/semana;PSP2_T024
+PSP2_TA032;Plantilla de problema matemático;Datos, pregunta, operación, cálculo y comprobación.;Ordenar resolución.;bajo;cada problema;PSP2_T025
+PSP2_TA033;Práctica intercalada de operaciones;Mezclar tipos de operaciones para elegir estrategia correcta.;Mejorar transferencia.;bajo;semanal;PSP2_T038
+PSP2_TA034;Escala de ansiedad matemática;Valorar ansiedad 0-10 antes y después de práctica graduada.;Reducir bloqueo.;medio;semanal;PSP2_T035
+PSP2_TA035;Rutina de postura y agarre;Revisar postura, papel, prensión y presión antes de escribir.;Mejorar grafomotricidad.;medio;diario;PSP2_T026
+PSP2_TA036;Trazos funcionales breves;Practicar trazos o letras objetivo con descanso y calidad, no cantidad.;Mejorar legibilidad.;medio;5-10 min;PSP2_T026
+PSP2_TA037;Plantilla de párrafo;Idea principal, dos detalles y cierre.;Estructurar producción escrita.;bajo;cada texto;PSP2_T027
+PSP2_TA038;Revisión COPS;Revisar mayúsculas, orden, puntuación y ortografía.;Mejorar revisión escrita.;bajo;cada texto;PSP2_T031
+PSP2_TA039;Borrador oral previo;Explicar oralmente lo que se quiere escribir antes del borrador.;Facilitar expresión escrita.;bajo;cada texto;PSP2_T009
+PSP2_TA040;Memoria de trabajo externa;Usar papel auxiliar para datos, pasos o consignas.;Reducir carga cognitiva.;bajo;cada tarea;PSP2_T029
+PSP2_TA041;Planificar con cuatro casillas;Objetivo, materiales, pasos y revisión.;Mejorar planificación.;bajo;cada tarea larga;PSP2_T030
+PSP2_TA042;Autoevaluación con rúbrica simple;Revisar trabajo con 3-5 criterios visibles.;Mejorar monitorización.;bajo;cada entrega;PSP2_T031
+PSP2_TA043;Cambio de estrategia guiado;Si no funciona, elegir entre dos estrategias alternativas.;Mejorar flexibilidad.;medio;semanal;PSP2_T032
+PSP2_TA044;Simulacro de examen graduado;Practicar examen breve con condiciones adaptadas y feedback.;Reducir ansiedad de examen.;medio;semanal;PSP2_T034
+PSP2_TA045;Tarjeta de afrontamiento de examen;Frases útiles, respiración y pasos si aparece bloqueo.;Manejar ansiedad académica.;bajo;antes de examen;PSP2_T033
+PSP2_TA046;Exposición oral en escala;Practicar de leer a una persona hasta exponer a grupo pequeño.;Reducir miedo a participar.;medio;semanal;PSP2_T034
+PSP2_TA047;Reformular error académico;Convertir error en información: qué pasó, qué haré distinto.;Reducir miedo al error.;bajo;semanal;PSP2_T035
+PSP2_TA048;Registro de autoeficacia;Anotar esfuerzo, estrategia usada y avance pequeño.;Mejorar autoconcepto académico.;bajo;semanal;PSP2_T006
+PSP2_TA049;Tarjetas de recuperación activa;Crear preguntas/respuestas y practicar sin mirar apuntes.;Mejorar memoria a largo plazo.;bajo;3 veces/semana;PSP2_T036
+PSP2_TA050;Calendario de repaso espaciado;Programar repasos 1-3-7-14 días según contenido.;Mejorar retención.;bajo;semanal;PSP2_T037
+PSP2_TA051;Mapa conceptual de tema;Jerarquizar conceptos y relaciones antes de estudiar.;Organizar información.;bajo;por tema;PSP2_T039
+PSP2_TA052;Diario metacognitivo;Responder: qué sabía, qué no, qué estrategia funcionó.;Mejorar autorregulación del aprendizaje.;bajo;semanal;PSP2_T040
+PSP2_TA053;Ficha de adaptación educativa;Describir necesidad, ajuste, responsable, duración y revisión.;Formalizar apoyos.;medio;por trimestre;PSP2_T042
+PSP2_TA054;Seguimiento familia-centro;Registro breve de objetivo, avance y barrera semanal.;Coordinar apoyos.;bajo;semanal;PSP2_T043
+PSP2_TA055;Diseño UDL de una tarea;Ofrecer alternativa de acceso, expresión o participación.;Aumentar inclusión.;bajo;por tarea;PSP2_T041
+PSP2_TA056;Norma visual y consecuencia lógica;Definir norma observable, recordatorio visual y consecuencia proporcionada.;Mejorar conducta en aula.;medio;semanal;PSP2_T007
+PSP2_TA057;Guion de reparación de conflicto;Qué pasó, cómo se sintió cada uno, qué puedo reparar.;Mejorar convivencia.;bajo;tras conflicto;PSP2_T044
+PSP2_TA058;Roles cooperativos visibles;Asignar rol, tarea y criterio de éxito en trabajo grupal.;Mejorar cooperación.;bajo;cada grupo;PSP2_T045
+PSP2_TA059;Escalera de autonomía;Elegir tarea que pasará de ayuda total a ayuda parcial y autónoma.;Aumentar autonomía.;bajo;2-4 semanas;PSP2_T010
+PSP2_TA060;Menú de recompensas educativas;Crear lista de reforzadores no excesivos y acordados.;Mejorar motivación.;bajo;semanal;PSP2_T006
+PSP2_TA061;Compromiso mínimo viable;Definir versión mínima de tarea para días difíciles.;Evitar abandono.;bajo;diario;PSP2_T048
+PSP2_TA062;Revisión mensual de avances;Comparar objetivo, datos, barreras y ajustes necesarios.;Mantener seguimiento.;bajo;mensual;PSP2_T048

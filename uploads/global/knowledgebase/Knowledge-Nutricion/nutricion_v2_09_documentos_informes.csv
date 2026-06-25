@@ -1,0 +1,17 @@
+﻿documento_id;nombre;tipo;descripcion;problema_ids;nivel_riesgo
+NUT2_D001;Informe nutricional inicial;Informe;Motivo, historia, hábitos, horarios, salud declarada, objetivos, riesgos y plan inicial.;Todos;medio
+NUT2_D002;Plan nutricional individual;Plan;Objetivos, pautas, tareas, indicadores, revisión y notas profesionales.;Todos;bajo
+NUT2_D003;Plan de pérdida de grasa;Plan;Déficit moderado, saciedad, proteína, pasos, medidas, adherencia y mantenimiento.;"NUT2_P008;NUT2_P009;NUT2_P010;NUT2_P011;NUT2_P012;NUT2_P013;NUT2_P014";medio
+NUT2_D004;Plan de ganancia muscular;Plan;Energía, proteína, timing, comidas pre/post, seguimiento y suplementos si procede.;"NUT2_P015;NUT2_P016;NUT2_P017;NUT2_P018;NUT2_P019;NUT2_P020";bajo
+NUT2_D005;Plan de recomposición corporal;Plan;Fuerza, proteína, seguimiento de peso/medidas, adherencia y expectativas.;"NUT2_P021;NUT2_P022;NUT2_P023;NUT2_P024";medio
+NUT2_D006;Plan cardiometabólico;Plan;Prediabetes/diabetes/colesterol/tensión referidos: hábitos y coordinación sanitaria.;"NUT2_P025;NUT2_P026;NUT2_P027;NUT2_P028;NUT2_P031;NUT2_P032";alto
+NUT2_D007;Plan digestivo supervisado;Plan;Registro digestivo, fibra, tolerancias, FODMAP/lactosa y derivación si procede.;"NUT2_P037;NUT2_P038;NUT2_P039;NUT2_P040;NUT2_P041;NUT2_P043";medio
+NUT2_D008;Plan sin gluten seguro;Plan;Celiaquía, etiquetado, contaminación cruzada, alternativas y seguimiento.;"NUT2_P042;NUT2_P065";alto
+NUT2_D009;Plan relación con la comida;Plan;Hambre-saciedad, flexibilidad, culpa, comer emocional, señales de derivación.;"NUT2_P044;NUT2_P045;NUT2_P046;NUT2_P047;NUT2_P048;NUT2_P049;NUT2_P050";alto
+NUT2_D010;Planificación semanal de menús;Documento;Menú, lista de compra, batch cooking, comidas fuera y turnos.;"NUT2_P051;NUT2_P052;NUT2_P053;NUT2_P054;NUT2_P055;NUT2_P056";bajo
+NUT2_D011;Plan etapa vital;Plan;Adolescencia, embarazo, posparto, menopausia o mayores con coordinación si procede.;"NUT2_P057;NUT2_P058;NUT2_P059;NUT2_P060;NUT2_P061;NUT2_P062";alto
+NUT2_D012;Plan vegetariano/vegano;Plan;Proteína, B12, hierro, calcio, omega-3, planificación y seguimiento.;"NUT2_P063;NUT2_P064;NUT2_P079";alto
+NUT2_D013;Plan de hidratación y bebidas;Plan;Agua, alcohol, refrescos, cafeína y estrategias diarias.;"NUT2_P073;NUT2_P074;NUT2_P075;NUT2_P076";bajo
+NUT2_D014;Plan de suplementación segura;Plan;Suplementos, motivo, evidencia, dosis, riesgos y derivación/coordinación.;"NUT2_P077;NUT2_P078;NUT2_P079;NUT2_P080;NUT2_P081";medio
+NUT2_D015;Informe de evolución nutricional;Informe;Cambios, hábitos, medidas, adherencia, barreras, riesgos y próximos pasos.;Todos;bajo
+NUT2_D016;Informe de derivación/coordinación sanitaria;Documento;Motivo de derivación, síntomas, datos aportados, riesgo y profesional sugerido.;"NUT2_P025;NUT2_P026;NUT2_P031;NUT2_P032;NUT2_P039;NUT2_P068;NUT2_P069;NUT2_P070;NUT2_P072;NUT2_P080";alto

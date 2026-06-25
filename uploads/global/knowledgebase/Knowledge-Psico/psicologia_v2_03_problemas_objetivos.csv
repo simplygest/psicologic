@@ -1,0 +1,49 @@
+problema_id;area_id;nombre;descripcion;poblacion;nivel_riesgo;fuente_ids
+PSY2_P001;PSY2_A001;TDAH adulto - inatención funcional;Dificultad para sostener atención, finalizar tareas y evitar distracciones.;Adultos;medio;PSY2_SRC001
+PSY2_P002;PSY2_A001;TDAH adulto - desorganización;Dificultad para ordenar tareas, papeles, agenda, casa o trabajo.;Adultos;medio;PSY2_SRC001
+PSY2_P003;PSY2_A001;TDAH adulto - procrastinación crónica;Retraso persistente de tareas importantes pese a consecuencias.;Adultos;medio;PSY2_SRC001
+PSY2_P004;PSY2_A001;TDAH adulto - impulsividad cotidiana;Decisiones rápidas, interrupciones, compras, respuestas o compromisos sin pausa.;Adultos;medio;PSY2_SRC001
+PSY2_P005;PSY2_A001;TDAH adulto - gestión del tiempo;Dificultad para estimar duración, llegar a tiempo o priorizar.;Adultos;medio;PSY2_SRC001
+PSY2_P006;PSY2_A001;TDAH adolescente - seguimiento escolar;Problemas de tareas, estudio, materiales y constancia.;Adolescentes;medio;PSY2_SRC001
+PSY2_P007;PSY2_A001;TEA adulto - masking y agotamiento social;Camuflaje social intenso con fatiga, ansiedad o pérdida de autenticidad.;Adultos;medio;"PSY2_SRC002;PSY2_SRC003"
+PSY2_P008;PSY2_A001;TEA adulto - dificultad de comunicación social;Dificultad para interpretar claves sociales, dobles sentidos o reciprocidad.;Adultos;medio;"PSY2_SRC002;PSY2_SRC004"
+PSY2_P009;PSY2_A001;TEA adulto - rigidez y cambios imprevistos;Malestar ante cambios, incertidumbre o ruptura de rutinas.;Adultos;medio;"PSY2_SRC002;PSY2_SRC004"
+PSY2_P010;PSY2_A001;TEA adulto - sobrecarga sensorial;Malestar por ruido, luz, tacto, multitudes o demandas ambientales.;Adultos;medio;"PSY2_SRC002;PSY2_SRC003"
+PSY2_P011;PSY2_A001;Asperger - identificación histórica;Persona que usa o reconoce el término Asperger dentro del espectro autista.;Adultos/Adolescentes;bajo;"PSY2_SRC002;PSY2_SRC003"
+PSY2_P012;PSY2_A002;Rumiación persistente;Dar vueltas repetidas a preocupaciones, errores o conversaciones.;Adultos/Adolescentes;medio;"PSY2_SRC008;PSY2_SRC009"
+PSY2_P013;PSY2_A002;Impulsividad emocional;Reacciones intensas que generan arrepentimiento o conflicto.;Adultos/Adolescentes;medio;PSY2_SRC001
+PSY2_P014;PSY2_A002;Baja tolerancia a la frustración;Abandono, bloqueo o enfado ante error, espera o dificultad.;Adultos/Adolescentes;bajo;PSY2_SRC009
+PSY2_P015;PSY2_A002;Dificultad para identificar emociones;Problemas para nombrar, localizar o diferenciar emociones.;Adultos/Adolescentes;medio;PSY2_SRC009
+PSY2_P016;PSY2_A002;Desbordamiento emocional;Sensación de perder control ante acumulación de estrés o emoción.;Adultos/Adolescentes;medio;PSY2_SRC009
+PSY2_P017;PSY2_A003;Ansiedad social - miedo a evaluación;Temor intenso a ser juzgado, hacer el ridículo o quedar mal.;Adultos/Adolescentes;medio;"PSY2_SRC008;PSY2_SRC009"
+PSY2_P018;PSY2_A003;Evitación social;Evitar reuniones, llamadas, citas, grupos o situaciones sociales.;Adultos/Adolescentes;medio;PSY2_SRC008
+PSY2_P019;PSY2_A003;Déficit de asertividad;Dificultad para decir no, pedir, expresar necesidades o poner límites.;Adultos/Adolescentes;bajo;PSY2_SRC009
+PSY2_P020;PSY2_A003;Dificultad conversacional;Bloqueo al iniciar, mantener o cerrar conversaciones.;Adultos/Adolescentes;bajo;PSY2_SRC009
+PSY2_P021;PSY2_A004;Baja autoestima;Valoración negativa persistente de uno mismo.;Adultos/Adolescentes;medio;"PSY2_SRC009;PSY2_SRC012"
+PSY2_P022;PSY2_A004;Autocrítica intensa;Diálogo interno duro, descalificador o poco compasivo.;Adultos/Adolescentes;medio;PSY2_SRC009
+PSY2_P023;PSY2_A004;Vergüenza corporal o personal;Evitar mostrarse o participar por vergüenza de apariencia/identidad.;Adultos/Adolescentes;medio;PSY2_SRC009
+PSY2_P024;PSY2_A004;Comparación constante;Medir el propio valor frente a otros de forma dañina.;Adultos/Adolescentes;bajo;PSY2_SRC009
+PSY2_P025;PSY2_A005;Perfeccionismo paralizante;No iniciar o terminar tareas por miedo a no hacerlo perfecto.;Adultos/Adolescentes;medio;PSY2_SRC009
+PSY2_P026;PSY2_A005;Miedo al error;Evitar retos, decisiones o exposición por miedo a equivocarse.;Adultos/Adolescentes;medio;PSY2_SRC009
+PSY2_P027;PSY2_A005;Síndrome del impostor;Desvalorizar logros y atribuirlos a suerte o engaño percibido.;Adultos;bajo;PSY2_SRC011
+PSY2_P028;PSY2_A005;Autoexigencia rígida;Normas internas duras y poca flexibilidad con descanso o errores.;Adultos/Adolescentes;medio;PSY2_SRC009
+PSY2_P029;PSY2_A006;Dependencia emocional;Necesidad intensa de validación o presencia de la pareja/persona significativa.;Adultos;medio;PSY2_SRC009
+PSY2_P030;PSY2_A006;Apego ansioso en relaciones;Miedo al abandono, hiperalerta relacional y búsqueda de seguridad.;Adultos;medio;PSY2_SRC009
+PSY2_P031;PSY2_A006;Celos y conductas de comprobación;Conductas repetidas de control, revisión o búsqueda de garantías.;Adultos;medio;PSY2_SRC009
+PSY2_P032;PSY2_A006;Dificultad para poner límites;Aceptar demandas o vínculos que generan daño por miedo a conflicto o rechazo.;Adultos;medio;PSY2_SRC009
+PSY2_P033;PSY2_A006;Ruptura sentimental complicada;Malestar persistente tras ruptura con rumiación, contacto o esperanza mantenida.;Adultos;medio;PSY2_SRC009
+PSY2_P034;PSY2_A007;Duelo por pérdida familiar;Proceso de adaptación tras fallecimiento de familiar o persona cercana.;Adultos/Adolescentes;medio;PSY2_SRC009
+PSY2_P035;PSY2_A007;Duelo sentimental;Pérdida de relación significativa con dolor, rumiación o desorientación vital.;Adultos;medio;PSY2_SRC009
+PSY2_P036;PSY2_A007;Duelo por cambio vital;Pérdida de rol, etapa, salud, trabajo, hogar o proyecto vital.;Adultos;medio;PSY2_SRC009
+PSY2_P037;PSY2_A007;Culpa asociada al duelo;Pensamientos de responsabilidad, cosas no dichas o decisiones pasadas.;Adultos;medio;PSY2_SRC009
+PSY2_P038;PSY2_A008;Burnout laboral;Agotamiento vinculado al trabajo, distancia mental y baja eficacia percibida.;Adultos;medio;PSY2_SRC010
+PSY2_P039;PSY2_A008;Estrés laboral sostenido;Demandas laborales mantenidas con impacto en sueño, ánimo o salud.;Adultos;medio;"PSY2_SRC009;PSY2_SRC010"
+PSY2_P040;PSY2_A008;Dificultad para desconectar del trabajo;Rumiación laboral fuera de horario y límites difusos.;Adultos;bajo;PSY2_SRC010
+PSY2_P041;PSY2_A008;Conflicto trabajo-vida personal;Desequilibrio entre exigencias laborales, autocuidado y relaciones.;Adultos;medio;PSY2_SRC010
+PSY2_P042;PSY2_A009;Síntomas postraumáticos leves/moderados;Intrusión, evitación, hiperactivación o alteración tras experiencia adversa.;Adultos;alto;PSY2_SRC006
+PSY2_P043;PSY2_A009;Disparadores emocionales;Estímulos que activan respuesta intensa ligada a experiencia pasada.;Adultos;medio;PSY2_SRC006
+PSY2_P044;PSY2_A009;Hipervigilancia;Estado de alerta elevada o sensación de amenaza frecuente.;Adultos;alto;PSY2_SRC006
+PSY2_P045;PSY2_A010;Procrastinación no específica;Evitar tareas por emoción, incertidumbre o baja claridad.;Adultos/Adolescentes;bajo;PSY2_SRC009
+PSY2_P046;PSY2_A010;Rutinas desorganizadas;Falta de estructura diaria, sueño, autocuidado o tareas básicas.;Adultos/Adolescentes;medio;PSY2_SRC009
+PSY2_P047;PSY2_A010;Baja activación conductual;Reducción de actividades reforzantes, autocuidado o participación.;Adultos;medio;PSY2_SRC012
+PSY2_P048;PSY2_A010;Dificultad de adherencia terapéutica;Olvidos, abandono de tareas o baja constancia entre sesiones.;Adultos/Adolescentes;bajo;"PSY2_SRC001;PSY2_SRC009"

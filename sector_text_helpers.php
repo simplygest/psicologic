@@ -351,6 +351,10 @@ function sector_texts_available()
 
 function sector_texts_ensure_payment_column($mysqli)
 {
+    if (function_exists('app_auto_schema_migrations_enabled') && !app_auto_schema_migrations_enabled()) {
+        return;
+    }
+
     $res = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'sector_texts_key'");
     if ($res && $res->num_rows === 0) {
         $mysqli->query("ALTER TABLE payment_settings ADD sector_texts_key VARCHAR(32) NOT NULL DEFAULT 'psicologia' AFTER dashboard_config_mode");
@@ -389,14 +393,6 @@ function knowledge_base_sector_has_data($mysqli, $sector_key = null)
     $sector_key = $sector_key ?: sector_texts_key_from_db($mysqli);
     if (!sector_texts_validate_key($sector_key)) {
         return false;
-    }
-    $table_res = $mysqli->query("SHOW TABLES LIKE 'knowledge_problems'");
-    if (!$table_res || $table_res->num_rows === 0) {
-        return false;
-    }
-    $column_res = $mysqli->query("SHOW COLUMNS FROM knowledge_problems LIKE 'sector_key'");
-    if (!$column_res || $column_res->num_rows === 0) {
-        return $sector_key === sector_texts_default_key();
     }
     $stmt = $mysqli->prepare("SELECT id FROM knowledge_problems WHERE sector_key = ? LIMIT 1");
     $stmt->bind_param("s", $sector_key);

@@ -1,0 +1,25 @@
+﻿evaluacion_id;nombre;area_uso;tipo;notas;problema_ids;nivel_riesgo
+FIT2_E001;Entrevista inicial fitness;General;Entrevista;Objetivos, nivel, experiencia, material, horarios, salud declarada y señales de derivación.;Todos;bajo
+FIT2_E002;PAR-Q / cribado de seguridad;Seguridad;Cribado;"Cribado previo de seguridad física; derivar si hay respuestas de riesgo.";Todos;alto
+FIT2_E003;Peso corporal medio semanal;Composición corporal;Seguimiento;Media de varias mediciones para valorar tendencia sin obsesión diaria.;"FIT2_P022;FIT2_P023;FIT2_P026;FIT2_P027";bajo
+FIT2_E004;Perímetro cintura;Composición corporal;Seguimiento;Medida consistente para valorar pérdida de grasa abdominal.;"FIT2_P022;FIT2_P026";bajo
+FIT2_E005;Perímetros musculares;Hipertrofia;Seguimiento;Brazo, pecho, muslo, glúteo u otros según objetivo.;"FIT2_P007;FIT2_P008;FIT2_P009;FIT2_P010;FIT2_P011";bajo
+FIT2_E006;Fotos comparativas;Composición corporal;Visual;Fotos en misma luz/postura/distancia, no como única métrica.;"FIT2_P007;FIT2_P022;FIT2_P023";bajo
+FIT2_E007;Registro de cargas;Fuerza/hipertrofia;Seguimiento;Evolución de ejercicios, series, repeticiones, peso y RIR/RPE.;"FIT2_P007;FIT2_P015;FIT2_P020";bajo
+FIT2_E008;1RM estimado submáximo;Fuerza;Test;Estimación sin necesidad de máximo real en principiantes.;"FIT2_P015;FIT2_P016;FIT2_P017;FIT2_P018;FIT2_P019";medio
+FIT2_E009;Test de flexiones técnicas;Resistencia muscular;Test;Repeticiones máximas con técnica válida.;"FIT2_P028;FIT2_P029";bajo
+FIT2_E010;Test sentadilla 60 segundos;Resistencia muscular;Test;Repeticiones controladas en 60 segundos.;"FIT2_P028;FIT2_P030";bajo
+FIT2_E011;Test plancha;Core;Test;Tiempo con alineación y control respiratorio adecuados.;"FIT2_P039;FIT2_P040";bajo
+FIT2_E012;Test rodilla-pared;Movilidad tobillo;Test;Medida simple de dorsiflexión de tobillo.;FIT2_P036;bajo
+FIT2_E013;Sentadilla profunda observada;Movilidad/técnica;Observación;Rango, control, compensaciones y molestias.;"FIT2_P033;FIT2_P034;FIT2_P054";bajo
+FIT2_E014;Movilidad hombro pared;Movilidad hombro;Observación;Elevación, control costal y compensaciones.;"FIT2_P035;FIT2_P042";bajo
+FIT2_E015;Media de pasos diarios;Actividad diaria;Seguimiento;Promedio semanal de pasos y tendencia.;"FIT2_P002;FIT2_P024;FIT2_P068";bajo
+FIT2_E016;Frecuencia cardiaca reposo;Cardio;Seguimiento;Tendencia si el usuario dispone de medición fiable.;"FIT2_P044;FIT2_P046";bajo
+FIT2_E017;Test caminata 6 minutos adaptado;Cardio/mayores;Test;Distancia o tolerancia caminando, si procede y es seguro.;"FIT2_P044;FIT2_P064;FIT2_P065;FIT2_P067";medio
+FIT2_E018;Sit-to-stand 30 segundos;Mayores/funcional;Test;Repeticiones de sentarse/levantarse con seguridad.;"FIT2_P064;FIT2_P067";medio
+FIT2_E019;Escala de adherencia semanal;Hábitos;Indicador;Porcentaje de sesiones, pasos, movilidad y tareas cumplidas.;"FIT2_P068;FIT2_P069;FIT2_P072";bajo
+FIT2_E020;Registro de sueño/energía;Recuperación;Autorregistro;Horas de sueño, calidad, energía y rendimiento.;"FIT2_P014;FIT2_P071;FIT2_P075";bajo
+FIT2_E021;Semáforo de molestias;Seguridad;Autorregistro;Verde/amarillo/rojo según dolor, fatiga y evolución 24-48h.;"FIT2_P061;FIT2_P063";alto
+FIT2_E022;Evaluación técnica por vídeo;Técnica;Observación;Checklist de patrones básicos grabados.;"FIT2_P054;FIT2_P055;FIT2_P056;FIT2_P057;FIT2_P058;FIT2_P059";medio
+FIT2_E023;Registro de proteína/hidratación;Nutrición básica;Autorregistro;Cumplimiento aproximado de proteína e hidratación pactadas.;"FIT2_P073;FIT2_P074;FIT2_P076";bajo
+FIT2_E024;Revisión mensual de progreso;Seguimiento;Informe breve;Resumen de métricas, adherencia, barreras, ajustes y próximo bloque.;Todos;bajo

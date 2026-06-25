@@ -145,6 +145,10 @@ function tenant_abort_request($message, $status = 404)
 
 function tenant_ensure_table($mysqli)
 {
+    if (!function_exists('app_auto_schema_migrations_enabled') || !app_auto_schema_migrations_enabled()) {
+        return;
+    }
+
     $mysqli->query("
         CREATE TABLE IF NOT EXISTS tenants (
             id INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -175,7 +179,9 @@ function tenant_ensure_table($mysqli)
 
 function tenant_fetch_by_key($mysqli, $tenant_key)
 {
-    tenant_ensure_table($mysqli);
+    if (function_exists('app_auto_schema_migrations_enabled') && app_auto_schema_migrations_enabled()) {
+        tenant_ensure_table($mysqli);
+    }
     $stmt = $mysqli->prepare("SELECT * FROM tenants WHERE tenant_key = ? LIMIT 1");
     $stmt->bind_param("s", $tenant_key);
     $stmt->execute();
@@ -184,11 +190,52 @@ function tenant_fetch_by_key($mysqli, $tenant_key)
 
 function tenant_fetch_by_id($mysqli, $tenant_id)
 {
-    tenant_ensure_table($mysqli);
+    if (function_exists('app_auto_schema_migrations_enabled') && app_auto_schema_migrations_enabled()) {
+        tenant_ensure_table($mysqli);
+    }
     $stmt = $mysqli->prepare("SELECT * FROM tenants WHERE id = ? LIMIT 1");
     $stmt->bind_param("i", $tenant_id);
     $stmt->execute();
     return $stmt->get_result()->fetch_assoc() ?: null;
+}
+
+function tenant_clear_authenticated_session()
+{
+    foreach (['user_id', 'role', 'name', 'auth_tenant_id', 'auth_tenant_key'] as $key) {
+        unset($_SESSION[$key]);
+    }
+}
+
+function tenant_validate_authenticated_session($mysqli)
+{
+    if (PHP_SAPI === 'cli' || session_status() !== PHP_SESSION_ACTIVE || empty($_SESSION['user_id'])) {
+        return;
+    }
+
+    $user_id = (int) ($_SESSION['user_id'] ?? 0);
+    if ($user_id <= 0) {
+        tenant_clear_authenticated_session();
+        return;
+    }
+
+    $stmt = $mysqli->prepare("SELECT id, name, role FROM users WHERE tenant_id = ? AND id = ? LIMIT 1");
+    if (!$stmt) {
+        tenant_clear_authenticated_session();
+        return;
+    }
+    $tenant_id = current_tenant_id();
+    $stmt->bind_param("ii", $tenant_id, $user_id);
+    $stmt->execute();
+    $user = $stmt->get_result()->fetch_assoc();
+    if (!$user) {
+        tenant_clear_authenticated_session();
+        return;
+    }
+
+    $_SESSION['name'] = $user['name'] ?? ($_SESSION['name'] ?? '');
+    $_SESSION['role'] = $user['role'] ?? ($_SESSION['role'] ?? '');
+    $_SESSION['auth_tenant_id'] = $tenant_id;
+    $_SESSION['auth_tenant_key'] = current_tenant_key();
 }
 
 function tenant_bootstrap_current($mysqli)
@@ -213,8 +260,16 @@ function tenant_bootstrap_current($mysqli)
     $GLOBALS['current_tenant'] = $tenant;
 
     if (PHP_SAPI !== 'cli' && session_status() === PHP_SESSION_ACTIVE) {
+        $session_auth_tenant_id = (int) ($_SESSION['auth_tenant_id'] ?? ($_SESSION['tenant_id'] ?? 0));
+        $session_auth_tenant_key = tenant_normalize_key($_SESSION['auth_tenant_key'] ?? ($_SESSION['tenant_key'] ?? ''));
+        if (!empty($_SESSION['user_id'])
+            && (($session_auth_tenant_id > 0 && $session_auth_tenant_id !== CURRENT_TENANT_ID)
+                || ($session_auth_tenant_key !== '' && $session_auth_tenant_key !== CURRENT_TENANT_KEY))) {
+            tenant_clear_authenticated_session();
+        }
         $_SESSION['tenant_id'] = CURRENT_TENANT_ID;
         $_SESSION['tenant_key'] = CURRENT_TENANT_KEY;
+        tenant_validate_authenticated_session($mysqli);
     }
 
     $status = strtolower((string) ($tenant['status'] ?? 'active'));

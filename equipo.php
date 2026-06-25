@@ -120,7 +120,7 @@ function team_social_links($member)
                         <span>Equipo profesional</span>
                         <h1>Especialistas que te acompañan</h1>
                     </div>
-                    <p class="section-copy mb-0">Un equipo coordinado para ofrecer una atención cercana, rigurosa y adaptada a cada etapa del proceso terapéutico.</p>
+                    <p class="section-copy mb-0">Un equipo coordinado para ofrecer una atención cercana, rigurosa y adaptada a cada etapa del proceso.</p>
                 </div>
 
                 <div class="team-grid">
@@ -139,7 +139,7 @@ function team_social_links($member)
                                     <p class="team-title"><?= htmlspecialchars($member['professional_title']) ?></p>
                                 <?php endif; ?>
                                 <?php if (!empty($member['license_number'])): ?>
-                                    <p class="team-license">Nº de colegiado: <?= htmlspecialchars($member['license_number']) ?></p>
+                                    <p class="team-license">Registro profesional: <?= htmlspecialchars($member['license_number']) ?></p>
                                 <?php endif; ?>
                                 <?php if (!empty($member['public_phone'])): ?>
                                     <p class="team-phone"><i class="bi bi-telephone"></i> <?= htmlspecialchars($member['public_phone']) ?></p>

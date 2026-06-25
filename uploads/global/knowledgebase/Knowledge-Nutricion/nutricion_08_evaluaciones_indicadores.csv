@@ -1,9 +1,0 @@
-﻿evaluacion_id;problema_id;nombre;tipo;uso;notas;fuente_ids
-NUT_E001;NUT_P001;IMC + perímetro cintura;Antropometría;Seguimiento;"Usar con contexto clínico; no usar como único indicador.";NUT_SRC010
-NUT_E002;NUT_P005;HbA1c / glucemia aportada por paciente;Biomarcador médico;Seguimiento;"Dato médico; registrar si el paciente lo aporta o deriva de informe sanitario.";"NUT_SRC003;NUT_SRC009"
-NUT_E003;NUT_P008;Perfil lipídico aportado;Biomarcador médico;Seguimiento;"Dato médico externo; no diagnosticar desde la app.";NUT_SRC001
-NUT_E004;NUT_P009;Presión arterial aportada;Biomarcador/medición;Seguimiento;Requiere medición correcta y coordinación sanitaria si procede.;NUT_SRC001
-NUT_E005;NUT_P017;MNA / cribado de malnutrición;Cribado nutricional;Cribado;Revisar licencia/condiciones antes de integrar formulario completo.;NUT_SRC008
-NUT_E006;NUT_P018;Registro de ingesta hídrica;Autorregistro;Seguimiento;Herramienta propia no diagnóstica.;NUT_SRC008
-NUT_E007;NUT_P020;Adherencia al menú semanal;Checklist;Seguimiento;Checklist propia del profesional.;NUT_SRC001
-NUT_E008;NUT_P023;Escala hambre-saciedad 0-10;Autorregistro;Seguimiento;Herramienta educativa, no diagnóstico psicológico.;NUT_SRC001

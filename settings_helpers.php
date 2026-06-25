@@ -5,6 +5,10 @@ require_once __DIR__ . '/app_paths.php';
 
 function ensure_branding_columns($mysqli)
 {
+    if (function_exists('app_auto_schema_migrations_enabled') && !app_auto_schema_migrations_enabled()) {
+        return;
+    }
+
     $res = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
     if (!$res || $res->num_rows === 0) {
         return;
@@ -74,7 +78,7 @@ function get_public_branding_settings($mysqli)
 {
     $settings = [
         'app_name' => 'SimplyGest Praxis',
-        'site_tagline' => 'Psicología sanitaria y neuropsicología en Santa Cruz de Tenerife',
+        'site_tagline' => '',
         'site_phone' => '',
         'profile_image_path' => '',
         'landing_image_path' => '',
@@ -99,14 +103,16 @@ function get_public_branding_settings($mysqli)
         'legal_terms_notes' => ''
     ];
 
-    $res = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
-    if (!$res || $res->num_rows === 0) {
-        return $settings;
+    if (function_exists('app_auto_schema_migrations_enabled') && app_auto_schema_migrations_enabled()) {
+        $res = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
+        if (!$res || $res->num_rows === 0) {
+            return $settings;
+        }
+
+        ensure_branding_columns($mysqli);
+        ensure_current_tenant_payment_settings($mysqli);
     }
 
-    ensure_branding_columns($mysqli);
-
-    ensure_current_tenant_payment_settings($mysqli);
     $tenant_id = current_tenant_id();
     $stmt = $mysqli->prepare("
         SELECT app_name, site_tagline, site_phone, profile_image_path, landing_image_path, favicon_path, primary_color, show_profile_image_public, public_site_enabled, show_prices_public, show_contact_public, plan_key, online_booking_enabled, patient_registration_mode, initial_calendar_view, sector_texts_key,
@@ -120,7 +126,7 @@ function get_public_branding_settings($mysqli)
 
     if ($row = $res->fetch_assoc()) {
         $settings['app_name'] = trim($row['app_name'] ?? '') ?: 'SimplyGest Praxis';
-        $settings['site_tagline'] = trim($row['site_tagline'] ?? '') ?: 'Psicología sanitaria y neuropsicología en Santa Cruz de Tenerife';
+        $settings['site_tagline'] = trim($row['site_tagline'] ?? '');
         $settings['site_phone'] = trim($row['site_phone'] ?? '');
         $settings['profile_image_path'] = $row['profile_image_path'] ?? '';
         $settings['landing_image_path'] = $row['landing_image_path'] ?? '';
@@ -135,7 +141,7 @@ function get_public_branding_settings($mysqli)
         $settings['plan_key'] = $tenant_plan_key !== '' ? $tenant_plan_key : 'novus';
         $settings['online_booking_enabled'] = (int) ($row['online_booking_enabled'] ?? 1);
         $settings['patient_registration_mode'] = in_array(($row['patient_registration_mode'] ?? ''), ['invite', 'open'], true) ? $row['patient_registration_mode'] : 'invite';
-        $settings['initial_calendar_view'] = in_array(($row['initial_calendar_view'] ?? ''), ['week', 'month'], true) ? $row['initial_calendar_view'] : 'month';
+        $settings['initial_calendar_view'] = in_array(($row['initial_calendar_view'] ?? ''), ['week', 'month', 'patients', 'upcoming'], true) ? $row['initial_calendar_view'] : 'month';
         $settings['sector_texts_key'] = sector_texts_validate_key($row['sector_texts_key'] ?? '') ? $row['sector_texts_key'] : sector_texts_default_key();
         $settings['legal_owner_name'] = trim($row['legal_owner_name'] ?? '');
         $settings['legal_nif'] = trim($row['legal_nif'] ?? '');

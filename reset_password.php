@@ -6,12 +6,16 @@ if (isset($_SESSION['user_id'])) {
 }
 require_once 'db.php';
 require_once 'settings_helpers.php';
+require_once 'cabinet_helpers.php';
+require_once 'public_nav_helpers.php';
 $branding = get_public_branding_settings($mysqli);
 $app_name = $branding['app_name'];
 $official_brand_logo_url = app_official_brand_logo_url();
 $tenant_brand_logo_url = trim((string) ($branding['profile_image_path'] ?? '')) !== ''
     ? app_upload_asset_url($branding['profile_image_path'])
     : $official_brand_logo_url;
+$has_tenant_brand_logo = trim((string) ($branding['profile_image_path'] ?? '')) !== '';
+$show_public_nav = (int) ($branding['public_site_enabled'] ?? 0) === 1;
 $token = $_GET['t'] ?? '';
 $valid_format = preg_match('/^[a-f0-9]{64}$/', $token);
 ?>
@@ -30,13 +34,17 @@ $valid_format = preg_match('/^[a-f0-9]{64}$/', $token);
     <style>:root { --primary-color: <?= htmlspecialchars($branding['primary_color']) ?>; }</style>
 </head>
 
-<body class="auth-page d-flex align-items-center justify-content-center flex-column" style="min-height: 100vh;">
+<body class="auth-page <?= $show_public_nav ? 'auth-page-with-nav public-site' : 'd-flex align-items-center justify-content-center flex-column' ?>" style="min-height: 100vh;">
+    <?php if ($show_public_nav): ?>
+        <?php render_public_nav($mysqli, $branding, ['show_patient_area' => false]); ?>
+    <?php endif; ?>
+
     <div class="container">
         <div class="row justify-content-center">
             <div class="col-md-5">
                 <div class="card p-4">
                     <div class="text-center mb-4">
-                        <img src="<?= htmlspecialchars($tenant_brand_logo_url) ?>" alt="<?= htmlspecialchars($app_name) ?>" class="auth-brand-image mb-3">
+                        <img src="<?= htmlspecialchars($tenant_brand_logo_url) ?>" alt="<?= htmlspecialchars($app_name) ?>" class="auth-brand-image<?= $has_tenant_brand_logo ? '' : ' auth-brand-image-official' ?> mb-3">
                         <h2 style="color: var(--primary-color);"><?= htmlspecialchars($app_name) ?></h2>
                         <p class="text-muted">Crea una nueva contrase&ntilde;a para tu cuenta.</p>
                     </div>
@@ -76,6 +84,9 @@ $valid_format = preg_match('/^[a-f0-9]{64}$/', $token);
     </footer>
 
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <?php if ($show_public_nav): ?>
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <?php endif; ?>
     <script>
         $(document).ready(function () {
             $('#reset-form').on('submit', function (e) {

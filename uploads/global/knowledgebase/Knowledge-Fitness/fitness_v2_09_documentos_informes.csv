@@ -1,0 +1,16 @@
+﻿documento_id;nombre;tipo;descripcion;problema_ids;nivel_riesgo
+FIT2_D001;Ficha inicial fitness;Ficha;Datos personales deportivos, objetivos, nivel, material, disponibilidad y observaciones.;Todos;bajo
+FIT2_D002;Consentimiento informado fitness;Documento legal;Alcance del servicio, límites, seguridad, derivación y responsabilidad del cliente/profesional.;Todos;medio
+FIT2_D003;Plan de entrenamiento mensual;Plan;Objetivo, frecuencia, sesiones, ejercicios, progresión, movilidad y seguimiento.;Todos;bajo
+FIT2_D004;Plan de hipertrofia;Plan;Volumen, frecuencia, grupos prioritarios, progresión, recuperación y nutrición básica.;"FIT2_P007;FIT2_P008;FIT2_P009;FIT2_P010;FIT2_P011;FIT2_P012;FIT2_P013;FIT2_P014";bajo
+FIT2_D005;Plan de fuerza;Plan;Ejercicios principales, progresión, descansos, técnica, descarga y registro.;"FIT2_P015;FIT2_P016;FIT2_P017;FIT2_P018;FIT2_P019;FIT2_P020;FIT2_P021";medio
+FIT2_D006;Plan de pérdida de grasa/recomposición;Plan;Fuerza, cardio, pasos, medidas, adherencia y orientación nutricional básica.;"FIT2_P022;FIT2_P023;FIT2_P024;FIT2_P025;FIT2_P026;FIT2_P027";medio
+FIT2_D007;Plan de movilidad;Plan;Movilidad de cadera, hombro, tobillo, cadena posterior, test y progresión.;"FIT2_P033;FIT2_P034;FIT2_P035;FIT2_P036;FIT2_P037;FIT2_P038";bajo
+FIT2_D008;Plan cardio;Plan;Zona 2, intervalos, caminata-carrera, progresión y recuperación.;"FIT2_P044;FIT2_P045;FIT2_P046;FIT2_P047;FIT2_P048";medio
+FIT2_D009;Plan entrenamiento en casa;Plan;Rutinas con peso corporal, mancuernas, bandas o sesiones express.;"FIT2_P049;FIT2_P050;FIT2_P051;FIT2_P052;FIT2_P053";bajo
+FIT2_D010;Plan de técnica de básicos;Plan;Sentadilla, bisagra, empuje, tracción, unilateral, core y feedback por vídeo.;"FIT2_P054;FIT2_P055;FIT2_P056;FIT2_P057;FIT2_P058;FIT2_P059";medio
+FIT2_D011;Plan de vuelta al entrenamiento;Plan;Retorno gradual, semáforo de tolerancia, señales de derivación y progresión.;"FIT2_P060;FIT2_P061;FIT2_P062;FIT2_P063";alto
+FIT2_D012;Plan para mayores;Plan;Fuerza funcional, equilibrio, movilidad, caminata y seguridad.;"FIT2_P064;FIT2_P065;FIT2_P066;FIT2_P067";medio
+FIT2_D013;Informe de evolución fitness;Informe;Métricas, adherencia, cargas, medidas, fotos, barreras, ajustes y próximos objetivos.;Todos;bajo
+FIT2_D014;Informe de derivación/alerta;Documento;Motivo de derivación médica/fisioterapéutica por señales de alarma o molestias.;"FIT2_P061;FIT2_P063";alto
+FIT2_D015;Hoja de tareas para casa;Documento;Tareas semanales, movilidad, pasos, hábitos, registro y observaciones.;Todos;bajo

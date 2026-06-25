@@ -2,76 +2,7 @@
 
 function ensure_admin_notification_email_column($mysqli)
 {
-    $res = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
-    if ($res->num_rows === 0) {
-        $mysqli->query("
-            CREATE TABLE IF NOT EXISTS payment_settings (
-                id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
-                app_name VARCHAR(255) DEFAULT 'SimplyGest Praxis',
-                online_payment_enabled TINYINT(1) NOT NULL DEFAULT 0,
-                environment ENUM('sandbox', 'real') NOT NULL DEFAULT 'sandbox',
-                merchant_code VARCHAR(32) DEFAULT NULL,
-                merchant_key VARCHAR(255) DEFAULT NULL,
-                terminal VARCHAR(8) DEFAULT NULL,
-                appointment_price DECIMAL(10,2) NOT NULL DEFAULT 70.00,
-                admin_notification_email VARCHAR(255) DEFAULT NULL,
-                email_provider ENUM('phpmailer', 'google') NOT NULL DEFAULT 'phpmailer',
-                smtp_host VARCHAR(255) DEFAULT NULL,
-                smtp_port INT UNSIGNED DEFAULT 587,
-                smtp_username VARCHAR(255) DEFAULT NULL,
-                smtp_password VARCHAR(255) DEFAULT NULL,
-                smtp_secure ENUM('none', 'tls', 'ssl') NOT NULL DEFAULT 'tls',
-                smtp_from_email VARCHAR(255) DEFAULT NULL,
-                smtp_from_name VARCHAR(255) DEFAULT NULL,
-                google_client_id VARCHAR(255) DEFAULT NULL,
-                google_client_secret VARCHAR(255) DEFAULT NULL,
-                google_refresh_token TEXT DEFAULT NULL,
-                google_connected_email VARCHAR(255) DEFAULT NULL,
-                google_redirect_uri VARCHAR(512) DEFAULT NULL,
-                google_calendar_enabled TINYINT(1) NOT NULL DEFAULT 0,
-                google_calendar_id VARCHAR(255) DEFAULT 'primary',
-                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        ");
-    }
-
-    $columns = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'admin_notification_email'");
-    if ($columns->num_rows === 0) {
-        $mysqli->query("ALTER TABLE payment_settings ADD admin_notification_email VARCHAR(255) DEFAULT NULL AFTER appointment_price");
-    }
-
-    $columns = [
-        'app_name' => "ALTER TABLE payment_settings ADD app_name VARCHAR(255) DEFAULT 'SimplyGest Praxis' AFTER id",
-        'email_provider' => "ALTER TABLE payment_settings ADD email_provider ENUM('phpmailer', 'google') NOT NULL DEFAULT 'phpmailer' AFTER admin_notification_email",
-        'smtp_host' => "ALTER TABLE payment_settings ADD smtp_host VARCHAR(255) DEFAULT NULL AFTER email_provider",
-        'smtp_port' => "ALTER TABLE payment_settings ADD smtp_port INT UNSIGNED DEFAULT 587 AFTER smtp_host",
-        'smtp_username' => "ALTER TABLE payment_settings ADD smtp_username VARCHAR(255) DEFAULT NULL AFTER smtp_port",
-        'smtp_password' => "ALTER TABLE payment_settings ADD smtp_password VARCHAR(255) DEFAULT NULL AFTER smtp_username",
-        'smtp_secure' => "ALTER TABLE payment_settings ADD smtp_secure ENUM('none', 'tls', 'ssl') NOT NULL DEFAULT 'tls' AFTER smtp_password",
-        'smtp_from_email' => "ALTER TABLE payment_settings ADD smtp_from_email VARCHAR(255) DEFAULT NULL AFTER smtp_secure",
-        'smtp_from_name' => "ALTER TABLE payment_settings ADD smtp_from_name VARCHAR(255) DEFAULT NULL AFTER smtp_from_email",
-        'google_client_id' => "ALTER TABLE payment_settings ADD google_client_id VARCHAR(255) DEFAULT NULL AFTER smtp_from_name",
-        'google_client_secret' => "ALTER TABLE payment_settings ADD google_client_secret VARCHAR(255) DEFAULT NULL AFTER google_client_id",
-        'google_refresh_token' => "ALTER TABLE payment_settings ADD google_refresh_token TEXT DEFAULT NULL AFTER google_client_secret",
-        'google_connected_email' => "ALTER TABLE payment_settings ADD google_connected_email VARCHAR(255) DEFAULT NULL AFTER google_refresh_token",
-        'google_redirect_uri' => "ALTER TABLE payment_settings ADD google_redirect_uri VARCHAR(512) DEFAULT NULL AFTER google_connected_email",
-        'google_calendar_enabled' => "ALTER TABLE payment_settings ADD google_calendar_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER google_redirect_uri",
-        'google_calendar_id' => "ALTER TABLE payment_settings ADD google_calendar_id VARCHAR(255) DEFAULT 'primary' AFTER google_calendar_enabled"
-    ];
-
-    foreach ($columns as $column => $sql) {
-        $res = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE '$column'");
-        if ($res->num_rows === 0) {
-            $mysqli->query($sql);
-        }
-    }
-
-    $mysqli->query("
-        INSERT IGNORE INTO payment_settings
-            (id, online_payment_enabled, environment, appointment_price)
-        VALUES
-            (1, 0, 'sandbox', 70.00)
-    ");
+    return true;
 }
 
 function get_admin_notification_email($mysqli)
@@ -87,6 +18,11 @@ function get_admin_notification_email($mysqli)
     $row = $res->fetch_assoc();
     if (!$row) {
         return '';
+    }
+
+    $notification_email = trim($row['admin_notification_email'] ?? '');
+    if ($notification_email !== '') {
+        return $notification_email;
     }
 
     $provider = $row['email_provider'] ?? 'phpmailer';
@@ -260,11 +196,6 @@ function get_appointment_professional($mysqli, $appointment)
         return cabinet_fetch_professional($mysqli, $professional_id);
     }
 
-    $exists = $mysqli->query("SHOW TABLES LIKE 'professionals'");
-    if (!$exists || $exists->num_rows === 0) {
-        return null;
-    }
-
     $stmt = $mysqli->prepare("
         SELECT p.id, p.user_id, p.display_name, p.public_email, u.email AS user_email
         FROM professionals p
@@ -338,18 +269,16 @@ function appointment_display_settings($mysqli)
     if (!$mysqli) {
         return [];
     }
-    $table = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
-    if (!$table || $table->num_rows === 0) {
-        return [];
-    }
-    $enabled_column = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'display_effective_duration_enabled'");
-    $offset_column = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'display_duration_offset_minutes'");
-    if (!$enabled_column || $enabled_column->num_rows === 0 || !$offset_column || $offset_column->num_rows === 0) {
-        return [];
-    }
     $tenant_id = current_tenant_id();
-    $res = $mysqli->query("SELECT display_effective_duration_enabled, display_duration_offset_minutes FROM payment_settings WHERE tenant_id = $tenant_id");
-    return $res ? ($res->fetch_assoc() ?: []) : [];
+    $stmt = $mysqli->prepare("
+        SELECT display_effective_duration_enabled, display_duration_offset_minutes
+        FROM payment_settings
+        WHERE tenant_id = ?
+        LIMIT 1
+    ");
+    $stmt->bind_param("i", $tenant_id);
+    $stmt->execute();
+    return $stmt->get_result()->fetch_assoc() ?: [];
 }
 
 function appointment_consultation_label($consultation_type)

@@ -260,7 +260,7 @@ try {
         VALUES (?, ?, 'primary', 80)
     ");
 
-    $limit = 10;
+    $limit = 200;
     $offset = 0;
     $remote_count = 0;
     $matched = 0;

@@ -1,0 +1,37 @@
+tecnica_id;nombre;descripcion;nivel_riesgo
+PSY2_T001;Psicoeducación;Explicar funcionamiento, síntomas, ciclo del problema y plan de intervención.;bajo
+PSY2_T002;Registro ABC;Registrar situación, pensamiento/emoción/conducta y consecuencia.;bajo
+PSY2_T003;Reestructuración cognitiva;Identificar, cuestionar y reformular pensamientos disfuncionales.;medio
+PSY2_T004;Activación conductual;Programar actividades valiosas, placenteras o de dominio.;bajo
+PSY2_T005;Exposición gradual;Acercamiento progresivo a situaciones evitadas con seguridad y objetivos.;medio
+PSY2_T006;Prevención de respuesta;Reducir comprobaciones, evitación o conductas de seguridad.;medio
+PSY2_T007;Entrenamiento en habilidades sociales;Practicar conversación, escucha, petición, rechazo y reparación.;bajo
+PSY2_T008;Asertividad y límites;Expresar necesidades y límites con claridad y respeto.;bajo
+PSY2_T009;Regulación emocional;Identificar emoción, función, intensidad y estrategia adecuada.;medio
+PSY2_T010;Tolerancia al malestar;Estrategias para sostener emoción sin actuar impulsivamente.;medio
+PSY2_T011;Mindfulness / atención plena;Observar experiencias internas sin fusionarse con ellas.;bajo
+PSY2_T012;Defusión cognitiva;Tomar distancia de pensamientos sin discutirlos necesariamente.;bajo
+PSY2_T013;Autocompasión;Reducir autocrítica y cultivar trato interno amable y responsable.;bajo
+PSY2_T014;Trabajo de valores;Clarificar dirección vital y conductas coherentes.;bajo
+PSY2_T015;Solución de problemas;Definir problema, opciones, pros/contras, acción y revisión.;bajo
+PSY2_T016;Planificación externa;Uso de agenda, recordatorios, checklists, bloques y entorno.;bajo
+PSY2_T017;Fragmentación de tareas;Dividir tareas en pasos pequeños y ejecutables.;bajo
+PSY2_T018;Gestión del tiempo;Estimación, priorización, buffers y revisión de agenda.;bajo
+PSY2_T019;Entrenamiento en pausa;Pausa entre impulso y acción: parar, respirar, elegir.;bajo
+PSY2_T020;Exposición interoceptiva/situacional;Exposición a sensaciones o contextos temidos cuando procede.;medio
+PSY2_T021;Trabajo con duelo;Aceptar pérdida, narrar vínculo, rituales, continuidad y reconstrucción.;medio
+PSY2_T022;Trabajo con apego;Identificar patrones relacionales, miedo al abandono y búsqueda de seguridad.;medio
+PSY2_T023;Comunicación de pareja/relacional;Peticiones, escucha, reparación y acuerdos.;medio
+PSY2_T024;Manejo de celos;Identificar disparadores, reducir comprobaciones y fortalecer límites.;medio
+PSY2_T025;Prevención de recaídas;Detectar señales tempranas, plan de acción y apoyos.;bajo
+PSY2_T026;Higiene del sueño y recuperación;Rutinas de sueño, descanso y desconexión.;bajo
+PSY2_T027;Límites laborales;Definir horarios, disponibilidad, descansos y expectativas.;bajo
+PSY2_T028;Plan anti-burnout;Reducir demandas, aumentar recuperación, valores y apoyo.;medio
+PSY2_T029;Adaptaciones para neurodivergencia;Ajustes ambientales, sensoriales, comunicación y rutinas.;medio
+PSY2_T030;Análisis sensorial;Identificar estímulos sensoriales, sobrecarga y estrategias de regulación.;medio
+PSY2_T031;Guiones sociales;Preparar respuestas, conversaciones o situaciones sociales previsibles.;bajo
+PSY2_T032;Plan de seguridad/derivación;Identificar riesgo, recursos, derivación y límites profesionales.;alto
+PSY2_T033;Estabilización y grounding;Orientación al presente, respiración, recursos y seguridad.;alto
+PSY2_T034;Narrativa terapéutica;Construir relato de experiencia, identidad o cambio con cuidado clínico.;medio
+PSY2_T035;Entrenamiento en gratificación demorada;Practicar espera, priorización y elección de largo plazo.;bajo
+PSY2_T036;Matriz de apoyo social;Identificar red, tipos de apoyo y peticiones concretas.;bajo

@@ -396,6 +396,10 @@ function dashboard_config_mode_from_db($mysqli)
 
 function dashboard_config_ensure_payment_column($mysqli)
 {
+    if (function_exists('app_auto_schema_migrations_enabled') && !app_auto_schema_migrations_enabled()) {
+        return;
+    }
+
     $res = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'dashboard_config_mode'");
     if ($res && $res->num_rows === 0) {
         $mysqli->query("ALTER TABLE payment_settings ADD dashboard_config_mode VARCHAR(16) NOT NULL DEFAULT 'simple'");

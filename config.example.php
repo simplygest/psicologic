@@ -11,6 +11,7 @@ return [
     // Override opcional para CLI/desarrollo. En web multi-tenant se resuelve por URL.
     // 'tenant_key' => 'tenant-demo',
     'protected_uploads_root' => '',
+    'auto_schema_migrations' => false,
     'timezone' => 'Atlantic/Canary',
     'max_booking_days' => 40,
     'cron_webhook_token' => 'genera-un-token-largo',

@@ -27,6 +27,9 @@ $knowledge_base_enabled = $is_admin
   && app_feature_enabled($dashboard_config, $plan_config, 'knowledgeBase.enabled', false)
   && knowledge_base_sector_has_data($mysqli, $sector_key);
 $body_map_sector_keys = ['fitness', 'fisioterapia', 'quiropractica', 'osteopatia'];
+$physical_metrics_sector_keys = array_merge($body_map_sector_keys, ['nutricion']);
+$physical_metrics_available = in_array($sector_key, $physical_metrics_sector_keys, true);
+$physical_metrics_enabled = $is_admin && $physical_metrics_available;
 $body_map_enabled = $knowledge_base_enabled && in_array($sector_key, $body_map_sector_keys, true);
 $knowledge_disclaimer = 'Las recomendaciones mostradas son material de apoyo documental. No constituyen diagnóstico, prescripción clínica automática ni sustituyen el criterio profesional.';
 if ($sector_key === 'fitness') {
@@ -42,23 +45,58 @@ $patient_label_plural = $sector_texts['labels']['patient']['plural'] ?? 'pacient
 $patient_label_title_singular = $sector_texts['labels']['patient']['titleSingular'] ?? 'Paciente';
 $patient_label_title_plural = $sector_texts['labels']['patient']['titlePlural'] ?? 'Pacientes';
 $work_plan_title_singular = $sector_texts['labels']['workPlan']['titleSingular'] ?? 'Plan de trabajo';
+$is_psychology_sector = $sector_key === 'psicologia';
+$patient_type_placeholder = $is_psychology_sector ? 'Adulto, pareja, derivado...' : '';
+$patient_referral_placeholder = $is_psychology_sector ? 'Web, Doctoralia, recomendaci&oacute;n, m&eacute;dico...' : '';
+$professional_title_placeholder = $is_psychology_sector ? 'Psic&oacute;loga sanitaria, Psic&oacute;logo cl&iacute;nico...' : '';
+$professional_specialty_placeholder = $is_psychology_sector ? 'Ansiedad, terapia infantil, adultos, pareja...' : '';
+$task_template_category_placeholder = $is_psychology_sector ? 'Ej. Ansiedad, adolescentes, seguimiento' : '';
 $app_name = $branding['app_name'];
+$primary_color = preg_match('/^#[0-9a-fA-F]{6}$/', $branding['primary_color'] ?? '') ? strtolower($branding['primary_color']) : '#4285f4';
+$primary_rgb = [
+  hexdec(substr($primary_color, 1, 2)),
+  hexdec(substr($primary_color, 3, 2)),
+  hexdec(substr($primary_color, 5, 2)),
+];
+$primary_luminance = (($primary_rgb[0] * 299) + ($primary_rgb[1] * 587) + ($primary_rgb[2] * 114)) / 1000;
+$navbar_text_color = $primary_luminance > 185 ? '#222222' : '#ffffff';
+$navbar_control_bg = $primary_luminance > 185 ? 'rgba(0,0,0,.06)' : 'rgba(255,255,255,.18)';
+$navbar_control_hover_bg = $primary_luminance > 185 ? 'rgba(0,0,0,.1)' : 'rgba(255,255,255,.28)';
+$sector_help_files = [
+  'asesoria' => 'asesoria.php',
+  'coaching' => 'coaching.php',
+  'entrenamiento_personal' => 'fitness.php',
+  'fisioterapia' => 'fisioterapia.php',
+  'fitness' => 'fitness.php',
+  'logopedia' => 'logopedia.php',
+  'nutricion' => 'nutricion.php',
+  'osteopatia' => 'osteopatia.php',
+  'oposiciones' => 'preparacion_oposiciones.php',
+  'preparacion_oposiciones' => 'preparacion_oposiciones.php',
+  'psicopedagogia' => 'psicopedagogia.php',
+  'quiropractica' => 'quiropractica.php',
+  'sexologia' => 'sexologia.php',
+  'terapia_ocupacional' => 'terapia_ocupacional.php',
+];
+$sector_help_file = $sector_help_files[$sector_key] ?? '';
+$tenant_url_key = function_exists('current_tenant_key') ? current_tenant_key() : '';
+$help_base_url = '/' . trim(function_exists('tenant_app_base_path') ? tenant_app_base_path() : 'sgpraxis', '/') . '/' . rawurlencode($tenant_url_key) . '/ayuda/';
+$sector_help_url = ($sector_help_file !== '' && file_exists(__DIR__ . '/ayuda/' . $sector_help_file))
+  ? $help_base_url . '?sector=' . rawurlencode($sector_key)
+  : $help_base_url;
 $official_brand_logo_url = app_official_brand_logo_url();
 $profile_image_path = $custom_dashboard_logo_enabled ? $branding['profile_image_path'] : '';
 $navbar_image_path = $profile_image_path;
 $has_team_members = false;
 if (!$is_admin) {
-  $photo_column = $mysqli->query("SHOW COLUMNS FROM patient_profiles LIKE 'photo_path'");
-  if ($photo_column && $photo_column->num_rows === 0) {
-    $mysqli->query("ALTER TABLE patient_profiles ADD photo_path VARCHAR(255) DEFAULT NULL AFTER notes");
-  }
   $stmt = $mysqli->prepare("
     SELECT photo_path
     FROM patient_profiles
-    WHERE user_id = ?
+    WHERE tenant_id = ? AND user_id = ?
     LIMIT 1
   ");
-  $stmt->bind_param("i", $_SESSION['user_id']);
+  $tenant_id = current_tenant_id();
+  $stmt->bind_param("ii", $tenant_id, $_SESSION['user_id']);
   $stmt->execute();
   $patient_navbar = $stmt->get_result()->fetch_assoc();
   if (!empty($patient_navbar['photo_path'])) {
@@ -66,17 +104,18 @@ if (!$is_admin) {
   }
 }
 if ($is_admin) {
-  $team_count_res = $mysqli->query("SELECT COUNT(*) AS total FROM professionals WHERE is_active = 1");
+  $tenant_id = current_tenant_id();
+  $team_count_res = $mysqli->query("SELECT COUNT(*) AS total FROM professionals WHERE tenant_id = $tenant_id AND is_active = 1");
   $team_count = $team_count_res ? (int) ($team_count_res->fetch_assoc()['total'] ?? 0) : 0;
   $has_team_members = $team_count > 1;
   if ($has_team_members && !$is_superadmin) {
     $stmt = $mysqli->prepare("
       SELECT public_photo_path
       FROM professionals
-      WHERE user_id = ? AND is_active = 1
+      WHERE tenant_id = ? AND user_id = ? AND is_active = 1
       LIMIT 1
     ");
-    $stmt->bind_param("i", $_SESSION['user_id']);
+    $stmt->bind_param("ii", $tenant_id, $_SESSION['user_id']);
     $stmt->execute();
     $professional_navbar = $stmt->get_result()->fetch_assoc();
     if (!empty($professional_navbar['public_photo_path'])) {
@@ -98,7 +137,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css?v=<?= filemtime(__DIR__ . '/css/style.css') ?>">
-  <style>:root { --primary-color: <?= htmlspecialchars($branding['primary_color']) ?>; }</style>
+  <style>:root { --primary-color: <?= htmlspecialchars($primary_color) ?>; --dashboard-navbar-text: <?= htmlspecialchars($navbar_text_color) ?>; --dashboard-navbar-control-bg: <?= htmlspecialchars($navbar_control_bg) ?>; --dashboard-navbar-control-hover-bg: <?= htmlspecialchars($navbar_control_hover_bg) ?>; }</style>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
 </head>
 
@@ -145,7 +184,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                 </button>
               </li>
               <li>
-                <a class="dropdown-item" href="ayuda/">
+                <a class="dropdown-item" href="<?= htmlspecialchars($sector_help_url) ?>">
                   <i class="bi bi-question-circle me-2"></i>Ayuda
                 </a>
               </li>
@@ -162,14 +201,36 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
     </div>
   </nav>
 
-  <div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-      <h4 class="mb-0">Calendario de Citas</h4>
-      <div class="d-flex gap-2 flex-wrap justify-content-end">
-        <button class="btn btn-light" id="btn-prev-week"><i class="bi bi-chevron-left"></i> <span id="calendar-prev-label">Semana Anterior</span></button>
-        <button class="btn btn-light" id="btn-next-week"><span id="calendar-next-label">Semana Siguiente</span> <i class="bi bi-chevron-right"></i></button>
-      </div>
-    </div>
+  <div class="<?= $is_admin ? 'container-fluid dashboard-shell-container mt-4' : 'container mt-4' ?>">
+    <?php if ($is_admin): ?>
+      <div class="dashboard-shell">
+        <aside class="dashboard-side-nav" aria-label="Navegaci&oacute;n del dashboard">
+          <div class="dashboard-side-nav-section">
+            <button class="dashboard-side-nav-item btn-dashboard-main-view" type="button" data-dashboard-main-view="agenda">
+              <i class="bi bi-calendar3"></i><span>Agenda</span>
+            </button>
+            <button class="dashboard-side-nav-item btn-dashboard-main-view" type="button" data-dashboard-main-view="patients">
+              <i class="bi bi-people"></i><span><?= htmlspecialchars($patient_label_title_plural, ENT_QUOTES, 'UTF-8') ?></span>
+            </button>
+            <button class="dashboard-side-nav-item btn-dashboard-main-view" type="button" data-dashboard-main-view="upcoming">
+              <i class="bi bi-list-check"></i><span>Citas</span>
+            </button>
+          </div>
+          <div class="dashboard-side-nav-section">
+            <div class="dashboard-side-nav-label">Herramientas</div>
+            <button class="dashboard-side-nav-item" id="btn-sidebar-generate-invite" type="button" data-dashboard-action="invite">
+              <i class="bi bi-link-45deg"></i><span>Invitaci&oacute;n</span>
+            </button>
+            <button class="dashboard-side-nav-item" id="btn-sidebar-admin-stats" type="button" data-dashboard-action="stats">
+              <i class="bi bi-bar-chart"></i><span>Estad&iacute;sticas</span>
+            </button>
+            <button class="dashboard-side-nav-item" id="btn-sidebar-admin-bonuses" type="button" data-dashboard-action="bonuses">
+              <i class="bi bi-card-list"></i><span>Bonos</span>
+            </button>
+          </div>
+        </aside>
+        <main class="dashboard-shell-main">
+    <?php endif; ?>
 
     <?php if ($is_admin): ?>
       <div class="mb-4 d-flex gap-2 flex-wrap align-items-center dashboard-actions-bar dashboard-actions-admin">
@@ -177,7 +238,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
         <button class="btn btn-primary" id="btn-generate-invite"><i class="bi bi-link-45deg"></i> Generar
           Invitación</button>
         <button class="btn btn-primary" id="btn-upcoming-appointments" type="button"><i class="bi bi-list-check"></i> Pr&oacute;ximas citas</button>
-        <button class="btn btn-primary" id="btn-admin-stats" type="button"><i class="bi bi-bar-chart"></i> Informes y estad&iacute;sticas</button>
+        <button class="btn btn-primary" id="btn-admin-stats" type="button"><i class="bi bi-bar-chart"></i> Estad&iacute;sticas</button>
           <button class="btn btn-primary" id="btn-admin-bonuses" type="button"><i class="bi bi-card-list"></i> Bonos</button>
         <button class="btn btn-primary" id="btn-admin-patients" type="button"><i class="bi bi-people"></i> <?= $is_superadmin ? htmlspecialchars($patient_label_title_plural, ENT_QUOTES, 'UTF-8') : 'Mis ' . htmlspecialchars($patient_label_plural, ENT_QUOTES, 'UTF-8') ?></button>
         </div>
@@ -188,13 +249,16 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
           <ul class="dropdown-menu">
             <li><button class="dropdown-item" type="button" id="btn-mobile-generate-invite"><i class="bi bi-link-45deg me-2"></i>Generar invitaci&oacute;n</button></li>
             <li><button class="dropdown-item" type="button" id="btn-mobile-upcoming-appointments"><i class="bi bi-list-check me-2"></i>Pr&oacute;ximas citas</button></li>
-            <li><button class="dropdown-item" type="button" id="btn-mobile-admin-stats"><i class="bi bi-bar-chart me-2"></i>Informes y estad&iacute;sticas</button></li>
+            <li><button class="dropdown-item" type="button" id="btn-mobile-admin-stats"><i class="bi bi-bar-chart me-2"></i>Estad&iacute;sticas</button></li>
             <li><button class="dropdown-item" type="button" id="btn-mobile-admin-bonuses"><i class="bi bi-card-list me-2"></i>Bonos</button></li>
             <li><button class="dropdown-item" type="button" id="btn-mobile-admin-patients"><i class="bi bi-people me-2"></i><?= $is_superadmin ? htmlspecialchars($patient_label_title_plural, ENT_QUOTES, 'UTF-8') : 'Mis ' . htmlspecialchars($patient_label_plural, ENT_QUOTES, 'UTF-8') ?></button></li>
           </ul>
         </div>
         <span id="admin-actions-msg" class="align-self-center ms-2 text-success" style="display: none;"></span>
-        <button class="btn btn-primary ms-auto" id="btn-calendar-view-toggle" type="button"><i class="bi bi-calendar3"></i> Ver mes</button>
+        <div class="btn-group ms-auto dashboard-view-switcher" id="admin-dashboard-view-switcher" role="group" aria-label="Vista del dashboard">
+          <button class="btn btn-outline-primary btn-dashboard-view" type="button" data-dashboard-view="month"><i class="bi bi-calendar3"></i> Mes</button>
+          <button class="btn btn-outline-primary btn-dashboard-view" type="button" data-dashboard-view="week"><i class="bi bi-calendar-week"></i> Semana</button>
+        </div>
       </div>
     <?php else: ?>
       <div class="mb-4 d-flex gap-2 flex-wrap align-items-center dashboard-actions-bar" id="patient-bonus-actions">
@@ -202,6 +266,10 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
           <button class="btn btn-primary" id="btn-patient-portal-appointments" type="button"><i class="bi bi-calendar-check"></i> Mis citas</button>
           <button class="btn btn-primary" id="btn-patient-portal-tasks" type="button"><i class="bi bi-list-check"></i> Mis tareas</button>
           <button class="btn btn-primary" id="btn-patient-portal-documents" type="button"><i class="bi bi-folder2-open"></i> Mis documentos</button>
+          <button class="btn btn-primary" id="btn-patient-portal-reports" type="button"><i class="bi bi-file-earmark-text"></i> Mis informes</button>
+          <?php if ($physical_metrics_available): ?>
+            <button class="btn btn-primary" id="btn-patient-portal-composition" type="button"><i class="bi bi-activity"></i> Mi progreso</button>
+          <?php endif; ?>
           <button class="btn btn-primary" id="btn-buy-bonus" type="button" style="display: none;"><i class="bi bi-bag-check"></i> Comprar bono</button>
           <button class="btn btn-primary" id="btn-my-bonuses" type="button" style="display: none;"><i class="bi bi-card-list"></i> Mis bonos</button>
         </div>
@@ -213,6 +281,10 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
             <li><button class="dropdown-item" type="button" id="btn-mobile-patient-portal-appointments"><i class="bi bi-calendar-check me-2"></i>Mis citas</button></li>
             <li><button class="dropdown-item" type="button" id="btn-mobile-patient-portal-tasks"><i class="bi bi-list-check me-2"></i>Mis tareas</button></li>
             <li><button class="dropdown-item" type="button" id="btn-mobile-patient-portal-documents"><i class="bi bi-folder2-open me-2"></i>Mis documentos</button></li>
+            <li><button class="dropdown-item" type="button" id="btn-mobile-patient-portal-reports"><i class="bi bi-file-earmark-text me-2"></i>Mis informes</button></li>
+            <?php if ($physical_metrics_available): ?>
+              <li><button class="dropdown-item" type="button" id="btn-mobile-patient-portal-composition"><i class="bi bi-activity me-2"></i>Mi progreso</button></li>
+            <?php endif; ?>
             <li style="display: none;"><button class="dropdown-item" type="button" id="btn-mobile-buy-bonus"><i class="bi bi-bag-check me-2"></i>Comprar bono</button></li>
             <li style="display: none;"><button class="dropdown-item" type="button" id="btn-mobile-my-bonuses"><i class="bi bi-card-list me-2"></i>Mis bonos</button></li>
           </ul>
@@ -220,7 +292,6 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
         <button class="btn btn-primary ms-auto" id="btn-calendar-view-toggle" type="button"><i class="bi bi-calendar3"></i> Ver mes</button>
       </div>
     <?php endif; ?>
-
     <?php if (!$is_admin): ?>
       <div id="patient-quick-appointment-summary" class="quick-appointments-summary d-none"></div>
     <?php endif; ?>
@@ -235,10 +306,14 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
         <div class="spinner-border text-secondary" role="status"></div><br>Cargando calendario...
       </div>
     </div>
+    <?php if ($is_admin): ?>
+        </main>
+      </div>
+    <?php endif; ?>
   </div>
 
   <div class="modal fade" id="appointmentModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
       <div class="modal-content" style="border-radius: 12px;">
         <div class="modal-header border-0">
           <h5 class="modal-title" id="modalTitle">Gestión de Cita</h5>
@@ -469,6 +544,9 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
           </div>
           <div class="modal-body">
             <div id="invite-modal-alert" class="alert d-none"></div>
+            <div class="alert alert-info small">
+              Env&iacute;a este enlace a tu <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?> o p&iacute;dele que escanee el C&oacute;digo QR. Con &eacute;l acceder&aacute; al formulario de registro, donde podr&aacute; darse de alta para acceder al Portal de <?= htmlspecialchars($patient_label_title_plural, ENT_QUOTES, 'UTF-8') ?>.
+            </div>
             <label class="form-label" for="invite-link">Enlace generado</label>
             <div class="input-group mb-3">
               <input type="text" class="form-control" id="invite-link" readonly>
@@ -577,6 +655,11 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
               <li class="nav-item" role="presentation">
                 <button class="nav-link" id="patient-more-data-tab" data-bs-toggle="tab" data-bs-target="#patient-more-data-panel" type="button" role="tab">M&aacute;s datos</button>
               </li>
+              <?php if ($physical_metrics_enabled): ?>
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link" id="patient-physical-tab" data-bs-toggle="tab" data-bs-target="#patient-physical-panel" type="button" role="tab">Composici&oacute;n</button>
+                </li>
+              <?php endif; ?>
               <?php if ($knowledge_base_enabled): ?>
                 <li class="nav-item" role="presentation">
                   <button class="nav-link" id="patient-diagnosis-tab" data-bs-toggle="tab" data-bs-target="#patient-diagnosis-panel" type="button" role="tab"><?= htmlspecialchars(ucfirst($sector_texts['clinicalTerms']['diagnosis'] ?? 'Diagnóstico')) ?></button>
@@ -595,6 +678,9 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                 <button class="nav-link" id="patient-files-tab" data-bs-toggle="tab" data-bs-target="#patient-files-panel" type="button" role="tab">Documentaci&oacute;n</button>
               </li>
               <li class="nav-item" role="presentation">
+                <button class="nav-link" id="patient-reports-tab" data-bs-toggle="tab" data-bs-target="#patient-reports-panel" type="button" role="tab">Informes</button>
+              </li>
+              <li class="nav-item" role="presentation">
                 <button class="nav-link" id="patient-bonuses-tab" data-bs-toggle="tab" data-bs-target="#patient-bonuses-panel" type="button" role="tab">Bonos</button>
               </li>
             </ul>
@@ -609,7 +695,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                     </div>
                     <div class="col-md-6">
                       <label class="form-label" for="patient-editor-type">Tipo</label>
-                      <input type="text" class="form-control" id="patient-editor-type" name="patient_type" placeholder="Adulto, pareja, derivado...">
+                      <input type="text" class="form-control" id="patient-editor-type" name="patient_type" placeholder="<?= $patient_type_placeholder ?>">
                     </div>
                     <div class="col-md-6">
                       <label class="form-label" for="patient-editor-email">Email</label>
@@ -690,7 +776,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   </div>
                   <div class="col-md-6">
                     <label class="form-label" for="patient-editor-referral-source">Fuente / derivaci&oacute;n</label>
-                    <input type="text" class="form-control" id="patient-editor-referral-source" name="referral_source" form="patient-editor-form" placeholder="Web, Doctoralia, recomendaci&oacute;n, m&eacute;dico...">
+                    <input type="text" class="form-control" id="patient-editor-referral-source" name="referral_source" form="patient-editor-form" placeholder="<?= $patient_referral_placeholder ?>">
                   </div>
                   <div class="col-md-6">
                     <label class="form-label" for="patient-editor-emergency-name">Contacto de emergencia / tutor</label>
@@ -714,6 +800,165 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   </div>
                 </div>
               </div>
+              <?php if ($physical_metrics_enabled): ?>
+                <div class="tab-pane fade" id="patient-physical-panel" role="tabpanel" aria-labelledby="patient-physical-tab">
+                  <div class="alert alert-info small mb-3">
+                    Estos datos se sincronizan autom&aacute;ticamente con la pesta&ntilde;a Evoluci&oacute;n. Si en el futuro quieres registrar nuevas medidas, puedes hacerlo directamente desde Evoluci&oacute;n.
+                    <br>
+                    Registra medidas f&iacute;sicas orientativas para seguimiento. El IMC se calcula autom&aacute;ticamente y el porcentaje de grasa puede introducirse manualmente o estimarse con los datos disponibles.
+                  </div>
+                  <div class="row g-3">
+                    <div class="col-md-4">
+                      <label class="form-label" for="patient-editor-weight">Peso</label>
+                      <div class="input-group">
+                        <input type="number" step="0.1" min="0" class="form-control" id="patient-editor-weight" name="weight_kg" form="patient-editor-form">
+                        <span class="input-group-text">kg</span>
+                      </div>
+                    </div>
+                    <div class="col-md-4">
+                      <label class="form-label" for="patient-editor-height">Altura</label>
+                      <div class="input-group">
+                        <input type="number" step="0.1" min="0" class="form-control" id="patient-editor-height" name="height_cm" form="patient-editor-form">
+                        <span class="input-group-text">cm</span>
+                      </div>
+                    </div>
+                    <div class="col-md-4">
+                      <label class="form-label" for="patient-editor-physical-sex">Sexo biol&oacute;gico</label>
+                      <select class="form-select" id="patient-editor-physical-sex" name="physical_sex" form="patient-editor-form">
+                        <option value="">No indicado</option>
+                        <option value="male">Masculino</option>
+                        <option value="female">Femenino</option>
+                      </select>
+                    </div>
+                    <div class="col-12">
+                      <div class="border rounded p-3">
+                        <h6 class="mb-3">Medidas corporales</h6>
+                        <div class="row g-3">
+                          <div class="col-md-4">
+                            <label class="form-label" for="patient-editor-waist">Cintura</label>
+                            <div class="input-group">
+                              <input type="number" step="0.1" min="0" class="form-control" id="patient-editor-waist" name="waist_cm" form="patient-editor-form">
+                              <span class="input-group-text">cm</span>
+                            </div>
+                          </div>
+                          <div class="col-md-4">
+                            <label class="form-label" for="patient-editor-hip">Cadera</label>
+                            <div class="input-group">
+                              <input type="number" step="0.1" min="0" class="form-control" id="patient-editor-hip" name="hip_cm" form="patient-editor-form">
+                              <span class="input-group-text">cm</span>
+                            </div>
+                          </div>
+                          <div class="col-md-4">
+                            <label class="form-label" for="patient-editor-chest">Pecho / t&oacute;rax</label>
+                            <div class="input-group">
+                              <input type="number" step="0.1" min="0" class="form-control" id="patient-editor-chest" name="chest_cm" form="patient-editor-form">
+                              <span class="input-group-text">cm</span>
+                            </div>
+                          </div>
+                          <div class="col-md-4">
+                            <label class="form-label" for="patient-editor-thigh">Muslo</label>
+                            <div class="input-group">
+                              <input type="number" step="0.1" min="0" class="form-control" id="patient-editor-thigh" name="thigh_cm" form="patient-editor-form">
+                              <span class="input-group-text">cm</span>
+                            </div>
+                          </div>
+                          <div class="col-md-4">
+                            <label class="form-label" for="patient-editor-biceps">B&iacute;ceps</label>
+                            <div class="input-group">
+                              <input type="number" step="0.1" min="0" class="form-control" id="patient-editor-biceps" name="biceps_cm" form="patient-editor-form">
+                              <span class="input-group-text">cm</span>
+                            </div>
+                          </div>
+                          <div class="col-md-4">
+                            <label class="form-label" for="patient-editor-calf">Gemelo</label>
+                            <div class="input-group">
+                              <input type="number" step="0.1" min="0" class="form-control" id="patient-editor-calf" name="calf_cm" form="patient-editor-form">
+                              <span class="input-group-text">cm</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="col-12">
+                      <div class="border rounded p-3">
+                        <h6 class="mb-3">Pliegues cut&aacute;neos</h6>
+                        <div class="row g-3">
+                          <div class="col-md-4">
+                            <label class="form-label" for="patient-editor-skinfold-triceps">Tr&iacute;ceps</label>
+                            <div class="input-group">
+                              <input type="number" step="0.1" min="0" class="form-control" id="patient-editor-skinfold-triceps" name="skinfold_triceps_mm" form="patient-editor-form">
+                              <span class="input-group-text">mm</span>
+                            </div>
+                          </div>
+                          <div class="col-md-4">
+                            <label class="form-label" for="patient-editor-skinfold-subscapular">Subescapular</label>
+                            <div class="input-group">
+                              <input type="number" step="0.1" min="0" class="form-control" id="patient-editor-skinfold-subscapular" name="skinfold_subscapular_mm" form="patient-editor-form">
+                              <span class="input-group-text">mm</span>
+                            </div>
+                          </div>
+                          <div class="col-md-4">
+                            <label class="form-label" for="patient-editor-skinfold-suprailiac">Suprail&iacute;aco</label>
+                            <div class="input-group">
+                              <input type="number" step="0.1" min="0" class="form-control" id="patient-editor-skinfold-suprailiac" name="skinfold_suprailiac_mm" form="patient-editor-form">
+                              <span class="input-group-text">mm</span>
+                            </div>
+                          </div>
+                          <div class="col-md-4">
+                            <label class="form-label" for="patient-editor-skinfold-abdominal">Abdominal</label>
+                            <div class="input-group">
+                              <input type="number" step="0.1" min="0" class="form-control" id="patient-editor-skinfold-abdominal" name="skinfold_abdominal_mm" form="patient-editor-form">
+                              <span class="input-group-text">mm</span>
+                            </div>
+                          </div>
+                          <div class="col-md-4">
+                            <label class="form-label" for="patient-editor-skinfold-chest">Pectoral</label>
+                            <div class="input-group">
+                              <input type="number" step="0.1" min="0" class="form-control" id="patient-editor-skinfold-chest" name="skinfold_chest_mm" form="patient-editor-form">
+                              <span class="input-group-text">mm</span>
+                            </div>
+                          </div>
+                          <div class="col-md-4">
+                            <label class="form-label" for="patient-editor-skinfold-thigh">Muslo</label>
+                            <div class="input-group">
+                              <input type="number" step="0.1" min="0" class="form-control" id="patient-editor-skinfold-thigh" name="skinfold_thigh_mm" form="patient-editor-form">
+                              <span class="input-group-text">mm</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="col-12">
+                      <div class="border rounded p-3">
+                        <h6 class="mb-3">C&aacute;lculos orientativos</h6>
+                        <div class="row g-3">
+                          <div class="col-md-4">
+                            <label class="form-label">IMC</label>
+                            <div class="bmi-indicator" id="patient-editor-bmi">
+                              <div class="d-flex justify-content-between align-items-center gap-2">
+                                <strong class="bmi-indicator-value">-</strong>
+                                <span class="badge text-bg-light bmi-indicator-label">Sin datos</span>
+                              </div>
+                              <div class="bmi-indicator-bar" aria-hidden="true">
+                                <span class="bmi-indicator-fill"></span>
+                              </div>
+                            </div>
+                          </div>
+                          <div class="col-md-8">
+                            <label class="form-label" for="patient-editor-body-fat">Grasa corporal</label>
+                            <div class="input-group">
+                              <input type="number" step="0.1" min="0" max="80" class="form-control" id="patient-editor-body-fat" name="body_fat_percentage" form="patient-editor-form">
+                              <span class="input-group-text">%</span>
+                              <button class="btn btn-outline-primary" type="button" id="btn-calculate-body-fat">Calcular</button>
+                            </div>
+                            <div class="form-text" id="patient-editor-body-fat-note">Puedes introducirlo manualmente si ya tienes una medici&oacute;n fiable.</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              <?php endif; ?>
               <?php if ($knowledge_base_enabled): ?>
                 <div class="tab-pane fade" id="patient-diagnosis-panel" role="tabpanel" aria-labelledby="patient-diagnosis-tab">
                   <div class="alert alert-info small mb-3">
@@ -731,8 +976,11 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                             <button type="button" class="btn btn-outline-primary patient-knowledge-mode-btn" data-knowledge-mode="objective">
                               Rutinas por objetivo
                             </button>
+                            <button type="button" class="btn btn-outline-primary patient-knowledge-mode-btn" data-knowledge-mode="custom-workout">
+                              Rutina personalizada
+                            </button>
                           </div>
-                          <p class="mb-0 text-muted small">Elige si quieres consultar ejercicios seg&uacute;n la zona muscular o revisar rutinas y pautas por objetivo.</p>
+                          <p class="mb-0 text-muted small">Elige si quieres consultar ejercicios seg&uacute;n la zona muscular, revisar rutinas por objetivo o generar una rutina personalizada.</p>
                         </div>
                       </div>
                       <div class="col-12">
@@ -778,6 +1026,91 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                       </div>
                       </div>
                     </div>
+                    <?php if ($body_map_enabled): ?>
+                      <div class="col-12 patient-knowledge-mode-panel d-none" data-knowledge-mode-panel="custom-workout">
+                        <div class="patient-custom-workout-panel">
+                          <div class="border rounded p-3">
+                            <div class="d-flex flex-column flex-lg-row justify-content-between gap-2 mb-3">
+                              <div>
+                                <h6 class="mb-1">Genera una rutina personalizada</h6>
+                              </div>
+                              <button type="button" class="btn btn-primary btn-sm align-self-lg-start" id="btn-generate-workoutx-plan">
+                                <i class="bi bi-stars"></i> Generar rutina
+                              </button>
+                            </div>
+                            <div class="row g-3">
+                              <div class="col-md-3">
+                                <label class="form-label" for="workoutx-plan-goal">Objetivo</label>
+                                <select class="form-select" id="workoutx-plan-goal">
+                                  <option value="muscle_gain">Ganar m&uacute;sculo</option>
+                                  <option value="strength">Fuerza</option>
+                                  <option value="fat_loss">P&eacute;rdida de grasa</option>
+                                  <option value="endurance">Resistencia</option>
+                                  <option value="mobility">Movilidad</option>
+                                </select>
+                              </div>
+                              <div class="col-md-3">
+                                <label class="form-label" for="workoutx-plan-duration">Duraci&oacute;n</label>
+                                <div class="input-group">
+                                  <input type="number" class="form-control" id="workoutx-plan-duration" min="20" max="120" step="5" value="45">
+                                  <span class="input-group-text">min</span>
+                                </div>
+                              </div>
+                              <div class="col-md-3">
+                                <label class="form-label" for="workoutx-plan-level">Nivel</label>
+                                <select class="form-select" id="workoutx-plan-level">
+                                  <option value="beginner">Principiante</option>
+                                  <option value="intermediate" selected>Intermedio</option>
+                                  <option value="advanced">Avanzado</option>
+                                </select>
+                              </div>
+                              <div class="col-md-3">
+                                <label class="form-label" for="workoutx-plan-split">Enfoque</label>
+                                <select class="form-select" id="workoutx-plan-split">
+                                  <option value="full_body">Cuerpo completo</option>
+                                  <option value="upper">Tren superior</option>
+                                  <option value="lower">Tren inferior</option>
+                                  <option value="push">Empuje</option>
+                                  <option value="pull">Tir&oacute;n</option>
+                                  <option value="legs">Piernas</option>
+                                  <option value="push_pull_legs">Empuje, tir&oacute;n y piernas</option>
+                                  <option value="upper_lower">Superior e inferior</option>
+                                  <option value="core">Core</option>
+                                </select>
+                              </div>
+                              <div class="col-md-6">
+                                <label class="form-label">Material disponible</label>
+                                <div class="workoutx-option-grid" id="workoutx-plan-equipment">
+                                  <label class="form-check"><input class="form-check-input" type="checkbox" name="workoutx_plan_equipment[]" value="body weight"><span class="form-check-label">Peso corporal</span></label>
+                                  <label class="form-check"><input class="form-check-input" type="checkbox" name="workoutx_plan_equipment[]" value="dumbbell"><span class="form-check-label">Mancuernas</span></label>
+                                  <label class="form-check"><input class="form-check-input" type="checkbox" name="workoutx_plan_equipment[]" value="barbell"><span class="form-check-label">Barra</span></label>
+                                  <label class="form-check"><input class="form-check-input" type="checkbox" name="workoutx_plan_equipment[]" value="cable"><span class="form-check-label">Polea / cable</span></label>
+                                  <label class="form-check"><input class="form-check-input" type="checkbox" name="workoutx_plan_equipment[]" value="machine"><span class="form-check-label">M&aacute;quina</span></label>
+                                  <label class="form-check"><input class="form-check-input" type="checkbox" name="workoutx_plan_equipment[]" value="kettlebell"><span class="form-check-label">Kettlebell</span></label>
+                                  <label class="form-check"><input class="form-check-input" type="checkbox" name="workoutx_plan_equipment[]" value="resistance band"><span class="form-check-label">Banda el&aacute;stica</span></label>
+                                  <label class="form-check"><input class="form-check-input" type="checkbox" name="workoutx_plan_equipment[]" value="smith machine"><span class="form-check-label">M&aacute;quina Smith</span></label>
+                                </div>
+                              </div>
+                              <div class="col-md-6">
+                                <label class="form-label">Zonas</label>
+                                <div class="workoutx-option-grid" id="workoutx-plan-body-focus">
+                                  <label class="form-check"><input class="form-check-input" type="checkbox" name="workoutx_plan_body_focus[]" value="chest"><span class="form-check-label">Pecho</span></label>
+                                  <label class="form-check"><input class="form-check-input" type="checkbox" name="workoutx_plan_body_focus[]" value="back"><span class="form-check-label">Espalda</span></label>
+                                  <label class="form-check"><input class="form-check-input" type="checkbox" name="workoutx_plan_body_focus[]" value="shoulders"><span class="form-check-label">Hombros</span></label>
+                                  <label class="form-check"><input class="form-check-input" type="checkbox" name="workoutx_plan_body_focus[]" value="upper arms"><span class="form-check-label">Brazos</span></label>
+                                  <label class="form-check"><input class="form-check-input" type="checkbox" name="workoutx_plan_body_focus[]" value="lower arms"><span class="form-check-label">Antebrazos</span></label>
+                                  <label class="form-check"><input class="form-check-input" type="checkbox" name="workoutx_plan_body_focus[]" value="waist"><span class="form-check-label">Core / abdomen</span></label>
+                                  <label class="form-check"><input class="form-check-input" type="checkbox" name="workoutx_plan_body_focus[]" value="upper legs"><span class="form-check-label">Piernas superiores</span></label>
+                                  <label class="form-check"><input class="form-check-input" type="checkbox" name="workoutx_plan_body_focus[]" value="lower legs"><span class="form-check-label">Piernas inferiores</span></label>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          <div id="workoutx-generated-plan" class="workoutx-generated-plan mt-3">
+                          </div>
+                        </div>
+                      </div>
+                    <?php endif; ?>
                   </div>
                 </div>
               <?php endif; ?>
@@ -805,11 +1138,11 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
               </div>
               <div class="tab-pane fade" id="patient-work-plan-panel" role="tabpanel" aria-labelledby="patient-work-plan-tab">
                 <div id="patient-work-plan-alert" class="alert d-none"></div>
-                <div class="alert alert-info d-flex align-items-start gap-2">
+                <div class="alert alert-info d-flex align-items-start gap-2 small">
                   <i class="bi bi-list-check fs-5"></i>
                   <div>
                     <strong><?= htmlspecialchars($work_plan_title_singular, ENT_QUOTES, 'UTF-8') ?></strong>
-                    <div>Desde aqu&iacute; puedes personalizar tareas, actividades, temas a tratar o pautas para este <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?>, y marcarlas como completadas o pendientes en las sucesivas citas.</div>
+                    <div id="patient-work-plan-help-text">Desde aqu&iacute; puedes personalizar tareas, actividades, temas a tratar o pautas para este <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?>, y marcarlas como completadas o pendientes en las sucesivas citas.</div>
                   </div>
                 </div>
                 <div class="d-flex justify-content-end gap-2 mb-3 flex-wrap">
@@ -818,7 +1151,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   </button>
                 </div>
                 <div class="row g-3">
-                  <div class="col-lg-6">
+                  <div class="col-lg-6" id="patient-work-plan-pending-column">
                     <div class="patient-work-plan-column">
                       <h6>Pendientes</h6>
                       <div id="patient-work-plan-pending" class="patient-work-plan-list">
@@ -826,7 +1159,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                       </div>
                     </div>
                   </div>
-                  <div class="col-lg-6">
+                  <div class="col-lg-6" id="patient-work-plan-completed-column">
                     <div class="patient-work-plan-column">
                       <h6>Completadas</h6>
                       <div id="patient-work-plan-completed-list" class="patient-work-plan-list">
@@ -839,56 +1172,39 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
               </div>
               <div class="tab-pane fade" id="patient-evolution-panel" role="tabpanel" aria-labelledby="patient-evolution-tab">
                 <div id="patient-evolution-alert" class="alert d-none"></div>
-                <div class="d-flex justify-content-end mb-3">
-                  <button class="btn btn-primary btn-sm" type="button" id="btn-show-patient-evolution-form">
-                    <i class="bi bi-plus-lg"></i> Nuevo registro
-                  </button>
-                </div>
-                <form id="patient-evolution-form" class="border rounded p-3 mb-3 d-none" enctype="multipart/form-data">
-                  <input type="hidden" id="patient-evolution-id" name="note_id" value="0">
-                  <input type="hidden" id="patient-evolution-patient-id" name="patient_id" value="0">
-                  <div class="row g-3">
-                    <div class="col-md-4">
-                      <label class="form-label" for="patient-evolution-date">Fecha</label>
-                      <input type="date" class="form-control" id="patient-evolution-date" name="note_date" required>
-                    </div>
-                    <div class="col-md-8">
-                      <label class="form-label" for="patient-evolution-appointment">Cita vinculada</label>
-                      <select class="form-select" id="patient-evolution-appointment" name="appointment_id">
-                        <option value="">Nota general del <?= htmlspecialchars($patient_label_singular) ?></option>
-                      </select>
-                    </div>
-                    <div class="col-12">
-                      <label class="form-label" for="patient-evolution-title">T&iacute;tulo</label>
-                      <input type="text" class="form-control" id="patient-evolution-title" name="title" maxlength="180" required>
-                    </div>
-                    <div class="col-12">
-                      <label class="form-label" for="patient-evolution-description">Descripci&oacute;n</label>
-                      <textarea class="form-control" id="patient-evolution-description" name="description" rows="3"></textarea>
-                    </div>
-                    <div class="col-md-6">
-                      <label class="form-label" for="patient-evolution-observations">Observaciones</label>
-                      <textarea class="form-control" id="patient-evolution-observations" name="observations" rows="3"></textarea>
-                    </div>
-                    <div class="col-md-6">
-                      <label class="form-label" for="patient-evolution-next-steps">Pendientes / pr&oacute;xima cita</label>
-                      <textarea class="form-control" id="patient-evolution-next-steps" name="next_steps" rows="3"></textarea>
-                    </div>
-                    <div class="col-12">
-                      <label class="form-label" for="patient-evolution-files">Archivos</label>
-                      <input type="file" class="form-control" id="patient-evolution-files" name="evolution_files[]" accept=".pdf,.xls,.xlsx,image/jpeg,image/png,image/webp,image/gif" multiple>
-                      <div class="form-text">Puedes adjuntar PDF, Excel o im&aacute;genes. M&aacute;ximo 12 MB por archivo.</div>
+                <?php if ($physical_metrics_enabled): ?>
+                  <div class="d-flex justify-content-center mb-3">
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Vista de evoluci&oacute;n">
+                      <button type="button" class="btn btn-primary patient-evolution-view-toggle" data-evolution-view="records">Evoluci&oacute;n</button>
+                      <button type="button" class="btn btn-outline-primary patient-evolution-view-toggle" data-evolution-view="charts">Gr&aacute;ficos</button>
                     </div>
                   </div>
-                  <div class="text-end mt-3">
-                    <button type="button" class="btn btn-outline-secondary" id="btn-cancel-patient-evolution-form">Cancelar</button>
-                    <button type="submit" class="btn btn-primary" id="btn-save-patient-evolution">Guardar evoluci&oacute;n</button>
+                <?php endif; ?>
+                <div id="patient-evolution-records-view">
+                  <div class="d-flex justify-content-end mb-3">
+                    <button class="btn btn-primary btn-sm" type="button" id="btn-show-patient-evolution-form">
+                      <i class="bi bi-plus-lg"></i> Nuevo registro
+                    </button>
                   </div>
-                </form>
-                <div id="patient-evolution-list" class="patient-evolution-list">
-                  <div class="text-center text-muted py-4">Selecciona un <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?> guardado para ver su evoluci&oacute;n.</div>
+                  <div id="patient-evolution-list" class="patient-evolution-list">
+                    <div class="text-center text-muted py-4">Selecciona un <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?> guardado para ver su evoluci&oacute;n.</div>
+                  </div>
+                  <div class="text-end text-muted small mt-2" id="patient-evolution-count"></div>
                 </div>
-                <div class="text-end text-muted small mt-2" id="patient-evolution-count"></div>
+                <?php if ($physical_metrics_enabled): ?>
+                  <div id="patient-evolution-charts-view" class="d-none">
+                    <div class="patient-evolution-chart-toolbar">
+                      <div class="btn-group btn-group-sm flex-wrap" role="group" aria-label="Selector de gr&aacute;fico">
+                        <button type="button" class="btn btn-primary patient-evolution-chart-group" data-chart-group="body">Peso, IMC y grasa</button>
+                        <button type="button" class="btn btn-outline-primary patient-evolution-chart-group" data-chart-group="metrics">M&eacute;tricas</button>
+                        <button type="button" class="btn btn-outline-primary patient-evolution-chart-group" data-chart-group="skinfolds">Pliegues</button>
+                      </div>
+                    </div>
+                    <div id="patient-evolution-chart-grid" class="patient-evolution-chart-grid">
+                      <div class="text-center text-muted py-4">Selecciona un <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?> guardado para ver sus gr&aacute;ficos.</div>
+                    </div>
+                  </div>
+                <?php endif; ?>
               </div>
               <div class="tab-pane fade" id="patient-files-panel" role="tabpanel" aria-labelledby="patient-files-tab">
                 <div id="patient-files-alert" class="alert d-none"></div>
@@ -919,6 +1235,40 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   </table>
                 </div>
                 <div class="text-end text-muted small mt-2" id="patient-files-count"></div>
+              </div>
+              <div class="tab-pane fade" id="patient-reports-panel" role="tabpanel" aria-labelledby="patient-reports-tab">
+                <div id="patient-reports-alert" class="alert d-none"></div>
+                <div class="alert alert-info small mb-3">
+                  Los informes generados aqu&iacute; son borradores estructurados con los datos disponibles en la aplicaci&oacute;n. El profesional debe revisarlos, completarlos y firmarlos cuando corresponda antes de considerarlos versi&oacute;n final oficial.
+                </div>
+                <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
+                  <h6 class="mb-0">Informes disponibles</h6>
+                  <div class="d-flex gap-2 flex-wrap">
+                    <button type="button" class="btn btn-primary btn-sm" id="btn-show-custom-patient-report" disabled>
+                      <i class="bi bi-upload"></i> A&ntilde;adir plantilla de informe
+                    </button>
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="btn-show-suggested-patient-reports" disabled>
+                      <i class="bi bi-stars"></i> Sugerir informes
+                    </button>
+                  </div>
+                </div>
+                <div class="table-responsive">
+                  <table class="table align-middle">
+                    <thead>
+                      <tr>
+                        <th>Informe</th>
+                        <th>Estado</th>
+                        <th>Coste</th>
+                        <th>Fecha</th>
+                        <th class="text-end">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody id="patient-reports-body">
+                      <tr><td colspan="5" class="text-center text-muted py-4">Selecciona un <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?> guardado para ver sus informes.</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div class="text-end text-muted small mt-2" id="patient-reports-count"></div>
               </div>
               <div class="tab-pane fade" id="patient-bonuses-panel" role="tabpanel" aria-labelledby="patient-bonuses-tab">
                 <div id="patient-bonuses-alert" class="alert d-none"></div>
@@ -976,16 +1326,196 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
             </div>
           </div>
           <div class="modal-footer">
-            <div class="me-auto d-flex flex-wrap gap-2">
-              <button type="button" class="btn btn-outline-primary btn-patient-report" id="btn-patient-report-internal" data-report-type="internal" disabled>
-                <i class="bi bi-file-earmark-medical"></i> Informe interno
-              </button>
-              <button type="button" class="btn btn-outline-primary btn-patient-report" id="btn-patient-report-public" data-report-type="patient" disabled>
-                <i class="bi bi-file-earmark-person"></i> Informe <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?>
-              </button>
-            </div>
             <button class="btn btn-primary" type="submit" id="btn-save-patient" form="patient-editor-form">Guardar cambios</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="patientEvolutionModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="patient-evolution-modal-title">Nuevo registro de evoluci&oacute;n</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <form id="patient-evolution-form" enctype="multipart/form-data">
+            <div class="modal-body">
+              <input type="hidden" id="patient-evolution-id" name="note_id" value="0">
+              <input type="hidden" id="patient-evolution-patient-id" name="patient_id" value="0">
+              <div class="row g-3">
+                <div class="col-md-4">
+                  <label class="form-label" for="patient-evolution-date">Fecha</label>
+                  <input type="date" class="form-control" id="patient-evolution-date" name="note_date" required>
+                </div>
+                <div class="col-md-8">
+                  <label class="form-label" for="patient-evolution-appointment">Cita vinculada</label>
+                  <select class="form-select" id="patient-evolution-appointment" name="appointment_id">
+                    <option value="">Nota general del <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?></option>
+                  </select>
+                </div>
+                <div class="col-12">
+                  <label class="form-label" for="patient-evolution-title">T&iacute;tulo</label>
+                  <input type="text" class="form-control" id="patient-evolution-title" name="title" maxlength="180" required>
+                </div>
+                <div class="col-12">
+                  <label class="form-label" for="patient-evolution-description">Descripci&oacute;n</label>
+                  <textarea class="form-control" id="patient-evolution-description" name="description" rows="3"></textarea>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" for="patient-evolution-observations">Observaciones</label>
+                  <textarea class="form-control" id="patient-evolution-observations" name="observations" rows="3"></textarea>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label" for="patient-evolution-next-steps">Pendientes / pr&oacute;xima cita</label>
+                  <textarea class="form-control" id="patient-evolution-next-steps" name="next_steps" rows="3"></textarea>
+                </div>
+                <?php if ($physical_metrics_enabled): ?>
+                  <div class="col-12">
+                    <div class="border rounded p-3">
+                      <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+                        <h6 class="mb-0">Composici&oacute;n corporal</h6>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="btn-copy-current-physical-metrics">
+                          Usar medidas actuales
+                        </button>
+                      </div>
+                      <div class="row g-3">
+                        <div class="col-md-3">
+                          <label class="form-label" for="patient-evolution-weight">Peso</label>
+                          <div class="input-group">
+                            <input type="number" step="0.1" min="0" class="form-control" id="patient-evolution-weight" name="weight_kg">
+                            <span class="input-group-text">kg</span>
+                          </div>
+                        </div>
+                        <div class="col-md-3">
+                          <label class="form-label" for="patient-evolution-height">Altura</label>
+                          <div class="input-group">
+                            <input type="number" step="0.1" min="0" class="form-control" id="patient-evolution-height" name="height_cm">
+                            <span class="input-group-text">cm</span>
+                          </div>
+                        </div>
+                        <div class="col-md-3">
+                          <label class="form-label">IMC</label>
+                          <div class="bmi-indicator" id="patient-evolution-bmi">
+                            <div class="d-flex justify-content-between align-items-center gap-2">
+                              <strong class="bmi-indicator-value">-</strong>
+                              <span class="badge text-bg-light bmi-indicator-label">Sin datos</span>
+                            </div>
+                            <div class="bmi-indicator-bar" aria-hidden="true">
+                              <span class="bmi-indicator-fill"></span>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="col-md-3">
+                          <label class="form-label" for="patient-evolution-body-fat">Grasa corporal</label>
+                          <div class="input-group">
+                            <input type="number" step="0.1" min="0" max="80" class="form-control" id="patient-evolution-body-fat" name="body_fat_percentage">
+                            <span class="input-group-text">%</span>
+                          </div>
+                        </div>
+                        <div class="col-md-3">
+                          <label class="form-label" for="patient-evolution-waist">Cintura</label>
+                          <div class="input-group">
+                            <input type="number" step="0.1" min="0" class="form-control" id="patient-evolution-waist" name="waist_cm">
+                            <span class="input-group-text">cm</span>
+                          </div>
+                        </div>
+                        <div class="col-md-3">
+                          <label class="form-label" for="patient-evolution-hip">Cadera</label>
+                          <div class="input-group">
+                            <input type="number" step="0.1" min="0" class="form-control" id="patient-evolution-hip" name="hip_cm">
+                            <span class="input-group-text">cm</span>
+                          </div>
+                        </div>
+                        <div class="col-md-3">
+                          <label class="form-label" for="patient-evolution-thigh">Muslo</label>
+                          <div class="input-group">
+                            <input type="number" step="0.1" min="0" class="form-control" id="patient-evolution-thigh" name="thigh_cm">
+                            <span class="input-group-text">cm</span>
+                          </div>
+                        </div>
+                        <div class="col-md-3">
+                          <label class="form-label" for="patient-evolution-chest">Pecho / t&oacute;rax</label>
+                          <div class="input-group">
+                            <input type="number" step="0.1" min="0" class="form-control" id="patient-evolution-chest" name="chest_cm">
+                            <span class="input-group-text">cm</span>
+                          </div>
+                        </div>
+                        <div class="col-md-3">
+                          <label class="form-label" for="patient-evolution-biceps">B&iacute;ceps</label>
+                          <div class="input-group">
+                            <input type="number" step="0.1" min="0" class="form-control" id="patient-evolution-biceps" name="biceps_cm">
+                            <span class="input-group-text">cm</span>
+                          </div>
+                        </div>
+                        <div class="col-md-3">
+                          <label class="form-label" for="patient-evolution-calf">Gemelo</label>
+                          <div class="input-group">
+                            <input type="number" step="0.1" min="0" class="form-control" id="patient-evolution-calf" name="calf_cm">
+                            <span class="input-group-text">cm</span>
+                          </div>
+                        </div>
+                        <div class="col-12">
+                          <h6 class="mb-0 mt-2">Pliegues cut&aacute;neos</h6>
+                        </div>
+                        <div class="col-md-4">
+                          <label class="form-label" for="patient-evolution-skinfold-triceps">Tr&iacute;ceps</label>
+                          <div class="input-group">
+                            <input type="number" step="0.1" min="0" class="form-control" id="patient-evolution-skinfold-triceps" name="skinfold_triceps_mm">
+                            <span class="input-group-text">mm</span>
+                          </div>
+                        </div>
+                        <div class="col-md-4">
+                          <label class="form-label" for="patient-evolution-skinfold-subscapular">Subescapular</label>
+                          <div class="input-group">
+                            <input type="number" step="0.1" min="0" class="form-control" id="patient-evolution-skinfold-subscapular" name="skinfold_subscapular_mm">
+                            <span class="input-group-text">mm</span>
+                          </div>
+                        </div>
+                        <div class="col-md-4">
+                          <label class="form-label" for="patient-evolution-skinfold-suprailiac">Suprail&iacute;aco</label>
+                          <div class="input-group">
+                            <input type="number" step="0.1" min="0" class="form-control" id="patient-evolution-skinfold-suprailiac" name="skinfold_suprailiac_mm">
+                            <span class="input-group-text">mm</span>
+                          </div>
+                        </div>
+                        <div class="col-md-4">
+                          <label class="form-label" for="patient-evolution-skinfold-abdominal">Abdominal</label>
+                          <div class="input-group">
+                            <input type="number" step="0.1" min="0" class="form-control" id="patient-evolution-skinfold-abdominal" name="skinfold_abdominal_mm">
+                            <span class="input-group-text">mm</span>
+                          </div>
+                        </div>
+                        <div class="col-md-4">
+                          <label class="form-label" for="patient-evolution-skinfold-chest">Pectoral</label>
+                          <div class="input-group">
+                            <input type="number" step="0.1" min="0" class="form-control" id="patient-evolution-skinfold-chest" name="skinfold_chest_mm">
+                            <span class="input-group-text">mm</span>
+                          </div>
+                        </div>
+                        <div class="col-md-4">
+                          <label class="form-label" for="patient-evolution-skinfold-thigh">Muslo</label>
+                          <div class="input-group">
+                            <input type="number" step="0.1" min="0" class="form-control" id="patient-evolution-skinfold-thigh" name="skinfold_thigh_mm">
+                            <span class="input-group-text">mm</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                <?php endif; ?>
+                <div class="col-12">
+                  <label class="form-label" for="patient-evolution-files">Archivos</label>
+                  <input type="file" class="form-control" id="patient-evolution-files" name="evolution_files[]" accept=".pdf,.xls,.xlsx,image/jpeg,image/png,image/webp,image/gif" multiple>
+                  <div class="form-text">Puedes adjuntar PDF, Excel o im&aacute;genes. M&aacute;ximo 12 MB por archivo.</div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline-secondary" id="btn-cancel-patient-evolution-form" data-bs-dismiss="modal">Cancelar</button>
+              <button type="submit" class="btn btn-primary" id="btn-save-patient-evolution">Guardar evoluci&oacute;n</button>
+            </div>
+          </form>
         </div>
       </div>
     </div>
@@ -1004,6 +1534,11 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                 <span class="spinner-border spinner-border-sm me-2"></span>Cargando ejercicio...
               </div>
             </div>
+          </div>
+          <div class="modal-footer d-none" id="workoutx-exercise-footer">
+            <button type="button" class="btn btn-primary" id="btn-add-workoutx-exercise-footer">
+              <i class="bi bi-plus-lg"></i> Agregar ejercicio
+            </button>
           </div>
         </div>
       </div>
@@ -1095,6 +1630,109 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
               </button>
             </div>
           </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="patientReportConfigModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <form id="patient-report-config-form" enctype="multipart/form-data">
+            <div class="modal-header">
+              <h5 class="modal-title">Configurar informe</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+              <div id="patient-report-config-alert" class="alert d-none"></div>
+              <input type="hidden" id="patient-report-config-id" name="report_id" value="0">
+              <input type="hidden" id="patient-report-config-patient-id" name="patient_id" value="0">
+              <div class="alert alert-info small mb-3">
+                Sube aqu&iacute; la versi&oacute;n final revisada si quieres que el <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?> pueda descargarla desde su portal. Si el informe es de pago, m&aacute;rcalo como pagado cuando corresponda.
+              </div>
+              <div class="row g-3">
+                <div class="col-12">
+                  <label class="form-label" for="patient-report-title">T&iacute;tulo</label>
+                  <input type="text" class="form-control" id="patient-report-title" name="title" maxlength="180" required>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label" for="patient-report-payment-mode">Tipo de cobro</label>
+                  <select class="form-select" id="patient-report-payment-mode" name="payment_mode">
+                    <option value="free">Gratuito</option>
+                    <option value="included">Incluido en consulta</option>
+                    <option value="paid">De pago</option>
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label" for="patient-report-payment-status">Estado de pago</label>
+                  <select class="form-select" id="patient-report-payment-status" name="payment_status">
+                    <option value="not_required">No requiere pago</option>
+                    <option value="pending">Pendiente</option>
+                    <option value="paid">Pagado</option>
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label" for="patient-report-price">Importe</label>
+                  <div class="input-group">
+                    <input type="number" class="form-control" id="patient-report-price" name="price" min="0" step="0.01">
+                    <span class="input-group-text">&euro;</span>
+                  </div>
+                </div>
+                <div class="col-12">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch" id="patient-report-portal-available" name="portal_available" value="1">
+                    <label class="form-check-label" for="patient-report-portal-available">Disponible en el portal del <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?></label>
+                  </div>
+                </div>
+                <div class="col-12 d-none" id="patient-report-source-document-wrap">
+                  <label class="form-label" for="patient-report-source-document">Plantilla de informe</label>
+                  <input type="file" class="form-control" id="patient-report-source-document" name="source_document" accept=".pdf,.doc,.docx,.xls,.xlsx">
+                  <div class="form-text">PDF, DOC, DOCX, XLS o XLSX. M&aacute;ximo 12 MB.</div>
+                  <div id="patient-report-current-source" class="small text-muted mt-2"></div>
+                </div>
+                <div class="col-12">
+                  <label class="form-label" for="patient-report-final-document">Versi&oacute;n final/oficial</label>
+                  <input type="file" class="form-control" id="patient-report-final-document" name="final_document" accept=".pdf,.doc,.docx,.xls,.xlsx,image/jpeg,image/png,image/webp,image/gif">
+                  <div class="form-text">PDF, DOC, DOCX, Excel o imagen. M&aacute;ximo 12 MB.</div>
+                  <div id="patient-report-current-final" class="small text-muted mt-2"></div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button type="submit" class="btn btn-primary" id="btn-save-patient-report-config">
+                <i class="bi bi-check2"></i> Guardar informe
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="patientReportSuggestionsModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Informes sugeridos</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div id="patient-report-suggestions-alert" class="alert d-none"></div>
+            <div class="alert alert-info small mb-3">
+              Se muestran informes de <?= htmlspecialchars($patient_label_plural, ENT_QUOTES, 'UTF-8') ?> con el mismo diagn&oacute;stico/objetivo.
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="patient-report-suggestions-problem">Diagn&oacute;stico / objetivo</label>
+              <select class="form-select" id="patient-report-suggestions-problem">
+                <option value="">Cargando diagn&oacute;sticos...</option>
+              </select>
+            </div>
+            <div id="patient-report-suggestions-body">
+              <div class="text-center text-muted py-4">Cargando sugerencias...</div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1238,7 +1876,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
       <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title">Informes y estad&iacute;sticas</h5>
+            <h5 class="modal-title">Estad&iacute;sticas</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body">
@@ -1248,7 +1886,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                 <button class="nav-link active" id="admin-stats-tab" data-bs-toggle="tab" data-bs-target="#admin-stats-panel" type="button" role="tab">Estad&iacute;sticas</button>
               </li>
               <li class="nav-item" role="presentation">
-                <button class="nav-link" id="admin-reports-tab" data-bs-toggle="tab" data-bs-target="#admin-reports-panel" type="button" role="tab">Informes</button>
+                <button class="nav-link" id="admin-reports-tab" data-bs-toggle="tab" data-bs-target="#admin-reports-panel" type="button" role="tab">Listados</button>
               </li>
             </ul>
             <div class="tab-content">
@@ -1349,7 +1987,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   </button>
                 </div>
                 <div class="form-text">Crea una tarea nueva o importa tareas desde tus plantillas o desde la base de conocimiento.</div>
-                <div class="alert alert-info py-2 px-3 mt-3 mb-0 d-none" id="patient-work-plan-loading">
+                <div class="alert alert-info py-2 px-3 mt-3 mb-0 d-none small" id="patient-work-plan-loading">
                   <span class="spinner-border spinner-border-sm me-2"></span>Espera mientras se cargan las plantillas.
                 </div>
               </div>
@@ -1370,7 +2008,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   <label class="form-label" for="patient-work-plan-description">Descripci&oacute;n / actividad</label>
                   <textarea class="form-control" id="patient-work-plan-description" name="description" rows="4"></textarea>
                 </div>
-                <div class="col-12">
+                <div class="col-12" id="patient-work-plan-status-field">
                   <div class="form-check">
                     <input class="form-check-input" type="checkbox" id="patient-work-plan-completed">
                     <label class="form-check-label" for="patient-work-plan-completed">Marcar como completada</label>
@@ -1459,9 +2097,9 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   <div class="col-lg-12">
                     <div class="form-check form-switch">
                       <input class="form-check-input" type="checkbox" id="online-booking-enabled" checked>
-                      <label class="form-check-label" for="online-booking-enabled">Habilitar Portal de Pacientes</label>
+                      <label class="form-check-label" for="online-booking-enabled">Habilitar Portal de <?= htmlspecialchars($patient_label_title_plural, ENT_QUOTES, 'UTF-8') ?></label>
                     </div>
-                    <div class="form-text">Si se desactiva, los pacientes no tendrán acceso a la reserva de citas, y será de uso interno por los profesionales.</div>
+                    <div class="form-text">Si se desactiva, los <?= htmlspecialchars($patient_label_plural, ENT_QUOTES, 'UTF-8') ?> no tendr&aacute;n acceso a la reserva de citas, y ser&aacute; de uso interno por los profesionales.</div>
                   </div>
                 </div>
                 <div class="row g-3 align-items-start mb-4 <?= $is_superadmin ? '' : 'd-none' ?>">
@@ -1479,7 +2117,16 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                       <input class="form-check-input" type="checkbox" id="patient-tasks-visible-default">
                       <label class="form-check-label" for="patient-tasks-visible-default">Publicar las tareas del <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?> en su Portal</label>
                     </div>
-                    <div class="form-text">Indica si quieres que, por defecto, las tareas que asignes a tus pacientes est&eacute;n visibles en el portal de pacientes.</div>
+                    <div class="form-text">Indica si quieres que, por defecto, las tareas que asignes a tus <?= htmlspecialchars($patient_label_plural, ENT_QUOTES, 'UTF-8') ?> est&eacute;n visibles en su portal.</div>
+                  </div>
+                </div>
+                <div class="row g-3 align-items-start mb-4">
+                  <div class="col-lg-12">
+                    <div class="form-check form-switch">
+                      <input class="form-check-input" type="checkbox" id="work-plan-task-status-enabled" checked>
+                      <label class="form-check-label" for="work-plan-task-status-enabled">Permitir marcar tareas como completadas</label>
+                    </div>
+                    <div class="form-text">Si se desactiva, el plan de trabajo mostrar&aacute; las tareas, rutinas o pautas sin estados pendiente/completada ni botones de completar.</div>
                   </div>
                 </div>
 
@@ -1628,9 +2275,9 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
 
               <div class="tab-pane fade" id="task-templates-settings-panel" role="tabpanel" aria-labelledby="task-templates-settings-tab">
                 <div id="task-templates-alert" class="alert d-none"></div>
-                <div class="alert alert-info d-flex align-items-start gap-2">
+                <div class="alert alert-info d-flex align-items-start gap-2 small">
                   <i class="bi bi-collection fs-5"></i>
-                  <div>Desde aqu&iacute; puedes crear plantillas de tareas predefinidas que suelas reutilizar habitualmente con tus pacientes.</div>
+                  <div>Desde aqu&iacute; puedes crear plantillas de tareas predefinidas que suelas reutilizar habitualmente con tus <?= htmlspecialchars($patient_label_plural, ENT_QUOTES, 'UTF-8') ?>.</div>
                 </div>
                 <div class="task-template-list-wrap">
                   <div class="d-flex justify-content-between align-items-center gap-2 mb-3 flex-wrap">
@@ -1659,7 +2306,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   <div class="row g-3 align-items-start mb-3">
                     <label class="col-lg-2 col-form-label" for="site-tagline">Eslogan</label>
                     <div class="col-lg-10">
-                      <input type="text" class="form-control" id="site-tagline" placeholder="Psicología sanitaria y neuropsicología en Santa Cruz de Tenerife">
+                      <input type="text" class="form-control" id="site-tagline" placeholder="">
                       <div class="form-text">Se mostrará en la página principal/comercial.</div>
                     </div>
                   </div>
@@ -1681,7 +2328,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                     </div>
                   </div>
                   <div class="row g-3 align-items-start mb-3">
-                    <label class="col-lg-2 col-form-label" for="profile-image">Imagen dashboard</label>
+                    <label class="col-lg-2 col-form-label" for="profile-image">Logotipo</label>
                     <div class="col-lg-10">
                       <input type="file" class="form-control" id="profile-image" accept="image/jpeg,image/png,image/webp,image/gif">
                       <div class="form-text">Formatos permitidos: JPG, PNG, WEBP o GIF. Máximo 2 MB.</div>
@@ -1713,8 +2360,10 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                       <select class="form-select" id="initial-calendar-view">
                         <option value="month">Mensual</option>
                         <option value="week">Semanal</option>
+                        <option value="patients"><?= htmlspecialchars($patient_label_title_plural, ENT_QUOTES, 'UTF-8') ?></option>
+                        <option value="upcoming">Citas</option>
                       </select>
-                      <div class="form-text">Se podrá alternar entre semanal y mensual, pero por defecto aparecerá el de la opción configurada.</div>
+                      <div class="form-text">Define qu&eacute; ver&aacute;n primero los profesionales al entrar al dashboard. El portal de pacientes mantiene su vista de reservas.</div>
                     </div>
                   </div>
                 </div>
@@ -2044,7 +2693,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   <div class="col-lg-10 offset-lg-2">
                     <div class="form-check form-switch mb-2">
                       <input class="form-check-input" type="checkbox" id="send-patient-calendar-link" checked>
-                      <label class="form-check-label" for="send-patient-calendar-link">Enviar link para crear la cita en el calendario a los pacientes cuando hagan una reserva</label>
+                      <label class="form-check-label" for="send-patient-calendar-link">Enviar link para crear la cita en el calendario a los <?= htmlspecialchars($patient_label_plural, ENT_QUOTES, 'UTF-8') ?> cuando hagan una reserva</label>
                     </div>
                     <div class="form-text" id="send-patient-calendar-link-status"></div>
                   </div>
@@ -2083,7 +2732,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                 <div class="row g-3 align-items-start mb-4">
                   <label class="col-lg-2 col-form-label" for="legal-professional-college">Colegio profesional</label>
                   <div class="col-lg-10">
-                    <input type="text" class="form-control" id="legal-professional-college" placeholder="Colegio Oficial de Psicología...">
+                    <input type="text" class="form-control" id="legal-professional-college" placeholder="">
                   </div>
                 </div>
                 <hr class="my-4">
@@ -2113,18 +2762,18 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   </div>
                   <div class="form-check form-switch mb-4">
                     <input class="form-check-input" type="checkbox" id="allow-patient-transfer">
-                    <label class="form-check-label" for="allow-patient-transfer">Permitir traspaso de pacientes</label>
+                    <label class="form-check-label" for="allow-patient-transfer">Permitir traspaso de <?= htmlspecialchars($patient_label_plural, ENT_QUOTES, 'UTF-8') ?></label>
                     <div class="form-text">Solo el usuario Administrador puede realizar los traspasos.</div>
                   </div>
                   <div class="row g-3 align-items-start mb-4">
-                    <label class="col-lg-3 col-form-label" for="new-patient-booking-mode">M&eacute;todo de reserva para nuevos pacientes</label>
+                    <label class="col-lg-3 col-form-label" for="new-patient-booking-mode">M&eacute;todo de reserva para nuevos <?= htmlspecialchars($patient_label_plural, ENT_QUOTES, 'UTF-8') ?></label>
                     <div class="col-lg-9">
                       <select class="form-select" id="new-patient-booking-mode">
                         <option value="day_first">Elegir primero d&iacute;a/hora deseado y despu&eacute;s al profesional</option>
                         <option value="professional_first">Elegir primero al profesional y despu&eacute;s la fecha/hora</option>
-                        <option value="fixed_professional">Derivar siempre los nuevos pacientes a un profesional concreto</option>
+                        <option value="fixed_professional">Derivar siempre los nuevos <?= htmlspecialchars($patient_label_plural, ENT_QUOTES, 'UTF-8') ?> a un profesional concreto</option>
                       </select>
-                      <div class="form-text">Solo se aplicar&aacute; a pacientes nuevos que todav&iacute;a no tengan profesional asignado.</div>
+                      <div class="form-text">Solo se aplicar&aacute; a <?= htmlspecialchars($patient_label_plural, ENT_QUOTES, 'UTF-8') ?> nuevos que todav&iacute;a no tengan profesional asignado.</div>
                     </div>
                   </div>
                   <div class="row g-3 align-items-start mb-4 d-none" id="new-patient-fixed-professional-row">
@@ -2140,7 +2789,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   <div class="d-flex justify-content-between align-items-center gap-2 mb-3 flex-wrap">
                     <div>
                       <h6 class="mb-1">Equipo</h6>
-                      <div class="text-muted small">Alta y permisos b&aacute;sicos de los miembros del gabinete.</div>
+                      <div class="text-muted small">Alta y permisos b&aacute;sicos de los miembros del equipo.</div>
                     </div>
                     <button class="btn btn-primary btn-sm" type="button" id="btn-new-professional">
                       <i class="bi bi-person-plus"></i> Nuevo miembro
@@ -2214,7 +2863,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
               </div>
               <div class="mb-3">
                 <label class="form-label" for="task-template-category">Terapia / categor&iacute;a</label>
-                <input type="text" class="form-control" id="task-template-category" maxlength="120" placeholder="Ej. Ansiedad, adolescentes, seguimiento">
+                <input type="text" class="form-control" id="task-template-category" maxlength="120" placeholder="<?= $task_template_category_placeholder ?>">
               </div>
               <div class="mb-3">
                 <label class="form-label" for="task-template-description">Descripci&oacute;n interna</label>
@@ -2223,7 +2872,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
               <?php if ($is_superadmin): ?>
                 <div class="form-check">
                   <input class="form-check-input" type="checkbox" id="task-template-global" checked>
-                  <label class="form-check-label" for="task-template-global">Disponible para todo el gabinete</label>
+                  <label class="form-check-label" for="task-template-global">Disponible para todo el equipo</label>
                 </div>
               <?php endif; ?>
             </div>
@@ -2306,7 +2955,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   <div class="col-12">
                     <div class="form-check">
                       <input class="form-check-input" type="checkbox" id="closed-is-global">
-                      <label class="form-check-label" for="closed-is-global">Cierre global del gabinete</label>
+                      <label class="form-check-label" for="closed-is-global">Cierre global del equipo</label>
                       <div class="form-text">Bloquear estos días para todo el equipo.</div>
                     </div>
                   </div>
@@ -2352,7 +3001,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                 <div class="row g-3 align-items-start mb-3">
                   <label class="col-lg-2 col-form-label" for="professional-editor-title-field">Cargo</label>
                   <div class="col-lg-4">
-                    <input type="text" class="form-control" id="professional-editor-title-field" placeholder="Psic&oacute;loga sanitaria, Psic&oacute;logo cl&iacute;nico...">
+                    <input type="text" class="form-control" id="professional-editor-title-field" placeholder="<?= $professional_title_placeholder ?>">
                   </div>
                   <label class="col-lg-2 col-form-label" for="professional-editor-license">N&ordm; de colegiado</label>
                   <div class="col-lg-4">
@@ -2377,7 +3026,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                 <div class="row g-3 align-items-start mb-3">
                   <label class="col-lg-2 col-form-label" for="professional-editor-specialty">Especialidad</label>
                   <div class="col-lg-10">
-                    <textarea class="form-control" id="professional-editor-specialty" rows="2" placeholder="Ansiedad, terapia infantil, adultos, pareja..."></textarea>
+                    <textarea class="form-control" id="professional-editor-specialty" rows="2" placeholder="<?= $professional_specialty_placeholder ?>"></textarea>
                   </div>
                 </div>
 
@@ -2419,6 +3068,23 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   </div>
                 </div>
 
+                <div class="row g-3 align-items-start mb-3" id="professional-editor-knowledge-row">
+                  <label class="col-lg-2 col-form-label" for="professional-editor-knowledge-mode">Base de conocimiento</label>
+                  <div class="col-lg-10">
+                    <div class="d-flex flex-column flex-md-row gap-2">
+                      <select class="form-select" id="professional-editor-knowledge-mode">
+                        <option value="own">Solo sector principal</option>
+                        <option value="related">Sector principal y relacionados</option>
+                        <option value="custom">Personalizado</option>
+                      </select>
+                      <button type="button" class="btn btn-outline-primary flex-shrink-0 d-none" id="btn-professional-knowledge-sectors">
+                        <i class="bi bi-sliders"></i> Elegir sectores
+                      </button>
+                    </div>
+                    <input type="hidden" id="professional-editor-knowledge-sector-keys" value="[]">
+                  </div>
+                </div>
+
                 <div class="row g-3 align-items-start mb-3">
                   <label class="col-lg-2 col-form-label" for="professional-editor-photo">Foto del profesional</label>
                   <div class="col-lg-10">
@@ -2436,16 +3102,36 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                       <input class="form-check-input" type="checkbox" id="professional-editor-active" checked>
                       <label class="form-check-label" for="professional-editor-active">Profesional activo</label>
                     </div>
-                    <div class="form-text">Si est&aacute; desactivado, no aparecer&aacute; como profesional disponible del gabinete.</div>
+                    <div class="form-text">Si est&aacute; desactivado, no aparecer&aacute; como profesional disponible del equipo.</div>
                   </div>
                 </div>
               </div>
             </div>
             <div class="modal-footer">
-              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
               <button class="btn btn-primary" type="submit" id="btn-save-professional-editor">Guardar profesional</button>
             </div>
           </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="professionalKnowledgeSectorsModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-md">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Sectores de conocimiento</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div class="alert alert-info small">
+              Elige qu&eacute; base de conocimiento quieres usar para tus diagn&oacute;sticos y objetivos. A&ntilde;adir varios sectores puede hacer que aparezcan diagn&oacute;sticos, t&eacute;cnicas o tareas duplicadas en el buscador.
+            </div>
+            <div id="professional-knowledge-sectors-list" class="d-flex flex-column gap-2"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="btn-save-professional-knowledge-sectors">Guardar selecci&oacute;n</button>
+          </div>
         </div>
       </div>
     </div>
@@ -2460,12 +3146,12 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
           <div class="modal-body">
             <input type="hidden" id="transfer-delete-professional-id" value="0">
             <p id="transfer-delete-summary" class="mb-3"></p>
-            <div class="alert alert-warning">
+            <div class="alert alert-warning small">
               <strong>Importante:</strong> al borrar un profesional, se eliminará también su cuenta de acceso al sistema.
             </div>
-            <p class="text-muted small mb-3">Se recomienda comprobar primero si el profesional tiene citas o pacientes pendientes.</p>
+            <p class="text-muted small mb-3">Se recomienda comprobar primero si el profesional tiene citas o <?= htmlspecialchars($patient_label_plural, ENT_QUOTES, 'UTF-8') ?> pendientes.</p>
             <div id="transfer-delete-target-wrap" class="d-none">
-              <label class="form-label" for="transfer-delete-target">Traspasar citas y pacientes a</label>
+              <label class="form-label" for="transfer-delete-target">Traspasar citas y <?= htmlspecialchars($patient_label_plural, ENT_QUOTES, 'UTF-8') ?> a</label>
               <select class="form-select" id="transfer-delete-target"></select>
               <div class="form-text">El profesional se borrará después de completar el traspaso.</div>
             </div>
@@ -2570,6 +3256,65 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
         </div>
       </div>
     </div>
+
+    <div class="modal fade" id="patientPortalReportsModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Mis informes</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div id="patient-portal-reports" class="patient-portal-list patient-portal-modal-list">
+              <div class="text-muted small">Cargando informes...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <?php if ($physical_metrics_available): ?>
+      <div class="modal fade" id="patientPortalCompositionModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">Mi progreso</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+              <ul class="nav nav-tabs mb-3" id="patient-portal-composition-tabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link active" id="patient-portal-composition-current-tab" data-bs-toggle="tab" data-bs-target="#patient-portal-composition-current-panel" type="button" role="tab">Valores actuales</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link" id="patient-portal-composition-history-tab" data-bs-toggle="tab" data-bs-target="#patient-portal-composition-history-panel" type="button" role="tab">Evoluci&oacute;n</button>
+                </li>
+              </ul>
+              <div class="tab-content">
+                <div class="tab-pane fade show active" id="patient-portal-composition-current-panel" role="tabpanel" aria-labelledby="patient-portal-composition-current-tab">
+                  <div id="patient-portal-composition-current" class="patient-portal-composition">
+                    <div class="text-muted small">Cargando valores...</div>
+                  </div>
+                </div>
+                <div class="tab-pane fade" id="patient-portal-composition-history-panel" role="tabpanel" aria-labelledby="patient-portal-composition-history-tab">
+                  <div class="patient-evolution-chart-toolbar">
+                    <div class="btn-group btn-group-sm flex-wrap" role="group" aria-label="Selector de gr&aacute;fico">
+                      <button type="button" class="btn btn-primary patient-portal-composition-chart-group" data-chart-group="body">Peso, IMC y grasa</button>
+                      <button type="button" class="btn btn-outline-primary patient-portal-composition-chart-group" data-chart-group="metrics">M&eacute;tricas</button>
+                      <button type="button" class="btn btn-outline-primary patient-portal-composition-chart-group" data-chart-group="skinfolds">Pliegues</button>
+                    </div>
+                  </div>
+                  <div id="patient-portal-composition-chart-grid" class="patient-evolution-chart-grid mb-3">
+                    <div class="text-muted small">Cargando gr&aacute;ficos...</div>
+                  </div>
+                  <div id="patient-portal-composition-history" class="patient-portal-composition"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    <?php endif; ?>
   <?php endif; ?>
 
   <div class="modal fade" id="changePasswordModal" tabindex="-1" aria-hidden="true">
@@ -2615,7 +3360,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
     const IS_ADMIN = <?= $is_admin ? 'true' : 'false' ?>;
     const IS_SUPERADMIN = <?= $is_superadmin ? 'true' : 'false' ?>;
     const CURRENT_USER_ID = <?= (int) $_SESSION['user_id'] ?>;
-    const INITIAL_CALENDAR_VIEW = <?= json_encode(($branding['initial_calendar_view'] ?? 'month') === 'week' ? 'week' : 'month') ?>;
+    const INITIAL_CALENDAR_VIEW = <?= json_encode(in_array(($branding['initial_calendar_view'] ?? 'month'), ['week', 'month', 'patients', 'upcoming'], true) ? $branding['initial_calendar_view'] : 'month') ?>;
     const DASHBOARD_CONFIG_MODE = <?= json_encode($dashboard_config_mode) ?>;
     const DASHBOARD_CONFIG = <?= json_encode($dashboard_config, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
     const PLAN_CONFIG = <?= json_encode($plan_config, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
@@ -2629,6 +3374,9 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <?php if ($physical_metrics_available): ?>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <?php endif; ?>
   <?php if ($body_map_enabled): ?>
     <script src="https://unpkg.com/body-muscles/dist/umd/body-muscles.umd.min.js"></script>
   <?php endif; ?>

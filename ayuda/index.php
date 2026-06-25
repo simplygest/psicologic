@@ -1,6 +1,28 @@
 <?php
 session_start();
 
+$sectorHelpFiles = [
+    'asesoria' => 'asesoria.php',
+    'coaching' => 'coaching.php',
+    'entrenamiento_personal' => 'fitness.php',
+    'fitness' => 'fitness.php',
+    'fisioterapia' => 'fisioterapia.php',
+    'logopedia' => 'logopedia.php',
+    'nutricion' => 'nutricion.php',
+    'quiropractica' => 'quiropractica.php',
+    'osteopatia' => 'osteopatia.php',
+    'oposiciones' => 'preparacion_oposiciones.php',
+    'preparacion_oposiciones' => 'preparacion_oposiciones.php',
+    'psicopedagogia' => 'psicopedagogia.php',
+    'sexologia' => 'sexologia.php',
+    'terapia_ocupacional' => 'terapia_ocupacional.php',
+];
+$requestedSector = strtolower(trim((string) ($_GET['sector'] ?? '')));
+if ($requestedSector !== '' && isset($sectorHelpFiles[$requestedSector])) {
+    require __DIR__ . '/' . $sectorHelpFiles[$requestedSector];
+    exit;
+}
+
 $rootDir = dirname(__DIR__);
 $configPath = $rootDir . '/config.local.php';
 $isInstalled = file_exists($configPath);
@@ -29,6 +51,22 @@ if ($isInstalled) {
 }
 
 $app_name = $branding['app_name'] ?: 'SimplyGest Praxis';
+$help_static_base = '/' . trim(function_exists('tenant_app_base_path') ? tenant_app_base_path() : 'sgpraxis', '/') . '/ayuda/';
+
+if (!function_exists('help_upload_asset_url')) {
+    function help_upload_asset_url($path)
+    {
+        $path = trim((string) $path);
+        if ($path === '') {
+            return '';
+        }
+        $url = function_exists('app_upload_asset_url') ? app_upload_asset_url($path) : $path;
+        if ($url === '' || preg_match('#^(?:https?:)?//#i', $url) || stripos($url, 'data:') === 0 || $url[0] === '/') {
+            return $url;
+        }
+        return '../' . ltrim($url, '/');
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -50,7 +88,7 @@ $app_name = $branding['app_name'] ?: 'SimplyGest Praxis';
         <div class="container">
             <a class="navbar-brand d-flex align-items-center gap-2" href="<?= $isInstalled ? '../dashboard.php' : '../install/' ?>">
                 <?php if ($isInstalled && !empty($branding['profile_image_path'])): ?>
-                    <img src="../<?= htmlspecialchars($branding['profile_image_path']) ?>" alt="" class="brand-avatar">
+                    <img src="<?= htmlspecialchars(help_upload_asset_url($branding['profile_image_path'])) ?>" alt="" class="brand-avatar">
                 <?php endif; ?>
                 <span><?= htmlspecialchars($app_name) ?></span>
             </a>
@@ -120,7 +158,7 @@ $app_name = $branding['app_name'] ?: 'SimplyGest Praxis';
                     En pantallas pequeñas, las acciones principales se agrupan en un botón <strong>Menú</strong> para que el calendario tenga más espacio.
                 </p>
                 <figure class="help-figure">
-                    <img src="assets/modal-proximas-citas.png" alt="Modal de próximas citas">
+                    <img src="<?= htmlspecialchars($help_static_base) ?>assets/modal-proximas-citas.png" alt="Modal de próximas citas">
                     <figcaption>Próximas citas muestra las reservas futuras ordenadas de la más cercana a la más lejana.</figcaption>
                 </figure>
                 <p>
@@ -128,7 +166,7 @@ $app_name = $branding['app_name'] ?: 'SimplyGest Praxis';
                     cierres, descansos y citas para hacerse una idea visual de la agenda.
                 </p>
                 <figure class="help-figure">
-                    <img src="assets/modal-estadisticas.png" alt="Modal de estadísticas">
+                    <img src="<?= htmlspecialchars($help_static_base) ?>assets/modal-estadisticas.png" alt="Modal de estadísticas">
                     <figcaption>Estadísticas resume actividad de citas, pacientes y bonos en un vistazo rápido.</figcaption>
                 </figure>
                 <p>
@@ -145,11 +183,11 @@ $app_name = $branding['app_name'] ?: 'SimplyGest Praxis';
                     la mensual ayuda a localizar días libres antes de elegir hora.
                 </p>
                 <figure class="help-figure">
-                    <img src="assets/dashboard-calendario.png" alt="Vista semanal del calendario del dashboard">
+                    <img src="<?= htmlspecialchars($help_static_base) ?>assets/dashboard-calendario.png" alt="Vista semanal del calendario del dashboard">
                     <figcaption>Vista semanal con los slots disponibles y los botones principales del admin.</figcaption>
                 </figure>
                 <figure class="help-figure">
-                    <img src="assets/dashboard-vista-mensual.png" alt="Vista mensual del calendario del dashboard">
+                    <img src="<?= htmlspecialchars($help_static_base) ?>assets/dashboard-vista-mensual.png" alt="Vista mensual del calendario del dashboard">
                     <figcaption>Vista mensual para elegir primero el día y revisar después las horas disponibles.</figcaption>
                 </figure>
                 <ul>
@@ -187,11 +225,11 @@ $app_name = $branding['app_name'] ?: 'SimplyGest Praxis';
                 </ol>
                 <div class="help-grid">
                     <figure class="help-figure">
-                        <img src="assets/apple-password-step-name.svg" alt="Pantalla para nombrar una contraseña de aplicación de Apple">
+                        <img src="<?= htmlspecialchars($help_static_base) ?>assets/apple-password-step-name.svg" alt="Pantalla para nombrar una contraseña de aplicación de Apple">
                         <figcaption>Apple pide un nombre para identificar la contraseña de aplicación.</figcaption>
                     </figure>
                     <figure class="help-figure">
-                        <img src="assets/apple-password-step-result.svg" alt="Pantalla con una contraseña de aplicación generada por Apple">
+                        <img src="<?= htmlspecialchars($help_static_base) ?>assets/apple-password-step-result.svg" alt="Pantalla con una contraseña de aplicación generada por Apple">
                         <figcaption>La contraseña generada se copia en la configuración de iCloud Calendar.</figcaption>
                     </figure>
                 </div>
@@ -258,7 +296,7 @@ $app_name = $branding['app_name'] ?: 'SimplyGest Praxis';
                     El modal permite copiar el enlace, mostrar un QR para escanear en consulta o enviar la invitación por email.
                 </p>
                 <figure class="help-figure">
-                    <img src="assets/modal-invitacion.png" alt="Modal de invitación de registro">
+                    <img src="<?= htmlspecialchars($help_static_base) ?>assets/modal-invitacion.png" alt="Modal de invitación de registro">
                     <figcaption>Modal de invitación con enlace, QR y envío por email. El token aparece oculto en esta ayuda.</figcaption>
                 </figure>
                 <div class="help-note">
@@ -274,7 +312,7 @@ $app_name = $branding['app_name'] ?: 'SimplyGest Praxis';
                     se confirma correctamente; no existe compra de bono pendiente de pago.
                 </p>
                 <figure class="help-figure">
-                    <img src="assets/modal-bonos-pacientes.png" alt="Modal de consulta de bonos de pacientes">
+                    <img src="<?= htmlspecialchars($help_static_base) ?>assets/modal-bonos-pacientes.png" alt="Modal de consulta de bonos de pacientes">
                     <figcaption>Listado de bonos comprados o activos para revisar sesiones compradas, restantes e importe.</figcaption>
                 </figure>
                 <ul>
@@ -336,15 +374,15 @@ $app_name = $branding['app_name'] ?: 'SimplyGest Praxis';
             <article class="help-section" id="configuracion">
                 <h2>Configuración</h2>
                 <figure class="help-figure">
-                    <img src="assets/modal-configuracion-general.png" alt="Pestaña General de configuración">
+                    <img src="<?= htmlspecialchars($help_static_base) ?>assets/modal-configuracion-general.png" alt="Pestaña General de configuración">
                     <figcaption>General: modalidades, servicios, duraciones y periodos de vacaciones o descanso.</figcaption>
                 </figure>
                 <figure class="help-figure">
-                    <img src="assets/modal-configuracion-precios.png" alt="Pestaña Precios de configuración">
+                    <img src="<?= htmlspecialchars($help_static_base) ?>assets/modal-configuracion-precios.png" alt="Pestaña Precios de configuración">
                     <figcaption>Precios: tabla filtrada según las modalidades, servicios y duraciones activas.</figcaption>
                 </figure>
                 <figure class="help-figure">
-                    <img src="assets/modal-configuracion-reservas.png" alt="Pestaña Reservas de configuración">
+                    <img src="<?= htmlspecialchars($help_static_base) ?>assets/modal-configuracion-reservas.png" alt="Pestaña Reservas de configuración">
                     <figcaption>Reservas: días de consulta, horario, descanso y límites de antelación para reservar.</figcaption>
                 </figure>
                 <div class="help-grid">
@@ -407,7 +445,7 @@ $app_name = $branding['app_name'] ?: 'SimplyGest Praxis';
                     una página pública con el resumen de servicios, precios y bonos disponibles.
                 </p>
                 <figure class="help-figure">
-                    <img src="assets/modal-configuracion-interfaz.png" alt="Pestaña Interfaz de configuración">
+                    <img src="<?= htmlspecialchars($help_static_base) ?>assets/modal-configuracion-interfaz.png" alt="Pestaña Interfaz de configuración">
                     <figcaption>Interfaz: título de la web, imágenes del dashboard y de la landing, y color principal.</figcaption>
                 </figure>
                 <ul>

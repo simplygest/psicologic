@@ -1,0 +1,86 @@
+﻿tarea_id;titulo;descripcion;objetivo;nivel_riesgo;duracion_estimada;tipo_intervencion;tecnica_id
+NUT2_TA001;Registro alimentario de 3 días;Registrar comidas, horarios, hambre, contexto y sensaciones sin cambiar nada inicialmente.;Conocer patrón real.;bajo;3 días;evaluación;NUT2_T001
+NUT2_TA002;Objetivo SMART nutricional;Definir una meta concreta, medible y revisable para la semana.;Aumentar claridad y adherencia.;bajo;10 min semanal;planificación;NUT2_T002
+NUT2_TA003;Construir plato saludable;Preparar una comida con verdura/proteína/hidrato/grasa saludable según objetivo.;Mejorar composición de comidas.;bajo;diario;educativa;NUT2_T003
+NUT2_TA004;Revisar etiqueta de 3 productos;Comparar ración, azúcar, sal, fibra, proteína e ingredientes.;Aprender lectura de etiquetas.;bajo;semanal;educativa;NUT2_T004
+NUT2_TA005;Método de la mano;Usar palma/puño/pulgar como referencia visual de proteína, hidratos y grasas.;Estimar raciones sin obsesión.;bajo;diario;educativa;NUT2_T005
+NUT2_TA006;Añadir una ración vegetal;Añadir verdura/fruta a una comida habitual.;Aumentar vegetales progresivamente.;bajo;diario;hábitos;NUT2_T006
+NUT2_TA007;Legumbre semanal;Planificar al menos una comida con legumbres.;Aumentar fibra y calidad de dieta.;bajo;semanal;hábitos;NUT2_T007
+NUT2_TA008;Cambio de ultraprocesado frecuente;Sustituir un producto habitual por alternativa más saciante/nutritiva.;Reducir ultraprocesados sin rigidez.;bajo;semanal;hábitos;NUT2_T008
+NUT2_TA009;Menú semanal base;Planificar comidas/cenas principales de 5-7 días.;Reducir improvisación.;bajo;semanal;planificación;NUT2_T009
+NUT2_TA010;Lista de compra por grupos;Crear lista de compra con proteína, vegetales, hidratos, grasas y extras.;Facilitar adherencia.;bajo;semanal;planificación;NUT2_T010
+NUT2_TA011;Batch cooking de bases;Preparar 2 proteínas, 2 vegetales y 1-2 hidratos base.;Ahorrar tiempo y decidir mejor.;bajo;semanal;planificación;NUT2_T011
+NUT2_TA012;Plan para comer fuera;Elegir 2-3 estrategias de restaurante: proteína, verdura, bebida, postre compartido, etc.;Mantener flexibilidad social.;bajo;antes de salir;planificación;NUT2_T012
+NUT2_TA013;Déficit moderado por hábitos;Elegir 1-2 cambios sostenibles de ingesta/gasto sin dieta extrema.;Favorecer pérdida de grasa.;medio;semanal;control_peso;NUT2_T013
+NUT2_TA014;Aumentar saciedad en comida clave;Añadir proteína/fibra/volumen a la comida con más hambre posterior.;Reducir hambre y picoteo.;bajo;diario;control_peso;NUT2_T014
+NUT2_TA015;Peso medio semanal;Registrar peso 3-7 días y usar media, si es adecuado para la persona.;Valorar tendencia.;bajo;semanal;seguimiento;NUT2_T015
+NUT2_TA016;Medida de cintura;Medir cintura con mismo criterio y sin obsesión.;Seguir adiposidad central.;bajo;quincenal;seguimiento;NUT2_T015
+NUT2_TA017;Plan de mantenimiento;Subir progresivamente hacia mantenimiento y conservar hábitos clave.;Prevenir rebote.;medio;2-8 semanas;control_peso;NUT2_T016
+NUT2_TA018;Distribuir proteína diaria;Incluir fuente proteica en 3-4 comidas según objetivo.;Mejorar saciedad/músculo.;bajo;diario;deportiva;NUT2_T017
+NUT2_TA019;Comida pre-entreno;Planificar opción digerible y energética antes de entrenar.;Mejorar rendimiento.;bajo;según entreno;deportiva;NUT2_T018
+NUT2_TA020;Comida post-entreno;Asegurar comida con proteína y energía tras entrenamiento.;Apoyar recuperación.;bajo;según entreno;deportiva;NUT2_T018
+NUT2_TA021;Plan hipercalórico gradual;Añadir pequeña cantidad energética diaria y revisar peso/rendimiento.;Ganar músculo con control.;bajo;semanal;deportiva;NUT2_T019
+NUT2_TA022;Plan para sesión larga;Preparar hidratación y aporte energético si la sesión lo requiere.;Sostener resistencia.;medio;antes de sesión;deportiva;NUT2_T020
+NUT2_TA023;Registro recomposición;Combinar peso, cintura, fotos, fuerza y adherencia.;Valorar cambios reales.;bajo;mensual;seguimiento;NUT2_T021
+NUT2_TA024;Eliminar bebida azucarada habitual;Sustituir una bebida azucarada por agua, infusión o bebida sin azúcar.;Reducir azúcar líquido.;bajo;diario;metabólica;NUT2_T023
+NUT2_TA025;Cambiar cereal/refinado por integral;Sustituir una opción refinada por integral o legumbre si tolera.;Mejorar fibra/calidad de hidratos.;bajo;diario/semanal;metabólica;NUT2_T022
+NUT2_TA026;Plato con hidrato de calidad;Elegir patata cocida, arroz integral, legumbre, avena, fruta u otro según contexto.;Mejorar calidad de carbohidratos.;bajo;diario;metabólica;NUT2_T022
+NUT2_TA027;Registro glucemia-comida;Si usa glucómetro por indicación, anotar comida, actividad y glucemia.;Coordinar alimentación-diabetes.;alto;según pauta sanitaria;metabólica;NUT2_T028
+NUT2_TA028;Reducir sal añadida;Usar especias, limón, ajo, hierbas o reducción gradual de sal.;Apoyar salud cardiovascular.;medio;diario;cardiovascular;NUT2_T025
+NUT2_TA029;Revisar productos salados;Identificar 3 productos altos en sal y buscar alternativa.;Reducir sal oculta.;medio;semanal;cardiovascular;NUT2_T025
+NUT2_TA030;Cambio de grasa principal;Priorizar aceite de oliva/frutos secos/pescado y reducir grasas saturadas frecuentes.;Mejorar calidad grasa.;medio;semanal;cardiovascular;NUT2_T026
+NUT2_TA031;Día mediterráneo;Planificar día con legumbre/vegetal/fruta/aceite oliva/pescado o alternativa.;Reforzar patrón saludable.;bajo;semanal;cardiovascular;NUT2_T024
+NUT2_TA032;Registro digestivo 7 días;Anotar alimentos, síntomas, deposiciones, estrés y sueño.;Detectar patrones digestivos.;medio;7 días;digestiva;NUT2_T029
+NUT2_TA033;Subida gradual de fibra;Añadir fibra poco a poco y revisar tolerancia.;Mejorar tránsito sin empeorar síntomas.;bajo;2-4 semanas;digestiva;NUT2_T030
+NUT2_TA034;Prueba estructurada de tolerancia;Eliminar/reintroducir solo bajo criterio profesional y con registro.;Identificar tolerancias.;medio;variable;digestiva;NUT2_T031
+NUT2_TA035;Checklist sin gluten seguro;Revisar etiqueta, contaminación cruzada y utensilios si celiaquía confirmada.;Aumentar seguridad alimentaria.;alto;semanal;dieta_especial;NUT2_T032
+NUT2_TA036;Registro hambre-saciedad;Valorar hambre/saciedad 0-10 antes y después de comer.;Mejorar conciencia alimentaria.;bajo;7 días;conductual;NUT2_T034
+NUT2_TA037;Pausa consciente antes de comer;Parar 1 minuto y decidir si hay hambre física, emocional o ambas.;Reducir automatismos.;bajo;diario;conductual;NUT2_T033
+NUT2_TA038;Plan alternativo al comer emocional;Elegir 3 acciones de regulación antes de comer por emoción, sin prohibir.;Aumentar opciones.;medio;cuando proceda;conductual;NUT2_T036
+NUT2_TA039;Registro de culpa alimentaria;Anotar alimento, pensamiento, emoción y respuesta flexible.;Reducir culpa y rigidez.;medio;7 días;conductual;NUT2_T035
+NUT2_TA040;Comida flexible planificada;Incluir un alimento placentero en cantidad acordada sin compensación.;Reducir todo/nada.;bajo;semanal;conductual;NUT2_T035
+NUT2_TA041;Cribado de señales TCA;Revisar pérdida control, purgas, restricción extrema, miedo intenso y derivación.;Detectar riesgo.;alto;si procede;seguridad;NUT2_T037
+NUT2_TA042;Snack saciante;Diseñar merienda con proteína/fibra o fruta/lácteo/frutos secos según objetivo.;Reducir picoteo impulsivo.;bajo;diario;planificación;NUT2_T054
+NUT2_TA043;Plan de turnos;Preparar comidas portátiles, horarios realistas y cafeína limitada.;Adaptar alimentación a trabajo.;medio;semanal;planificación;NUT2_T055
+NUT2_TA044;Organizar entorno alimentario;Dejar visible lo que ayuda y reducir fricción de elecciones deseadas.;Facilitar hábitos.;bajo;semanal;hábitos;NUT2_T051
+NUT2_TA045;Plan de hidratación;Definir botella/meta y momentos fijos de agua.;Mejorar hidratación.;bajo;diario;hábitos;NUT2_T038
+NUT2_TA046;Registro de alcohol;Anotar frecuencia, cantidad, contexto y efecto en objetivo.;Tomar decisiones informadas.;medio;2 semanas;hábitos;NUT2_T039
+NUT2_TA047;Ajuste de cafeína;Limitar cafeína después de hora acordada y revisar sueño/ansiedad.;Mejorar descanso.;bajo;7-14 días;hábitos;NUT2_T040
+NUT2_TA048;Menú vegetariano proteico;Planificar 3 comidas vegetarianas con proteína clara.;Equilibrar dieta vegetariana.;medio;semanal;dieta_especial;NUT2_T041
+NUT2_TA049;Checklist vegano B12;Registrar suplementación B12/seguimiento sanitario si dieta vegana.;Prevenir déficit.;alto;mensual;dieta_especial;NUT2_T041
+NUT2_TA050;Adaptación cultural de menú;Sustituir alimentos del plan por equivalentes culturalmente adecuados.;Aumentar adherencia.;bajo;según plan;dieta_especial;NUT2_T042
+NUT2_TA051;Plan menopausia básico;Revisar proteína, fibra, calcio, fuerza, alcohol y sueño.;Apoyar etapa vital.;medio;mensual;etapa_vital;NUT2_T043
+NUT2_TA052;Plan proteína en mayores;Asegurar proteína repartida y textura aceptada.;Preservar masa muscular.;alto;diario;etapa_vital;NUT2_T044
+NUT2_TA053;Registro apetito mayores;Anotar apetito, ingesta, peso, hidratación y barreras.;Detectar riesgo nutricional.;alto;7 días;etapa_vital;NUT2_T044
+NUT2_TA054;Consulta sanitaria embarazo;Listar dudas de alimentación, suplementos y seguridad alimentaria para matrona/médico.;Coordinar etapa perinatal.;alto;según etapa;etapa_vital;NUT2_T045
+NUT2_TA055;Revisión suplemento actual;Listar suplementos, dosis, motivo, coste y evidencia/seguridad.;Evitar exceso o riesgo.;medio;30 min;suplementación;NUT2_T046
+NUT2_TA056;Plan creatina informado;Definir objetivo, dosis según profesional, hidratación y contraindicaciones.;Usar creatina con criterio.;medio;según plan;suplementación;NUT2_T047
+NUT2_TA057;Usar proteína en polvo como recurso;Planificar cuándo usar batido si no se llega a proteína con comida.;Facilitar objetivo proteico.;bajo;según necesidad;suplementación;NUT2_T048
+NUT2_TA058;Plan viaje/eventos;Definir mínimos: proteína, agua, pasos, flexibilidad y vuelta al plan.;Prevenir recaídas rígidas.;bajo;antes de evento;hábitos;NUT2_T049
+NUT2_TA059;Entrevista de barreras;Listar barreras, nivel de confianza y solución pequeña.;Mejorar adherencia.;bajo;semanal;conductual;NUT2_T050
+NUT2_TA060;Seguimiento de adherencia semanal;Marcar hábitos cumplidos, barreras y ajustes.;Ajustar sin culpabilizar.;bajo;semanal;seguimiento;NUT2_T052
+NUT2_TA061;Expectativas realistas de progreso;Escribir ritmo esperado, fluctuaciones y métricas de éxito no solo peso.;Reducir frustración.;bajo;mensual;educativa;NUT2_T053
+NUT2_TA062;Plan de derivación nutricional/médica;Identificar señal de alarma y profesional de referencia.;Aumentar seguridad.;alto;si aparece;seguridad;NUT2_T056
+NUT2_TA063;Diario de energía y sueño;Registrar energía, sueño, hambre y rendimiento.;Relacionar recuperación y alimentación.;bajo;7 días;seguimiento;NUT2_T052
+NUT2_TA064;Revisión de cena habitual;Mejorar una cena frecuente con proteína, fibra y saciedad.;Optimizar comida clave.;bajo;semanal;educativa;NUT2_T003
+NUT2_TA065;Lista de desayunos proteicos;Preparar 3 opciones realistas de desayuno con proteína/fibra.;Mejorar inicio del día.;bajo;semanal;planificación;NUT2_T054
+NUT2_TA066;Plan de meriendas de emergencia;Tener 2-3 opciones rápidas disponibles.;Evitar improvisación poco alineada.;bajo;semanal;planificación;NUT2_T054
+NUT2_TA067;Revisión mensual de medidas;Comparar peso, cintura, adherencia, hambre y energía.;Ajustar plan.;bajo;mensual;seguimiento;NUT2_T015
+NUT2_TA068;Semana de mantenimiento psicológico;Hacer semana sin déficit con hábitos base si hay fatiga dietética.;Mejorar sostenibilidad.;medio;cuando proceda;control_peso;NUT2_T016
+NUT2_TA069;Plan de calcio/vitamina D en etapa vital;Revisar fuentes alimentarias y derivación si hay dudas o analítica.;Apoyar salud ósea.;medio;mensual;etapa_vital;NUT2_T043
+NUT2_TA070;Revisión de fibra por tolerancia;Ajustar tipo/cantidad de fibra según síntomas digestivos.;Personalizar digestivo.;medio;semanal;digestiva;NUT2_T030
+NUT2_TA071;Semáforo de hambre;Clasificar hambre 0-3 baja, 4-7 adecuada, 8-10 alta y ajustar comidas.;Gestionar hambre.;bajo;diario;control_peso;NUT2_T014
+NUT2_TA072;Plan de vuelta tras desvío;Definir siguiente comida normal, sin compensaciones extremas.;Evitar todo/nada.;bajo;cuando proceda;conductual;NUT2_T049
+NUT2_TA073;Revisión de alimentos tabú;Elegir un alimento evitado y trabajarlo con exposición flexible si procede.;Reducir rigidez.;medio;supervisado;conductual;NUT2_T035
+NUT2_TA074;Plan de compra económica;Seleccionar proteínas, legumbres, verduras congeladas y básicos asequibles.;Ajustar a presupuesto.;bajo;semanal;planificación;NUT2_T010
+NUT2_TA075;Preparar plato de legumbre completo;Crear plato con legumbre, verdura y proteína complementaria si procede.;Mejorar fibra y saciedad.;bajo;semanal;hábitos;NUT2_T007
+NUT2_TA076;Plan de reducción gradual de sal;Reducir sal poco a poco durante varias semanas.;Adaptar paladar.;medio;2-4 semanas;cardiovascular;NUT2_T025
+NUT2_TA077;Plan de grasa saludable;Incluir aceite de oliva/frutos secos/aguacate/pescado según preferencia.;Mejorar perfil graso.;bajo;semanal;cardiovascular;NUT2_T026
+NUT2_TA078;Registro de síntomas post-comida;Anotar comida, síntomas, intensidad y tiempo de aparición.;Ayudar evaluación digestiva.;medio;7 días;digestiva;NUT2_T029
+NUT2_TA079;Revisión de suplementos con profesional sanitario;Consultar si hay enfermedad, medicación, embarazo, analíticas o dosis altas.;Evitar riesgos.;alto;si procede;suplementación;NUT2_T046
+NUT2_TA080;Plan de autonomía alimentaria;Elegir 2 habilidades: comprar, cocinar, elegir fuera o preparar snack.;Aumentar independencia.;bajo;semanal;educativa;NUT2_T002
+NUT2_TA081;Checklist de platos preparados;Comparar platos preparados por proteína, fibra, sal y calorías.;Elegir mejor cuando no se cocina.;bajo;semanal;educativa;NUT2_T004
+NUT2_TA082;Revisión de saciedad del desayuno;Valorar hambre 2-3h después y ajustar proteína/fibra.;Reducir hambre matutina.;bajo;7 días;control_peso;NUT2_T014
+NUT2_TA083;Plan de comidas sociales;Preparar estrategia de flexibilidad: elegir prioridades, disfrutar y volver normal.;Reducir miedo a eventos.;bajo;antes de evento;conductual;NUT2_T035
+NUT2_TA084;Plan de hidratos para entrenamiento;Elegir fuente de hidrato antes/después según duración e intensidad.;Mejorar rendimiento.;bajo;según entreno;deportiva;NUT2_T018
+NUT2_TA085;Revisión de analítica/diagnóstico referido;Registrar dato aportado y recomendar coordinación con sanitario si hay patología.;No invadir ámbito médico.;alto;según caso;seguridad;NUT2_T056

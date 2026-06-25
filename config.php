@@ -44,6 +44,12 @@ define('DB_NAME', psicologic_config_value('db_name', 'sgpraxis'));
 define('DB_SSL', (bool) psicologic_config_value('db_ssl', true));
 define('DB_SSL_CERT', psicologic_config_value('db_ssl_cert', 'mysql.pem'));
 define('APP_BASE_PATH', trim((string) psicologic_config_value('app_base_path', 'sgpraxis'), '/'));
+define('AUTO_SCHEMA_MIGRATIONS', (bool) psicologic_config_value('auto_schema_migrations', false));
+
+function app_auto_schema_migrations_enabled()
+{
+    return defined('AUTO_SCHEMA_MIGRATIONS') && AUTO_SCHEMA_MIGRATIONS;
+}
 
 // Max days in advance to book
 define('MAX_BOOKING_DAYS', (int) psicologic_config_value('max_booking_days', 40));

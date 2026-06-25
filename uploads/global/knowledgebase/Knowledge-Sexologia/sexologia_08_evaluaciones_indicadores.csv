@@ -1,0 +1,23 @@
+﻿evaluacion_id;nombre;area_uso;tipo;notas;problema_ids;nivel_riesgo
+SEX_E001;Entrevista sexual biopsicosocial;General;Entrevista clínica;Historia, motivo, salud, medicación, relación, deseo, excitación, orgasmo, dolor, seguridad y objetivos.;Todos;medio
+SEX_E002;Cribado de seguridad y consentimiento;Seguridad;Cribado;Presión, coerción, miedo, violencia, consentimiento, control y necesidad de derivación.;"SEX_P035;SEX_P036;SEX_P037;SEX_P038;SEX_P047;SEX_P048;SEX_P049;SEX_P050";alto
+SEX_E003;Registro de deseo y contexto;Deseo;Autorregistro;Deseo 0-10, estrés, conexión, descanso, emoción, frenos y aceleradores.;"SEX_P005;SEX_P006;SEX_P007;SEX_P008;SEX_P009";bajo
+SEX_E004;Inventario de discrepancia de deseo;Pareja/deseo;Entrevista/registro;Frecuencia deseada, significado, presión, rechazo, iniciativa y acuerdos.;"SEX_P006;SEX_P034";medio
+SEX_E005;Índice/registro de función eréctil;Erección;Cribado/registro;"Puede usarse referencia validada si licencia lo permite; no sustituye valoración médica.";"SEX_P012;SEX_P013";medio
+SEX_E006;Registro de excitación/lubricación;Excitación;Autorregistro;Contexto, deseo, lubricación, dolor, medicamentos, ciclo/menopausia y estrés.;"SEX_P010;SEX_P011;SEX_P014;SEX_P023";medio
+SEX_E007;Registro de eyaculación/control percibido;Eyaculación;Autorregistro;Control percibido, ansiedad, contexto, satisfacción y comunicación.;"SEX_P015;SEX_P016";medio
+SEX_E008;Registro de dificultad orgásmica;Orgasmo;Autorregistro;Presión, contexto, atención, estimulación, relación y pensamientos.;"SEX_P017;SEX_P018;SEX_P019";medio
+SEX_E009;Mapa de dolor sexual;Dolor;Autorregistro médico-clínico;Localización, intensidad, contexto, inicio, duración, síntomas y derivación.;"SEX_P020;SEX_P021;SEX_P022;SEX_P023;SEX_P024";alto
+SEX_E010;Escala de ansiedad sexual/rendimiento;Ansiedad sexual;Autorregistro;Ansiedad 0-10, pensamiento, autoobservación, evitación y resultado.;"SEX_P025;SEX_P026;SEX_P027;SEX_P028;SEX_P029";medio
+SEX_E011;Escala de comunicación sexual en pareja;Pareja;Rúbrica/registro;Claridad, escucha, límites, acuerdos, reparación y seguridad.;"SEX_P030;SEX_P031;SEX_P032;SEX_P033;SEX_P034";bajo
+SEX_E012;Registro de mitos y creencias sexuales;Creencias;Autorregistro;Creencia, origen, emoción, coste y alternativa flexible.;"SEX_P039;SEX_P040;SEX_P041;SEX_P042";bajo
+SEX_E013;Registro afirmativo de identidad/orientación;Diversidad;Entrevista/registro;Vivencia, apoyos, seguridad, estrés de minoría y recursos.;"SEX_P043;SEX_P044;SEX_P045;SEX_P046";medio
+SEX_E014;Cribado de trauma sexual y activadores;Trauma;Cribado clínico;"Explorar solo con competencia y cuidado; priorizar estabilización/derivación.";"SEX_P047;SEX_P048;SEX_P049;SEX_P050";alto
+SEX_E015;Registro de imagen corporal sexual;Imagen corporal;Autorregistro;Vergüenza, evitación, autocrítica, exposición y autocompasión.;"SEX_P051;SEX_P052;SEX_P053";medio
+SEX_E016;Análisis funcional de consumo sexual digital;Pornografía/conducta problemática;Autorregistro;Disparadores, uso, emoción, consecuencias, interferencia y recaídas.;"SEX_P054;SEX_P055;SEX_P056;SEX_P057";medio
+SEX_E017;Registro de cambios por etapa vital;Etapas vitales;Entrevista/registro;Embarazo, posparto, menopausia, edad, salud, discapacidad y adaptación.;"SEX_P058;SEX_P059;SEX_P060;SEX_P061;SEX_P062";medio
+SEX_E018;Registro médico-sexual;Salud/enfermedad;Autorregistro para derivación;Síntomas, medicación, enfermedad, dolor, cambios bruscos y preguntas médicas.;"SEX_P063;SEX_P064;SEX_P065;SEX_P066";alto
+SEX_E019;Registro de impacto reproductivo en sexualidad;Fertilidad/reproducción;Entrevista/registro;Presión, calendario, deseo, comunicación, duelo y proyecto vital.;"SEX_P067;SEX_P068;SEX_P069;SEX_P070";medio
+SEX_E020;Adherencia a tareas psicosexuales;Seguimiento;Indicador;Tareas realizadas, barreras, seguridad, utilidad y ajustes necesarios.;Todos;bajo
+SEX_E021;Escala de satisfacción sexual propia;Seguimiento;Indicador;Satisfacción, seguridad, comunicación, deseo, placer y bienestar 0-10.;Todos;bajo
+SEX_E022;Semáforo de riesgo sexológico;Riesgo;Cribado;"Bajo: educativo; medio: terapia; alto: dolor/coerción/trauma/síntoma médico/violencia.";Todos;alto

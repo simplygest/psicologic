@@ -1,0 +1,11 @@
+﻿map_id;grupo_clinico;bodymuscles_region_ids;descripcion
+FIS2_BR001;cervicalgia;"neck-left;neck-right;traps-upper-left;traps-upper-right";Cuello y trapecio superior
+FIS2_BR002;dorsalgia;"traps-mid-left;traps-mid-right;spine;upper-back";Dorsal/columna torácica
+FIS2_BR003;lumbalgia;"lower-back-erectors-left;lower-back-erectors-right;lower-back-ql-left;lower-back-ql-right;spine";Lumbar y cuadrado lumbar
+FIS2_BR004;hombro;"shoulder-left;shoulder-right;delts-front-left;delts-front-right;delts-back-left;delts-back-right;rotator-cuff-left;rotator-cuff-right";Hombro y manguito
+FIS2_BR005;codo-muñeca-mano;"forearm-left;forearm-right;hand-left;hand-right;biceps-left;biceps-right;triceps-left;triceps-right";Codo, antebrazo y mano
+FIS2_BR006;cadera;"gluteus-maximus-left;gluteus-maximus-right;gluteus-medius-left;gluteus-medius-right;hip-flexors-left;hip-flexors-right";Cadera y glúteos
+FIS2_BR007;rodilla;"quads-left;quads-right;hamstrings-left;hamstrings-right;knee-left;knee-right";Rodilla, cuádriceps e isquiosurales
+FIS2_BR008;tobillo-pie;"calves-left;calves-right;ankle-left;ankle-right;foot-left;foot-right";Tobillo, pie y pantorrilla
+FIS2_BR009;core;"abs-upper;abs-lower;obliques-left;obliques-right;lower-back-erectors-left;lower-back-erectors-right";Core anterior/lateral/posterior
+FIS2_BR010;suelo-pelvico;"pelvis;hip-adductors-left;hip-adductors-right;lower-abs";Pelvis/suelo pélvico conceptual

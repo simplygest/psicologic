@@ -354,7 +354,9 @@ function install_base_tables($mysqli)
 
     $mysqli->query("CREATE TABLE IF NOT EXISTS appointments (
         id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        tenant_id INT UNSIGNED NOT NULL DEFAULT 1,
         user_id INT UNSIGNED NOT NULL,
+        professional_id INT UNSIGNED DEFAULT NULL,
         appointment_date DATE NOT NULL,
         appointment_time TIME NOT NULL,
         status VARCHAR(32) NOT NULL DEFAULT 'booked',
@@ -367,16 +369,21 @@ function install_base_tables($mysqli)
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         cancelled_at DATETIME NULL,
         INDEX idx_date_time (appointment_date, appointment_time),
-        INDEX idx_user_id (user_id)
+        INDEX idx_user_id (user_id),
+        INDEX idx_calendar_professional (tenant_id, professional_id, status, appointment_date, appointment_time),
+        INDEX idx_calendar_patient (tenant_id, user_id, status, appointment_date, appointment_time)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     $mysqli->query("CREATE TABLE IF NOT EXISTS closed_days (
         id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        tenant_id INT UNSIGNED NOT NULL DEFAULT 1,
+        professional_id INT UNSIGNED DEFAULT NULL,
         closed_date DATE NOT NULL,
         reason VARCHAR(255) NULL,
         is_global TINYINT(1) NOT NULL DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_closed_date (closed_date)
+        INDEX idx_closed_date (closed_date),
+        INDEX idx_closed_calendar (tenant_id, closed_date, is_global, professional_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     $mysqli->query("CREATE TABLE IF NOT EXISTS payment_settings (
@@ -415,7 +422,7 @@ function install_base_tables($mysqli)
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
-    $mysqli->query("INSERT IGNORE INTO payment_settings (id, app_name, site_tagline, appointment_price) VALUES (1, 'SimplyGest Praxis', 'Psicología sanitaria y neuropsicología en Santa Cruz de Tenerife', 70.00)");
+    $mysqli->query("INSERT IGNORE INTO payment_settings (id, app_name, site_tagline, appointment_price) VALUES (1, 'SimplyGest Praxis', '', 70.00)");
 
     ensure_cabinet_schema($mysqli);
 }
@@ -597,13 +604,14 @@ if ($requestMethod === 'POST') {
 
             ensure_current_tenant_payment_settings($test);
 
-            $defaultTagline = 'Psicología sanitaria y neuropsicología en Santa Cruz de Tenerife';
+            $defaultTagline = '';
             $defaultPrimaryColor = '#4285f4';
             $tenantId = (int) $installTenant['id'];
             $stmt = $test->prepare("UPDATE payment_settings SET app_name = ?, site_tagline = COALESCE(NULLIF(site_tagline, ''), ?), admin_notification_email = ?, sector_texts_key = ?, dashboard_config_mode = ?, public_site_enabled = ?, primary_color = ? WHERE tenant_id = ?");
             $stmt->bind_param('sssssisi', $appName, $defaultTagline, $adminEmail, $sectorTextsKey, $dashboardConfigMode, $publicSiteEnabled, $defaultPrimaryColor, $tenantId);
             $stmt->execute();
             $stmt->close();
+            seed_default_appointment_services($test);
 
             $passwordHash = password_hash($adminPassword, PASSWORD_DEFAULT);
             $role = 'superadmin';

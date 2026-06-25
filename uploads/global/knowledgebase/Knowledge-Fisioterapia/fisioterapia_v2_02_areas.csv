@@ -1,0 +1,19 @@
+﻿area_id;nombre;descripcion
+FIS2_A001;Valoración y seguridad clínica;Cribado, banderas rojas, derivación, dolor, objetivos funcionales y evaluación inicial.
+FIS2_A002;Columna cervical;Cervicalgia, rigidez, cefalea cervicogénica, control motor cervical y postura.
+FIS2_A003;Columna dorsal y caja torácica;Dorsalgia, movilidad torácica, respiración, rigidez y control postural.
+FIS2_A004;Columna lumbar y pelvis;Lumbalgia, ciática, control lumbo-pélvico, movilidad, fuerza y educación.
+FIS2_A005;Hombro y cintura escapular;Dolor de hombro, movilidad, manguito rotador, escápula, capsulitis y retorno funcional.
+FIS2_A006;Codo, muñeca y mano;Epicondilalgia, túnel carpiano, dolor de muñeca, rigidez y fuerza de agarre.
+FIS2_A007;Cadera y pelvis;Dolor de cadera, movilidad, fuerza glútea, control pélvico y marcha.
+FIS2_A008;Rodilla;Dolor femoropatelar, artrosis, control de valgo, fuerza, movilidad y funcionalidad.
+FIS2_A009;Tobillo, pie y marcha;Esguince, tendón de Aquiles, fascitis plantar, movilidad de tobillo y equilibrio.
+FIS2_A010;Tendinopatías y sobrecarga;Educación de carga, progresión, dolor aceptable, isométricos y fuerza progresiva.
+FIS2_A011;Readaptación deportiva;Retorno progresivo al deporte, saltos, carrera, cambios de dirección y prevención.
+FIS2_A012;Postoperatorio y fracturas;Rehabilitación por fases, movilidad, fuerza, edema, adherencia y coordinación médica.
+FIS2_A013;Neurológica adulta;Ictus, equilibrio, marcha, control motor, fuerza, función y participación.
+FIS2_A014;Respiratoria y capacidad funcional;Respiración, tolerancia al esfuerzo, drenaje, educación y progresión aeróbica.
+FIS2_A015;Mayores, fragilidad y prevención de caídas;Fuerza, equilibrio, movilidad, función, autonomía y seguridad.
+FIS2_A016;Dolor persistente y educación;Neurociencia del dolor, actividad gradual, miedo al movimiento y autocuidado.
+FIS2_A017;Ergonomía y hábitos de movimiento;Trabajo, pantalla, pausas activas, cargas, sueño y movimiento diario.
+FIS2_A018;Suelo pélvico básico y derivación;Conciencia, educación, señales de derivación, posparto, incontinencia y dolor pélvico.

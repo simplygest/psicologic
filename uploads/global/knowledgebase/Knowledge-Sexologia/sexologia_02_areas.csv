@@ -1,0 +1,17 @@
+﻿area_id;nombre;descripcion
+SEX_A001;Salud sexual integral;Bienestar sexual, derechos, consentimiento, comunicación, seguridad y educación sexual basada en evidencia.
+SEX_A002;Deseo sexual;Deseo bajo, discrepancia de deseo, deseo inhibido, deseo situacional y cambios de deseo en pareja.
+SEX_A003;Excitación, erección y lubricación;Dificultades de respuesta fisiológica, ansiedad, factores médicos y coordinación con medicina.
+SEX_A004;Orgasmo y eyaculación;Dificultades orgásmicas, eyaculación precoz, retardada, anorgasmia y control percibido.
+SEX_A005;Dolor sexual y penetración;Dolor, vaginismo, dispareunia, evitación por dolor y derivación ginecológica/urológica/fisioterapia suelo pélvico.
+SEX_A006;Ansiedad sexual y rendimiento;Miedo a fallar, autoobservación, evitación, presión de desempeño y bloqueo.
+SEX_A007;Pareja, intimidad y comunicación sexual;Comunicación, acuerdos, discrepancias, intimidad emocional, rutinas y conexión.
+SEX_A008;Consentimiento, límites y seguridad;Consentimiento explícito, límites, coerción, presión, seguridad relacional y derivación ante violencia.
+SEX_A009;Mitos, creencias y educación sexual;Creencias rígidas, culpa, vergüenza, guiones sexuales, pornomitos y expectativas irreales.
+SEX_A010;Identidad, orientación y diversidad sexual;Acompañamiento afirmativo, orientación, identidad, coming out, minorías sexuales y vivencia personal.
+SEX_A011;Trauma sexual y experiencias adversas;Historia de abuso, coerción, activadores, seguridad, estabilización y derivación especializada.
+SEX_A012;Imagen corporal y autoestima sexual;Vergüenza corporal, autoimagen, evitación, autocrítica y comodidad con el cuerpo.
+SEX_A013;Pornografía y conducta sexual problemática;Consumo problemático percibido, interferencia funcional, compulsividad, culpa y hábitos digitales.
+SEX_A014;Sexualidad en etapas vitales;Adolescencia educativa, embarazo, posparto, menopausia, envejecimiento, diversidad funcional y cambios vitales.
+SEX_A015;Sexualidad y salud/enfermedad;Sexualidad con enfermedad crónica, medicación, dolor, discapacidad, tratamientos médicos y derivación.
+SEX_A016;Fertilidad, reproducción y proyecto vital;Infertilidad, tratamientos reproductivos, miedo al embarazo, pérdidas reproductivas y comunicación.

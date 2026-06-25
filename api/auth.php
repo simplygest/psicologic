@@ -230,6 +230,8 @@ if ($action === 'login') {
         $_SESSION['name'] = $user['name'];
         $_SESSION['tenant_id'] = $tenant_id;
         $_SESSION['tenant_key'] = current_tenant_key();
+        $_SESSION['auth_tenant_id'] = $tenant_id;
+        $_SESSION['auth_tenant_key'] = current_tenant_key();
         echo json_encode(['success' => true]);
     } else {
         echo json_encode(['success' => false, 'error' => 'Credenciales incorrectas.']);

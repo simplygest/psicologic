@@ -3,6 +3,8 @@ session_start();
 header('Content-Type: text/html; charset=UTF-8');
 require_once 'db.php';
 require_once 'settings_helpers.php';
+require_once 'cabinet_helpers.php';
+require_once 'public_nav_helpers.php';
 if (isset($_SESSION['user_id'])) {
     if (($_SESSION['role'] ?? '') !== 'admin' && !online_booking_enabled($mysqli)) {
         header('Location: index.php');
@@ -14,12 +16,14 @@ if (isset($_SESSION['user_id'])) {
 $branding = get_public_branding_settings($mysqli);
 $app_name = $branding['app_name'];
 $official_brand_logo_url = app_official_brand_logo_url();
-$tenant_brand_logo_url = trim((string) ($branding['profile_image_path'] ?? '')) !== ''
+$has_tenant_brand_logo = trim((string) ($branding['profile_image_path'] ?? '')) !== '';
+$tenant_brand_logo_url = $has_tenant_brand_logo
     ? app_upload_asset_url($branding['profile_image_path'])
     : $official_brand_logo_url;
 $is_admin_login = isset($_GET['admin']);
 $open_patient_registration = ($branding['patient_registration_mode'] ?? 'invite') === 'open';
 $remembered_login_id = $_COOKIE['psicologic_login_id'] ?? '';
+$show_public_nav = (int) ($branding['public_site_enabled'] ?? 0) === 1;
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -36,14 +40,18 @@ $remembered_login_id = $_COOKIE['psicologic_login_id'] ?? '';
     <style>:root { --primary-color: <?= htmlspecialchars($branding['primary_color']) ?>; }</style>
 </head>
 
-<body class="auth-page d-flex align-items-center justify-content-center flex-column" style="min-height: 100vh;">
+<body class="auth-page <?= $show_public_nav ? 'auth-page-with-nav public-site' : 'd-flex align-items-center justify-content-center flex-column' ?>" style="min-height: 100vh;">
+
+    <?php if ($show_public_nav): ?>
+        <?php render_public_nav($mysqli, $branding, ['show_patient_area' => false]); ?>
+    <?php endif; ?>
 
     <div class="container">
         <div class="row justify-content-center">
             <div class="col-md-5">
                 <div class="card p-4">
                     <div class="text-center mb-4">
-                        <img src="<?= htmlspecialchars($tenant_brand_logo_url) ?>" alt="<?= htmlspecialchars($app_name) ?>" class="auth-brand-image mb-3">
+                        <img src="<?= htmlspecialchars($tenant_brand_logo_url) ?>" alt="<?= htmlspecialchars($app_name) ?>" class="auth-brand-image<?= $has_tenant_brand_logo ? '' : ' auth-brand-image-official' ?> mb-3">
                         <h2 style="color: var(--primary-color);"><?= htmlspecialchars($app_name) ?></h2>
                         <p class="text-muted"><?= $is_admin_login ? 'Acceso privado de administración.' : 'Inicia sesión para gestionar tus citas.' ?></p>
                     </div>
@@ -92,6 +100,9 @@ $remembered_login_id = $_COOKIE['psicologic_login_id'] ?? '';
     </footer>
 
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <?php if ($show_public_nav): ?>
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <?php endif; ?>
     <script>
         $(document).ready(function () {
             function setCookie(name, value, days) {

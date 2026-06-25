@@ -1,0 +1,13 @@
+﻿rutina_id;nombre;area_id;nivel;dias_semana;descripcion
+FIT2_ROUT001;Full Body Principiante 3 días;FIT2_A001;principiante;3;Fuerza básica de cuerpo completo + pasos + movilidad.
+FIT2_ROUT002;Hipertrofia Torso/Pierna 4 días;FIT2_A002;intermedio;4;Distribución de volumen para ganancia muscular.
+FIT2_ROUT003;Fuerza Básicos 3 días;FIT2_A003;intermedio;3;Sentadilla/bisagra/empuje/tracción con progresión.
+FIT2_ROUT004;Pérdida de grasa Fuerza+NEAT;FIT2_A004;general;4;Fuerza, pasos, cardio suave y seguimiento de medidas.
+FIT2_ROUT005;Circuitos Resistencia 3 días;FIT2_A005;principiante/intermedio;3;Circuitos full body y tests de resistencia.
+FIT2_ROUT006;Movilidad General 10-15 min;FIT2_A006;todos;5;Rutina breve de cadera, hombro, tobillo y cadena posterior.
+FIT2_ROUT007;Core y Postura 3 días;FIT2_A007;todos;3;Estabilidad, control lumbo-pélvico y escápulas.
+FIT2_ROUT008;Cardio Base 8 semanas;FIT2_A008;principiante;3;Zona 2 y caminata-carrera progresiva.
+FIT2_ROUT009;Casa Mancuernas 3 días;FIT2_A009;todos;3;Entrenamiento con material limitado.
+FIT2_ROUT010;Técnica Básicos 4 semanas;FIT2_A010;principiante;3;Aprendizaje de patrones con feedback y progresiones.
+FIT2_ROUT011;Vuelta al Entreno 4 semanas;FIT2_A011;retorno;3;Carga reducida, tolerancia y progresión gradual.
+FIT2_ROUT012;Mayores Funcional 3 días;FIT2_A012;mayores;3;Fuerza funcional, equilibrio, movilidad y caminata.

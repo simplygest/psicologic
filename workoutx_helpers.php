@@ -104,6 +104,82 @@ function workoutx_request($endpoint, array $params = [])
     ];
 }
 
+function workoutx_fetch_gif($external_id)
+{
+    $api_key = workoutx_api_key();
+    $external_id = trim((string) $external_id);
+    if ($api_key === '' || $external_id === '') {
+        return ['success' => false, 'error' => 'WorkoutX no esta configurado.'];
+    }
+    if (!preg_match('/^[A-Za-z0-9_-]+$/', $external_id)) {
+        return ['success' => false, 'error' => 'Identificador de WorkoutX no valido.'];
+    }
+
+    $url = 'https://api.workoutxapp.com/v1/gifs/' . rawurlencode($external_id) . '.gif';
+    $body = '';
+    $content_type = 'image/gif';
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 20,
+            CURLOPT_CONNECTTIMEOUT => 8,
+            CURLOPT_HTTPHEADER => [
+                'Accept: image/gif,image/*,*/*',
+                'X-WorkoutX-Key: ' . $api_key
+            ],
+            CURLOPT_HEADERFUNCTION => static function ($curl, $header) use (&$content_type) {
+                $length = strlen($header);
+                $parts = explode(':', $header, 2);
+                if (count($parts) === 2 && strtolower(trim($parts[0])) === 'content-type') {
+                    $content_type = trim($parts[1]);
+                }
+                return $length;
+            }
+        ]);
+        $body = curl_exec($ch);
+        $http_code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curl_error = curl_error($ch);
+        curl_close($ch);
+        if ($body === false || $curl_error !== '') {
+            return ['success' => false, 'error' => 'No se pudo conectar con WorkoutX.'];
+        }
+    } else {
+        $context = stream_context_create([
+            'http' => [
+                'method' => 'GET',
+                'timeout' => 20,
+                'header' => "Accept: image/gif,image/*,*/*\r\nX-WorkoutX-Key: {$api_key}\r\n",
+                'ignore_errors' => true
+            ]
+        ]);
+        $body = @file_get_contents($url, false, $context);
+        $http_code = 0;
+        if (isset($http_response_header) && is_array($http_response_header)) {
+            foreach ($http_response_header as $line) {
+                if (preg_match('#^HTTP/\S+\s+(\d+)#', $line, $m)) {
+                    $http_code = (int) $m[1];
+                } elseif (stripos($line, 'Content-Type:') === 0) {
+                    $content_type = trim(substr($line, 13));
+                }
+            }
+        }
+        if ($body === false) {
+            return ['success' => false, 'error' => 'No se pudo conectar con WorkoutX.'];
+        }
+    }
+
+    if ($http_code < 200 || $http_code >= 300) {
+        return ['success' => false, 'error' => 'WorkoutX no devolvio el GIF.', 'status' => $http_code];
+    }
+
+    return [
+        'success' => true,
+        'body' => $body,
+        'content_type' => $content_type !== '' ? $content_type : 'image/gif'
+    ];
+}
+
 function workoutx_usage_headers(array $headers)
 {
     return [
@@ -133,17 +209,29 @@ function workoutx_search_exercises_by_name($name, $limit = 10)
     }
     return workoutx_request('/exercises', [
         'name' => $name,
-        'limit' => max(1, min(10, (int) $limit))
+        'limit' => max(1, min(500, (int) $limit))
     ]);
 }
 
 function workoutx_list_exercises($limit = 10, $offset = 0, array $filters = [])
 {
     $params = array_merge($filters, [
-        'limit' => max(1, min(10, (int) $limit)),
+        'limit' => max(1, min(500, (int) $limit)),
         'offset' => max(0, (int) $offset)
     ]);
     return workoutx_request('/exercises', $params);
+}
+
+function workoutx_generate_workout(array $params = [])
+{
+    $allowed = ['goal', 'duration', 'level', 'split', 'equipment', 'bodyFocus', 'exclude', 'seed'];
+    $query = [];
+    foreach ($allowed as $key) {
+        if (isset($params[$key]) && trim((string) $params[$key]) !== '') {
+            $query[$key] = trim((string) $params[$key]);
+        }
+    }
+    return workoutx_request('/workout/generate', $query);
 }
 
 function workoutx_extract_exercises($data)

@@ -7,28 +7,30 @@ function knowledge_sector_import_configs(string $base_dir): array
         'dir' => rtrim($base_dir, '/\\') . '/Knowledge-Fisioterapia',
         'prefix' => 'fisioterapia',
         'files' => [
-            'sources' => 'fisioterapia_01_fuentes.csv',
-            'areas' => 'fisioterapia_02_areas.csv',
-            'problems' => 'fisioterapia_03_problemas_objetivos.csv',
-            'techniques' => 'fisioterapia_04_tecnicas_metodos.csv',
-            'tasks' => 'fisioterapia_05_tareas_pautas.csv',
-            'problem_techniques' => 'fisioterapia_06_problema_tecnica.csv',
-            'recommendations' => 'fisioterapia_07_recomendaciones_tareas.csv',
-            'questionnaires' => 'fisioterapia_08_evaluaciones_indicadores.csv'
+            'sources' => 'fisioterapia_v2_01_fuentes.csv',
+            'areas' => 'fisioterapia_v2_02_areas.csv',
+            'problems' => 'fisioterapia_v2_03_problemas_objetivos.csv',
+            'techniques' => 'fisioterapia_v2_04_tecnicas_metodos.csv',
+            'tasks' => 'fisioterapia_v2_05_tareas_pautas.csv',
+            'problem_techniques' => 'fisioterapia_v2_06_problema_tecnica.csv',
+            'recommendations' => 'fisioterapia_v2_07_recomendaciones_tareas.csv',
+            'questionnaires' => 'fisioterapia_v2_08_evaluaciones_indicadores.csv',
+            'documents' => 'fisioterapia_v2_09_documentos_informes.csv'
         ]
     ],
     'nutricion' => [
         'dir' => rtrim($base_dir, '/\\') . '/Knowledge-Nutricion',
         'prefix' => 'nutricion',
         'files' => [
-            'sources' => 'nutricion_01_fuentes.csv',
-            'areas' => 'nutricion_02_areas.csv',
-            'problems' => 'nutricion_03_problemas_objetivos.csv',
-            'techniques' => 'nutricion_04_tecnicas_metodos.csv',
-            'tasks' => 'nutricion_05_tareas_pautas.csv',
-            'problem_techniques' => 'nutricion_06_problema_tecnica.csv',
-            'recommendations' => 'nutricion_07_recomendaciones_tareas.csv',
-            'questionnaires' => 'nutricion_08_evaluaciones_indicadores.csv'
+            'sources' => 'nutricion_v2_01_fuentes.csv',
+            'areas' => 'nutricion_v2_02_areas.csv',
+            'problems' => 'nutricion_v2_03_problemas_objetivos.csv',
+            'techniques' => 'nutricion_v2_04_tecnicas_metodos.csv',
+            'tasks' => 'nutricion_v2_05_tareas_pautas.csv',
+            'problem_techniques' => 'nutricion_v2_06_problema_tecnica.csv',
+            'recommendations' => 'nutricion_v2_07_recomendaciones_tareas.csv',
+            'questionnaires' => 'nutricion_v2_08_evaluaciones_indicadores.csv',
+            'documents' => 'nutricion_v2_09_documentos_informes.csv'
         ]
     ],
     'osteopatia' => [
@@ -76,15 +78,32 @@ function knowledge_sector_import_configs(string $base_dir): array
     'psicologia' => [
         'dir' => rtrim($base_dir, '/\\') . '/Knowledge-Psico',
         'prefix' => 'psicologia',
+        'append' => true,
         'files' => [
-            'sources' => '01_fuentes.csv',
-            'areas' => '02_areas.csv',
-            'problems' => '03_problemas.csv',
-            'techniques' => '04_tecnicas.csv',
-            'tasks' => '05_tareas.csv',
-            'problem_techniques' => '06_problema_tecnica.csv',
-            'recommendations' => '07_recomendaciones_tareas.csv',
-            'questionnaires' => '08_cuestionarios.csv'
+            'sources' => 'psicologia_v2_01_fuentes.csv',
+            'areas' => 'psicologia_v2_02_areas.csv',
+            'problems' => 'psicologia_v2_03_problemas_objetivos.csv',
+            'techniques' => 'psicologia_v2_04_tecnicas_metodos.csv',
+            'tasks' => 'psicologia_v2_05_tareas_pautas.csv',
+            'problem_techniques' => 'psicologia_v2_06_problema_tecnica.csv',
+            'recommendations' => 'psicologia_v2_07_recomendaciones_tareas.csv',
+            'questionnaires' => 'psicologia_v2_08_evaluaciones_indicadores.csv',
+            'documents' => 'psicologia_v2_09_documentos_informes.csv'
+        ]
+    ],
+    'sexologia' => [
+        'dir' => rtrim($base_dir, '/\\') . '/Knowledge-Sexologia',
+        'prefix' => 'sexologia',
+        'files' => [
+            'sources' => 'sexologia_01_fuentes.csv',
+            'areas' => 'sexologia_02_areas.csv',
+            'problems' => 'sexologia_03_problemas_objetivos.csv',
+            'techniques' => 'sexologia_04_tecnicas_metodos.csv',
+            'tasks' => 'sexologia_05_tareas_pautas.csv',
+            'problem_techniques' => 'sexologia_06_problema_tecnica.csv',
+            'recommendations' => 'sexologia_07_recomendaciones_tareas.csv',
+            'questionnaires' => 'sexologia_08_evaluaciones_indicadores.csv',
+            'documents' => 'sexologia_09_documentos_informes.csv'
         ]
     ],
     'terapia_ocupacional' => [
@@ -120,16 +139,37 @@ function knowledge_sector_import_configs(string $base_dir): array
     'psicopedagogia' => [
         'dir' => rtrim($base_dir, '/\\') . '/Knowledge-Psicopedagogia',
         'prefix' => 'psicopedagogia',
+        'append' => true,
         'files' => [
-            'sources' => 'psicopedagogia_01_fuentes.csv',
-            'areas' => 'psicopedagogia_02_areas.csv',
-            'problems' => 'psicopedagogia_03_problemas_objetivos.csv',
-            'techniques' => 'psicopedagogia_04_tecnicas_metodos.csv',
-            'tasks' => 'psicopedagogia_05_tareas_pautas.csv',
-            'problem_techniques' => 'psicopedagogia_06_problema_tecnica.csv',
-            'recommendations' => 'psicopedagogia_07_recomendaciones_tareas.csv',
-            'questionnaires' => 'psicopedagogia_08_evaluaciones_indicadores.csv',
-            'documents' => 'psicopedagogia_09_documentos_informes.csv'
+            'sources' => 'psicopedagogia_v2_01_fuentes.csv',
+            'areas' => 'psicopedagogia_v2_02_areas.csv',
+            'problems' => 'psicopedagogia_v2_03_problemas_objetivos.csv',
+            'techniques' => 'psicopedagogia_v2_04_tecnicas_metodos.csv',
+            'tasks' => 'psicopedagogia_v2_05_tareas_pautas.csv',
+            'problem_techniques' => 'psicopedagogia_v2_06_problema_tecnica.csv',
+            'recommendations' => 'psicopedagogia_v2_07_recomendaciones_tareas.csv',
+            'questionnaires' => 'psicopedagogia_v2_08_evaluaciones_indicadores.csv',
+            'documents' => 'psicopedagogia_v2_09_documentos_informes.csv'
+        ]
+    ],
+    'fitness' => [
+        'dir' => rtrim($base_dir, '/\\') . '/Knowledge-Fitness',
+        'prefix' => 'fitness',
+        'default_area' => [
+            'area_id' => 'FIT_AREA001',
+            'nombre' => 'Objetivos',
+            'descripcion' => 'Objetivos, rutinas, técnicas y pautas de entrenamiento.'
+        ],
+        'files' => [
+            'sources' => 'fitness_v2_01_fuentes.csv',
+            'areas' => 'fitness_v2_02_areas.csv',
+            'problems' => 'fitness_v2_03_problemas_objetivos.csv',
+            'techniques' => 'fitness_v2_04_tecnicas_metodos.csv',
+            'tasks' => 'fitness_v2_05_tareas_pautas.csv',
+            'problem_techniques' => 'fitness_v2_06_problema_tecnica.csv',
+            'recommendations' => 'fitness_v2_07_recomendaciones_tareas.csv',
+            'questionnaires' => 'fitness_v2_08_evaluaciones_indicadores.csv',
+            'documents' => 'fitness_v2_09_documentos_informes.csv'
         ]
     ]
     ];
@@ -482,10 +522,13 @@ function upsert_area(mysqli $mysqli, string $sector_key, array $row): int
 
 function upsert_problem(mysqli $mysqli, string $sector_key, array $row, array $area_map): int
 {
-    $code = pick($row, ['problema_id', 'problem_code']);
+    $code = pick($row, ['problema_id', 'goal_id', 'problem_code']);
     if ($code === '') return 0;
     $area_code = pick($row, ['area_id']);
     $area_id = $area_map[$area_code] ?? 0;
+    if (!$area_id && count($area_map) === 1) {
+        $area_id = (int) reset($area_map);
+    }
     if (!$area_id) return 0;
     $name = pick($row, ['nombre', 'name']);
     $alias = pick($row, ['alias']);
@@ -540,18 +583,20 @@ function upsert_task(mysqli $mysqli, string $sector_key, array $row, array $tech
     return fetch_id($mysqli, 'knowledge_tasks', 'task_code', $code, $sector_key);
 }
 
-function import_problem_sources(mysqli $mysqli, string $sector_key, array $problem_rows, array $problem_map, array $source_map): int
+function import_problem_sources(mysqli $mysqli, string $sector_key, array $problem_rows, array $problem_map, array $source_map, bool $append = false): int
 {
-    $delete = $mysqli->prepare("DELETE FROM knowledge_problem_sources WHERE sector_key = ?");
-    $delete->bind_param('s', $sector_key);
-    $delete->execute();
+    if (!$append) {
+        $delete = $mysqli->prepare("DELETE FROM knowledge_problem_sources WHERE sector_key = ?");
+        $delete->bind_param('s', $sector_key);
+        $delete->execute();
+    }
     $stmt = $mysqli->prepare("
         INSERT IGNORE INTO knowledge_problem_sources (sector_key, problem_id, source_id)
         VALUES (?, ?, ?)
     ");
     $count = 0;
     foreach ($problem_rows as $row) {
-        $problem_code = pick($row, ['problema_id', 'problem_code']);
+        $problem_code = pick($row, ['problema_id', 'goal_id', 'problem_code']);
         $problem_id = $problem_map[$problem_code] ?? 0;
         foreach (split_ids(pick($row, ['fuente_ids', 'source_ids'])) as $source_code) {
             $source_id = $source_map[$source_code] ?? 0;
@@ -565,18 +610,20 @@ function import_problem_sources(mysqli $mysqli, string $sector_key, array $probl
     return $count;
 }
 
-function import_problem_techniques(mysqli $mysqli, string $sector_key, array $rows, array $problem_map, array $technique_map): int
+function import_problem_techniques(mysqli $mysqli, string $sector_key, array $rows, array $problem_map, array $technique_map, bool $append = false): int
 {
-    $delete = $mysqli->prepare("DELETE FROM knowledge_problem_techniques WHERE sector_key = ?");
-    $delete->bind_param('s', $sector_key);
-    $delete->execute();
+    if (!$append) {
+        $delete = $mysqli->prepare("DELETE FROM knowledge_problem_techniques WHERE sector_key = ?");
+        $delete->bind_param('s', $sector_key);
+        $delete->execute();
+    }
     $stmt = $mysqli->prepare("
         INSERT IGNORE INTO knowledge_problem_techniques (sector_key, problem_id, technique_id)
         VALUES (?, ?, ?)
     ");
     $count = 0;
     foreach ($rows as $row) {
-        $problem_id = $problem_map[pick($row, ['problema_id'])] ?? 0;
+        $problem_id = $problem_map[pick($row, ['problema_id', 'goal_id'])] ?? 0;
         $technique_id = $technique_map[pick($row, ['tecnica_id'])] ?? 0;
         if ($problem_id && $technique_id) {
             $stmt->bind_param('sii', $sector_key, $problem_id, $technique_id);
@@ -587,11 +634,13 @@ function import_problem_techniques(mysqli $mysqli, string $sector_key, array $ro
     return $count;
 }
 
-function import_recommendations(mysqli $mysqli, string $sector_key, array $rows, array $problem_map, array $technique_map, array $task_map): int
+function import_recommendations(mysqli $mysqli, string $sector_key, array $rows, array $problem_map, array $technique_map, array $task_map, bool $append = false): int
 {
-    $delete = $mysqli->prepare("DELETE FROM knowledge_recommendations WHERE sector_key = ?");
-    $delete->bind_param('s', $sector_key);
-    $delete->execute();
+    if (!$append) {
+        $delete = $mysqli->prepare("DELETE FROM knowledge_recommendations WHERE sector_key = ?");
+        $delete->bind_param('s', $sector_key);
+        $delete->execute();
+    }
     $stmt = $mysqli->prepare("
         INSERT INTO knowledge_recommendations (sector_key, recommendation_code, problem_id, technique_id, task_id, priority, clinical_note)
         VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -602,7 +651,7 @@ function import_recommendations(mysqli $mysqli, string $sector_key, array $rows,
     foreach ($rows as $row) {
         $processed++;
         $code = pick($row, ['recomendacion_id', 'recommendation_code']);
-        $problem_id = $problem_map[pick($row, ['problema_id'])] ?? 0;
+        $problem_id = $problem_map[pick($row, ['problema_id', 'goal_id'])] ?? 0;
         $technique_id = $technique_map[pick($row, ['tecnica_id'])] ?? 0;
         $task_id = $task_map[pick($row, ['tarea_id'])] ?? 0;
         $priority = pick($row, ['prioridad', 'priority'], 'media');
@@ -619,12 +668,14 @@ function import_recommendations(mysqli $mysqli, string $sector_key, array $rows,
     return $count;
 }
 
-function import_questionnaires(mysqli $mysqli, string $sector_key, array $rows, array $problem_map): int
+function import_questionnaires(mysqli $mysqli, string $sector_key, array $rows, array $problem_map, bool $append = false): int
 {
     $resource_kind = 'questionnaire';
-    $delete = $mysqli->prepare("DELETE FROM knowledge_questionnaires WHERE sector_key = ? AND resource_kind = ?");
-    $delete->bind_param('ss', $sector_key, $resource_kind);
-    $delete->execute();
+    if (!$append) {
+        $delete = $mysqli->prepare("DELETE FROM knowledge_questionnaires WHERE sector_key = ? AND resource_kind = ?");
+        $delete->bind_param('ss', $sector_key, $resource_kind);
+        $delete->execute();
+    }
     $stmt = $mysqli->prepare("
         INSERT INTO knowledge_questionnaires (sector_key, questionnaire_code, problem_id, name, use_area, questionnaire_type, notes, resource_kind)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -635,15 +686,25 @@ function import_questionnaires(mysqli $mysqli, string $sector_key, array $rows, 
     foreach ($rows as $row) {
         $processed++;
         $code = pick($row, ['evaluacion_id', 'questionnaire_code']);
-        $problem_id = $problem_map[pick($row, ['problema_id'])] ?? 0;
+        $problem_ids_raw = pick($row, ['problema_ids', 'problema_id', 'goal_ids', 'goal_id', 'problem_ids']);
+        $target_problem_ids = [];
+        foreach (split_ids($problem_ids_raw) as $problem_code) {
+            if (isset($problem_map[$problem_code])) {
+                $target_problem_ids[] = (int) $problem_map[$problem_code];
+            }
+        }
+        $target_problem_ids = array_values(array_unique(array_filter($target_problem_ids)));
         $name = pick($row, ['nombre', 'name']);
         $use_area = pick($row, ['area_uso', 'uso', 'use_area']);
         $type = pick($row, ['tipo', 'questionnaire_type']);
         $notes = pick($row, ['notas', 'notes']);
-        if ($code && $problem_id && $name) {
-            $stmt->bind_param('ssisssss', $sector_key, $code, $problem_id, $name, $use_area, $type, $notes, $resource_kind);
-            $stmt->execute();
-            $count++;
+        foreach ($target_problem_ids as $problem_id) {
+            if ($code && $problem_id && $name) {
+                $questionnaire_code = count($target_problem_ids) > 1 ? $code . '_' . $problem_id : $code;
+                $stmt->bind_param('ssisssss', $sector_key, $questionnaire_code, $problem_id, $name, $use_area, $type, $notes, $resource_kind);
+                $stmt->execute();
+                $count++;
+            }
         }
         if ($processed % 100 === 0) {
             keep_alive("$sector_key: $processed evaluaciones procesadas");
@@ -652,12 +713,14 @@ function import_questionnaires(mysqli $mysqli, string $sector_key, array $rows, 
     return $count;
 }
 
-function import_documents(mysqli $mysqli, string $sector_key, array $rows, array $problem_map): int
+function import_documents(mysqli $mysqli, string $sector_key, array $rows, array $problem_map, bool $append = false): int
 {
     $resource_kind = 'document';
-    $delete = $mysqli->prepare("DELETE FROM knowledge_questionnaires WHERE sector_key = ? AND resource_kind = ?");
-    $delete->bind_param('ss', $sector_key, $resource_kind);
-    $delete->execute();
+    if (!$append) {
+        $delete = $mysqli->prepare("DELETE FROM knowledge_questionnaires WHERE sector_key = ? AND resource_kind = ?");
+        $delete->bind_param('ss', $sector_key, $resource_kind);
+        $delete->execute();
+    }
     $stmt = $mysqli->prepare("
         INSERT INTO knowledge_questionnaires (sector_key, questionnaire_code, problem_id, name, use_area, questionnaire_type, notes, resource_kind)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -704,6 +767,7 @@ function import_sector(mysqli $mysqli, string $sector_key, array $config): array
 {
     $dir = $config['dir'];
     $files = $config['files'];
+    $append = !empty($config['append']);
     $stats = [];
 
     keep_alive("Iniciando sector $sector_key");
@@ -719,7 +783,11 @@ function import_sector(mysqli $mysqli, string $sector_key, array $config): array
 
     $area_map = [];
     keep_alive("$sector_key: importando areas");
-    foreach (csv_rows($dir . '/' . $files['areas']) as $row) {
+    $area_rows = !empty($files['areas']) ? csv_rows($dir . '/' . $files['areas']) : [];
+    if (!$area_rows && !empty($config['default_area']) && is_array($config['default_area'])) {
+        $area_rows = [$config['default_area']];
+    }
+    foreach ($area_rows as $row) {
         $code = pick($row, ['area_id', 'area_code']);
         $id = upsert_area($mysqli, $sector_key, $row);
         if ($code && $id) $area_map[$code] = $id;
@@ -730,12 +798,12 @@ function import_sector(mysqli $mysqli, string $sector_key, array $config): array
     $problem_map = [];
     keep_alive("$sector_key: importando problemas/diagnosticos");
     foreach ($problem_rows as $row) {
-        $code = pick($row, ['problema_id', 'problem_code']);
+        $code = pick($row, ['problema_id', 'goal_id', 'problem_code']);
         $id = upsert_problem($mysqli, $sector_key, $row, $area_map);
         if ($code && $id) $problem_map[$code] = $id;
     }
     $stats['problemas'] = count($problem_map);
-    $stats['fuentes_problema'] = import_problem_sources($mysqli, $sector_key, $problem_rows, $problem_map, $source_map);
+    $stats['fuentes_problema'] = import_problem_sources($mysqli, $sector_key, $problem_rows, $problem_map, $source_map, $append);
 
     $technique_map = [];
     keep_alive("$sector_key: importando tecnicas/metodos");
@@ -758,34 +826,34 @@ function import_sector(mysqli $mysqli, string $sector_key, array $config): array
     $problem_techniques_file = $files['problem_techniques'] ?? '';
     keep_alive("$sector_key: importando relaciones problema-tecnica");
     $stats['problema_tecnica'] = $problem_techniques_file
-        ? import_problem_techniques($mysqli, $sector_key, csv_rows($dir . '/' . $problem_techniques_file), $problem_map, $technique_map)
+        ? import_problem_techniques($mysqli, $sector_key, csv_rows($dir . '/' . $problem_techniques_file), $problem_map, $technique_map, $append)
         : 0;
 
     $recommendation_rows = csv_rows($dir . '/' . $files['recommendations']);
     keep_alive("$sector_key: importando recomendaciones");
-    $stats['recomendaciones'] = import_recommendations($mysqli, $sector_key, $recommendation_rows, $problem_map, $technique_map, $task_map);
+    $stats['recomendaciones'] = import_recommendations($mysqli, $sector_key, $recommendation_rows, $problem_map, $technique_map, $task_map, $append);
     if (!$stats['problema_tecnica']) {
         $derived_pairs = [];
         foreach ($recommendation_rows as $row) {
-            $p = pick($row, ['problema_id']);
+            $p = pick($row, ['problema_id', 'goal_id']);
             $t = pick($row, ['tecnica_id']);
             if ($p && $t) {
-                $derived_pairs[$p . '|' . $t] = ['problema_id' => $p, 'tecnica_id' => $t];
+                $derived_pairs[$p . '|' . $t] = ['goal_id' => $p, 'tecnica_id' => $t];
             }
         }
-        $stats['problema_tecnica'] = import_problem_techniques($mysqli, $sector_key, array_values($derived_pairs), $problem_map, $technique_map);
+        $stats['problema_tecnica'] = import_problem_techniques($mysqli, $sector_key, array_values($derived_pairs), $problem_map, $technique_map, $append);
     }
 
     $questionnaire_file = $files['questionnaires'] ?? '';
     keep_alive("$sector_key: importando evaluaciones/cuestionarios");
     $stats['evaluaciones'] = $questionnaire_file
-        ? import_questionnaires($mysqli, $sector_key, csv_rows($dir . '/' . $questionnaire_file), $problem_map)
+        ? import_questionnaires($mysqli, $sector_key, csv_rows($dir . '/' . $questionnaire_file), $problem_map, $append)
         : 0;
 
     $documents_file = $files['documents'] ?? '';
     keep_alive("$sector_key: importando documentos/informes sugeridos");
     $stats['documentos'] = $documents_file
-        ? import_documents($mysqli, $sector_key, csv_rows($dir . '/' . $documents_file), $problem_map)
+        ? import_documents($mysqli, $sector_key, csv_rows($dir . '/' . $documents_file), $problem_map, $append)
         : 0;
 
     keep_alive("Sector $sector_key completado");

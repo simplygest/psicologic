@@ -1,0 +1,49 @@
+tecnica_id;nombre;descripcion;nivel_riesgo
+PSP2_T001;Psicoeducación al alumno y familia;Explicar perfil, fortalezas, necesidades y objetivos de intervención.;bajo
+PSP2_T002;Agenda visual / planificación externa;Uso de agenda, calendario, pictos, checklist o panel semanal.;bajo
+PSP2_T003;Checklist de pasos;Convertir una tarea compleja en pasos visibles y verificables.;bajo
+PSP2_T004;Temporizador visual / Pomodoro adaptado;Bloques de trabajo breves con pausa anticipada.;bajo
+PSP2_T005;Fragmentación de tareas;Dividir tareas largas en microtareas con inicio claro.;bajo
+PSP2_T006;Refuerzo positivo específico;Reforzar conducta concreta, esfuerzo y estrategia usada.;bajo
+PSP2_T007;Economía de fichas / contrato conductual;Sistema estructurado de puntos/acuerdos y recompensas proporcionales.;medio
+PSP2_T008;Autoinstrucciones;Enseñar diálogo interno: paro, miro, pienso, hago, reviso.;bajo
+PSP2_T009;Modelado explícito;Mostrar cómo realizar estrategia antes de pedir autonomía.;bajo
+PSP2_T010;Andamiaje gradual;Apoyo inicial intenso que se retira progresivamente.;bajo
+PSP2_T011;Apoyos visuales;Uso de esquemas, pictogramas, mapas, colores, horarios o plantillas.;bajo
+PSP2_T012;Historias sociales;Narrativas breves para anticipar situaciones sociales o rutinas.;bajo
+PSP2_T013;Anticipación de cambios;Preparar transiciones, cambios y alternativas con previsibilidad.;bajo
+PSP2_T014;Perfil sensorial y regulación ambiental;Identificar estímulos y adaptar entorno o pausas sensoriales.;medio
+PSP2_T015;Guiones sociales;Preparar frases, turnos, peticiones o respuestas para situaciones sociales.;bajo
+PSP2_T016;Enriquecimiento curricular;Ampliar profundidad, complejidad o elección en tareas para altas capacidades.;bajo
+PSP2_T017;Compactación curricular;Evitar repetición innecesaria y liberar tiempo para reto/enriquecimiento.;medio
+PSP2_T018;Aprendizaje basado en proyectos;Usar proyecto significativo para profundidad, autonomía y motivación.;bajo
+PSP2_T019;Intervención fonológica;Trabajo explícito de sonidos, segmentación, mezcla y manipulación fonémica.;medio
+PSP2_T020;Decodificación estructurada;Enseñanza explícita y secuenciada de correspondencias grafema-fonema.;medio
+PSP2_T021;Lectura repetida guiada;Repetición de textos breves con feedback para fluidez.;bajo
+PSP2_T022;Comprensión lectora guiada;Predicción, preguntas, ideas principales, inferencias y resumen.;bajo
+PSP2_T023;Instrucción matemática explícita;Modelar procedimiento, practicar guiado y retirar apoyo gradualmente.;medio
+PSP2_T024;Manipulativos y representación visual;Usar material concreto, recta numérica, bloques, dibujos y esquemas.;bajo
+PSP2_T025;Resolución de problemas por pasos;Comprender enunciado, datos, pregunta, operación, cálculo y revisión.;bajo
+PSP2_T026;Grafomotricidad estructurada;Trabajo de postura, prensión, trazo, ritmo y legibilidad.;medio
+PSP2_T027;Plantillas de escritura;Organizadores para planificar, redactar y revisar textos.;bajo
+PSP2_T028;Dictado preparado / ortografía visual;Preparación previa, patrones ortográficos y revisión consciente.;bajo
+PSP2_T029;Entrenamiento de memoria de trabajo;Reducir carga, externalizar información y practicar estrategias.;bajo
+PSP2_T030;Planificación por objetivos SMART;Objetivos específicos, medibles, alcanzables, relevantes y temporales.;bajo
+PSP2_T031;Monitorización y autoevaluación;Revisar proceso, resultado, errores y próximos pasos.;bajo
+PSP2_T032;Flexibilidad cognitiva guiada;Practicar alternativas, cambios de estrategia y tolerancia a error.;medio
+PSP2_T033;Técnicas de regulación emocional;Respiración, pausa, escala de emoción y plan de afrontamiento.;medio
+PSP2_T034;Exposición gradual académica;Aproximación progresiva a exámenes, participación o lectura en público.;medio
+PSP2_T035;Reestructuración de pensamiento académico;Cuestionar creencias de incapacidad, catastrofismo o todo/nada.;medio
+PSP2_T036;Recuperación activa;Practicar recordar sin mirar: preguntas, tarjetas, test y explicación.;bajo
+PSP2_T037;Repaso espaciado;Distribuir repasos en el tiempo para mejorar retención.;bajo
+PSP2_T038;Intercalado de práctica;Mezclar tipos de ejercicios para aprender discriminación y transferencia.;bajo
+PSP2_T039;Mapas conceptuales y organizadores;Representar relaciones entre ideas y jerarquías.;bajo
+PSP2_T040;Metacognición guiada;Planificar, supervisar y evaluar estrategias de aprendizaje.;bajo
+PSP2_T041;Diseño Universal para el Aprendizaje;Ofrecer múltiples formas de acceso, expresión y participación.;bajo
+PSP2_T042;Adaptación de evaluación;Ajustes de tiempo, formato, entorno, apoyo o vía de respuesta.;medio
+PSP2_T043;Coordinación familia-centro;Acuerdos breves, objetivos compartidos y seguimiento regular.;bajo
+PSP2_T044;Resolución de conflictos;Identificar problema, emociones, opciones, acuerdo y reparación.;bajo
+PSP2_T045;Entrenamiento en habilidades cooperativas;Roles, turnos, escucha, ayuda y responsabilidad grupal.;bajo
+PSP2_T046;Entrevista motivacional educativa;Explorar ambivalencia, autonomía, metas y pequeños compromisos.;bajo
+PSP2_T047;Gamificación moderada;Elementos lúdicos para aumentar inicio, práctica o seguimiento.;bajo
+PSP2_T048;Prevención de recaídas educativas;Señales de abandono, plan de mantenimiento y revisión periódica.;bajo

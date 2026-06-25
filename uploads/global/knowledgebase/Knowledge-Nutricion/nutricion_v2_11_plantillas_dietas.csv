@@ -1,0 +1,13 @@
+﻿plantilla_id;nombre;tipo;descripcion
+NUT2_TEMP001;Menú mediterráneo básico;general;Plantilla de comidas equilibradas con verduras, proteína, hidratos de calidad y aceite de oliva.
+NUT2_TEMP002;Menú pérdida de grasa saciante;control_peso;Plantilla centrada en proteína, fibra, volumen, planificación y flexibilidad.
+NUT2_TEMP003;Menú ganancia muscular;deportiva;Plantilla con energía suficiente, proteína distribuida y comidas alrededor del entrenamiento.
+NUT2_TEMP004;Menú recomposición corporal;composición;Plantilla combinando proteína, fuerza, seguimiento y control de energía.
+NUT2_TEMP005;Menú vegetariano proteico;vegetariano;Plantilla con huevos/lácteos/legumbres/tofu/seitán según preferencia.
+NUT2_TEMP006;Menú vegano equilibrado;vegano;Plantilla con legumbres, soja/tofu/tempeh, frutos secos, semillas y B12.
+NUT2_TEMP007;Menú bajo en sal;cardiovascular;Plantilla con alimentos frescos, especias, reducción de procesados y alternativas.
+NUT2_TEMP008;Menú alto en fibra gradual;digestivo;Plantilla para subir fibra progresivamente según tolerancia.
+NUT2_TEMP009;Menú para turnos;planificación;Plantilla de comidas portátiles, snacks y cafeína/hidratación adaptada.
+NUT2_TEMP010;Batch cooking semanal;planificación;Plantilla de bases combinables para 3-5 días.
+NUT2_TEMP011;Menú mayores proteína/hidratación;mayores;Plantilla de proteína repartida, textura, hidratación y energía suficiente.
+NUT2_TEMP012;Plan de comidas fuera;flexibilidad;Plantilla de estrategias para restaurantes, eventos y viajes.

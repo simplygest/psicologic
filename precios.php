@@ -15,8 +15,8 @@ if ((int) ($branding['show_prices_public'] ?? 0) !== 1) {
 $app_name = $branding['app_name'];
 $profile_image_path = $branding['show_profile_image_public'] ? app_upload_asset_url($branding['profile_image_path']) : '';
 $is_logged_in = isset($_SESSION['user_id']);
-$is_admin = ($_SESSION['role'] ?? '') === 'admin';
-$online_booking_enabled = (int) ($branding['online_booking_enabled'] ?? 1) === 1;
+$is_admin = in_array(($_SESSION['role'] ?? ''), ['admin', 'superadmin'], true);
+$online_booking_enabled = online_booking_enabled($mysqli);
 $show_patient_area = $online_booking_enabled || $is_admin;
 $show_team_public = cabinet_public_team_enabled($mysqli);
 $show_contact_public = (int) ($branding['show_contact_public'] ?? 0) === 1;
@@ -26,28 +26,29 @@ $public_delivery_mode = 'both';
 $public_durations = [60];
 $public_service_types = ['individual'];
 $bonuses_enabled = 0;
-$settings_res = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
-if ($settings_res && $settings_res->num_rows > 0) {
-    $columns = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'available_session_durations'");
-    if ($columns && $columns->num_rows === 0) {
-        $mysqli->query("ALTER TABLE payment_settings ADD available_session_durations VARCHAR(16) NOT NULL DEFAULT '60'");
-    }
-    ensure_bonus_tables($mysqli);
-    $tenant_id = current_tenant_id();
-    $res = $mysqli->query("SELECT appointment_delivery_mode, available_session_types, available_session_durations, bonuses_enabled FROM payment_settings WHERE tenant_id = $tenant_id");
-    if ($row = $res->fetch_assoc()) {
-        $public_delivery_mode = $row['appointment_delivery_mode'] ?: 'both';
-        $public_service_types = explode(',', $row['available_session_types'] ?? 'individual');
-        $bonuses_enabled = (int) ($row['bonuses_enabled'] ?? 0);
-        $public_durations = [];
-        foreach (explode(',', $row['available_session_durations'] ?? '60') as $duration) {
-            $duration = (int) trim($duration);
-            if (in_array($duration, [60, 90, 120], true)) {
-                $public_durations[] = $duration;
-            }
+$tenant_id = current_tenant_id();
+$stmt = $mysqli->prepare("
+    SELECT appointment_delivery_mode, available_session_types, available_session_durations, bonuses_enabled
+    FROM payment_settings
+    WHERE tenant_id = ?
+    LIMIT 1
+");
+$stmt->bind_param("i", $tenant_id);
+$stmt->execute();
+$res = $stmt->get_result();
+if ($row = $res->fetch_assoc()) {
+    $public_delivery_mode = $row['appointment_delivery_mode'] ?: 'both';
+    $public_service_types = array_values(array_filter(array_map('trim', explode(',', $row['available_session_types'] ?? 'individual'))));
+    $bonuses_enabled = (int) ($row['bonuses_enabled'] ?? 0);
+    $public_durations = [];
+    foreach (explode(',', $row['available_session_durations'] ?? '60') as $duration) {
+        $duration = (int) trim($duration);
+        if ($duration > 0) {
+            $public_durations[] = $duration;
         }
-        $public_durations = $public_durations ?: [60];
     }
+    $public_service_types = $public_service_types ?: ['individual'];
+    $public_durations = $public_durations ?: [60];
 }
 if ($bonuses_enabled === 1) {
     $bonuses = fetch_appointment_bonuses($mysqli, true);

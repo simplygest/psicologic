@@ -8,6 +8,7 @@ require_once '../google_helpers.php';
 require_once '../caldav_helpers.php';
 require_once '../urlme_helpers.php';
 require_once '../cabinet_helpers.php';
+require_once '../workoutx_helpers.php';
 header('Content-Type: application/json');
 
 if (!isset($_SESSION['user_id'])) {
@@ -32,6 +33,10 @@ ensure_cabinet_schema($mysqli);
 
 function ensure_patient_portal_work_plan_schema($mysqli)
 {
+    if (function_exists('app_auto_schema_migrations_enabled') && !app_auto_schema_migrations_enabled()) {
+        return;
+    }
+
     $mysqli->query("
         CREATE TABLE IF NOT EXISTS patient_work_plan_tasks (
             id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -44,6 +49,7 @@ function ensure_patient_portal_work_plan_schema($mysqli)
             status VARCHAR(20) NOT NULL DEFAULT 'pending',
             priority TINYINT UNSIGNED NOT NULL DEFAULT 2,
             visible_to_patient TINYINT(1) NOT NULL DEFAULT 0,
+            fitness_exercise_id VARCHAR(40) DEFAULT NULL,
             created_by INT UNSIGNED DEFAULT NULL,
             completed_at DATETIME DEFAULT NULL,
             completed_by INT UNSIGNED DEFAULT NULL,
@@ -52,7 +58,8 @@ function ensure_patient_portal_work_plan_schema($mysqli)
             INDEX idx_work_plan_appointment (appointment_id),
             INDEX idx_work_plan_patient_status (patient_id, status),
             INDEX idx_work_plan_professional (professional_id),
-            INDEX idx_work_plan_priority (priority)
+            INDEX idx_work_plan_priority (priority),
+            INDEX idx_work_plan_fitness_exercise (fitness_exercise_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     ");
     $column_res = $mysqli->query("SHOW COLUMNS FROM patient_work_plan_tasks LIKE 'tenant_id'");
@@ -63,10 +70,127 @@ function ensure_patient_portal_work_plan_schema($mysqli)
     if ($column_res && $column_res->num_rows === 0) {
         $mysqli->query("ALTER TABLE patient_work_plan_tasks ADD visible_to_patient TINYINT(1) NOT NULL DEFAULT 0 AFTER priority");
     }
+    $column_res = $mysqli->query("SHOW COLUMNS FROM patient_work_plan_tasks LIKE 'fitness_exercise_id'");
+    if ($column_res && $column_res->num_rows === 0) {
+        $mysqli->query("ALTER TABLE patient_work_plan_tasks ADD fitness_exercise_id VARCHAR(40) DEFAULT NULL AFTER visible_to_patient");
+    }
+}
+
+function patient_portal_table_exists($mysqli, $table_name)
+{
+    return true;
+}
+
+function patient_portal_column_exists($mysqli, $table_name, $column_name)
+{
+    return true;
+}
+
+function patient_portal_physical_metrics_enabled($mysqli)
+{
+    $branding = get_public_branding_settings($mysqli);
+    $sector_key = strtolower((string) ($branding['sector_texts_key'] ?? ''));
+    return in_array($sector_key, ['fitness', 'fisioterapia', 'quiropractica', 'osteopatia', 'nutricion'], true);
+}
+
+function patient_portal_decimal($value)
+{
+    if ($value === null || $value === '') {
+        return '';
+    }
+    return (string) $value;
+}
+
+function patient_portal_physical_payload(array $row): array
+{
+    $weight = patient_portal_decimal($row['weight_kg'] ?? '');
+    $height = patient_portal_decimal($row['height_cm'] ?? '');
+    $bmi = '';
+    if ((float) $weight > 0 && (float) $height > 0) {
+        $height_m = ((float) $height) / 100;
+        $bmi = number_format(((float) $weight) / ($height_m * $height_m), 1, '.', '');
+    }
+    return [
+        'date' => $row['note_date'] ?? ($row['updated_at'] ?? ''),
+        'physical_sex' => $row['physical_sex'] ?? '',
+        'weight_kg' => $weight,
+        'height_cm' => $height,
+        'bmi' => $bmi,
+        'body_fat_percentage' => patient_portal_decimal($row['body_fat_percentage'] ?? ''),
+        'waist_cm' => patient_portal_decimal($row['waist_cm'] ?? ''),
+        'hip_cm' => patient_portal_decimal($row['hip_cm'] ?? ''),
+        'chest_cm' => patient_portal_decimal($row['chest_cm'] ?? ''),
+        'thigh_cm' => patient_portal_decimal($row['thigh_cm'] ?? ''),
+        'biceps_cm' => patient_portal_decimal($row['biceps_cm'] ?? ''),
+        'calf_cm' => patient_portal_decimal($row['calf_cm'] ?? ''),
+        'skinfold_triceps_mm' => patient_portal_decimal($row['skinfold_triceps_mm'] ?? ''),
+        'skinfold_subscapular_mm' => patient_portal_decimal($row['skinfold_subscapular_mm'] ?? ''),
+        'skinfold_suprailiac_mm' => patient_portal_decimal($row['skinfold_suprailiac_mm'] ?? ''),
+        'skinfold_abdominal_mm' => patient_portal_decimal($row['skinfold_abdominal_mm'] ?? ''),
+        'skinfold_chest_mm' => patient_portal_decimal($row['skinfold_chest_mm'] ?? ''),
+        'skinfold_thigh_mm' => patient_portal_decimal($row['skinfold_thigh_mm'] ?? '')
+    ];
+}
+
+function ensure_patient_portal_fitness_exercise_columns($mysqli)
+{
+    if (function_exists('app_auto_schema_migrations_enabled') && !app_auto_schema_migrations_enabled()) {
+        return;
+    }
+
+    if (!patient_portal_table_exists($mysqli, 'fitness_exercises')) {
+        return;
+    }
+    $columns = [
+        'calories_per_min' => "ALTER TABLE fitness_exercises ADD calories_per_min DECIMAL(6,2) DEFAULT NULL",
+        'description_en' => "ALTER TABLE fitness_exercises ADD description_en TEXT DEFAULT NULL",
+        'instructions_en' => "ALTER TABLE fitness_exercises ADD instructions_en LONGTEXT DEFAULT NULL",
+        'instructions_es' => "ALTER TABLE fitness_exercises ADD instructions_es LONGTEXT DEFAULT NULL",
+        'secondary_muscles_en' => "ALTER TABLE fitness_exercises ADD secondary_muscles_en TEXT DEFAULT NULL"
+    ];
+    foreach ($columns as $column => $sql) {
+        $column_res = $mysqli->query("SHOW COLUMNS FROM fitness_exercises LIKE '$column'");
+        if ($column_res && $column_res->num_rows === 0) {
+            $mysqli->query($sql);
+        }
+    }
+}
+
+function patient_portal_work_plan_exercise($mysqli, $tenant_id, $patient_id, $task_id)
+{
+    ensure_patient_portal_work_plan_schema($mysqli);
+    if (!patient_portal_table_exists($mysqli, 'fitness_exercises')) {
+        return null;
+    }
+    ensure_patient_portal_fitness_exercise_columns($mysqli);
+    $stmt = $mysqli->prepare("
+        SELECT t.id AS task_id,
+               pp.weight_kg AS patient_weight_kg,
+               fe.exercise_id, fe.name_en, fe.name_es, fe.description_es, fe.description_en, fe.cues_es,
+               fe.instructions_en, fe.instructions_es, fe.secondary_muscles_en,
+               fe.image_url, fe.external_source, fe.external_id,
+               fe.workoutx_body_part, fe.workoutx_target, fe.workoutx_equipment,
+               fe.calories_per_min
+        FROM patient_work_plan_tasks t
+        INNER JOIN fitness_exercises fe ON fe.exercise_id = t.fitness_exercise_id AND fe.active = 1
+        LEFT JOIN patient_profiles pp ON pp.tenant_id = t.tenant_id AND pp.user_id = t.patient_id
+        WHERE t.tenant_id = ?
+          AND t.patient_id = ?
+          AND t.id = ?
+          AND t.visible_to_patient = 1
+        LIMIT 1
+    ");
+    $stmt->bind_param("iii", $tenant_id, $patient_id, $task_id);
+    $stmt->execute();
+    return $stmt->get_result()->fetch_assoc() ?: null;
 }
 
 function ensure_patient_portal_documents_schema($mysqli)
 {
+    if (function_exists('app_auto_schema_migrations_enabled') && !app_auto_schema_migrations_enabled()) {
+        return;
+    }
+
     $mysqli->query("
         CREATE TABLE IF NOT EXISTS patient_documents (
             id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -119,6 +243,10 @@ function patient_portal_download_upload($relative_path, $mime_type, $file_name)
 
 function ensure_schedule_setting_columns($mysqli)
 {
+    if (function_exists('app_auto_schema_migrations_enabled') && !app_auto_schema_migrations_enabled()) {
+        return;
+    }
+
     $columns = [
         'appointment_start_time' => "ALTER TABLE payment_settings ADD appointment_start_time TIME NOT NULL DEFAULT '10:00:00'",
         'appointment_end_time' => "ALTER TABLE payment_settings ADD appointment_end_time TIME NOT NULL DEFAULT '19:00:00'",
@@ -137,6 +265,10 @@ function ensure_schedule_setting_columns($mysqli)
 
 function ensure_delivery_setting_column($mysqli)
 {
+    if (function_exists('app_auto_schema_migrations_enabled') && !app_auto_schema_migrations_enabled()) {
+        return;
+    }
+
     $column_res = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'appointment_delivery_mode'");
     if ($column_res && $column_res->num_rows === 0) {
         $mysqli->query("ALTER TABLE payment_settings ADD appointment_delivery_mode ENUM('both', 'presencial', 'online') NOT NULL DEFAULT 'both' AFTER admin_notification_email");
@@ -145,6 +277,10 @@ function ensure_delivery_setting_column($mysqli)
 
 function ensure_session_setting_column($mysqli)
 {
+    if (function_exists('app_auto_schema_migrations_enabled') && !app_auto_schema_migrations_enabled()) {
+        return;
+    }
+
     $column_res = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'available_session_types'");
     if ($column_res && $column_res->num_rows === 0) {
         $mysqli->query("ALTER TABLE payment_settings ADD available_session_types VARCHAR(100) NOT NULL DEFAULT 'individual' AFTER appointment_delivery_mode");
@@ -285,7 +421,8 @@ function default_booking_payment_settings()
         'display_effective_duration_enabled' => 0,
         'display_duration_offset_minutes' => 5,
         'bonuses_enabled' => 0,
-        'create_compensation_bonus_on_paid_cancel' => 1
+        'create_compensation_bonus_on_paid_cancel' => 1,
+        'work_plan_task_status_enabled' => 1
     ];
 }
 
@@ -308,8 +445,7 @@ function load_booking_payment_settings($mysqli)
 {
     $tenant_id = current_tenant_id();
     $payment_settings = default_booking_payment_settings();
-    $settings_res = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
-    if ($settings_res && $settings_res->num_rows > 0) {
+    if (function_exists('app_auto_schema_migrations_enabled') && app_auto_schema_migrations_enabled()) {
         ensure_payment_settings_price_columns($mysqli);
         $limit_columns = [
             'min_booking_notice_days' => "ALTER TABLE payment_settings ADD min_booking_notice_days INT UNSIGNED NOT NULL DEFAULT 2",
@@ -325,17 +461,17 @@ function load_booking_payment_settings($mysqli)
         ensure_delivery_setting_column($mysqli);
         ensure_session_setting_column($mysqli);
         ensure_bonus_tables($mysqli);
-        $settings_res = $mysqli->query("
-            SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, available_session_types, available_session_durations, display_effective_duration_enabled, display_duration_offset_minutes,
-                   min_booking_notice_days, max_booking_notice_days,
-                   appointment_start_time, appointment_end_time, break_start_time, break_end_time,
-                   available_weekdays, appointment_delivery_mode, bonuses_enabled, create_compensation_bonus_on_paid_cancel
-            FROM payment_settings
-            WHERE tenant_id = $tenant_id
-        ");
-        if ($settings_res && ($settings_row = $settings_res->fetch_assoc())) {
-            $payment_settings = array_merge($payment_settings, $settings_row);
-        }
+    }
+    $settings_res = $mysqli->query("
+        SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, available_session_types, available_session_durations, display_effective_duration_enabled, display_duration_offset_minutes,
+               min_booking_notice_days, max_booking_notice_days,
+               appointment_start_time, appointment_end_time, break_start_time, break_end_time,
+               available_weekdays, appointment_delivery_mode, bonuses_enabled, create_compensation_bonus_on_paid_cancel, work_plan_task_status_enabled
+        FROM payment_settings
+        WHERE tenant_id = $tenant_id
+    ");
+    if ($settings_res && ($settings_row = $settings_res->fetch_assoc())) {
+        $payment_settings = array_merge($payment_settings, $settings_row);
     }
     return apply_plan_limits_to_booking_settings($mysqli, $payment_settings);
 }
@@ -528,6 +664,100 @@ if ($action === 'patient_portal_download_document') {
         exit;
     }
     patient_portal_download_upload($document['file_path'], $document['mime_type'] ?? '', $document['original_file_name'] ?? '');
+} elseif ($action === 'patient_portal_exercise_gif') {
+    if ($is_admin) {
+        http_response_code(403);
+        exit;
+    }
+    $task_id = (int) ($_GET['task_id'] ?? 0);
+    if ($task_id <= 0 || !workoutx_available()) {
+        http_response_code(404);
+        exit;
+    }
+    $exercise = patient_portal_work_plan_exercise($mysqli, $tenant_id, $user_id, $task_id);
+    if (!$exercise || ($exercise['external_source'] ?? '') !== 'workoutx' || empty($exercise['external_id'])) {
+        http_response_code(404);
+        exit;
+    }
+    $gif = workoutx_fetch_gif($exercise['external_id']);
+    if (empty($gif['success'])) {
+        http_response_code((int) ($gif['status'] ?? 502) ?: 502);
+        exit;
+    }
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    header_remove('Content-Type');
+    header('Content-Type: ' . ($gif['content_type'] ?? 'image/gif'));
+    header('Cache-Control: private, max-age=86400');
+    echo $gif['body'];
+    exit;
+} elseif ($action === 'patient_portal_exercise_media') {
+    if ($is_admin) {
+        echo json_encode(['success' => false, 'error' => 'Disponible solo para pacientes.']);
+        exit;
+    }
+    $task_id = (int) ($_GET['task_id'] ?? 0);
+    $exercise = $task_id > 0 ? patient_portal_work_plan_exercise($mysqli, $tenant_id, $user_id, $task_id) : null;
+    if (!$exercise) {
+        echo json_encode(['success' => false, 'error' => 'No se encontro el ejercicio publicado.']);
+        exit;
+    }
+
+    $local_instructions = [];
+    $instructions_json = trim((string) ($exercise['instructions_es'] ?: $exercise['instructions_en'] ?: ''));
+    if ($instructions_json !== '') {
+        $decoded = json_decode($instructions_json, true);
+        if (is_array($decoded)) {
+            $local_instructions = array_values(array_filter(array_map('strval', $decoded)));
+        } else {
+            $local_instructions = array_values(array_filter(array_map('trim', preg_split('/\R+/', $instructions_json))));
+        }
+    }
+    $local_secondary = [];
+    $secondary_json = trim((string) ($exercise['secondary_muscles_en'] ?? ''));
+    if ($secondary_json !== '') {
+        $decoded_secondary = json_decode($secondary_json, true);
+        if (is_array($decoded_secondary)) {
+            $local_secondary = array_values(array_filter(array_map('strval', $decoded_secondary)));
+        }
+    }
+
+    $remote = null;
+    $headers = [];
+    if (!$local_instructions && workoutx_available() && ($exercise['external_source'] ?? '') === 'workoutx' && !empty($exercise['external_id'])) {
+        $remote_res = workoutx_exercise_by_id($exercise['external_id']);
+        if (!empty($remote_res['success']) && is_array($remote_res['data'] ?? null)) {
+            $remote = $remote_res['data'];
+            $headers = $remote_res['headers'] ?? [];
+        }
+    }
+
+    echo json_encode([
+        'success' => true,
+        'exercise' => [
+            'localExerciseId' => $exercise['exercise_id'] ?? '',
+            'id' => $exercise['external_id'] ?? '',
+            'name' => $remote['name'] ?? ($exercise['name_en'] ?? ''),
+            'localNameEs' => $exercise['name_es'] ?? '',
+            'descriptionEs' => $exercise['description_es'] ?? '',
+            'descriptionEn' => $exercise['description_en'] ?? '',
+            'cuesEs' => $exercise['cues_es'] ?? '',
+            'bodyPart' => $remote['bodyPart'] ?? ($exercise['workoutx_body_part'] ?? ''),
+            'target' => $remote['target'] ?? ($exercise['workoutx_target'] ?? ''),
+            'equipment' => $remote['equipment'] ?? ($exercise['workoutx_equipment'] ?? ''),
+            'difficulty' => $remote['difficulty'] ?? '',
+            'mechanic' => $remote['mechanic'] ?? '',
+            'force' => $remote['force'] ?? '',
+            'gifUrl' => !empty($exercise['external_id']) ? 'api/appointments.php?action=patient_portal_exercise_gif&task_id=' . $task_id : '',
+            'remoteGifUrl' => $remote['gifUrl'] ?? ($exercise['image_url'] ?? ''),
+            'instructions' => $local_instructions ?: ($remote['instructions'] ?? []),
+            'secondaryMuscles' => $local_secondary ?: ($remote['secondaryMuscles'] ?? []),
+            'caloriesPerMinute' => $remote['caloriesPerMinute'] ?? ($exercise['calories_per_min'] ?? null),
+            'patientWeightKg' => $exercise['patient_weight_kg'] ?? null
+        ],
+        'headers' => $headers
+    ]);
 } elseif ($action === 'patient_portal_summary') {
     if ($is_admin) {
         echo json_encode(['success' => false, 'error' => 'Disponible solo para pacientes.']);
@@ -579,11 +809,24 @@ if ($action === 'patient_portal_download_document') {
         ];
     }
 
+    $has_fitness_exercises = patient_portal_table_exists($mysqli, 'fitness_exercises');
+    $fitness_select = $has_fitness_exercises
+        ? "t.fitness_exercise_id, fe.name_es AS fitness_name_es, fe.name_en AS fitness_name_en,
+           fe.external_source AS fitness_external_source, fe.external_id AS fitness_external_id,
+           fe.image_url AS fitness_image_url"
+        : "NULL AS fitness_exercise_id, NULL AS fitness_name_es, NULL AS fitness_name_en,
+           NULL AS fitness_external_source, NULL AS fitness_external_id, NULL AS fitness_image_url";
+    $fitness_join = $has_fitness_exercises
+        ? "LEFT JOIN fitness_exercises fe ON fe.exercise_id = t.fitness_exercise_id AND fe.active = 1"
+        : "";
+
     $stmt = $mysqli->prepare("
         SELECT t.id, t.title, t.description, t.status, t.priority, t.completed_at, t.created_at,
-               p.display_name AS professional_name
+               p.display_name AS professional_name,
+               {$fitness_select}
         FROM patient_work_plan_tasks t
         LEFT JOIN professionals p ON p.id = t.professional_id AND p.tenant_id = t.tenant_id
+        {$fitness_join}
         WHERE t.tenant_id = ?
           AND t.patient_id = ?
           AND t.visible_to_patient = 1
@@ -606,7 +849,16 @@ if ($action === 'patient_portal_download_document') {
             'priority' => (int) ($row['priority'] ?? 2),
             'completed_at' => $row['completed_at'] ?? '',
             'created_at' => $row['created_at'] ?? '',
-            'professional_name' => $row['professional_name'] ?? ''
+            'professional_name' => $row['professional_name'] ?? '',
+            'fitness_exercise_id' => $row['fitness_exercise_id'] ?? '',
+            'fitness_exercise' => !empty($row['fitness_exercise_id']) ? [
+                'exercise_id' => $row['fitness_exercise_id'] ?? '',
+                'name_es' => $row['fitness_name_es'] ?? '',
+                'name_en' => $row['fitness_name_en'] ?? '',
+                'external_source' => $row['fitness_external_source'] ?? '',
+                'external_id' => $row['fitness_external_id'] ?? '',
+                'image_url' => $row['fitness_image_url'] ?? ''
+            ] : null
         ];
     }
 
@@ -646,12 +898,102 @@ if ($action === 'patient_portal_download_document') {
         ];
     }
 
+    $reports = [];
+    if (patient_portal_table_exists($mysqli, 'patient_reports')) {
+        $stmt = $mysqli->prepare("
+            SELECT r.id, r.report_key, r.title, r.status, r.payment_mode, r.payment_status, r.price,
+                   r.generated_at, r.updated_at,
+                   r.source_type,
+                   COALESCE(r.official_document_id, r.final_document_id, r.source_document_id) AS document_id,
+                   d.original_file_name AS final_document_name,
+                   d.file_size AS final_document_size
+            FROM patient_reports r
+            LEFT JOIN patient_documents d ON d.id = COALESCE(r.official_document_id, r.final_document_id)
+                AND d.tenant_id = r.tenant_id
+                AND d.patient_id = r.patient_id
+            WHERE r.tenant_id = ?
+              AND r.patient_id = ?
+              AND r.portal_available = 1
+            ORDER BY COALESCE(r.generated_at, r.created_at) DESC, r.id DESC
+            LIMIT 50
+        ");
+        $stmt->bind_param("ii", $tenant_id, $user_id);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        while ($row = $res->fetch_assoc()) {
+            $document_id = (int) ($row['document_id'] ?? 0);
+            $reports[] = [
+                'id' => (int) $row['id'],
+                'report_key' => $row['report_key'] ?? '',
+                'source_type' => $row['source_type'] ?? 'app_generated',
+                'title' => $row['title'] ?? 'Informe',
+                'status' => $row['status'] ?? '',
+                'payment_mode' => $row['payment_mode'] ?? 'free',
+                'payment_status' => $row['payment_status'] ?? 'not_required',
+                'price' => $row['price'] !== null ? (float) $row['price'] : null,
+                'generated_at' => $row['generated_at'] ?: ($row['updated_at'] ?? ''),
+                'final_document_name' => $row['final_document_name'] ?? '',
+                'final_document_size' => (int) ($row['final_document_size'] ?? 0),
+                'url' => $document_id > 0 ? 'api/appointments.php?action=patient_portal_download_document&id=' . $document_id : ''
+            ];
+        }
+    }
+
+    $composition = ['enabled' => false, 'current' => null, 'history' => []];
+    if (patient_portal_physical_metrics_enabled($mysqli) && patient_portal_table_exists($mysqli, 'patient_profiles')) {
+        $composition['enabled'] = true;
+        $stmt = $mysqli->prepare("
+            SELECT updated_at, physical_sex, weight_kg, height_cm, body_fat_percentage,
+                   waist_cm, hip_cm, chest_cm, thigh_cm, biceps_cm, calf_cm,
+                   skinfold_triceps_mm, skinfold_subscapular_mm, skinfold_suprailiac_mm,
+                   skinfold_abdominal_mm, skinfold_chest_mm, skinfold_thigh_mm
+            FROM patient_profiles
+            WHERE tenant_id = ? AND user_id = ?
+            LIMIT 1
+        ");
+        $stmt->bind_param("ii", $tenant_id, $user_id);
+        $stmt->execute();
+        $profile = $stmt->get_result()->fetch_assoc();
+        if ($profile) {
+            $composition['current'] = patient_portal_physical_payload($profile);
+        }
+
+        if (patient_portal_table_exists($mysqli, 'patient_evolution_notes')) {
+            $stmt = $mysqli->prepare("
+                SELECT note_date, weight_kg, height_cm, body_fat_percentage,
+                       waist_cm, hip_cm, chest_cm, thigh_cm, biceps_cm, calf_cm,
+                       skinfold_triceps_mm, skinfold_subscapular_mm, skinfold_suprailiac_mm,
+                       skinfold_abdominal_mm, skinfold_chest_mm, skinfold_thigh_mm
+                FROM patient_evolution_notes
+                WHERE tenant_id = ?
+                  AND patient_id = ?
+                  AND (
+                    weight_kg IS NOT NULL OR height_cm IS NOT NULL OR body_fat_percentage IS NOT NULL OR
+                    waist_cm IS NOT NULL OR hip_cm IS NOT NULL OR chest_cm IS NOT NULL OR thigh_cm IS NOT NULL OR
+                    biceps_cm IS NOT NULL OR calf_cm IS NOT NULL OR skinfold_triceps_mm IS NOT NULL OR
+                    skinfold_subscapular_mm IS NOT NULL OR skinfold_suprailiac_mm IS NOT NULL OR
+                    skinfold_abdominal_mm IS NOT NULL OR skinfold_chest_mm IS NOT NULL OR skinfold_thigh_mm IS NOT NULL
+                  )
+                ORDER BY note_date DESC, id DESC
+                LIMIT 80
+            ");
+            $stmt->bind_param("ii", $tenant_id, $user_id);
+            $stmt->execute();
+            $res = $stmt->get_result();
+            while ($row = $res->fetch_assoc()) {
+                $composition['history'][] = patient_portal_physical_payload($row);
+            }
+        }
+    }
+
     $payment_settings = load_booking_payment_settings($mysqli);
     echo json_encode([
         'success' => true,
         'appointments' => $appointments,
         'tasks' => $tasks,
         'documents' => $documents,
+        'reports' => $reports,
+        'composition' => $composition,
         'payment_settings' => [
             'online_payment_enabled' => (int) ($payment_settings['online_payment_enabled'] ?? 0),
             'bonuses_enabled' => (int) ($payment_settings['bonuses_enabled'] ?? 0),
@@ -810,10 +1152,10 @@ if ($action === 'patient_portal_download_document') {
         'display_effective_duration_enabled' => 0,
         'display_duration_offset_minutes' => 5,
         'bonuses_enabled' => 0,
-        'create_compensation_bonus_on_paid_cancel' => 1
+        'create_compensation_bonus_on_paid_cancel' => 1,
+        'work_plan_task_status_enabled' => 1
     ];
-    $settings_res = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
-    if ($settings_res->num_rows > 0) {
+    if (function_exists('app_auto_schema_migrations_enabled') && app_auto_schema_migrations_enabled()) {
         ensure_payment_settings_price_columns($mysqli);
         $limit_columns = [
             'min_booking_notice_days' => "ALTER TABLE payment_settings ADD min_booking_notice_days INT UNSIGNED NOT NULL DEFAULT 2",
@@ -829,17 +1171,17 @@ if ($action === 'patient_portal_download_document') {
         ensure_delivery_setting_column($mysqli);
         ensure_session_setting_column($mysqli);
         ensure_bonus_tables($mysqli);
-        $settings_res = $mysqli->query("
-            SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, available_session_types, available_session_durations, display_effective_duration_enabled, display_duration_offset_minutes,
-                   min_booking_notice_days, max_booking_notice_days,
-                   appointment_start_time, appointment_end_time, break_start_time, break_end_time,
-                   available_weekdays, appointment_delivery_mode, bonuses_enabled, create_compensation_bonus_on_paid_cancel
-            FROM payment_settings
-            WHERE tenant_id = $tenant_id
-        ");
-        if ($settings_row = $settings_res->fetch_assoc()) {
-            $payment_settings = $settings_row;
-        }
+    }
+    $settings_res = $mysqli->query("
+        SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, available_session_types, available_session_durations, display_effective_duration_enabled, display_duration_offset_minutes,
+               min_booking_notice_days, max_booking_notice_days,
+               appointment_start_time, appointment_end_time, break_start_time, break_end_time,
+               available_weekdays, appointment_delivery_mode, bonuses_enabled, create_compensation_bonus_on_paid_cancel, work_plan_task_status_enabled
+        FROM payment_settings
+        WHERE tenant_id = $tenant_id
+    ");
+    if ($settings_res && ($settings_row = $settings_res->fetch_assoc())) {
+        $payment_settings = $settings_row;
     }
     if (!$is_day_first_unassigned) {
         $payment_settings = apply_effective_professional_settings($mysqli, $payment_settings, $user_id, $is_admin, $context_professional_id);
@@ -978,10 +1320,10 @@ if ($action === 'patient_portal_download_document') {
         'display_effective_duration_enabled' => 0,
         'display_duration_offset_minutes' => 5,
         'bonuses_enabled' => 0,
-        'create_compensation_bonus_on_paid_cancel' => 1
+        'create_compensation_bonus_on_paid_cancel' => 1,
+        'work_plan_task_status_enabled' => 1
     ];
-    $settings_res = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
-    if ($settings_res->num_rows > 0) {
+    if (function_exists('app_auto_schema_migrations_enabled') && app_auto_schema_migrations_enabled()) {
         ensure_payment_settings_price_columns($mysqli);
         $limit_columns = [
             'min_booking_notice_days' => "ALTER TABLE payment_settings ADD min_booking_notice_days INT UNSIGNED NOT NULL DEFAULT 2",
@@ -997,17 +1339,17 @@ if ($action === 'patient_portal_download_document') {
         ensure_delivery_setting_column($mysqli);
         ensure_session_setting_column($mysqli);
         ensure_bonus_tables($mysqli);
-        $settings_res = $mysqli->query("
-            SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, available_session_types, available_session_durations, display_effective_duration_enabled, display_duration_offset_minutes,
-                   min_booking_notice_days, max_booking_notice_days,
-                   appointment_start_time, appointment_end_time, break_start_time, break_end_time,
-                   available_weekdays, appointment_delivery_mode, bonuses_enabled, create_compensation_bonus_on_paid_cancel
-            FROM payment_settings
-            WHERE tenant_id = $tenant_id
-        ");
-        if ($settings_row = $settings_res->fetch_assoc()) {
-            $payment_settings = $settings_row;
-        }
+    }
+    $settings_res = $mysqli->query("
+        SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, available_session_types, available_session_durations, display_effective_duration_enabled, display_duration_offset_minutes,
+               min_booking_notice_days, max_booking_notice_days,
+               appointment_start_time, appointment_end_time, break_start_time, break_end_time,
+               available_weekdays, appointment_delivery_mode, bonuses_enabled, create_compensation_bonus_on_paid_cancel, work_plan_task_status_enabled
+        FROM payment_settings
+        WHERE tenant_id = $tenant_id
+    ");
+    if ($settings_res && ($settings_row = $settings_res->fetch_assoc())) {
+        $payment_settings = $settings_row;
     }
     if (!$is_day_first_unassigned) {
         $payment_settings = apply_effective_professional_settings($mysqli, $payment_settings, $user_id, $is_admin, $context_professional_id);
@@ -1231,15 +1573,16 @@ if ($action === 'patient_portal_download_document') {
         $price_settings = null;
         $appointment_price_text = null;
         $send_patient_calendar_link = 1;
-        $settings_res = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
-        if ($settings_res->num_rows > 0) {
+        if (function_exists('app_auto_schema_migrations_enabled') && app_auto_schema_migrations_enabled()) {
             ensure_payment_settings_price_columns($mysqli);
             $calendar_link_column = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'send_patient_calendar_link'");
             if ($calendar_link_column && $calendar_link_column->num_rows === 0) {
                 $mysqli->query("ALTER TABLE payment_settings ADD send_patient_calendar_link TINYINT(1) NOT NULL DEFAULT 1");
             }
             ensure_session_setting_column($mysqli);
-            $settings_res = $mysqli->query("SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, send_patient_calendar_link, display_effective_duration_enabled, display_duration_offset_minutes FROM payment_settings WHERE tenant_id = $tenant_id");
+        }
+        $settings_res = $mysqli->query("SELECT online_payment_enabled, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, send_patient_calendar_link, display_effective_duration_enabled, display_duration_offset_minutes FROM payment_settings WHERE tenant_id = $tenant_id");
+        if ($settings_res) {
             $price_settings = $settings_res->fetch_assoc();
             if ($price_settings) {
                 $price_settings = apply_plan_limits_to_booking_settings($mysqli, $price_settings);

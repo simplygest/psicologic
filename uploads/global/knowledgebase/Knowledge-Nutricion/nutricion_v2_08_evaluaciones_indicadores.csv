@@ -1,0 +1,25 @@
+﻿evaluacion_id;nombre;area_uso;tipo;notas;problema_ids;nivel_riesgo
+NUT2_E001;Entrevista nutricional inicial;General;Entrevista;Motivo, historia, salud, medicación, gustos, horarios, restricciones, señales de alarma.;Todos;bajo
+NUT2_E002;Registro alimentario 3-7 días;General;Autorregistro;Comidas, horarios, contexto, hambre, saciedad, emoción y síntomas.;Todos;bajo
+NUT2_E003;Peso medio semanal;Composición corporal;Seguimiento;Media de varias medidas para valorar tendencia.;"NUT2_P008;NUT2_P009;NUT2_P010;NUT2_P021;NUT2_P023";bajo
+NUT2_E004;Perímetro cintura;Composición corporal;Seguimiento;Medida consistente de cintura para adiposidad central.;"NUT2_P014;NUT2_P026";medio
+NUT2_E005;Fotos comparativas;Composición corporal;Visual;Fotos mismas condiciones como complemento, no única métrica.;"NUT2_P021;NUT2_P023;NUT2_P024";bajo
+NUT2_E006;Adherencia semanal;Conductual;Indicador;Porcentaje de hábitos cumplidos y barreras principales.;Todos;bajo
+NUT2_E007;Escala hambre-saciedad;Conductual;Autorregistro;Hambre/saciedad 0-10 antes/después de comidas.;"NUT2_P011;NUT2_P012;NUT2_P044;NUT2_P045";bajo
+NUT2_E008;Registro emocional alimentario;Relación con comida;Autorregistro;Emoción, pensamiento, conducta alimentaria y consecuencia.;"NUT2_P044;NUT2_P045;NUT2_P046;NUT2_P049";medio
+NUT2_E009;Cribado de señales TCA;Seguridad;Cribado;Restricción extrema, atracones, purgas, miedo intenso, distorsión o deterioro funcional.;"NUT2_P047;NUT2_P048;NUT2_P070";alto
+NUT2_E010;Registro digestivo Bristol/síntomas;Digestivo;Autorregistro;Síntomas, deposiciones, alimentos, estrés, sueño y timing.;"NUT2_P037;NUT2_P038;NUT2_P039;NUT2_P041;NUT2_P043";medio
+NUT2_E011;Registro de tolerancia FODMAP/lactosa;Digestivo;Autorregistro;Fase, alimento, cantidad, síntoma y tolerancia bajo supervisión.;"NUT2_P040;NUT2_P041;NUT2_P043";medio
+NUT2_E012;Checklist dieta sin gluten segura;Celiaquía;Checklist;Etiquetado, contaminación cruzada, utensilios y adherencia.;"NUT2_P042;NUT2_P065";alto
+NUT2_E013;Registro de glucemia-alimentación;Metabólica;Autorregistro sanitario;"Solo si la persona mide glucemia por indicación; comida, actividad y resultado.";"NUT2_P025;NUT2_P026;NUT2_P027";alto
+NUT2_E014;Registro presión/sal referido;Cardiovascular;Seguimiento;"No sustituye control médico; sal, productos procesados y datos aportados.";"NUT2_P032;NUT2_P033";alto
+NUT2_E015;Indicador fibra diaria;Cardiovascular/digestivo;Seguimiento;Raciones de fruta, verdura, legumbre, integrales, semillas o frutos secos.;"NUT2_P034;NUT2_P038";bajo
+NUT2_E016;Registro proteína diaria;Deportiva/mayores;Seguimiento;Fuentes y distribución proteica aproximada.;"NUT2_P015;NUT2_P016;NUT2_P061;NUT2_P073";bajo
+NUT2_E017;Registro entrenamiento-comida;Deportiva;Autorregistro;Comida pre/post, energía, rendimiento, recuperación y molestias digestivas.;"NUT2_P017;NUT2_P018;NUT2_P020";bajo
+NUT2_E018;Riesgo nutricional en mayores;Mayores;Cribado;Peso, apetito, ingesta, fuerza, enfermedad, soledad y derivación.;"NUT2_P061;NUT2_P062;NUT2_P068;NUT2_P069";alto
+NUT2_E019;Checklist dieta vegetariana/vegana;Dietas especiales;Checklist;Proteína, B12, hierro, calcio, omega-3, yodo y variedad.;"NUT2_P063;NUT2_P064;NUT2_P079";alto
+NUT2_E020;Registro hidratación;Hidratación;Autorregistro;Agua, bebidas, alcohol, cafeína, orina/sed si procede.;"NUT2_P073;NUT2_P074;NUT2_P075;NUT2_P076";bajo
+NUT2_E021;Inventario de suplementos;Suplementación;Registro;Suplemento, dosis, motivo, evidencia, coste, efectos y profesional consultado.;"NUT2_P077;NUT2_P078;NUT2_P079;NUT2_P080;NUT2_P081";medio
+NUT2_E022;Señales de derivación nutricional/médica;Seguridad;Cribado;Pérdida involuntaria, TCA, síntomas, embarazo, analíticas alteradas, enfermedad o medicación.;"NUT2_P068;NUT2_P069;NUT2_P070;NUT2_P072;NUT2_P080";alto
+NUT2_E023;Satisfacción y sostenibilidad alimentaria;Adherencia;Indicador;Hambre, disfrute, vida social, energía, flexibilidad y percepción de esfuerzo.;Todos;bajo
+NUT2_E024;Revisión mensual de progreso nutricional;Seguimiento;Informe breve;Objetivos, medidas, hábitos, barreras, ajustes y próximo bloque.;Todos;bajo

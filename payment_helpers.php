@@ -56,6 +56,10 @@ function payment_drop_single_column_unique_indexes($mysqli, $table, $column)
 
 function ensure_appointment_payment_columns($mysqli)
 {
+    if (function_exists('app_auto_schema_migrations_enabled') && !app_auto_schema_migrations_enabled()) {
+        return;
+    }
+
     payment_add_column_if_missing($mysqli, 'appointments', 'tenant_id', "INT UNSIGNED NOT NULL DEFAULT 1 AFTER id");
     $columns = [
         'payment_status' => "ALTER TABLE appointments ADD payment_status VARCHAR(32) NOT NULL DEFAULT 'pending'",
@@ -87,6 +91,10 @@ function ensure_appointment_payment_columns($mysqli)
 
 function ensure_appointment_services_tables($mysqli)
 {
+    if (function_exists('app_auto_schema_migrations_enabled') && !app_auto_schema_migrations_enabled()) {
+        return;
+    }
+
     $tenant_id = current_tenant_id();
     $mysqli->query("
         CREATE TABLE IF NOT EXISTS appointment_services (
@@ -132,6 +140,10 @@ function ensure_appointment_services_tables($mysqli)
 
 function ensure_bonus_tables($mysqli)
 {
+    if (function_exists('app_auto_schema_migrations_enabled') && !app_auto_schema_migrations_enabled()) {
+        return;
+    }
+
     $tenant_id = current_tenant_id();
     $settings_table = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
     if ($settings_table && $settings_table->num_rows > 0) {
@@ -258,11 +270,6 @@ function compensation_bonus_on_paid_cancel_enabled($mysqli)
 {
     ensure_bonus_tables($mysqli);
     $tenant_id = current_tenant_id();
-    $settings_table = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
-    if (!$settings_table || $settings_table->num_rows === 0) {
-        return true;
-    }
-
     $res = $mysqli->query("SELECT create_compensation_bonus_on_paid_cancel FROM payment_settings WHERE tenant_id = $tenant_id");
     if (!$res || !($row = $res->fetch_assoc())) {
         return true;
@@ -432,8 +439,7 @@ function seed_default_appointment_services($mysqli)
         'appointment_delivery_mode' => 'both'
     ];
 
-    $settings_table = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
-    if ($settings_table && $settings_table->num_rows > 0) {
+    if (function_exists('app_auto_schema_migrations_enabled') && app_auto_schema_migrations_enabled()) {
         $columns = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'available_session_types'");
         if ($columns && $columns->num_rows === 0) {
             $mysqli->query("ALTER TABLE payment_settings ADD available_session_types VARCHAR(100) NOT NULL DEFAULT 'individual'");
@@ -446,15 +452,16 @@ function seed_default_appointment_services($mysqli)
         if ($columns && $columns->num_rows === 0) {
             $mysqli->query("ALTER TABLE payment_settings ADD appointment_delivery_mode ENUM('both', 'presencial', 'online') NOT NULL DEFAULT 'both'");
         }
-        $res = $mysqli->query("
-            SELECT appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price,
-                   available_session_types, available_session_durations, appointment_delivery_mode
-            FROM payment_settings
-            WHERE tenant_id = $tenant_id
-        ");
-        if ($res && ($row = $res->fetch_assoc())) {
-            $settings = array_merge($settings, $row);
-        }
+    }
+
+    $res = $mysqli->query("
+        SELECT appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price,
+               available_session_types, available_session_durations, appointment_delivery_mode
+        FROM payment_settings
+        WHERE tenant_id = $tenant_id
+    ");
+    if ($res && ($row = $res->fetch_assoc())) {
+        $settings = array_merge($settings, $row);
     }
 
     $allowed_service_keys = array_column($sector_services, 'key');
@@ -653,6 +660,10 @@ function app_public_base_url()
 
 function ensure_payment_attempts_table($mysqli)
 {
+    if (function_exists('app_auto_schema_migrations_enabled') && !app_auto_schema_migrations_enabled()) {
+        return;
+    }
+
     $tenant_id = current_tenant_id();
     $mysqli->query("
         CREATE TABLE IF NOT EXISTS payment_attempts (
@@ -693,6 +704,10 @@ function ensure_payment_attempts_table($mysqli)
 
 function ensure_payment_settings_price_columns($mysqli)
 {
+    if (function_exists('app_auto_schema_migrations_enabled') && !app_auto_schema_migrations_enabled()) {
+        return;
+    }
+
     $table = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
     if (!$table || $table->num_rows === 0) {
         return;

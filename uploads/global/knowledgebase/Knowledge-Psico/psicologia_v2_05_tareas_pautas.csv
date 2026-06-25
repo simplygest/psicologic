@@ -1,0 +1,55 @@
+tarea_id;titulo;descripcion;objetivo;nivel_riesgo;duracion_estimada;tecnica_id
+PSY2_TA001;Registro diario de atención y distracciones;Anotar situación, distractor, duración y estrategia usada.;Detectar patrones atencionales.;bajo;7 días;PSY2_T016
+PSY2_TA002;Checklist de inicio de tarea;Antes de empezar: objetivo, primer paso, materiales y tiempo estimado.;Reducir fricción inicial.;bajo;diario;PSY2_T017
+PSY2_TA003;Bloques de trabajo con temporizador;Usar bloques breves con descanso planificado.;Mejorar adherencia y foco.;bajo;diario;PSY2_T018
+PSY2_TA004;Agenda externa semanal;Volcar citas, tareas, vencimientos y recordatorios en un sistema único.;Compensar memoria/organización.;bajo;semanal;PSY2_T016
+PSY2_TA005;Pausa de 10 segundos antes de responder;Parar, respirar y elegir respuesta antes de actuar.;Reducir impulsividad.;bajo;diario;PSY2_T019
+PSY2_TA006;Mapa de sobrecarga sensorial;Registrar estímulos, intensidad, contexto y recuperación.;Identificar perfil sensorial.;medio;7 días;PSY2_T030
+PSY2_TA007;Plan de regulación sensorial;Definir pausas, auriculares, luz, espacios y señales de descanso.;Prevenir sobrecarga.;medio;semanal;PSY2_T030
+PSY2_TA008;Guion para situación social difícil;Preparar inicio, petición, límite y salida de una conversación.;Aumentar seguridad social.;bajo;antes de situación;PSY2_T031
+PSY2_TA009;Plan de cambios imprevistos;Crear protocolo: aviso, pausa, opciones y siguiente paso.;Reducir rigidez ante cambios.;bajo;semanal;PSY2_T029
+PSY2_TA010;Psicoeducación sobre neurodivergencia;Revisar fortalezas, dificultades, mitos y necesidades de apoyo.;Mejorar autocomprensión.;bajo;sesión;PSY2_T001
+PSY2_TA011;Registro ABC emocional;Registrar situación, pensamiento, emoción, impulso y conducta.;Comprender ciclos emocionales.;bajo;7 días;PSY2_T002
+PSY2_TA012;Rueda de emociones;Nombrar emoción principal, secundaria e intensidad 0-10.;Mejorar identificación emocional.;bajo;diario;PSY2_T009
+PSY2_TA013;Plan de tolerancia al malestar;Elegir 3 estrategias para momentos de intensidad alta.;Reducir conducta impulsiva.;medio;semanal;PSY2_T010
+PSY2_TA014;Práctica de mindfulness breve;3-5 minutos de atención a respiración, sonidos o cuerpo.;Entrenar observación.;bajo;diario;PSY2_T011
+PSY2_TA015;Defusión de pensamientos repetitivos;Escribir pensamiento como 'estoy teniendo el pensamiento de...'.;Tomar distancia de rumiación.;bajo;cuando aparezca;PSY2_T012
+PSY2_TA016;Tarjeta de pausa emocional;Crear tarjeta con pasos: parar, respirar, nombrar, elegir.;Facilitar autocontrol.;bajo;diario;PSY2_T019
+PSY2_TA017;Jerarquía de exposición social;Listar situaciones sociales de menor a mayor dificultad.;Planificar exposición gradual.;medio;30 min;PSY2_T005
+PSY2_TA018;Exposición social breve;Realizar una interacción pequeña y registrar resultado real.;Reducir evitación.;medio;semanal;PSY2_T005
+PSY2_TA019;Reducir conducta de seguridad;Elegir una conducta de seguridad social y reducirla progresivamente.;Aumentar aprendizaje correctivo.;medio;semanal;PSY2_T006
+PSY2_TA020;Práctica de decir no;Ensayar una negativa breve, amable y firme.;Mejorar límites.;bajo;semanal;PSY2_T008
+PSY2_TA021;Role-play de conversación;Practicar iniciar, mantener y cerrar conversación.;Mejorar habilidades sociales.;bajo;sesión;PSY2_T007
+PSY2_TA022;Petición asertiva;Formular petición concreta usando 'cuando..., necesito..., propongo...'.;Expresar necesidades.;bajo;semanal;PSY2_T008
+PSY2_TA023;Registro de autocrítica;Anotar frase autocrítica, emoción y alternativa compasiva.;Reducir autocrítica.;bajo;7 días;PSY2_T013
+PSY2_TA024;Carta de autocompasión;Escribir respuesta a uno mismo como a un amigo.;Cultivar trato interno amable.;bajo;20 min;PSY2_T013
+PSY2_TA025;Inventario de fortalezas;Listar habilidades, valores, esfuerzos y logros concretos.;Reforzar autoconcepto.;bajo;30 min;PSY2_T014
+PSY2_TA026;Experimento contra creencia negativa;Diseñar una acción que ponga a prueba una creencia sobre uno mismo.;Flexibilizar autoconcepto.;medio;semanal;PSY2_T003
+PSY2_TA027;Registro de comparación;Detectar comparación, contexto, coste y respuesta alternativa.;Reducir comparación dañina.;bajo;7 días;PSY2_T002
+PSY2_TA028;Tarea suficientemente buena;Entregar o terminar algo al 80% de perfección.;Reducir perfeccionismo.;medio;semanal;PSY2_T017
+PSY2_TA029;Registro de estándares rígidos;Anotar regla interna, origen, utilidad y coste.;Flexibilizar autoexigencia.;bajo;7 días;PSY2_T003
+PSY2_TA030;Reformulación de error;Transformar un error en aprendizaje concreto.;Reducir miedo al error.;bajo;semanal;PSY2_T013
+PSY2_TA031;Registro de logros realistas;Anotar logro, esfuerzo, habilidad usada y evidencia.;Reducir impostor.;bajo;diario/semanal;PSY2_T003
+PSY2_TA032;Mapa de relación significativa;Identificar necesidades, miedos, conductas y consecuencias en vínculo.;Comprender patrón relacional.;medio;30 min;PSY2_T022
+PSY2_TA033;Plan de límites personales;Definir límites no negociables, flexibles y señales de alerta.;Fortalecer autocuidado relacional.;medio;30 min;PSY2_T008
+PSY2_TA034;Reducir comprobación de celos;Elegir una comprobación y retrasarla/reducirla.;Disminuir ciclo de celos.;medio;semanal;PSY2_T024
+PSY2_TA035;Pedir seguridad de forma sana;Sustituir control por petición clara y limitada.;Mejorar comunicación.;medio;semanal;PSY2_T023
+PSY2_TA036;Lista de apoyo social;Identificar personas y tipo de apoyo que pueden ofrecer.;Ampliar red de apoyo.;bajo;20 min;PSY2_T036
+PSY2_TA037;Carta no enviada;Escribir lo no dicho a persona perdida o relación terminada.;Procesar duelo.;medio;30 min;PSY2_T021
+PSY2_TA038;Ritual de despedida o continuidad;Diseñar gesto simbólico adaptado a valores del paciente.;Integrar pérdida.;medio;variable;PSY2_T021
+PSY2_TA039;Línea temporal del duelo;Ordenar hitos de pérdida, cambios y recursos usados.;Dar sentido al proceso.;medio;30 min;PSY2_T034
+PSY2_TA040;Actividad de reconexión vital;Programar actividad pequeña vinculada a valores o identidad.;Reconstruir vida cotidiana.;bajo;semanal;PSY2_T014
+PSY2_TA041;Registro de carga laboral;Anotar demandas, energía, pausas, horas extra y recuperación.;Detectar burnout/estrés.;bajo;7 días;PSY2_T002
+PSY2_TA042;Límite laboral semanal;Definir un límite concreto: horario, correo, descanso o tarea.;Reducir sobrecarga.;bajo;semanal;PSY2_T027
+PSY2_TA043;Plan de recuperación;Programar descanso, sueño, ocio y desconexión real.;Recuperar energía.;bajo;semanal;PSY2_T026
+PSY2_TA044;Matriz demandas-recursos;Listar demandas laborales y recursos disponibles/posibles.;Plan anti-burnout.;medio;30 min;PSY2_T028
+PSY2_TA045;Conversación laboral asertiva;Preparar petición de ajuste, límite o prioridad.;Mejorar control laboral.;medio;antes de conversación;PSY2_T008
+PSY2_TA046;Grounding 5-4-3-2-1;Practicar orientación sensorial al presente.;Estabilización.;alto;cuando se active;PSY2_T033
+PSY2_TA047;Plan de seguridad personal;Señales, recursos, contactos y pasos ante crisis o riesgo.;Aumentar seguridad.;alto;supervisado;PSY2_T032
+PSY2_TA048;Mapa de disparadores;Registrar estímulo, emoción, cuerpo, pensamiento y respuesta.;Comprender activaciones.;medio;7 días;PSY2_T033
+PSY2_TA049;Activación conductual semanal;Programar actividades de placer, dominio y conexión.;Aumentar refuerzo positivo.;bajo;semanal;PSY2_T004
+PSY2_TA050;Rutina mínima diaria;Definir mínimos de sueño, comida, higiene, movimiento y tarea clave.;Recuperar estructura.;bajo;diario;PSY2_T016
+PSY2_TA051;Primer paso de 5 minutos;Iniciar tarea evitada solo durante 5 minutos.;Romper evitación.;bajo;cuando proceda;PSY2_T017
+PSY2_TA052;Plan de prevención de recaídas;Señales tempranas, estrategias, apoyos y plan de revisión.;Mantener avances.;bajo;mensual;PSY2_T025
+PSY2_TA053;Solución de problemas en 5 pasos;Definir problema, opciones, elección, acción y revisión.;Aumentar afrontamiento.;bajo;semanal;PSY2_T015
+PSY2_TA054;Clarificación de valores;Elegir 3 valores y una acción pequeña por valor.;Orientar conducta.;bajo;sesión;PSY2_T014

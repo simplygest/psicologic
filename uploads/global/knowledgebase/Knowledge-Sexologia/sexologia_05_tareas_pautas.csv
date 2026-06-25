@@ -1,0 +1,66 @@
+﻿tarea_id;titulo;descripcion;objetivo;nivel_riesgo;duracion_estimada;tipo_intervencion;tecnica_id
+SEX_TA001;Rueda de salud sexual personal;Completar áreas de bienestar, dudas, límites, valores y objetivos sexuales.;Clarificar demanda y objetivos.;bajo;20-30 min;individual;SEX_T001
+SEX_TA002;Lista de dudas para consulta;Anotar dudas de sexualidad, salud, prevención o relación para revisar en sesión.;Facilitar conversación profesional.;bajo;10 min;individual;SEX_T001
+SEX_TA003;Mapa biopsicosocial sexual;Registrar factores físicos, emocionales, relacionales, culturales y contextuales.;Comprender el problema sin reducirlo a una causa única.;bajo;30 min;individual/pareja;SEX_T002
+SEX_TA004;Historia sexual segura y gradual;Completar cronología básica de experiencias, aprendizajes, salud y cambios, sin detalles innecesarios.;Organizar información clínica.;medio;sesión;individual;SEX_T003
+SEX_TA005;Checklist de señales de derivación médica;Revisar dolor, cambios bruscos, sangrado, medicación, síntomas físicos o enfermedad.;Detectar necesidad de valoración médica.;alto;5-10 min;médica_derivación;SEX_T005
+SEX_TA006;Registro de contexto de deseo;Anotar momento, descanso, estrés, conexión, emoción, deseo 0-10 y frenos.;Identificar patrones de deseo.;bajo;7-14 días;individual/pareja;SEX_T006
+SEX_TA007;Mapa de aceleradores y frenos;Listar elementos que facilitan o inhiben deseo/excitación.;Personalizar intervención.;bajo;20 min;individual/pareja;SEX_T007
+SEX_TA008;Conversación de discrepancia de deseo;Hablar con turnos: qué necesito, qué temo, qué puedo ofrecer, qué no quiero presionar.;Reducir lucha y presión.;medio;30 min;pareja;SEX_T008
+SEX_TA009;Cita de intimidad sin objetivo sexual;Planificar un espacio de cercanía sin meta de rendimiento ni obligación.;Recuperar seguridad y conexión.;bajo;semanal;pareja;SEX_T009
+SEX_TA010;Focalización sensorial fase inicial;Ejercicio pactado de atención sensorial no exigente, sin objetivo de rendimiento y con derecho a parar.;Reducir presión y aumentar presencia.;medio;según plan;pareja/individual;SEX_T010
+SEX_TA011;Atención plena de sensaciones neutras;Practicar 3-5 minutos observando respiración, temperatura o contacto no sexual.;Entrenar presencia sin juicio.;bajo;diario;individual;SEX_T011
+SEX_TA012;Registro de mitos sexuales;Anotar creencia, origen, emoción, coste y alternativa flexible.;Flexibilizar expectativas.;bajo;7 días;individual/pareja;SEX_T012
+SEX_TA013;Pensamiento-rendimiento-respuesta;Registrar pensamiento de fracaso, ansiedad y conducta de seguridad.;Detectar ciclo de ansiedad sexual.;medio;7 días;individual;SEX_T013
+SEX_TA014;Jerarquía de intimidad evitada;Ordenar situaciones íntimas de menor a mayor dificultad, solo seguras y consentidas.;Planificar exposición gradual.;medio;30 min;individual/pareja;SEX_T014
+SEX_TA015;Reducir comprobación corporal;Elegir una comprobación de rendimiento/cuerpo y reducirla de forma gradual.;Disminuir autoobservación.;medio;semanal;individual;SEX_T015
+SEX_TA016;Guion de comunicación sexual;Practicar: me gusta, me incomoda, necesito, prefiero, no quiero.;Mejorar expresión clara y respetuosa.;bajo;semanal;pareja;SEX_T016
+SEX_TA017;Ensayo de límite sexual;Preparar frases para decir no, pedir pausa o cambiar de ritmo.;Fortalecer consentimiento y seguridad.;medio;sesión/casa;individual/pareja;SEX_T017
+SEX_TA018;Acuerdo de señales de pausa;Definir palabras/señales para pausar, revisar o parar sin discusión.;Aumentar seguridad relacional.;medio;20 min;pareja;SEX_T018
+SEX_TA019;Registro de vergüenza sexual;Anotar situación, pensamiento, emoción, evitación y respuesta alternativa.;Reducir vergüenza.;medio;7 días;individual;SEX_T019
+SEX_TA020;Carta de autocompasión sexual;Escribir una respuesta amable y responsable ante una dificultad sexual.;Reducir autocrítica.;bajo;20 min;individual;SEX_T020
+SEX_TA021;Exploración corporal respetuosa;Observar el cuerpo con neutralidad, sin forzar exposición ni juicio.;Mejorar relación con el cuerpo.;medio;gradual;individual;SEX_T021
+SEX_TA022;Ritual breve de conexión de pareja;10-15 minutos de conversación afectiva sin pantallas ni resolución de problemas.;Aumentar intimidad emocional.;bajo;3 veces/semana;pareja;SEX_T022
+SEX_TA023;Solución de problema sexual en 5 pasos;Definir problema, opciones, acuerdo pequeño, prueba y revisión.;Pasar de queja a experimento seguro.;bajo;30 min;pareja;SEX_T023
+SEX_TA024;Calendario flexible de intimidad;Reservar espacios de conexión con opción de adaptar actividad según deseo real.;Crear oportunidad sin obligación.;bajo;semanal;pareja;SEX_T024
+SEX_TA025;Ficha de respuesta eréctil;Registrar descanso, alcohol, estrés, medicación, contexto, ansiedad y respuesta.;Distinguir factores contextuales/médicos.;medio;7-14 días;individual;SEX_T025
+SEX_TA026;Plan anti-rendimiento;Sustituir objetivo de funcionar por objetivo de presencia, comunicación y disfrute.;Reducir ansiedad de desempeño.;medio;semanal;individual/pareja;SEX_T026
+SEX_TA027;Registro de control eyaculatorio percibido;Registrar ansiedad, contexto, control percibido y comunicación, sin prácticas explícitas.;Entender patrón de eyaculación precoz.;medio;7-14 días;individual/pareja;SEX_T027
+SEX_TA028;Mapa de presión orgásmica;Identificar cuándo aparece presión por orgasmo y qué la aumenta/reduce.;Reducir exigencia.;medio;7 días;individual/pareja;SEX_T028
+SEX_TA029;Plan sin dolor;"Acordar que ninguna práctica debe forzar dolor; registrar molestias y derivaciones.";Priorizar seguridad en dolor sexual.;alto;inmediato;pareja/individual;SEX_T029
+SEX_TA030;Preparar consulta médica por dolor;Escribir síntomas, inicio, intensidad, ciclo, medicación, preguntas y objetivos.;Facilitar derivación médica.;alto;20 min;médica_derivación;SEX_T042
+SEX_TA031;Escala de activación corporal;Valorar activación 0-10 y elegir estrategia de regulación antes de intimidad.;Prevenir bloqueo o sobrecarga.;medio;cada situación;individual;SEX_T031
+SEX_TA032;Grounding 5-4-3-2-1;Practicar orientación al presente si aparecen activadores o desconexión.;Aumentar seguridad y presencia.;alto;cuando proceda;individual;SEX_T031
+SEX_TA033;Plan de seguridad ante coerción;Identificar señales de riesgo, apoyos, recursos y pasos de salida/derivación.;Proteger a la persona.;alto;supervisado;seguridad;SEX_T033
+SEX_TA034;Mapa de consentimiento personal;Definir sí, no, quizá, condiciones, límites y señales de pausa.;Clarificar límites.;medio;30 min;individual/pareja;SEX_T017
+SEX_TA035;Exploración afirmativa de identidad/orientación;Registrar vivencias, preguntas, apoyos, miedos y espacios seguros.;Acompañar sin patologizar.;medio;variable;individual;SEX_T034
+SEX_TA036;Plan de comunicación segura de identidad;Valorar si conviene comunicar, a quién, cuándo, cómo y con qué apoyo.;Priorizar autonomía y seguridad.;medio;30 min;individual;SEX_T035
+SEX_TA037;Material inclusivo de educación sexual;Seleccionar recursos adaptados a orientación, identidad, cultura y capacidad.;Mejorar información respetuosa.;bajo;variable;educativa;SEX_T036
+SEX_TA038;Análisis funcional de consumo sexual digital;Registrar disparador, emoción, conducta, consecuencia y coste.;Comprender función del consumo.;medio;7 días;individual;SEX_T037
+SEX_TA039;Plan de límites digitales;Definir horarios, bloqueos, sustitutos, apoyos y revisión sin moralizar.;Reducir interferencia funcional.;medio;semanal;individual;SEX_T038
+SEX_TA040;Diferenciar ficción y realidad;Listar expectativas aprendidas de pornografía y contrastarlas con salud/consentimiento.;Reducir pornomitos.;bajo;30 min;educativa/individual;SEX_T039
+SEX_TA041;Valores y sexualidad;Escribir qué sexualidad se quiere construir: respeto, placer, seguridad, conexión, cuidado.;Alinear conducta con valores.;bajo;20 min;individual/pareja;SEX_T048
+SEX_TA042;Registro de culpa sexual;Anotar culpa, norma interna, origen, utilidad, coste y alternativa compatible con valores.;Trabajar culpa sin imponer valores.;medio;7 días;individual;SEX_T040
+SEX_TA043;Plan de adaptación en etapa vital;Identificar cambios, necesidades, límites, apoyos médicos y acuerdos de pareja.;Adaptar sexualidad a etapa vital.;medio;30 min;individual/pareja;SEX_T041
+SEX_TA044;Preguntas para profesional sanitario;Preparar dudas sobre medicación, dolor, menopausia, erección, lubricación o salud.;Mejorar coordinación sanitaria.;bajo;15 min;médica_derivación;SEX_T042
+SEX_TA045;Plan de prevención y pruebas;Definir pruebas, barreras, comunicación, calendario y recursos sanitarios.;Reducir riesgo y ansiedad.;medio;20 min;educativa;SEX_T043
+SEX_TA046;Cita no reproductiva;Planificar intimidad o conexión sin objetivo de embarazo/tratamiento.;Reducir presión reproductiva.;bajo;semanal;pareja;SEX_T044
+SEX_TA047;Plan de mantenimiento;Señales tempranas, estrategias útiles, acuerdos y fecha de revisión.;Prevenir recaídas.;bajo;mensual;individual/pareja;SEX_T045
+SEX_TA048;Autorización de coordinación interdisciplinar;Registrar consentimiento para coordinar con médico/fisio/psiquiatría si procede.;Mejorar intervención integrada.;medio;según caso;médica_derivación;SEX_T046
+SEX_TA049;Entrevista de ambivalencia;Explorar ventajas/desventajas de cambiar y no cambiar.;Aumentar motivación autónoma.;bajo;20 min;individual;SEX_T047
+SEX_TA050;Inventario de intimidad emocional;Listar acciones no sexuales que aumentan cercanía y seguridad.;Fortalecer base relacional.;bajo;20 min;pareja;SEX_T052
+SEX_TA051;Plan adolescente de privacidad digital;Trabajar límites, imágenes, presión, consentimiento y búsqueda de ayuda.;Prevenir riesgos digitales.;alto;educativa;adolescentes;SEX_T053
+SEX_TA052;Adaptación en lectura fácil;Convertir pautas sexuales/relacionales a pasos claros, pictos o lenguaje sencillo.;Hacer accesible la educación sexual.;medio;variable;educativa;SEX_T054
+SEX_TA053;Registro de medicación y cambios sexuales;Anotar cambios de deseo, excitación u orgasmo y medicación temporalmente relacionada.;Preparar consulta médica.;alto;2-4 semanas;médica_derivación;SEX_T050
+SEX_TA054;Mapa de rechazo e iniciativa;Registrar cómo se pide, cómo se rechaza y cómo se repara emocionalmente.;Reducir heridas por rechazo.;bajo;semanal;pareja;SEX_T051
+SEX_TA055;Conversación de cuidados después de intimidad;Acordar cómo cerrar encuentros: afecto, pausa, feedback, cuidado o espacio.;Aumentar seguridad y conexión.;bajo;semanal;pareja;SEX_T052
+SEX_TA056;Registro de prácticas de autocuidado sexual;Registrar sueño, estrés, actividad física, consumo, salud y estado emocional.;Detectar factores generales.;bajo;7 días;individual;SEX_T002
+SEX_TA057;Semáforo de consentimiento;Clasificar situaciones en verde/amarillo/rojo y decidir acciones.;Educar consentimiento de forma visual.;medio;30 min;educativa/pareja;SEX_T018
+SEX_TA058;Plan de salida segura;Preparar recursos si existe miedo o presión en una relación.;Aumentar seguridad ante coerción.;alto;supervisado;seguridad;SEX_T033
+SEX_TA059;Revisión de objetivos sexuales realistas;Convertir demandas vagas en objetivos observables y respetuosos.;Clarificar plan terapéutico.;bajo;sesión;individual/pareja;SEX_T047
+SEX_TA060;Diario de intimidad positiva;Registrar momentos de cercanía no necesariamente sexuales y qué los facilitó.;Ampliar foco más allá del problema.;bajo;7 días;pareja/individual;SEX_T009
+SEX_TA061;Práctica de pedir pausa;Ensayar pedir pausa de forma clara y recibirla sin castigo.;Normalizar límites.;medio;sesión/casa;pareja;SEX_T017
+SEX_TA062;Registro de dolor/malestar;Anotar intensidad, localización, contexto y factores, sin forzar repetición.;Información para derivación y cuidado.;alto;según caso;médica_derivación;SEX_T029
+SEX_TA063;Plan de recursos ante trauma;Lista de señales, grounding, apoyos, límites y profesionales de referencia.;Estabilización y derivación.;alto;supervisado;individual;SEX_T032
+SEX_TA064;Escala de presión sexual percibida;Valorar presión propia/externa 0-10 y decidir si pausar o negociar.;Prevenir coerción sutil.;medio;cada situación;individual/pareja;SEX_T004
+SEX_TA065;Ficha de revisión de acuerdos;Revisar qué acuerdo funcionó, qué no y qué cambiar sin culpabilizar.;Mantener comunicación.;bajo;semanal;pareja;SEX_T023

@@ -1,0 +1,20 @@
+﻿documento_id;nombre;tipo;descripcion;problema_ids;nivel_riesgo
+SEX_D001;Informe sexológico inicial;Informe;Motivo de consulta, historia relevante, factores biopsicosociales, objetivos, riesgos y plan.;Todos;medio
+SEX_D002;Plan de intervención sexológica individual;Plan;Objetivos, técnicas, tareas, indicadores, derivaciones y revisión.;Todos;bajo
+SEX_D003;Plan de intervención sexológica de pareja;Plan;Acuerdos, comunicación, seguridad, tareas de pareja y seguimiento.;"SEX_P006;SEX_P030;SEX_P031;SEX_P032;SEX_P033;SEX_P034";medio
+SEX_D004;Plan de deseo sexual;Plan;Deseo bajo/discrepancia, mapa de deseo, presión, intimidad y seguimiento.;"SEX_P005;SEX_P006;SEX_P007;SEX_P008;SEX_P009";medio
+SEX_D005;Plan de ansiedad de rendimiento;Plan;Ansiedad, autoobservación, exposición gradual, presencia y comunicación.;"SEX_P025;SEX_P026;SEX_P027;SEX_P028;SEX_P029";medio
+SEX_D006;Plan de derivación médica sexológica;Documento;Síntomas, preguntas, registros y profesional sugerido: ginecología/urología/medicina/fisio suelo pélvico.;"SEX_P011;SEX_P013;SEX_P020;SEX_P021;SEX_P023;SEX_P063;SEX_P066";alto
+SEX_D007;Plan de dolor sexual seguro;Plan;No forzar dolor, derivación, registro, regulación, comunicación y adaptación.;"SEX_P020;SEX_P021;SEX_P022;SEX_P023;SEX_P024";alto
+SEX_D008;Plan de consentimiento y límites;Plan;Límites, señales de pausa, acuerdos, seguridad y recursos.;"SEX_P035;SEX_P036;SEX_P037;SEX_P038";alto
+SEX_D009;Plan afirmativo de diversidad sexual;Plan;Orientación/identidad, apoyos, seguridad, comunicación y recursos.;"SEX_P043;SEX_P044;SEX_P045;SEX_P046";medio
+SEX_D010;Plan informado en trauma sexual;Plan;Estabilización, seguridad, control, derivación y límites de intervención.;"SEX_P047;SEX_P048;SEX_P049;SEX_P050";alto
+SEX_D011;Plan de imagen corporal y autoestima sexual;Plan;Vergüenza, evitación, autocompasión, exposición gradual y comunicación.;"SEX_P051;SEX_P052;SEX_P053";medio
+SEX_D012;Plan de consumo problemático de pornografía;Plan;Análisis funcional, límites digitales, sustitutos, recaídas y valores.;"SEX_P054;SEX_P055;SEX_P056;SEX_P057";medio
+SEX_D013;Plan de sexualidad en etapa vital;Plan;Embarazo, posparto, menopausia, envejecimiento, discapacidad o salud.;"SEX_P058;SEX_P059;SEX_P060;SEX_P061;SEX_P062";medio
+SEX_D014;Plan de sexualidad y enfermedad/medicación;Plan;Adaptaciones, coordinación médica, registro y comunicación.;"SEX_P063;SEX_P064;SEX_P065;SEX_P066";alto
+SEX_D015;Plan de fertilidad y sexualidad;Plan;Presión reproductiva, duelo, intimidad no instrumental y comunicación.;"SEX_P067;SEX_P068;SEX_P069;SEX_P070";medio
+SEX_D016;Informe de evolución sexológica;Informe;Cambios, tareas, escalas, barreras, seguridad, derivaciones y próximos pasos.;Todos;bajo
+SEX_D017;Consentimiento informado específico de sexología;Documento legal;Alcance, confidencialidad, límites, no contacto físico, derivaciones, pareja y protección de datos.;Todos;alto
+SEX_D018;Hoja de pautas para casa;Documento;Tareas acordadas, condiciones de seguridad, no obligación, derecho a parar y revisión.;Todos;medio
+SEX_D019;Documento de coordinación interdisciplinar;Documento;Información autorizada para médico, fisio suelo pélvico, psiquiatría u otro profesional.;Todos;alto

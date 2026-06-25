@@ -1,0 +1,17 @@
+evaluacion_id;nombre;area_uso;tipo;notas;problema_ids
+PSY2_E001;ASRS / cribado TDAH adulto;TDAH;Cribado;"No diagnostica; revisar licencia/condiciones antes de integrar formulario completo.";"PSY2_P001;PSY2_P002;PSY2_P003;PSY2_P004;PSY2_P005"
+PSY2_E002;Registro de adherencia y organización;TDAH;Autorregistro;Tareas completadas, olvidos, tiempo estimado/real.;"PSY2_P001;PSY2_P002;PSY2_P003;PSY2_P005"
+PSY2_E003;AQ / cribado TEA adulto;TEA;Cribado;"No diagnostica; revisar licencia y usar solo como orientación profesional.";"PSY2_P007;PSY2_P008;PSY2_P009;PSY2_P010"
+PSY2_E004;Registro de sobrecarga sensorial;TEA/sensorial;Autorregistro;Estímulo, intensidad, duración, recuperación y estrategia.;PSY2_P010
+PSY2_E005;Escala ansiedad social / autorregistro;Ansiedad social;Cuestionario/registro;Puede usarse versión propia 0-10 si no se integra escala licenciada.;"PSY2_P017;PSY2_P018"
+PSY2_E006;Registro de evitación social;Ansiedad social;Seguimiento;Situaciones evitadas, exposición realizada y resultado.;"PSY2_P017;PSY2_P018;PSY2_P020"
+PSY2_E007;Rosenberg autoestima / escala equivalente;Autoestima;Cuestionario;Revisar condiciones de uso antes de incluir ítems completos.;"PSY2_P021;PSY2_P022"
+PSY2_E008;Registro de autocrítica;Autoestima;Autorregistro;Frecuencia, intensidad y alternativa compasiva.;"PSY2_P022;PSY2_P023;PSY2_P024"
+PSY2_E009;Registro de perfeccionismo;Perfeccionismo;Autorregistro;Estándar rígido, evitación, coste y conducta alternativa.;"PSY2_P025;PSY2_P026;PSY2_P028"
+PSY2_E010;Registro de comprobaciones relacionales;Relaciones/celos;Autorregistro;Disparador, comprobación, alivio y coste.;"PSY2_P029;PSY2_P030;PSY2_P031"
+PSY2_E011;Inventario de duelo funcional;Duelo;Entrevista/registro;Sueño, rutina, culpa, vínculo, apoyo y funcionamiento.;"PSY2_P034;PSY2_P035;PSY2_P036;PSY2_P037"
+PSY2_E012;Maslach Burnout Inventory / alternativa;Burnout;Cuestionario;"Puede tener licencia; usar solo referencia o alternativa propia.";"PSY2_P038;PSY2_P039;PSY2_P040"
+PSY2_E013;Registro de carga-recuperación;Estrés laboral;Autorregistro;Demandas, pausas, recuperación, sueño y energía.;"PSY2_P038;PSY2_P039;PSY2_P041"
+PSY2_E014;PCL-5 / cribado TEPT;Trauma;Cribado;"Revisar condiciones; requiere criterio clínico y cuidado por riesgo.";"PSY2_P042;PSY2_P043;PSY2_P044"
+PSY2_E015;PHQ-9 / GAD-7;Ánimo/ansiedad;Cribado;Revisar condiciones y usar como apoyo, no diagnóstico automático.;"PSY2_P012;PSY2_P016;PSY2_P047"
+PSY2_E016;Adherencia a tareas terapéuticas;Seguimiento;Indicador;Porcentaje de tareas completadas y barreras.;PSY2_P048

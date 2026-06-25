@@ -95,6 +95,10 @@ function cabinet_drop_legacy_closed_date_unique_if_needed($mysqli)
 
 function ensure_cabinet_schema($mysqli)
 {
+    if (function_exists('app_auto_schema_migrations_enabled') && !app_auto_schema_migrations_enabled()) {
+        return;
+    }
+
     $tenant_id = current_tenant_id();
     $mysqli->query("ALTER TABLE users MODIFY role ENUM('superadmin','admin','patient') NOT NULL DEFAULT 'patient'");
     cabinet_add_column_if_missing($mysqli, 'users', 'tenant_id', "INT UNSIGNED NOT NULL DEFAULT $tenant_id AFTER id");
@@ -194,6 +198,8 @@ function ensure_cabinet_schema($mysqli)
             available_weekdays VARCHAR(32) DEFAULT NULL,
             min_booking_notice_days INT UNSIGNED DEFAULT NULL,
             max_booking_notice_days INT UNSIGNED DEFAULT NULL,
+            knowledge_sector_mode VARCHAR(16) NOT NULL DEFAULT 'own',
+            knowledge_sector_keys_json TEXT DEFAULT NULL,
             bonuses_enabled TINYINT(1) DEFAULT NULL,
             create_compensation_bonus_on_paid_cancel TINYINT(1) DEFAULT NULL,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -248,7 +254,10 @@ function ensure_cabinet_schema($mysqli)
     }
 
     cabinet_add_index_if_missing($mysqli, 'appointments', 'idx_appointments_professional_date', 'professional_id, appointment_date, appointment_time');
+    cabinet_add_index_if_missing($mysqli, 'appointments', 'idx_appointments_calendar_professional', 'tenant_id, professional_id, status, appointment_date, appointment_time');
+    cabinet_add_index_if_missing($mysqli, 'appointments', 'idx_appointments_calendar_patient', 'tenant_id, user_id, status, appointment_date, appointment_time');
     cabinet_add_index_if_missing($mysqli, 'closed_days', 'idx_closed_days_professional_date', 'professional_id, closed_date');
+    cabinet_add_index_if_missing($mysqli, 'closed_days', 'idx_closed_days_calendar', 'tenant_id, closed_date, is_global, professional_id');
     cabinet_add_index_if_missing($mysqli, 'invitations', 'idx_invitations_professional', 'professional_id');
     cabinet_add_index_if_missing($mysqli, 'patient_profiles', 'idx_patient_profiles_professional', 'professional_id');
     cabinet_add_index_if_missing($mysqli, 'patient_bonuses', 'idx_patient_bonuses_professional', 'professional_id');
@@ -299,22 +308,8 @@ function cabinet_default_professional_settings()
 function cabinet_global_settings_as_professional_defaults($mysqli)
 {
     $defaults = cabinet_default_professional_settings();
-    $settings_table = $mysqli->query("SHOW TABLES LIKE 'payment_settings'");
-    if (!$settings_table || $settings_table->num_rows === 0) {
-        return $defaults;
-    }
-
-    $columns = [];
-    foreach (cabinet_professional_settings_columns() as $column) {
-        if (cabinet_column_exists($mysqli, 'payment_settings', $column)) {
-            $columns[] = "`$column`";
-        }
-    }
-    if (!$columns) {
-        return $defaults;
-    }
-
     $tenant_id = current_tenant_id();
+    $columns = array_map(fn($column) => "`$column`", cabinet_professional_settings_columns());
     $res = $mysqli->query("SELECT " . implode(', ', $columns) . " FROM payment_settings WHERE tenant_id = $tenant_id LIMIT 1");
     $row = $res ? $res->fetch_assoc() : null;
     if (!$row) {
@@ -408,16 +403,13 @@ function cabinet_patient_primary_professional_id($mysqli, $patient_user_id)
         }
     }
 
-    $profile_exists = $mysqli->query("SHOW TABLES LIKE 'patient_profiles'");
-    if ($profile_exists && $profile_exists->num_rows > 0) {
-        $stmt = $mysqli->prepare("SELECT professional_id FROM patient_profiles WHERE tenant_id = ? AND user_id = ? LIMIT 1");
-        if ($stmt) {
-            $stmt->bind_param("ii", $tenant_id, $patient_user_id);
-            $stmt->execute();
-            $row = $stmt->get_result()->fetch_assoc();
-            if ($row && !empty($row['professional_id'])) {
-                return (int) $row['professional_id'];
-            }
+    $stmt = $mysqli->prepare("SELECT professional_id FROM patient_profiles WHERE tenant_id = ? AND user_id = ? LIMIT 1");
+    if ($stmt) {
+        $stmt->bind_param("ii", $tenant_id, $patient_user_id);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        if ($row && !empty($row['professional_id'])) {
+            return (int) $row['professional_id'];
         }
     }
 
@@ -713,11 +705,6 @@ function cabinet_fetch_professional($mysqli, $professional_id)
         return null;
     }
 
-    $exists = $mysqli->query("SHOW TABLES LIKE 'professionals'");
-    if (!$exists || $exists->num_rows === 0) {
-        return null;
-    }
-
     $stmt = $mysqli->prepare("
         SELECT p.id, p.user_id, p.display_name, p.professional_title, p.license_number,
                p.professional_specialty, p.public_bio, p.public_photo_path, p.public_email, p.public_phone,
@@ -813,20 +800,7 @@ function cabinet_public_team_enabled($mysqli)
     $tenant_id = current_tenant_id();
     $res = $mysqli->query("SELECT show_team_public FROM payment_settings WHERE tenant_id = $tenant_id");
     $settings = $res ? $res->fetch_assoc() : null;
-    if (!$settings || (int) ($settings['show_team_public'] ?? 0) !== 1) {
-        return false;
-    }
-
-    $members = cabinet_fetch_public_team_members($mysqli);
-    $has_member_besides_superadmin = false;
-    foreach ($members as $member) {
-        if (($member['user_role'] ?? '') !== 'superadmin') {
-            $has_member_besides_superadmin = true;
-            break;
-        }
-    }
-
-    return count($members) > 1 && $has_member_besides_superadmin;
+    return $settings && (int) ($settings['show_team_public'] ?? 0) === 1;
 }
 
 function cabinet_resolve_professional_id($mysqli, $session_user_id, $patient_user_id, $is_admin)
@@ -895,13 +869,10 @@ function cabinet_assign_patient_to_professional_if_missing($mysqli, $patient_use
     $stmt->bind_param("iiis", $tenant_id, $patient_user_id, $professional_id, $notes);
     $stmt->execute();
 
-    $profile_exists = $mysqli->query("SHOW TABLES LIKE 'patient_profiles'");
-    if ($profile_exists && $profile_exists->num_rows > 0) {
-        $stmt = $mysqli->prepare("UPDATE patient_profiles SET professional_id = ? WHERE tenant_id = ? AND user_id = ? AND (professional_id IS NULL OR professional_id = 0)");
-        if ($stmt) {
-            $stmt->bind_param("iii", $professional_id, $tenant_id, $patient_user_id);
-            $stmt->execute();
-        }
+    $stmt = $mysqli->prepare("UPDATE patient_profiles SET professional_id = ? WHERE tenant_id = ? AND user_id = ? AND (professional_id IS NULL OR professional_id = 0)");
+    if ($stmt) {
+        $stmt->bind_param("iii", $professional_id, $tenant_id, $patient_user_id);
+        $stmt->execute();
     }
 
     return true;

@@ -1,0 +1,57 @@
+﻿tecnica_id;nombre;descripcion;nivel_riesgo;tipo_intervencion;fuente_ids
+NUT2_T001;Entrevista nutricional inicial;Recoger motivo, historia, horarios, gustos, salud, medicación, restricciones, objetivos y señales de derivación.;bajo;evaluación;"NUT2_SRC004;NUT2_SRC014"
+NUT2_T002;Objetivos SMART nutricionales;Convertir metas genéricas en objetivos concretos, medibles y revisables.;bajo;planificación;NUT2_SRC004
+NUT2_T003;Educación del plato saludable;Usar proporciones visuales de verduras, proteína, carbohidratos, grasas y agua.;bajo;educativa;"NUT2_SRC001;NUT2_SRC010"
+NUT2_T004;Lectura de etiquetas;Interpretar ración, energía, proteína, fibra, azúcar, sal, grasas e ingredientes.;bajo;educativa;"NUT2_SRC004;NUT2_SRC011"
+NUT2_T005;Estimación de raciones con método visual;Usar mano, plato, tazas o referencias visuales para cantidades.;bajo;educativa;"NUT2_SRC004;NUT2_SRC010"
+NUT2_T006;Aumento de frutas y verduras;Introducir variedad vegetal de forma gradual y práctica.;bajo;hábitos;"NUT2_SRC001;NUT2_SRC010"
+NUT2_T007;Aumento de fibra;Incluir legumbres, frutas, verduras, integrales, semillas y frutos secos según tolerancia.;bajo;hábitos;"NUT2_SRC001;NUT2_SRC013"
+NUT2_T008;Reducción de ultraprocesados;Sustituir gradualmente productos poco saciantes por alternativas más nutritivas.;bajo;hábitos;"NUT2_SRC001;NUT2_SRC011"
+NUT2_T009;Planificación semanal de menús;Crear menú realista según horarios, gustos, presupuesto y objetivo.;bajo;planificación;"NUT2_SRC010;NUT2_SRC011"
+NUT2_T010;Lista de compra estratégica;Transformar menú en lista de compra organizada por grupos.;bajo;planificación;NUT2_SRC010
+NUT2_T011;Batch cooking flexible;Preparar bases combinables: proteína, carbohidrato, verduras y salsas simples.;bajo;planificación;NUT2_SRC011
+NUT2_T012;Estrategia de comidas fuera;Tomar decisiones en restaurantes/cafeterías sin rigidez ni abandono.;bajo;planificación;"NUT2_SRC010;NUT2_SRC012"
+NUT2_T013;Déficit energético moderado;Crear reducción energética sostenible sin pautas extremas.;medio;control_peso;"NUT2_SRC003;NUT2_SRC012"
+NUT2_T014;Control de saciedad;Ajustar proteína, fibra, volumen, horarios y densidad energética.;bajo;control_peso;"NUT2_SRC001;NUT2_SRC014"
+NUT2_T015;Seguimiento de peso y medidas;Usar tendencia de peso, cintura, fotos y adherencia, no solo un dato aislado.;bajo;seguimiento;"NUT2_SRC003;NUT2_SRC012"
+NUT2_T016;Mantenimiento post-pérdida;Transición gradual a mantenimiento, hábitos, vigilancia flexible y prevención de rebote.;medio;control_peso;NUT2_SRC003
+NUT2_T017;Proteína objetivo;Asegurar proteína suficiente según objetivo, preferencias y contexto.;bajo;deportiva;NUT2_SRC016
+NUT2_T018;Timing alrededor del entrenamiento;Organizar comida pre/post entreno de forma práctica.;bajo;deportiva;NUT2_SRC016
+NUT2_T019;Nutrición para hipertrofia;Ajustar energía, proteína, reparto y seguimiento de rendimiento/peso.;bajo;deportiva;NUT2_SRC016
+NUT2_T020;Nutrición para resistencia;Planificar energía, carbohidratos, hidratación y recuperación para sesiones largas.;medio;deportiva;NUT2_SRC016
+NUT2_T021;Educación de recomposición corporal;Explicar expectativas, fuerza, proteína, medidas y ritmos realistas.;bajo;composición_corporal;NUT2_SRC016
+NUT2_T022;Calidad de carbohidratos;Priorizar hidratos con fibra, legumbres, integrales, frutas y verduras.;bajo;metabólica;"NUT2_SRC001;NUT2_SRC007"
+NUT2_T023;Reducción de bebidas azucaradas;Sustituir bebidas azucaradas por agua u opciones sin azúcar, si procede.;bajo;metabólica;"NUT2_SRC001;NUT2_SRC007"
+NUT2_T024;Patrón mediterráneo/cardiosaludable;Fomentar alimentos frescos, aceite de oliva, legumbres, pescado, frutos secos y vegetales.;bajo;cardiovascular;"NUT2_SRC013;NUT2_SRC014"
+NUT2_T025;Reducción de sal;Disminuir sal añadida y productos salados, usando especias/alternativas.;medio;cardiovascular;"NUT2_SRC001;NUT2_SRC013"
+NUT2_T026;Mejora de grasas dietéticas;Reducir saturadas/trans y priorizar insaturadas según contexto.;medio;cardiovascular;"NUT2_SRC001;NUT2_SRC013"
+NUT2_T027;Educación en diabetes/prediabetes;Explicar carbohidratos, fibra, horarios, actividad y coordinación sanitaria.;alto;metabólica;"NUT2_SRC006;NUT2_SRC007;NUT2_SRC008"
+NUT2_T028;Registro glucémico-alimentario supervisado;Relacionar comidas, actividad y glucemia si el paciente lo mide con indicación sanitaria.;alto;metabólica;NUT2_SRC006
+NUT2_T029;Registro digestivo;Anotar alimentos, síntomas, horarios, estrés, sueño y deposiciones.;medio;digestiva;"NUT2_SRC014;NUT2_SRC017"
+NUT2_T030;Ajuste gradual de fibra;Subir fibra progresivamente y acompañar hidratación.;bajo;digestiva;"NUT2_SRC001;NUT2_SRC014"
+NUT2_T031;Protocolo de eliminación/reintroducción supervisado;Eliminar solo lo necesario y reintroducir de forma estructurada.;medio;digestiva;"NUT2_SRC017;NUT2_SRC014"
+NUT2_T032;Educación sin gluten segura;Explicar gluten, contaminación cruzada y alternativas si hay celiaquía diagnosticada.;alto;dieta_especial;NUT2_SRC018
+NUT2_T033;Alimentación consciente;Observar hambre, saciedad, velocidad, emoción y satisfacción sin juicio.;bajo;conductual;NUT2_SRC014
+NUT2_T034;Registro de hambre-saciedad-emoción;Anotar hambre 0-10, emoción, contexto y respuesta.;bajo;conductual;NUT2_SRC014
+NUT2_T035;Flexibilidad alimentaria;Reducir pensamiento todo/nada e incluir elecciones disfrutables dentro del plan.;bajo;conductual;"NUT2_SRC014;NUT2_SRC012"
+NUT2_T036;Plan de comidas emocionales;Diferenciar hambre física/emocional y crear alternativas de regulación.;medio;conductual;NUT2_SRC014
+NUT2_T037;Cribado de TCA y derivación;Detectar señales de trastorno alimentario o riesgo y derivar.;alto;seguridad;NUT2_SRC014
+NUT2_T038;Plan de hidratación;Definir meta de agua y estrategias según clima, actividad y preferencias.;bajo;hábitos;NUT2_SRC011
+NUT2_T039;Reducción de alcohol;Valorar frecuencia, contexto, objetivos y alternativas.;medio;hábitos;"NUT2_SRC001;NUT2_SRC011"
+NUT2_T040;Gestión de cafeína;Ajustar cantidad y horario para sueño, ansiedad o rendimiento.;bajo;hábitos;NUT2_SRC014
+NUT2_T041;Plan vegetariano/vegano equilibrado;Asegurar proteína, B12, hierro, calcio, omega-3 y variedad.;medio;dieta_especial;"NUT2_SRC014;NUT2_SRC004"
+NUT2_T042;Adaptación cultural y preferencias;Diseñar pautas respetando cultura, religión, economía, gustos y disponibilidad.;bajo;dieta_especial;"NUT2_SRC010;NUT2_SRC004"
+NUT2_T043;Nutrición en menopausia;Trabajar proteína, fibra, calcio, salud cardiovascular y composición corporal.;medio;etapa_vital;"NUT2_SRC013;NUT2_SRC014"
+NUT2_T044;Nutrición en mayores;Priorizar proteína, energía, hidratación, textura y prevención de riesgo nutricional.;alto;etapa_vital;NUT2_SRC015
+NUT2_T045;Nutrición embarazo/posparto coordinada;Apoyo general y derivación/coordinación sanitaria en etapa perinatal.;alto;etapa_vital;NUT2_SRC014
+NUT2_T046;Suplementación segura;Evaluar necesidad, evidencia, dosis, interacciones y derivación si procede.;medio;suplementación;"NUT2_SRC016;NUT2_SRC014"
+NUT2_T047;Creatina educativa;Explicar expectativas, uso general, seguridad y contraindicaciones/derivación.;medio;suplementación;NUT2_SRC016
+NUT2_T048;Proteína en polvo como herramienta;Usar suplemento proteico solo como recurso práctico dentro de dieta.;bajo;suplementación;NUT2_SRC016
+NUT2_T049;Prevención de recaídas nutricionales;Planificar viajes, eventos, estrés y retorno tras desvíos.;bajo;hábitos;NUT2_SRC012
+NUT2_T050;Entrevista motivacional nutricional;Explorar ambivalencia, autonomía, barreras y pequeños compromisos.;bajo;conductual;NUT2_SRC004
+NUT2_T051;Diseño de entorno alimentario;Modificar disponibilidad, compra, cocina y señales del entorno.;bajo;hábitos;"NUT2_SRC012;NUT2_SRC010"
+NUT2_T052;Seguimiento de adherencia;Medir cumplimiento de hábitos, barreras y ajustes sin culpabilizar.;bajo;seguimiento;NUT2_SRC004
+NUT2_T053;Educación sobre expectativas realistas;Explicar ritmos, fluctuaciones, retención, ciclo, estrés y margen de error.;bajo;educativa;NUT2_SRC012
+NUT2_T054;Plan de snacks saciantes;Diseñar opciones de merienda/picoteo con proteína/fibra/volumen.;bajo;planificación;"NUT2_SRC010;NUT2_SRC014"
+NUT2_T055;Organización para turnos laborales;Adaptar comidas, snacks, cafeína e hidratación a turnos.;medio;planificación;NUT2_SRC014
+NUT2_T056;Señales de derivación nutricional/médica;Identificar pérdida involuntaria, síntomas, analíticas alteradas, TCA, embarazo o enfermedad.;alto;seguridad;"NUT2_SRC015;NUT2_SRC014"

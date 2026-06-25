@@ -1,10 +1,30 @@
 let currentStartDate = getMonday(new Date());
 let currentMonthDate = new Date();
-let currentCalendarView = (typeof INITIAL_CALENDAR_VIEW !== 'undefined' && INITIAL_CALENDAR_VIEW === 'week') ? 'week' : 'month';
+function normalizeInitialDashboardView(value) {
+    const view = ['week', 'month', 'patients', 'upcoming'].includes(value) ? value : 'month';
+    if (IS_ADMIN && !supportsDashboardInlineViews() && (view === 'patients' || view === 'upcoming')) {
+        return defaultAgendaCalendarView();
+    }
+    return IS_ADMIN ? view : 'month';
+}
+
+function defaultAgendaCalendarView() {
+    return (typeof INITIAL_CALENDAR_VIEW !== 'undefined' && INITIAL_CALENDAR_VIEW === 'week') ? 'week' : 'month';
+}
+
+function supportsDashboardInlineViews() {
+    return typeof window !== 'undefined' && window.matchMedia('(min-width: 1200px)').matches;
+}
+
+let currentCalendarView = normalizeInitialDashboardView(typeof INITIAL_CALENDAR_VIEW !== 'undefined' ? INITIAL_CALENDAR_VIEW : 'month');
 let currentMonthData = null;
 let selectedMonthDay = null;
 let selectedMonthDayAnimationClass = '';
 let calendarInitialAnimationPending = true;
+let DASHBOARD_PATIENTS = [];
+let DASHBOARD_UPCOMING_APPOINTMENTS = [];
+let dashboardPatientsLoaded = false;
+let dashboardUpcomingLoaded = false;
 let PAYMENT_SETTINGS = {
     online_payment_enabled: 0,
     appointment_price: '70.00',
@@ -25,6 +45,7 @@ let PAYMENT_SETTINGS = {
     display_duration_offset_minutes: 5,
     online_booking_enabled: 1,
     patient_tasks_visible_default: 0,
+    work_plan_task_status_enabled: 1,
     email_provider: 'phpmailer',
     smtp_from_email: '',
     google_connected_email: '',
@@ -33,6 +54,14 @@ let PAYMENT_SETTINGS = {
     create_compensation_bonus_on_paid_cancel: 1,
     allow_patient_transfer: 0
 };
+
+function workPlanTaskStatusEnabled() {
+    const value = PAYMENT_SETTINGS.work_plan_task_status_enabled;
+    if (value === undefined || value === null || value === '') {
+        return true;
+    }
+    return parseInt(value, 10) === 1;
+}
 let APP_SECTOR_TEXTS = (typeof SECTOR_TEXTS !== 'undefined' && SECTOR_TEXTS) ? SECTOR_TEXTS : {};
 let APP_SECTOR_TEXT_OPTIONS = (typeof SECTOR_TEXT_OPTIONS !== 'undefined' && Array.isArray(SECTOR_TEXT_OPTIONS)) ? SECTOR_TEXT_OPTIONS : [];
 let APP_DASHBOARD_CONFIG = (typeof DASHBOARD_CONFIG !== 'undefined' && DASHBOARD_CONFIG) ? DASHBOARD_CONFIG : { features: {} };
@@ -40,6 +69,14 @@ let APP_PLAN_CONFIG = (typeof PLAN_CONFIG !== 'undefined' && PLAN_CONFIG) ? PLAN
 let APP_KNOWLEDGE_BASE_ENABLED = typeof KNOWLEDGE_BASE_ENABLED !== 'undefined' ? Boolean(KNOWLEDGE_BASE_ENABLED) : false;
 let APP_KNOWLEDGE_BASE_HAS_SECTOR_DATA = APP_KNOWLEDGE_BASE_ENABLED;
 let APP_CURRENT_SECTOR_KEY = (typeof CURRENT_SECTOR_KEY !== 'undefined' && CURRENT_SECTOR_KEY) ? String(CURRENT_SECTOR_KEY).toLowerCase() : '';
+let KNOWLEDGE_SECTOR_OPTIONS = {
+    loaded: false,
+    enabled: false,
+    multi_sector_enabled: false,
+    main_sector: APP_CURRENT_SECTOR_KEY,
+    related_sectors: [],
+    sectors: []
+};
 let APP_BODY_MAP_ENABLED = typeof BODY_MAP_ENABLED !== 'undefined' ? Boolean(BODY_MAP_ENABLED) : false;
 let LOADED_DASHBOARD_CONFIG_MODE = (typeof DASHBOARD_CONFIG_MODE !== 'undefined' && DASHBOARD_CONFIG_MODE) ? DASHBOARD_CONFIG_MODE : 'simple';
 let APPOINTMENT_SERVICES = [];
@@ -100,6 +137,10 @@ let quickAppointmentsSummaryLoading = false;
 let quickAppointmentsSummaryRequest = null;
 let quickAppointmentsSummaryRendered = false;
 let patientPortalSummaryLoading = false;
+let bookingPatientsLoaded = false;
+let bookingPatientsLoading = false;
+let bookingPatientsRequest = null;
+let bookingContextLoading = false;
 const BODY_MAP_SECTORS = ['fitness', 'fisioterapia', 'quiropractica', 'osteopatia'];
 let BODY_MUSCLE_CHART = null;
 let BODY_MUSCLE_VIEW = 'FRONT';
@@ -212,17 +253,20 @@ function applyPlanFeatureVisibility() {
     const uiCustomization = planFeatureEnabled('ui.customization', false);
     const effectiveDuration = appFeatureEnabled('appointments.effectiveDuration', false);
 
-    setFeatureVisible('#btn-generate-invite, #btn-mobile-generate-invite', invitations);
-    setFeatureVisible('#btn-admin-bonuses, #btn-mobile-admin-bonuses, #btn-buy-bonus, #btn-my-bonuses', bonuses);
+    setFeatureVisible('#btn-generate-invite, #btn-mobile-generate-invite, #btn-sidebar-generate-invite', invitations);
+    setFeatureVisible('#btn-admin-bonuses, #btn-mobile-admin-bonuses, #btn-sidebar-admin-bonuses, #btn-buy-bonus, #btn-my-bonuses', bonuses);
     $('#btn-mobile-buy-bonus, #btn-mobile-my-bonuses').closest('li').toggleClass('d-none', !bonuses);
     $('#patient-bonuses-tab').closest('.nav-item').toggleClass('d-none', !bonuses);
     $('#patient-bonuses-panel').toggleClass('d-none', !bonuses);
 
-    setFeatureVisible('#btn-admin-stats, #btn-mobile-admin-stats', reports);
+    setFeatureVisible('#btn-admin-stats, #btn-mobile-admin-stats, #btn-sidebar-admin-stats', reports);
+    $('#patient-reports-tab').closest('.nav-item').toggleClass('d-none', !reports);
+    $('#patient-reports-panel').toggleClass('d-none', !reports);
     $('#upcoming-planning-tab').closest('.nav-item').toggleClass('d-none', !upcomingPlanning);
     $('#upcoming-planning-panel').toggleClass('d-none', !upcomingPlanning);
     setFeatureVisible('#btn-patient-portal-tasks, #btn-mobile-patient-portal-tasks', patientPortalPlan && tasksPlan);
     setFeatureVisible('#btn-patient-portal-documents, #btn-mobile-patient-portal-documents', patientPortalPlan);
+    setFeatureVisible('#btn-patient-portal-reports, #btn-mobile-patient-portal-reports', patientPortalPlan && reports);
     $('#patient-work-plan-tab').closest('.nav-item').toggleClass('d-none', !tasks);
     $('#patient-work-plan-panel').toggleClass('d-none', !tasks);
     $('#appointment-session-tab').closest('.nav-item').toggleClass('d-none', !tasks);
@@ -270,6 +314,7 @@ function applyPlanFeatureVisibility() {
     ensureVisibleSettingsTab();
     showFallbackTabIfHidden('#patient-work-plan-tab', '#patient-data-tab');
     showFallbackTabIfHidden('#patient-bonuses-tab', '#patient-data-tab');
+    showFallbackTabIfHidden('#patient-reports-tab', '#patient-data-tab');
     showFallbackTabIfHidden('#appointment-session-tab', '#appointment-detail-tab');
     showFallbackTabIfHidden('#upcoming-planning-tab', '#upcoming-list-tab');
     applyKnowledgeBaseVisibility();
@@ -314,6 +359,24 @@ function formatDisplayDate(dateStr) {
     return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : dateStr;
 }
 
+function formatDisplayDateOnly(dateStr) {
+    const raw = String(dateStr || '').trim();
+    if (!raw) {
+        return '';
+    }
+    return formatDisplayDate(raw.split(/[T\s]/)[0]);
+}
+
+function formatDisplayDateWithWeekday(dateStr) {
+    const label = formatDisplayDate(dateStr);
+    const date = new Date(`${dateStr}T00:00:00`);
+    if (Number.isNaN(date.getTime())) {
+        return label;
+    }
+    const weekdays = ['domingo', 'lunes', 'martes', 'mi&eacute;rcoles', 'jueves', 'viernes', 's&aacute;bado'];
+    return `${label} (${weekdays[date.getDay()]})`;
+}
+
 function calculateAgeFromDate(dateStr) {
     if (!dateStr) return '';
     const birth = new Date(`${dateStr}T00:00:00`);
@@ -332,12 +395,165 @@ function updatePatientAgeDisplay() {
     $('#patient-editor-age').text(age ? `${age} años` : '-');
 }
 
+function patientMetricNumber(selector) {
+    const value = String($(selector).val() || '').replace(',', '.').trim();
+    if (!value || Number.isNaN(Number(value))) return 0;
+    return Number(value);
+}
+
+function calculatePatientBmi() {
+    const weight = patientMetricNumber('#patient-editor-weight');
+    const heightCm = patientMetricNumber('#patient-editor-height');
+    if (weight <= 0 || heightCm <= 0) return 0;
+    const heightM = heightCm / 100;
+    return weight / (heightM * heightM);
+}
+
+function updatePatientBmiDisplay() {
+    const bmi = calculatePatientBmi();
+    updateBmiIndicator('#patient-editor-bmi', bmi);
+}
+
+function calculateBmiFromValues(weight, heightCm) {
+    weight = Number(weight || 0);
+    heightCm = Number(heightCm || 0);
+    if (weight <= 0 || heightCm <= 0) return 0;
+    const heightM = heightCm / 100;
+    return weight / (heightM * heightM);
+}
+
+function updatePatientEvolutionBmiDisplay() {
+    const bmi = calculateBmiFromValues(
+        patientMetricNumber('#patient-evolution-weight'),
+        patientMetricNumber('#patient-evolution-height')
+    );
+    updateBmiIndicator('#patient-evolution-bmi', bmi);
+}
+
+function updateBmiIndicator(selector, bmi) {
+    const $indicator = $(selector);
+    if (!$indicator.length) return;
+    const $value = $indicator.find('.bmi-indicator-value');
+    const $label = $indicator.find('.bmi-indicator-label');
+    const $fill = $indicator.find('.bmi-indicator-fill');
+    $indicator.removeClass('is-low is-healthy is-high');
+    if (!bmi || bmi <= 0 || Number.isNaN(bmi)) {
+        $value.text('-');
+        $label.text('Sin datos').attr('class', 'badge text-bg-light bmi-indicator-label');
+        $fill.css('width', '0%');
+        return;
+    }
+
+    let state = 'healthy';
+    let label = 'Saludable';
+    let badgeClass = 'text-bg-success';
+    if (bmi < 18.5) {
+        state = 'low';
+        label = 'Bajo';
+        badgeClass = 'text-bg-warning';
+    } else if (bmi >= 25) {
+        state = 'high';
+        label = 'Alto';
+        badgeClass = 'text-bg-danger';
+    }
+    const percentage = Math.max(4, Math.min(100, ((bmi - 12) / 28) * 100));
+    $indicator.addClass(`is-${state}`);
+    $value.text(bmi.toFixed(1));
+    $label.text(label).attr('class', `badge ${badgeClass} bmi-indicator-label`);
+    $fill.css('width', `${percentage}%`);
+}
+
+function calculatePatientBodyFat() {
+    const bmi = calculatePatientBmi();
+    const birthDate = $('#patient-editor-birth-date').val() || '';
+    const age = parseInt(calculateAgeFromDate(birthDate) || '0', 10);
+    const sex = $('#patient-editor-physical-sex').val();
+    const skinfoldBodyFat = calculatePatientBodyFatFromSkinfolds(age, sex);
+    if (skinfoldBodyFat > 0) {
+        const clampedSkinfold = Math.max(0, Math.min(80, skinfoldBodyFat));
+        $('#patient-editor-body-fat').val(clampedSkinfold.toFixed(1));
+        $('#patient-editor-body-fat-note').text(sex === 'male'
+            ? 'Estimacion orientativa calculada con Jackson-Pollock 3 pliegues: pectoral, abdominal y muslo.'
+            : 'Estimacion orientativa calculada con Jackson-Pollock 3 pliegues: triceps, suprailiaco y muslo.');
+        return;
+    }
+    if (bmi <= 0 || age <= 0 || !['male', 'female'].includes(sex)) {
+        const missing = [];
+        if (bmi <= 0) missing.push('peso y altura');
+        if (age <= 0) missing.push('fecha de nacimiento valida');
+        if (!['male', 'female'].includes(sex)) missing.push('sexo biologico');
+        $('#patient-editor-body-fat-note').text(`Para calcularlo faltan: ${missing.join(', ')}.`);
+        return;
+    }
+    const sexFactor = sex === 'male' ? 1 : 0;
+    const bodyFat = (1.2 * bmi) + (0.23 * age) - (10.8 * sexFactor) - 5.4;
+    const clamped = Math.max(0, Math.min(80, bodyFat));
+    $('#patient-editor-body-fat').val(clamped.toFixed(1));
+    $('#patient-editor-body-fat-note').text('Estimacion orientativa calculada con formula Deurenberg usando IMC, edad y sexo biologico.');
+}
+
+function calculatePatientBodyFatFromSkinfolds(age, sex) {
+    if (age <= 0 || !['male', 'female'].includes(sex)) return 0;
+    const triceps = patientMetricNumber('#patient-editor-skinfold-triceps');
+    const suprailiac = patientMetricNumber('#patient-editor-skinfold-suprailiac');
+    const chest = patientMetricNumber('#patient-editor-skinfold-chest');
+    const abdominal = patientMetricNumber('#patient-editor-skinfold-abdominal');
+    const thigh = patientMetricNumber('#patient-editor-skinfold-thigh');
+    let sum = 0;
+    let density = 0;
+    if (sex === 'male' && chest > 0 && abdominal > 0 && thigh > 0) {
+        sum = chest + abdominal + thigh;
+        density = 1.10938 - (0.0008267 * sum) + (0.0000016 * sum * sum) - (0.0002574 * age);
+    } else if (sex === 'female' && triceps > 0 && suprailiac > 0 && thigh > 0) {
+        sum = triceps + suprailiac + thigh;
+        density = 1.0994921 - (0.0009929 * sum) + (0.0000023 * sum * sum) - (0.0001392 * age);
+    }
+    if (density <= 0) return 0;
+    return (495 / density) - 450;
+}
+
 function renderWeekInfo() {
     updateCalendarNavigationLabels();
-    if (currentCalendarView === 'month') {
-        return loadMonthCalendar(formatMonthStart(currentMonthDate));
+    if (IS_ADMIN && !isCalendarDashboardView()) {
+        if (!quickAppointmentsSummaryRendered && !quickAppointmentsSummaryLoading) {
+            loadQuickAppointmentsSummary(true);
+        }
+        if (currentCalendarView === 'patients') {
+            return renderDashboardPatientsView();
+        }
+        if (currentCalendarView === 'upcoming') {
+            return renderDashboardUpcomingView();
+        }
     }
-    return loadCalendar(formatDate(currentStartDate));
+    const quickPromise = IS_ADMIN
+        ? loadQuickAppointmentsSummary(!quickAppointmentsSummaryRendered)
+        : $.Deferred().resolve().promise();
+
+    if (currentCalendarView === 'month') {
+        const monthStr = formatMonthStart(currentMonthDate);
+        $('#calendar-container').html('<div class="text-center text-muted py-5"><div class="spinner-border text-secondary" role="status"></div><br>Cargando mes...</div>');
+        const calendarPromise = fetchMonthCalendar(monthStr);
+        return $.when(quickPromise, calendarPromise).done(function (_quickResult, calendarResult) {
+            const res = Array.isArray(calendarResult) ? calendarResult[0] : calendarResult;
+            applyMonthCalendarResponse(res);
+        });
+    }
+    const startDateStr = formatDate(currentStartDate);
+    $('#calendar-container').html('<div class="text-center text-muted py-5"><div class="spinner-border text-secondary" role="status"></div><br>Cargando...</div>');
+    const calendarPromise = fetchWeekCalendar(startDateStr);
+    return $.when(quickPromise, calendarPromise).done(function (_quickResult, calendarResult) {
+        const res = Array.isArray(calendarResult) ? calendarResult[0] : calendarResult;
+        applyWeekCalendarResponse(startDateStr, res);
+    });
+}
+
+function isCalendarDashboardView() {
+    return currentCalendarView === 'month' || currentCalendarView === 'week';
+}
+
+function invalidateDashboardUpcomingAppointments() {
+    dashboardUpcomingLoaded = false;
+    DASHBOARD_UPCOMING_APPOINTMENTS = [];
 }
 
 function formatMonthStart(date) {
@@ -355,8 +571,13 @@ function debounce(fn, wait = 250) {
 function updateCalendarNavigationLabels() {
     const monthMode = currentCalendarView === 'month';
     $('#btn-calendar-view-toggle').html(monthMode ? '<i class="bi bi-calendar-week"></i> Ver semana' : '<i class="bi bi-calendar3"></i> Ver mes');
-    $('#calendar-prev-label').text(monthMode ? 'Mes anterior' : 'Semana Anterior');
-    $('#calendar-next-label').text(monthMode ? 'Mes siguiente' : 'Semana Siguiente');
+    $('.btn-dashboard-view').removeClass('active btn-primary').addClass('btn-outline-primary');
+    $(`.btn-dashboard-view[data-dashboard-view="${currentCalendarView}"]`).addClass('active btn-primary').removeClass('btn-outline-primary');
+    $('.btn-dashboard-main-view').removeClass('active btn-primary');
+    const mainView = isCalendarDashboardView() ? 'agenda' : currentCalendarView;
+    $(`.btn-dashboard-main-view[data-dashboard-main-view="${mainView}"]`).addClass('active btn-primary');
+    $('.btn-dashboard-calendar-mode').removeClass('active btn-primary').addClass('btn-outline-primary');
+    $(`.btn-dashboard-calendar-mode[data-dashboard-calendar-view="${currentCalendarView}"]`).addClass('active btn-primary').removeClass('btn-outline-primary');
 }
 
 function setPatientProfessionalContext(context) {
@@ -625,55 +846,63 @@ function shouldChooseProfessionalInSlot() {
 function loadCalendar(startDateStr) {
     $('#calendar-container').html('<div class="text-center text-muted py-5"><div class="spinner-border text-secondary" role="status"></div><br>Cargando...</div>');
 
-    const quickSummaryRequest = IS_ADMIN ? loadQuickAppointmentsSummary() : $.Deferred().resolve().promise();
-    const calendarRequest = $.ajax({
+    return fetchWeekCalendar(startDateStr).done(function (res) {
+        applyWeekCalendarResponse(startDateStr, res);
+    });
+}
+
+function fetchWeekCalendar(startDateStr) {
+    return $.ajax({
         url: 'api/appointments.php?action=get_week',
         data: { start_date: startDateStr, ...selectedPatientProfessionalRequestData() },
         method: 'GET',
         dataType: 'json'
     });
+}
 
-    return $.when(calendarRequest, quickSummaryRequest).done(function (calendarResponse) {
-        const res = Array.isArray(calendarResponse) ? calendarResponse[0] : calendarResponse;
-        if (res && res.success) {
-            PAYMENT_SETTINGS = res.payment_settings || PAYMENT_SETTINGS;
-            setPatientProfessionalContext(res.professional_context || null);
-            renderPatientProfessionalChoice(res.professionals || [], res.professional_context || null, res.new_patient_booking_mode || '');
-            if (Array.isArray(res.service_options)) {
-                ACTIVE_SERVICE_OPTIONS = res.service_options;
-            }
-            togglePatientBonusActions();
-            drawCalendar(startDateStr, res.appointments, res.closed_days);
+function applyWeekCalendarResponse(startDateStr, res) {
+    if (res && res.success) {
+        PAYMENT_SETTINGS = res.payment_settings || PAYMENT_SETTINGS;
+        setPatientProfessionalContext(res.professional_context || null);
+        renderPatientProfessionalChoice(res.professionals || [], res.professional_context || null, res.new_patient_booking_mode || '');
+        if (Array.isArray(res.service_options)) {
+            ACTIVE_SERVICE_OPTIONS = res.service_options;
         }
-    });
+        togglePatientBonusActions();
+        drawCalendar(startDateStr, res.appointments, res.closed_days);
+    }
 }
 
 function loadMonthCalendar(monthStr) {
     $('#calendar-container').html('<div class="text-center text-muted py-5"><div class="spinner-border text-secondary" role="status"></div><br>Cargando mes...</div>');
 
-    const quickSummaryRequest = IS_ADMIN ? loadQuickAppointmentsSummary() : $.Deferred().resolve().promise();
-    const calendarRequest = $.ajax({
+    return fetchMonthCalendar(monthStr).done(function (res) {
+        applyMonthCalendarResponse(res);
+    });
+}
+
+function fetchMonthCalendar(monthStr) {
+    return $.ajax({
         url: 'api/appointments.php?action=get_month',
         data: { month: monthStr, ...selectedPatientProfessionalRequestData() },
         method: 'GET',
         dataType: 'json'
     });
+}
 
-    return $.when(calendarRequest, quickSummaryRequest).done(function (calendarResponse) {
-        const res = Array.isArray(calendarResponse) ? calendarResponse[0] : calendarResponse;
-        if (res && res.success) {
-            PAYMENT_SETTINGS = res.payment_settings || PAYMENT_SETTINGS;
-            setPatientProfessionalContext(res.professional_context || null);
-            renderPatientProfessionalChoice(res.professionals || [], res.professional_context || null, res.new_patient_booking_mode || '');
-            if (Array.isArray(res.service_options)) {
-                ACTIVE_SERVICE_OPTIONS = res.service_options;
-            }
-            togglePatientBonusActions();
-            currentMonthData = res;
-            selectedMonthDay = selectedMonthDay || firstAvailableMonthDay(res.month, res.appointments, res.closed_days);
-            drawMonthCalendar(res.month, res.appointments || {}, res.closed_days || {});
+function applyMonthCalendarResponse(res) {
+    if (res && res.success) {
+        PAYMENT_SETTINGS = res.payment_settings || PAYMENT_SETTINGS;
+        setPatientProfessionalContext(res.professional_context || null);
+        renderPatientProfessionalChoice(res.professionals || [], res.professional_context || null, res.new_patient_booking_mode || '');
+        if (Array.isArray(res.service_options)) {
+            ACTIVE_SERVICE_OPTIONS = res.service_options;
         }
-    });
+        togglePatientBonusActions();
+        currentMonthData = res;
+        selectedMonthDay = selectedMonthDay || firstAvailableMonthDay(res.month, res.appointments, res.closed_days);
+        drawMonthCalendar(res.month, res.appointments || {}, res.closed_days || {});
+    }
 }
 
 function consumeCalendarInitialAnimationClass() {
@@ -686,8 +915,24 @@ function consumeCalendarInitialAnimationClass() {
 
 function drawCalendar(startDateStr, appointmentsMap, closedDays) {
     const activeDays = getActiveWeekdays();
-    let html = `<div class="calendar-grid${consumeCalendarInitialAnimationClass()}" style="--calendar-days: ${activeDays.length};">`;
     let startD = new Date(startDateStr);
+    const lastActiveDay = activeDays.length ? Math.max(...activeDays) : 5;
+    const endD = new Date(startD);
+    endD.setDate(startD.getDate() + (lastActiveDay - 1));
+    const weekTitle = `${formatCompactDate(startD)} - ${formatCompactDate(endD)}`;
+    let html = `
+        ${dashboardCalendarModeSwitcherHtml()}
+        <div class="week-calendar-nav${consumeCalendarInitialAnimationClass()}">
+            <button class="btn btn-light calendar-nav-icon" id="btn-prev-week" type="button" aria-label="Semana anterior" title="Semana anterior">
+                <i class="bi bi-chevron-left"></i>
+            </button>
+            <div class="week-calendar-title">${escapeHtml(weekTitle)}</div>
+            <button class="btn btn-light calendar-nav-icon" id="btn-next-week" type="button" aria-label="Semana siguiente" title="Semana siguiente">
+                <i class="bi bi-chevron-right"></i>
+            </button>
+        </div>
+        <div class="calendar-grid" style="--calendar-days: ${activeDays.length};">
+    `;
 
     const daysArr = {
         1: 'Lunes',
@@ -729,6 +974,28 @@ function drawCalendar(startDateStr, appointmentsMap, closedDays) {
     $('#calendar-container').html(html);
 }
 
+function formatCompactDate(date) {
+    return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
+}
+
+function dashboardCalendarModeSwitcherHtml() {
+    if (!IS_ADMIN) {
+        return '';
+    }
+    return `
+        <div class="dashboard-calendar-mode-switcher mb-3">
+            <div class="btn-group" role="group" aria-label="Modo de agenda">
+                <button class="btn btn-outline-primary btn-dashboard-calendar-mode${currentCalendarView === 'month' ? ' active btn-primary' : ''}" type="button" data-dashboard-calendar-view="month">
+                    <i class="bi bi-calendar3"></i> Mensual
+                </button>
+                <button class="btn btn-outline-primary btn-dashboard-calendar-mode${currentCalendarView === 'week' ? ' active btn-primary' : ''}" type="button" data-dashboard-calendar-view="week">
+                    <i class="bi bi-calendar-week"></i> Semanal
+                </button>
+            </div>
+        </div>
+    `;
+}
+
 function drawMonthCalendar(monthStr, appointmentsMap, closedDays) {
     const monthDate = new Date(`${monthStr}T00:00:00`);
     const year = monthDate.getFullYear();
@@ -739,9 +1006,18 @@ function drawMonthCalendar(monthStr, appointmentsMap, closedDays) {
     firstGrid.setDate(first.getDate() - ((first.getDay() + 6) % 7));
 
     let html = `
+        ${dashboardCalendarModeSwitcherHtml()}
         <div class="month-calendar-layout${consumeCalendarInitialAnimationClass()}">
             <div class="month-calendar-panel">
-                <div class="month-calendar-title">${escapeHtml(monthName)}</div>
+                <div class="month-calendar-header">
+                    <button class="btn btn-light calendar-nav-icon" id="btn-prev-week" type="button" aria-label="Mes anterior" title="Mes anterior">
+                        <i class="bi bi-chevron-left"></i>
+                    </button>
+                    <div class="month-calendar-title">${escapeHtml(monthName)}</div>
+                    <button class="btn btn-light calendar-nav-icon" id="btn-next-week" type="button" aria-label="Mes siguiente" title="Mes siguiente">
+                        <i class="bi bi-chevron-right"></i>
+                    </button>
+                </div>
                 <div class="month-weekdays">
                     <span>Lun</span><span>Mar</span><span>Mi&eacute;</span><span>Jue</span><span>Vie</span><span>S&aacute;b</span><span>Dom</span>
                 </div>
@@ -868,7 +1144,7 @@ function renderSelectedMonthDayPanel(appointmentsMap, closedDays) {
     }
     const status = monthDayStatus(selectedMonthDay, appointmentsMap, closedDays, true);
     const headerText = status.available ? `${status.freeSlots || 0} huecos libres` : 'D&iacute;a no disponible';
-    let html = `<div class="month-day-panel-header"><h5>${formatDisplayDate(selectedMonthDay)}</h5><span>${headerText}</span></div>`;
+    let html = `<div class="month-day-panel-header"><h5>${formatDisplayDateWithWeekday(selectedMonthDay)}</h5><span>${headerText}</span></div>`;
     if (!status.available) {
         const reason = closedDays[selectedMonthDay] && IS_ADMIN ? closedDays[selectedMonthDay] : (status.label || 'No disponible');
         return html + `<div class="alert alert-secondary text-center py-4 mb-0"><strong>D&iacute;a no disponible</strong><br><span>${escapeHtml(reason)}</span></div>`;
@@ -1201,13 +1477,14 @@ function quickAppointmentCardHtml(app, title, type) {
     const consultation = quickAppointmentConsultationBadge(app.consultation_type);
     const patientName = app.patient_name || sectorLabel('patient', 'titleSingular', 'Paciente');
     const mainTitle = `${dateTimeText} con ${patientName}`;
+    const openButtonLabel = type === 'current' ? 'Abrir sesi&oacute;n' : 'Preparar sesi&oacute;n';
     return `
         <div class="col-12 col-lg-6">
             <article class="quick-appointment-card quick-appointment-${type}">
                 <div class="quick-appointment-topline">
                     <span>${escapeHtml(title)}</span>
                     <button type="button" class="btn btn-primary btn-sm" onclick="openAppointmentPaymentModal(${parseInt(app.id, 10)})">
-                        <i class="bi bi-box-arrow-up-right"></i> Abrir
+                        <i class="bi bi-box-arrow-up-right"></i> ${openButtonLabel}
                     </button>
                 </div>
                 <div class="quick-appointment-body">
@@ -1417,7 +1694,9 @@ function loadPatientPortalSummary() {
             CURRENT_PATIENT_PORTAL = {
                 appointments: Array.isArray(res.appointments) ? res.appointments : [],
                 tasks: Array.isArray(res.tasks) ? res.tasks : [],
-                documents: Array.isArray(res.documents) ? res.documents : []
+                documents: Array.isArray(res.documents) ? res.documents : [],
+                reports: Array.isArray(res.reports) ? res.reports : [],
+                composition: res.composition || { enabled: false, current: null, history: [] }
             };
             if (res.payment_settings) {
                 PAYMENT_SETTINGS = { ...PAYMENT_SETTINGS, ...res.payment_settings };
@@ -1494,9 +1773,13 @@ function renderPatientPortalSummary(data) {
     const appointments = Array.isArray(data.appointments) ? data.appointments : [];
     const tasks = Array.isArray(data.tasks) ? data.tasks : [];
     const documents = Array.isArray(data.documents) ? data.documents : [];
+    const reports = Array.isArray(data.reports) ? data.reports : [];
+    const composition = data.composition || { enabled: false, current: null, history: [] };
     $('#patient-portal-appointments').html(renderPatientPortalAppointments(appointments));
     $('#patient-portal-tasks').html(renderPatientPortalTasks(tasks));
     $('#patient-portal-documents').html(renderPatientPortalDocuments(documents));
+    $('#patient-portal-reports').html(renderPatientPortalReports(reports));
+    renderPatientPortalComposition(composition);
 }
 
 function openPatientPortalAppointmentsModal() {
@@ -1517,6 +1800,20 @@ function openPatientPortalDocumentsModal() {
     renderPatientPortalSummary(CURRENT_PATIENT_PORTAL);
     if (patientPortalDocumentsModal) {
         patientPortalDocumentsModal.show();
+    }
+}
+
+function openPatientPortalReportsModal() {
+    renderPatientPortalSummary(CURRENT_PATIENT_PORTAL);
+    if (patientPortalReportsModal) {
+        patientPortalReportsModal.show();
+    }
+}
+
+function openPatientPortalCompositionModal() {
+    renderPatientPortalSummary(CURRENT_PATIENT_PORTAL);
+    if (patientPortalCompositionModal) {
+        patientPortalCompositionModal.show();
     }
 }
 
@@ -1585,20 +1882,33 @@ function renderPatientPortalTasks(tasks) {
     if (!tasks.length) {
         return '<div class="text-muted small">No tienes tareas visibles en el portal.</div>';
     }
+    const statusEnabled = workPlanTaskStatusEnabled();
     return tasks.slice(0, 8).map(task => {
         const completed = task.status === 'completed';
         const priority = workPlanPriorityLabel(task.priority);
+        const isFitnessExercise = Boolean(task.fitness_exercise_id);
+        const statusBadge = statusEnabled
+            ? `<span class="badge ${completed ? 'text-bg-success' : 'text-bg-warning'}">${completed ? 'Completada' : 'Pendiente'}</span>`
+            : '';
         return `
             <div class="patient-portal-item ${completed ? 'is-completed' : ''}">
-                <div>
+                <div class="patient-portal-item-main">
                     <div class="d-flex gap-1 flex-wrap mb-1">
                         <span class="badge ${priority.className}">${priority.label}</span>
-                        <span class="badge ${completed ? 'text-bg-success' : 'text-bg-warning'}">${completed ? 'Completada' : 'Pendiente'}</span>
+                        ${statusBadge}
+                        ${isFitnessExercise ? '<span class="badge text-bg-info">Ejercicio</span>' : ''}
                     </div>
                     <strong>${escapeHtml(task.title || '')}</strong>
                     ${task.description ? `<div class="text-muted small">${escapeHtml(task.description)}</div>` : ''}
-                    ${completed && task.completed_at ? `<div class="text-muted small">Completada el ${escapeHtml(formatDateTimeLabel(task.completed_at))}</div>` : ''}
+                    ${statusEnabled && completed && task.completed_at ? `<div class="text-muted small">Completada el ${escapeHtml(formatDateTimeLabel(task.completed_at))}</div>` : ''}
                 </div>
+                ${isFitnessExercise ? `
+                    <div class="patient-portal-item-actions">
+                        <button type="button" class="btn btn-outline-primary btn-sm btn-patient-portal-exercise-detail" data-task-id="${parseInt(task.id || 0, 10)}">
+                            <i class="bi bi-info-circle"></i> Detalle
+                        </button>
+                    </div>
+                ` : ''}
             </div>
         `;
     }).join('');
@@ -1646,6 +1956,400 @@ function renderPatientPortalDocuments(documents) {
             </div>
         `;
     }).join('');
+}
+
+function renderPatientPortalReports(reports) {
+    const rows = Array.isArray(reports) ? reports : [];
+    if (!rows.length) {
+        return '<div class="text-muted small">No tienes informes disponibles en el portal.</div>';
+    }
+    return rows.slice(0, 20).map(report => {
+        const paymentBadge = report.payment_status === 'paid'
+            ? '<span class="badge text-bg-success">Pagado</span>'
+            : (report.payment_status === 'pending'
+                ? '<span class="badge text-bg-warning">Pendiente de pago</span>'
+                : '<span class="badge text-bg-light">Sin pago</span>');
+        const price = parseFloat(report.price || 0);
+        const priceText = report.payment_mode === 'paid' && price > 0 ? `${price.toFixed(2)} EUR` : patientReportPaymentLabel(report);
+        const canDownload = Boolean(report.url) && (report.payment_mode !== 'paid' || report.payment_status === 'paid');
+        const pendingPaid = report.payment_mode === 'paid' && report.payment_status !== 'paid';
+        return `
+            <div class="patient-portal-item">
+                <div class="patient-portal-item-main">
+                    <div class="d-flex gap-1 flex-wrap mb-1">${paymentBadge}</div>
+                    <strong>${escapeHtml(report.title || 'Informe')}</strong>
+                    <div class="text-muted small">${escapeHtml(patientReportTypeLabel(report.report_key))}${report.generated_at ? ` · ${escapeHtml(formatDateTimeLabel(report.generated_at))}` : ''}</div>
+                    <div class="text-muted small">${escapeHtml(priceText)}</div>
+                    ${pendingPaid ? '<div class="text-muted small">Este informe estará disponible cuando el pago figure como completado.</div>' : ''}
+                </div>
+                <div class="patient-portal-item-actions">
+                    ${canDownload ? `<a class="btn btn-outline-primary btn-sm" href="${escapeHtml(report.url)}" target="_blank" rel="noopener"><i class="bi bi-download"></i> Descargar</a>` : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function patientPortalMetricGroups(data = {}) {
+    return [
+        {
+            title: 'Datos base',
+            items: [
+                ['Peso', data.weight_kg, 'kg'],
+                ['Altura', data.height_cm, 'cm'],
+                ['Grasa corporal', data.body_fat_percentage, '%']
+            ]
+        },
+        {
+            title: 'Medidas corporales',
+            items: [
+                ['Cintura', data.waist_cm, 'cm'],
+                ['Cadera', data.hip_cm, 'cm'],
+                ['Pecho / torax', data.chest_cm, 'cm'],
+                ['Muslo', data.thigh_cm, 'cm'],
+                ['Biceps', data.biceps_cm, 'cm'],
+                ['Gemelo', data.calf_cm, 'cm']
+            ]
+        },
+        {
+            title: 'Pliegues cutaneos',
+            items: [
+                ['Triceps', data.skinfold_triceps_mm, 'mm'],
+                ['Subescapular', data.skinfold_subscapular_mm, 'mm'],
+                ['Suprailiaco', data.skinfold_suprailiac_mm, 'mm'],
+                ['Abdominal', data.skinfold_abdominal_mm, 'mm'],
+                ['Pectoral', data.skinfold_chest_mm, 'mm'],
+                ['Muslo', data.skinfold_thigh_mm, 'mm']
+            ]
+        }
+    ];
+}
+
+function physicalEvolutionChartGroups() {
+    return {
+        body: [
+            { key: 'weight_kg', label: 'Peso', unit: 'kg', color: appPrimaryColor() },
+            { key: 'bmi', label: 'IMC', unit: '', color: '#198754' },
+            { key: 'body_fat_percentage', label: 'Grasa corporal', unit: '%', color: '#dc3545' }
+        ],
+        metrics: [
+            { key: 'waist_cm', label: 'Cintura', unit: 'cm' },
+            { key: 'hip_cm', label: 'Cadera', unit: 'cm' },
+            { key: 'chest_cm', label: 'Pecho / torax', unit: 'cm' },
+            { key: 'thigh_cm', label: 'Muslo', unit: 'cm' },
+            { key: 'biceps_cm', label: 'Biceps', unit: 'cm' },
+            { key: 'calf_cm', label: 'Gemelo', unit: 'cm' }
+        ],
+        skinfolds: [
+            { key: 'skinfold_triceps_mm', label: 'Pliegue triceps', unit: 'mm' },
+            { key: 'skinfold_subscapular_mm', label: 'Pliegue subescapular', unit: 'mm' },
+            { key: 'skinfold_suprailiac_mm', label: 'Pliegue suprailiaco', unit: 'mm' },
+            { key: 'skinfold_abdominal_mm', label: 'Pliegue abdominal', unit: 'mm' },
+            { key: 'skinfold_chest_mm', label: 'Pliegue pectoral', unit: 'mm' },
+            { key: 'skinfold_thigh_mm', label: 'Pliegue muslo', unit: 'mm' }
+        ]
+    };
+}
+
+function destroyPhysicalEvolutionCharts(chartStore) {
+    if (!Array.isArray(chartStore)) return;
+    chartStore.forEach(chart => {
+        if (chart && typeof chart.destroy === 'function') {
+            chart.destroy();
+        }
+    });
+    chartStore.length = 0;
+}
+
+function physicalEvolutionNumber(value) {
+    if (value === null || value === undefined) return null;
+    const raw = String(value).replace(',', '.').trim();
+    if (!raw) return null;
+    const number = Number(raw);
+    return Number.isNaN(number) ? null : number;
+}
+
+function physicalEvolutionDate(row = {}) {
+    return row.note_date || row.date || row.updated_at || '';
+}
+
+function physicalEvolutionMetricValue(row = {}, key = '') {
+    if (key === 'bmi') {
+        const explicit = physicalEvolutionNumber(row.bmi);
+        if (explicit !== null && explicit > 0) return explicit;
+        const calculated = calculateBmiFromValues(row.weight_kg, row.height_cm);
+        return calculated > 0 ? Number(calculated.toFixed(1)) : null;
+    }
+    return physicalEvolutionNumber(row[key]);
+}
+
+function physicalEvolutionRows(rows) {
+    return (Array.isArray(rows) ? rows : [])
+        .filter(row => physicalEvolutionDate(row))
+        .slice()
+        .sort((a, b) => String(physicalEvolutionDate(a)).localeCompare(String(physicalEvolutionDate(b))));
+}
+
+function bmiChartColor(points) {
+    const last = points.length ? points[points.length - 1].value : 0;
+    if (!last || last <= 0) return '#adb5bd';
+    if (last < 18.5) return '#f0ad00';
+    if (last >= 25) return '#dc3545';
+    return '#198754';
+}
+
+function renderPhysicalEvolutionCharts(options = {}) {
+    const selector = options.selector || '';
+    const rows = physicalEvolutionRows(options.rows || []);
+    const groupKey = options.groupKey || 'body';
+    const chartStore = options.chartStore || [];
+    const emptyText = options.emptyText || 'No hay registros suficientes para mostrar graficos.';
+    const metrics = (physicalEvolutionChartGroups()[groupKey] || physicalEvolutionChartGroups().body)
+        .map((metric, index) => ({ ...metric, color: metric.color || chartPaletteColor(index) }));
+    const $grid = $(selector);
+    if (!$grid.length) return;
+    destroyPhysicalEvolutionCharts(chartStore);
+
+    if (typeof Chart === 'undefined') {
+        $grid.html('<div class="text-center text-muted py-4">No se pudo cargar la libreria de graficos.</div>');
+        return;
+    }
+
+    const charts = metrics.map(metric => {
+        const points = rows
+            .map(row => ({
+                label: formatDisplayDate(physicalEvolutionDate(row)),
+                value: physicalEvolutionMetricValue(row, metric.key)
+            }))
+            .filter(point => point.value !== null && point.value !== undefined);
+        return { metric, points };
+    }).filter(chart => chart.points.length > 0);
+
+    if (!charts.length) {
+        $grid.html(`<div class="text-center text-muted py-4">${escapeHtml(emptyText)}</div>`);
+        return;
+    }
+
+    $grid.html(charts.map((chart, index) => `
+        <article class="patient-evolution-chart-card">
+            <div class="patient-evolution-chart-title">
+                <h6>${escapeHtml(chart.metric.label)}</h6>
+                ${chart.metric.unit ? `<span>${escapeHtml(chart.metric.unit)}</span>` : ''}
+            </div>
+            <div class="patient-evolution-chart-canvas">
+                <canvas id="${escapeHtml((options.canvasPrefix || 'patient-evolution-chart') + '-' + groupKey + '-' + index)}"></canvas>
+            </div>
+        </article>
+    `).join(''));
+
+    charts.forEach((chart, index) => {
+        const color = chart.metric.key === 'bmi' ? bmiChartColor(chart.points) : chart.metric.color;
+        const canvas = document.getElementById(`${options.canvasPrefix || 'patient-evolution-chart'}-${groupKey}-${index}`);
+        if (!canvas) return;
+        chartStore.push(new Chart(canvas, {
+            type: 'line',
+            data: {
+                labels: chart.points.map(point => point.label),
+                datasets: [{
+                    label: chart.metric.label,
+                    data: chart.points.map(point => point.value),
+                    borderColor: color,
+                    backgroundColor: hexToRgba(color, 0.14),
+                    borderWidth: 2,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    fill: true,
+                    tension: 0.28
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function (context) {
+                                const value = Number(context.parsed.y || 0);
+                                return `${chart.metric.label}: ${value.toFixed(1).replace(/\.0$/, '')}${chart.metric.unit ? ` ${chart.metric.unit}` : ''}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6 }
+                    },
+                    y: {
+                        beginAtZero: false,
+                        ticks: {
+                            callback: function (value) {
+                                const number = Number(value || 0);
+                                return `${number.toFixed(1).replace(/\.0$/, '')}${chart.metric.unit ? ` ${chart.metric.unit}` : ''}`;
+                            }
+                        }
+                    }
+                }
+            }
+        }));
+    });
+}
+
+function chartPaletteColor(index) {
+    const colors = [appPrimaryColor(), '#198754', '#fd7e14', '#0dcaf0', '#6f42c1', '#dc3545'];
+    return colors[index % colors.length];
+}
+
+function hexToRgba(color, alpha) {
+    const value = String(color || '').trim();
+    if (!value.startsWith('#')) return value;
+    const hex = value.replace('#', '');
+    const normalized = hex.length === 3
+        ? hex.split('').map(char => char + char).join('')
+        : hex;
+    if (normalized.length !== 6) return value;
+    const r = parseInt(normalized.slice(0, 2), 16);
+    const g = parseInt(normalized.slice(2, 4), 16);
+    const b = parseInt(normalized.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function renderPatientEvolutionCharts() {
+    renderPhysicalEvolutionCharts({
+        selector: '#patient-evolution-chart-grid',
+        rows: CURRENT_PATIENT_EVOLUTION_ROWS,
+        groupKey: CURRENT_PATIENT_EVOLUTION_CHART_GROUP,
+        chartStore: PATIENT_EVOLUTION_CHARTS,
+        canvasPrefix: 'patient-evolution-chart',
+        emptyText: 'Todavia no hay registros con valores para este grupo.'
+    });
+}
+
+function renderPatientPortalCompositionCharts(history) {
+    renderPhysicalEvolutionCharts({
+        selector: '#patient-portal-composition-chart-grid',
+        rows: history,
+        groupKey: CURRENT_PATIENT_PORTAL_COMPOSITION_CHART_GROUP,
+        chartStore: PATIENT_PORTAL_COMPOSITION_CHARTS,
+        canvasPrefix: 'patient-portal-composition-chart',
+        emptyText: 'Todavia no tienes registros con valores para este grupo.'
+    });
+}
+
+function renderPatientPortalComposition(composition = {}) {
+    if (!$('#patient-portal-composition-current').length) return;
+    if (!composition.enabled) {
+        $('#patient-portal-composition-current').html('<div class="text-muted small">El progreso corporal no esta disponible en este sector.</div>');
+        $('#patient-portal-composition-history').html('');
+        $('#patient-portal-composition-chart-grid').html('');
+        destroyPhysicalEvolutionCharts(PATIENT_PORTAL_COMPOSITION_CHARTS);
+        return;
+    }
+    $('#patient-portal-composition-current').html(renderPatientPortalCurrentComposition(composition.current || null));
+    $('#patient-portal-composition-history').html(renderPatientPortalCompositionHistory(Array.isArray(composition.history) ? composition.history : []));
+    renderPatientPortalCompositionCharts(Array.isArray(composition.history) ? composition.history : []);
+    const currentBmi = parseFloat(String((composition.current || {}).bmi || '').replace(',', '.'));
+    updateBmiIndicator('#patient-portal-current-bmi', currentBmi);
+    (Array.isArray(composition.history) ? composition.history : []).forEach((row, index) => {
+        const bmi = parseFloat(String(row.bmi || '').replace(',', '.'));
+        updateBmiIndicator(`#patient-portal-history-bmi-${index}`, bmi);
+    });
+}
+
+function renderPatientPortalCurrentComposition(current) {
+    if (!current || !patientPortalCompositionHasValues(current)) {
+        return '<div class="text-muted small">Todavia no tienes medidas registradas.</div>';
+    }
+    const groups = patientPortalMetricGroups(current)
+        .map(group => renderPatientPortalMetricGroup(group))
+        .filter(Boolean)
+        .join('');
+    return `
+        <div class="patient-portal-composition-current">
+            <div class="patient-portal-composition-bmi mb-3">
+                <label class="form-label mb-1">IMC</label>
+                ${renderPortalBmiIndicator('patient-portal-current-bmi')}
+            </div>
+            ${groups}
+        </div>
+    `;
+}
+
+function renderPatientPortalMetricGroup(group) {
+    const items = group.items
+        .filter(([, value]) => value !== null && value !== undefined && String(value).trim() !== '')
+        .map(([label, value, unit]) => `
+            <div class="patient-portal-metric-card">
+                <span>${escapeHtml(label)}</span>
+                <strong>${escapeHtml(formatMetricValue(value))}${unit ? ` ${escapeHtml(unit)}` : ''}</strong>
+            </div>
+        `).join('');
+    if (!items) return '';
+    return `
+        <section class="patient-portal-metric-section">
+            <h6>${escapeHtml(group.title)}</h6>
+            <div class="patient-portal-metric-grid">${items}</div>
+        </section>
+    `;
+}
+
+function renderPortalBmiIndicator(id) {
+    return `
+        <div class="bmi-indicator" id="${escapeHtml(id)}">
+            <div class="d-flex justify-content-between align-items-center gap-2">
+                <strong class="bmi-indicator-value">-</strong>
+                <span class="badge text-bg-light bmi-indicator-label">Sin datos</span>
+            </div>
+            <div class="bmi-indicator-bar" aria-hidden="true">
+                <span class="bmi-indicator-fill"></span>
+            </div>
+        </div>
+    `;
+}
+
+function patientPortalCompositionHasValues(row = {}) {
+    return patientPortalMetricGroups(row).some(group => group.items.some(([, value]) => value !== null && value !== undefined && String(value).trim() !== ''))
+        || String(row.bmi || '').trim() !== '';
+}
+
+function renderPatientPortalCompositionHistory(history) {
+    if (!history.length) {
+        return '<div class="text-muted small">Todavia no tienes registros de evolucion de medidas.</div>';
+    }
+    return `
+        <div class="patient-portal-composition-history-note small text-muted mb-3">Registros usados para calcular los graficos.</div>
+        <div class="patient-portal-composition-history">
+            ${history.map((row, index) => renderPatientPortalCompositionHistoryItem(row, index)).join('')}
+        </div>
+    `;
+}
+
+function renderPatientPortalCompositionHistoryItem(row, index) {
+    const groups = patientPortalMetricGroups(row)
+        .map(group => renderPatientPortalHistoryMetricGroup(group))
+        .filter(Boolean)
+        .join('');
+    return `
+        <article class="patient-portal-composition-history-item">
+            <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                <strong>${escapeHtml(formatDisplayDate(row.date || '') || 'Sin fecha')}</strong>
+            </div>
+            <div class="patient-portal-composition-history-bmi mb-2">
+                ${renderPortalBmiIndicator(`patient-portal-history-bmi-${index}`)}
+            </div>
+            ${groups || '<div class="text-muted small">Sin medidas registradas en este punto.</div>'}
+        </article>
+    `;
+}
+
+function renderPatientPortalHistoryMetricGroup(group) {
+    const items = group.items
+        .filter(([, value]) => value !== null && value !== undefined && String(value).trim() !== '')
+        .map(([label, value, unit]) => `<span>${escapeHtml(label)} ${escapeHtml(formatMetricValue(value))}${unit ? ` ${escapeHtml(unit)}` : ''}</span>`)
+        .join('');
+    if (!items) return '';
+    return `<div class="patient-portal-history-metrics small">${items}</div>`;
 }
 
 function runGlobalSearch(query) {
@@ -1777,7 +2481,7 @@ function getPaymentBadge(app) {
         if (app.payment_method === 'bonus') {
             return ' <small class="payment-badge paid">Bono</small>';
         }
-        return ' <small class="payment-badge paid">Pagada</small>';
+        return ' <small class="payment-badge paid">Pagado</small>';
     }
 
     if (!IS_ADMIN) {
@@ -1788,7 +2492,7 @@ function getPaymentBadge(app) {
         return ' <small class="payment-badge failed">Pago fallido</small>';
     }
 
-    return ' <small class="payment-badge pending">Pendiente</small>';
+    return ' <small class="payment-badge pending">Pendiente de pago</small>';
 }
 
 function getConsultationBadge(consultationType) {
@@ -1832,12 +2536,15 @@ let appointmentModal = new bootstrap.Modal(document.getElementById('appointmentM
 let settingsModal = document.getElementById('settingsModal') ? new bootstrap.Modal(document.getElementById('settingsModal')) : null;
 let closedDayModal = document.getElementById('closedDayModal') ? new bootstrap.Modal(document.getElementById('closedDayModal')) : null;
 let professionalEditorModal = document.getElementById('professionalEditorModal') ? new bootstrap.Modal(document.getElementById('professionalEditorModal')) : null;
+let professionalKnowledgeSectorsModal = document.getElementById('professionalKnowledgeSectorsModal') ? new bootstrap.Modal(document.getElementById('professionalKnowledgeSectorsModal')) : null;
 let professionalTransferModal = document.getElementById('professionalTransferModal') ? new bootstrap.Modal(document.getElementById('professionalTransferModal')) : null;
 let changePasswordModal = document.getElementById('changePasswordModal') ? new bootstrap.Modal(document.getElementById('changePasswordModal')) : null;
 let patientSelfDataModal = document.getElementById('patientSelfDataModal') ? new bootstrap.Modal(document.getElementById('patientSelfDataModal')) : null;
 let patientPortalAppointmentsModal = document.getElementById('patientPortalAppointmentsModal') ? new bootstrap.Modal(document.getElementById('patientPortalAppointmentsModal')) : null;
 let patientPortalTasksModal = document.getElementById('patientPortalTasksModal') ? new bootstrap.Modal(document.getElementById('patientPortalTasksModal')) : null;
 let patientPortalDocumentsModal = document.getElementById('patientPortalDocumentsModal') ? new bootstrap.Modal(document.getElementById('patientPortalDocumentsModal')) : null;
+let patientPortalReportsModal = document.getElementById('patientPortalReportsModal') ? new bootstrap.Modal(document.getElementById('patientPortalReportsModal')) : null;
+let patientPortalCompositionModal = document.getElementById('patientPortalCompositionModal') ? new bootstrap.Modal(document.getElementById('patientPortalCompositionModal')) : null;
 let globalSearchModal = document.getElementById('globalSearchModal') ? new bootstrap.Modal(document.getElementById('globalSearchModal')) : null;
 let dashboardCustomConfigModal = document.getElementById('dashboardCustomConfigModal') ? new bootstrap.Modal(document.getElementById('dashboardCustomConfigModal')) : null;
 let taskTemplateModal = document.getElementById('taskTemplateModal') ? new bootstrap.Modal(document.getElementById('taskTemplateModal')) : null;
@@ -1851,6 +2558,9 @@ bonusesModal = document.getElementById('bonusesModal') ? new bootstrap.Modal(doc
 let adminPatientsModal = document.getElementById('adminPatientsModal') ? new bootstrap.Modal(document.getElementById('adminPatientsModal')) : null;
 let patientEditorModal = document.getElementById('patientEditorModal') ? new bootstrap.Modal(document.getElementById('patientEditorModal')) : null;
 let patientDocumentModal = document.getElementById('patientDocumentModal') ? new bootstrap.Modal(document.getElementById('patientDocumentModal')) : null;
+let patientReportConfigModal = document.getElementById('patientReportConfigModal') ? new bootstrap.Modal(document.getElementById('patientReportConfigModal')) : null;
+let patientReportSuggestionsModal = document.getElementById('patientReportSuggestionsModal') ? new bootstrap.Modal(document.getElementById('patientReportSuggestionsModal')) : null;
+let patientEvolutionModal = document.getElementById('patientEvolutionModal') ? new bootstrap.Modal(document.getElementById('patientEvolutionModal')) : null;
 let workoutxExerciseModal = document.getElementById('workoutxExerciseModal') ? new bootstrap.Modal(document.getElementById('workoutxExerciseModal')) : null;
 patientWorkPlanTaskModal = document.getElementById('patientWorkPlanTaskModal') ? new bootstrap.Modal(document.getElementById('patientWorkPlanTaskModal')) : null;
 let pendingLocalProfessionalDeleteIndex = null;
@@ -1873,15 +2583,23 @@ let CURRENT_PATIENT_EVOLUTION_ID = 0;
 let CURRENT_PATIENT_FILES_ID = 0;
 let CURRENT_PATIENT_FILES_FILTER = 'all';
 let CURRENT_PATIENT_FILES_ROWS = [];
+let CURRENT_PATIENT_REPORTS_ID = 0;
+let CURRENT_PATIENT_REPORTS_ROWS = [];
 let patientFilesAlertTimer = null;
+let patientReportsAlertTimer = null;
 let CURRENT_PATIENT_WORK_PLAN_ID = 0;
 let CURRENT_PATIENT_WORK_PLAN_ROWS = [];
 let CURRENT_WORK_PLAN_FORM_CONTEXT = { source: 'patient', patientId: 0, appointmentId: 0 };
 let KNOWLEDGE_PROBLEMS = [];
 let KNOWLEDGE_PROBLEMS_LOADED = false;
 let CURRENT_KNOWLEDGE_PROBLEM_DETAIL = null;
-let CURRENT_PATIENT_PORTAL = { appointments: [], tasks: [], documents: [] };
+let CURRENT_PATIENT_PORTAL = { appointments: [], tasks: [], documents: [], reports: [], composition: { enabled: false, current: null, history: [] } };
 let CURRENT_PATIENT_PORTAL_DOCUMENTS_FILTER = 'all';
+let CURRENT_PATIENT_EVOLUTION_VIEW = 'records';
+let CURRENT_PATIENT_EVOLUTION_CHART_GROUP = 'body';
+let CURRENT_PATIENT_PORTAL_COMPOSITION_CHART_GROUP = 'body';
+let PATIENT_EVOLUTION_CHARTS = [];
+let PATIENT_PORTAL_COMPOSITION_CHARTS = [];
 let WORK_PLAN_TASK_TEMPLATES = [];
 let WORK_PLAN_TASK_TEMPLATES_LOADED = false;
 let WORK_PLAN_KNOWLEDGE_IMPORT_OPTIONS = [];
@@ -1901,6 +2619,7 @@ let CURRENT_APPOINTMENT_SESSION = {
 };
 
 function openModal(date, time, status, extraName = '', extraEmail = '', extraPhone = '') {
+    setBookingModalLoadingState(false);
     $('#modalDate').val(date);
     $('#modalTime').val(time);
     $('#modalStatus').val(status);
@@ -1925,10 +2644,11 @@ function openModal(date, time, status, extraName = '', extraEmail = '', extraPho
         if (IS_ADMIN) {
             $('#modalDesc').text(`Selecciona un ${sectorLabel('patient', 'singular', 'paciente')} para reservar el horario.`);
             $('#adminPatientSelect').removeClass('d-none');
+            if (!bookingPatientsLoaded) {
+                setBookingPatientsLoadingState(true);
+            }
             if (IS_SUPERADMIN) {
                 $('#adminProfessionalSelect').removeClass('d-none');
-                populateBookingProfessionalSelect(CURRENT_PROFESSIONAL_ID);
-                updateBookingPatientProfessionalNote(bookingPatientById($('#patientSelect').val()));
             }
         } else {
             $('#modalDesc').text('Confirma la fecha/hora de tu cita.');
@@ -1936,13 +2656,37 @@ function openModal(date, time, status, extraName = '', extraEmail = '', extraPho
         if (!IS_ADMIN && !shouldChooseProfessionalInSlot()) {
             renderModalProfessionalContext();
         }
-        if (IS_SUPERADMIN) {
-            loadBookingContextForProfessional($('#booking-professional').val() || CURRENT_PROFESSIONAL_ID);
-        } else if (shouldChooseProfessionalInSlot()) {
+        const continueAvailableBooking = function () {
+            if (IS_SUPERADMIN) {
+                populateBookingProfessionalSelect(CURRENT_PROFESSIONAL_ID);
+                updateBookingPatientProfessionalNote(bookingPatientById($('#patientSelect').val()));
+                loadBookingContextForProfessional($('#booking-professional').val() || CURRENT_PROFESSIONAL_ID);
+            } else if (!IS_ADMIN && shouldChooseProfessionalInSlot()) {
+                loadAvailableProfessionalsForSlot(date, time);
+            } else {
+                renderBookingServiceOptions();
+                refreshBookingBonusNotice();
+            }
+        };
+
+        if (IS_ADMIN && !bookingPatientsLoaded) {
+            loadBookingPatients().done(function () {
+                continueAvailableBooking();
+            }).fail(function () {
+                const $select = $('#patientSelect');
+                if ($select.length) {
+                    $select.html('<option value="">No se pudieron cargar los datos</option>').prop('disabled', true);
+                }
+                $('#btn-confirm-action').prop('disabled', true);
+            }).always(function () {
+                if (bookingPatientsLoaded) {
+                    setBookingPatientsLoadingState(false);
+                }
+            });
+        } else if (!IS_ADMIN && shouldChooseProfessionalInSlot()) {
             loadAvailableProfessionalsForSlot(date, time);
         } else {
-            renderBookingServiceOptions();
-            refreshBookingBonusNotice();
+            continueAvailableBooking();
         }
         $('#serviceOptionSelect').removeClass('d-none');
         $('#btn-confirm-action').removeClass('btn-danger').addClass('btn-primary').text('Reservar');
@@ -2033,9 +2777,7 @@ $(document).ready(function () {
     renderWeekInfo();
     startQuickAppointmentsAutoRefresh();
 
-    if (IS_ADMIN) {
-        loadBookingPatients();
-    } else {
+    if (!IS_ADMIN) {
         loadPatientPortalSummary();
     }
 
@@ -2080,7 +2822,11 @@ $(document).ready(function () {
         });
     });
 
-    $('#btn-prev-week').click(function () {
+    $('#patient-portal-tasks').on('click', '.btn-patient-portal-exercise-detail', function () {
+        openPatientPortalExerciseModal($(this).data('task-id'));
+    });
+
+    $(document).on('click', '#btn-prev-week', function () {
         if (currentCalendarView === 'month') {
             currentMonthDate.setMonth(currentMonthDate.getMonth() - 1);
             selectedMonthDay = null;
@@ -2090,7 +2836,7 @@ $(document).ready(function () {
         renderWeekInfo();
     });
 
-    $('#btn-next-week').click(function () {
+    $(document).on('click', '#btn-next-week', function () {
         if (currentCalendarView === 'month') {
             currentMonthDate.setMonth(currentMonthDate.getMonth() + 1);
             selectedMonthDay = null;
@@ -2106,6 +2852,75 @@ $(document).ready(function () {
             currentMonthDate = new Date(currentStartDate);
             selectedMonthDay = null;
         } else {
+            currentCalendarView = 'week';
+            if (selectedMonthDay) {
+                currentStartDate = getMonday(new Date(`${selectedMonthDay}T00:00:00`));
+            }
+        }
+        renderWeekInfo();
+    });
+
+    $(document).on('click', '.btn-dashboard-view', function () {
+        if (!IS_ADMIN) {
+            return;
+        }
+        const view = $(this).data('dashboard-view') || 'month';
+        if (view === currentCalendarView) {
+            return;
+        }
+        if (view === 'month') {
+            currentCalendarView = 'month';
+            currentMonthDate = new Date(currentStartDate);
+            selectedMonthDay = null;
+        } else if (view === 'week') {
+            currentCalendarView = 'week';
+            if (selectedMonthDay) {
+                currentStartDate = getMonday(new Date(`${selectedMonthDay}T00:00:00`));
+            }
+        } else if (view === 'patients' || view === 'upcoming') {
+            currentCalendarView = view;
+        }
+        renderWeekInfo();
+    });
+
+    $(document).on('click', '.btn-dashboard-main-view', function () {
+        if (!IS_ADMIN) {
+            return;
+        }
+        const view = $(this).data('dashboard-main-view') || 'agenda';
+        const nextView = view === 'agenda' ? defaultAgendaCalendarView() : view;
+        if (nextView === currentCalendarView) {
+            updateCalendarNavigationLabels();
+            return;
+        }
+        if (nextView === 'month') {
+            currentCalendarView = 'month';
+            currentMonthDate = new Date(currentStartDate);
+            selectedMonthDay = null;
+        } else if (nextView === 'week') {
+            currentCalendarView = 'week';
+            if (selectedMonthDay) {
+                currentStartDate = getMonday(new Date(`${selectedMonthDay}T00:00:00`));
+            }
+        } else if (nextView === 'patients' || nextView === 'upcoming') {
+            currentCalendarView = nextView;
+        }
+        renderWeekInfo();
+    });
+
+    $(document).on('click', '.btn-dashboard-calendar-mode', function () {
+        if (!IS_ADMIN) {
+            return;
+        }
+        const view = $(this).data('dashboard-calendar-view') || 'month';
+        if (view === currentCalendarView) {
+            return;
+        }
+        if (view === 'month') {
+            currentCalendarView = 'month';
+            currentMonthDate = new Date(currentStartDate);
+            selectedMonthDay = null;
+        } else if (view === 'week') {
             currentCalendarView = 'week';
             if (selectedMonthDay) {
                 currentStartDate = getMonday(new Date(`${selectedMonthDay}T00:00:00`));
@@ -2144,11 +2959,26 @@ $(document).ready(function () {
         openPatientPortalDocumentsModal();
     });
 
+    $('#btn-patient-portal-reports').click(function () {
+        openPatientPortalReportsModal();
+    });
+
+    $('#btn-patient-portal-composition').click(function () {
+        openPatientPortalCompositionModal();
+    });
+
     $('.patient-portal-documents-filter').click(function () {
         CURRENT_PATIENT_PORTAL_DOCUMENTS_FILTER = $(this).data('documents-filter') || 'all';
         $('.patient-portal-documents-filter').removeClass('btn-primary').addClass('btn-outline-primary');
         $(this).removeClass('btn-outline-primary').addClass('btn-primary');
         $('#patient-portal-documents').html(renderPatientPortalDocuments(CURRENT_PATIENT_PORTAL.documents || []));
+    });
+
+    $('.patient-portal-composition-chart-group').click(function () {
+        CURRENT_PATIENT_PORTAL_COMPOSITION_CHART_GROUP = $(this).data('chart-group') || 'body';
+        $('.patient-portal-composition-chart-group').removeClass('btn-primary').addClass('btn-outline-primary');
+        $(this).removeClass('btn-outline-primary').addClass('btn-primary');
+        renderPatientPortalCompositionCharts(((CURRENT_PATIENT_PORTAL.composition || {}).history) || []);
     });
 
     $('#btn-mobile-buy-bonus').click(function () {
@@ -2171,12 +3001,40 @@ $(document).ready(function () {
         $('#btn-patient-portal-documents').trigger('click');
     });
 
+    $('#btn-mobile-patient-portal-reports').click(function () {
+        $('#btn-patient-portal-reports').trigger('click');
+    });
+
+    $('#btn-mobile-patient-portal-composition').click(function () {
+        $('#btn-patient-portal-composition').trigger('click');
+    });
+
+    $('#patientPortalCompositionModal').on('shown.bs.modal', function () {
+        renderPatientPortalCompositionCharts(((CURRENT_PATIENT_PORTAL.composition || {}).history) || []);
+    });
+
+    $('#patient-portal-composition-history-tab').on('shown.bs.tab', function () {
+        renderPatientPortalCompositionCharts(((CURRENT_PATIENT_PORTAL.composition || {}).history) || []);
+    });
+
     $('#btn-admin-bonuses').click(function () {
         openAdminBonusesModal();
     });
 
     $('#btn-mobile-admin-bonuses').click(function () {
         $('#btn-admin-bonuses').trigger('click');
+    });
+
+    $(document).on('click', '[data-dashboard-action="bonuses"]', function () {
+        openAdminBonusesModal();
+    });
+
+    $(document).on('click', '[data-dashboard-action="stats"]', function () {
+        $('#btn-admin-stats').trigger('click');
+    });
+
+    $(document).on('click', '[data-dashboard-action="invite"]', function () {
+        $('#btn-generate-invite').trigger('click');
     });
 
     $('#btn-generate-invite').off('click').click(function () {
@@ -2222,6 +3080,10 @@ $(document).ready(function () {
 
     $('#btn-mobile-upcoming-appointments').click(function () {
         $('#btn-upcoming-appointments').trigger('click');
+    });
+
+    $(document).on('click', '.btn-dashboard-more-upcoming', function () {
+        openUpcomingAppointmentsModal();
     });
 
     $('#upcoming-appointments-search').on('input', function () {
@@ -2374,6 +3236,44 @@ $(document).ready(function () {
         updatePatientAgeDisplay();
     });
 
+    $('#patient-editor-weight, #patient-editor-height').on('input change', function () {
+        updatePatientBmiDisplay();
+    });
+
+    $('#patient-editor-physical-sex').on('change', function () {
+        $('#patient-editor-body-fat-note').text('Puedes introducirlo manualmente si ya tienes una medicion fiable.');
+    });
+
+    $('#btn-calculate-body-fat').on('click', function () {
+        calculatePatientBodyFat();
+    });
+
+    $('#patient-evolution-weight, #patient-evolution-height').on('input change', function () {
+        updatePatientEvolutionBmiDisplay();
+    });
+
+    $('#btn-copy-current-physical-metrics').on('click', function () {
+        copyCurrentPhysicalMetricsToEvolution();
+    });
+
+    $('.patient-evolution-view-toggle').on('click', function () {
+        CURRENT_PATIENT_EVOLUTION_VIEW = $(this).data('evolution-view') || 'records';
+        $('.patient-evolution-view-toggle').removeClass('btn-primary').addClass('btn-outline-primary');
+        $(this).removeClass('btn-outline-primary').addClass('btn-primary');
+        $('#patient-evolution-records-view').toggleClass('d-none', CURRENT_PATIENT_EVOLUTION_VIEW !== 'records');
+        $('#patient-evolution-charts-view').toggleClass('d-none', CURRENT_PATIENT_EVOLUTION_VIEW !== 'charts');
+        if (CURRENT_PATIENT_EVOLUTION_VIEW === 'charts') {
+            renderPatientEvolutionCharts();
+        }
+    });
+
+    $('.patient-evolution-chart-group').on('click', function () {
+        CURRENT_PATIENT_EVOLUTION_CHART_GROUP = $(this).data('chart-group') || 'body';
+        $('.patient-evolution-chart-group').removeClass('btn-primary').addClass('btn-outline-primary');
+        $(this).removeClass('btn-outline-primary').addClass('btn-primary');
+        renderPatientEvolutionCharts();
+    });
+
     $('#patient-diagnosis-tab').on('shown.bs.tab', function () {
         if (!knowledgeBaseEnabled()) return;
         initPatientBodyMap();
@@ -2387,6 +3287,7 @@ $(document).ready(function () {
     });
 
     $('#patient-editor-knowledge-problem').on('change', function () {
+        updatePatientReportSuggestionButton();
         if (!knowledgeBaseEnabled()) return;
         loadSelectedPatientKnowledgeProblem();
     });
@@ -2419,24 +3320,49 @@ $(document).ready(function () {
     });
 
     $('#patient-body-map-results').on('click', '.btn-workoutx-exercise', function () {
-        openWorkoutxExerciseModal($(this).data('exercise-id'), $(this).data('exercise-name'));
+        openWorkoutxExerciseModal($(this).data('exercise-id'), $(this).data('exercise-name'), $(this).data('workoutx-id') || '');
+    });
+
+    $('#workoutx-generated-plan').on('click', '.btn-workoutx-exercise', function () {
+        openWorkoutxExerciseModal($(this).data('exercise-id'), $(this).data('exercise-name'), $(this).data('workoutx-id') || '');
+    });
+
+    $('#patient-body-map-results').on('click', '.btn-add-fitness-exercise', function () {
+        addFitnessExerciseToPatient($(this).data('exercise-id'), this);
+    });
+
+    $('#workoutx-exercise-content').on('click', '.btn-add-workoutx-exercise', function () {
+        addFitnessExerciseToPatient($(this).data('exercise-id'), this, $(this).data('workoutx-id') || '');
+    });
+
+    $('#btn-add-workoutx-exercise-footer').on('click', function () {
+        addFitnessExerciseToPatient($(this).data('exercise-id'), this, $(this).data('workoutx-id') || '');
+    });
+
+    $('#btn-generate-workoutx-plan').on('click', function () {
+        generateWorkoutxPlan(this);
+    });
+
+    $('#workoutx-generated-plan').on('click', '.btn-add-generated-workoutx-exercise', function () {
+        addFitnessExerciseToPatient($(this).data('exercise-id'), this, $(this).data('workoutx-id') || '');
+    });
+
+    $('#workoutx-generated-plan').on('click', '.btn-add-workoutx-generated-plan', function () {
+        addWorkoutxGeneratedPlanToPatient(this);
     });
 
     $(window).on('resize', function () {
         if (bodyMapEnabled()) {
             syncPatientBodyMapResultsHeight();
         }
+        if (IS_ADMIN && !supportsDashboardInlineViews() && (currentCalendarView === 'patients' || currentCalendarView === 'upcoming')) {
+            currentCalendarView = defaultAgendaCalendarView();
+            renderWeekInfo();
+        }
     });
 
-    $('.btn-patient-report').click(function () {
-        const patientSingular = sectorLabel('patient', 'singular', 'paciente');
-        const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
-        if (!patientId) {
-            showPatientEditorAlert('danger', `Guarda primero el ${patientSingular} para generar el informe.`);
-            return;
-        }
-        const reportType = $(this).data('report-type') === 'patient' ? 'patient' : 'internal';
-        window.open(`api/admin.php?action=patient_report&patient_id=${patientId}&type=${reportType}`, '_blank', 'noopener');
+    $('#patient-reports-body').on('click', '.btn-patient-report', function () {
+        generatePatientReport(this);
     });
 
     $('#admin-patients-body').on('click', '.btn-edit-patient', function () {
@@ -2462,6 +3388,50 @@ $(document).ready(function () {
 
     $('#admin-patients-professional').on('change', function () {
         loadAdminPatients();
+    });
+
+    $(document).on('input change', '#dashboard-patients-search, #dashboard-patients-sort, #dashboard-patients-professional', function () {
+        renderDashboardPatients(DASHBOARD_PATIENTS);
+    });
+
+    $(document).on('click', '.btn-dashboard-new-patient', function () {
+        $('#btn-new-patient').trigger('click');
+    });
+
+    $(document).on('click', '.btn-dashboard-edit-patient', function () {
+        const patient = DASHBOARD_PATIENTS.find(item => String(item.id) === String($(this).data('patient-id')));
+        openPatientEditorModal(patient || null);
+    });
+
+    $(document).on('click', 'tr.dashboard-patient-row', function (event) {
+        if ($(event.target).closest('button, a, input, select, textarea').length) {
+            return;
+        }
+        const patient = DASHBOARD_PATIENTS.find(item => String(item.id) === String($(this).data('patient-id')));
+        openPatientEditorModal(patient || null);
+    });
+
+    $(document).on('click', 'tr.dashboard-upcoming-row, tr.upcoming-appointment-row', function (event) {
+        if ($(event.target).closest('button, a, input, select, textarea').length) {
+            return;
+        }
+        const appointmentId = parseInt($(this).data('appointment-id') || 0, 10);
+        if (appointmentId) {
+            openAppointmentPaymentModal(appointmentId);
+        }
+    });
+
+    $(document).on('click', '.btn-dashboard-send-patient-invite', function () {
+        openPatientInviteModal($(this).data('patient-id'), this);
+    });
+
+    $(document).on('input', '#dashboard-upcoming-search', function () {
+        renderDashboardUpcomingAppointments(DASHBOARD_UPCOMING_APPOINTMENTS);
+    });
+
+    $(document).on('change', '#dashboard-upcoming-scope, #dashboard-upcoming-professional', function () {
+        dashboardUpcomingLoaded = false;
+        loadDashboardUpcomingAppointments(false);
     });
 
     $('#patient-editor-form').submit(function (e) {
@@ -2492,9 +3462,53 @@ $(document).ready(function () {
         loadPatientEvolution(patientId);
     });
 
+    $('#patientEditorModal').on('shown.bs.modal', function () {
+        if ($('#patient-evolution-panel').hasClass('active') && CURRENT_PATIENT_EVOLUTION_VIEW === 'charts') {
+            renderPatientEvolutionCharts();
+        }
+    });
+
     $('#patient-files-tab').on('shown.bs.tab', function () {
         const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
         loadPatientFiles(patientId);
+    });
+
+    $('#patient-reports-tab').on('shown.bs.tab', function () {
+        const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
+        loadPatientReports(patientId);
+    });
+
+    $('#btn-refresh-patient-reports').on('click', function () {
+        loadPatientReports(CURRENT_PATIENT_REPORTS_ID || parseInt($('#patient-editor-id').val() || '0', 10));
+    });
+
+    $('#btn-show-custom-patient-report').on('click', function () {
+        showCustomPatientReportForm();
+    });
+
+    $('#btn-show-suggested-patient-reports').on('click', function () {
+        showPatientReportSuggestions();
+    });
+
+    $('#patient-report-suggestions-problem').on('change', function () {
+        loadPatientReportSuggestionsForProblem($(this).val());
+    });
+
+    $('#patient-report-suggestions-body').on('click', '.btn-add-suggested-patient-report', function () {
+        addSuggestedPatientReport(this);
+    });
+
+    $('#patient-reports-body').on('click', '.btn-configure-patient-report', function () {
+        showPatientReportConfigForm($(this).data('report-id'));
+    });
+
+    $('#patient-report-payment-mode').on('change', function () {
+        updatePatientReportPaymentFields();
+    });
+
+    $('#patient-report-config-form').on('submit', function (e) {
+        e.preventDefault();
+        savePatientReportConfig(this);
     });
 
     $('.patient-files-filter').on('click', function () {
@@ -2718,6 +3732,7 @@ $(document).ready(function () {
     });
 
     $('#patientSelect').change(function () {
+        if (bookingContextLoading) return;
         if (IS_SUPERADMIN) {
             syncBookingProfessionalFromPatient();
         } else {
@@ -2726,6 +3741,7 @@ $(document).ready(function () {
     });
 
     $('#booking-professional').change(function () {
+        if (bookingContextLoading) return;
         if (IS_SUPERADMIN) {
             renderBookingProfessionalCards();
             loadBookingContextForProfessional($(this).val());
@@ -2734,11 +3750,13 @@ $(document).ready(function () {
     });
 
     $('#booking-professional-cards').on('click', '.patient-professional-card', function () {
+        if (bookingContextLoading) return;
         const professionalId = $(this).data('professional-id');
         $('#booking-professional').val(String(professionalId)).trigger('change');
     });
 
     $('#booking-consultation-cards').on('click', '.booking-consultation-card:not(.is-disabled)', function () {
+        if (bookingContextLoading) return;
         CURRENT_BOOKING_CONSULTATION_TYPE = $(this).data('consultation-type') || '';
         renderBookingServiceOptions();
         refreshBookingBonusNotice();
@@ -2751,6 +3769,7 @@ $(document).ready(function () {
     });
 
     $('#service-option').change(function () {
+        if (bookingContextLoading) return;
         refreshBookingBonusNotice();
     });
 
@@ -2807,9 +3826,22 @@ $(document).ready(function () {
         }
     });
 
-    $('#professionalEditorModal').on('hidden.bs.modal', function () {
+    $('#professionalEditorModal, #professionalKnowledgeSectorsModal').on('hidden.bs.modal', function () {
         $('body').removeClass('settings-secondary-modal-open');
         if ($('#settingsModal').hasClass('show')) {
+            document.body.classList.add('modal-open');
+        }
+    });
+
+    $('#professionalKnowledgeSectorsModal').on('show.bs.modal', function () {
+        if ($('#professionalEditorModal').hasClass('show')) {
+            $('body').addClass('professional-editor-secondary-modal-open');
+        }
+    });
+
+    $('#professionalKnowledgeSectorsModal').on('hidden.bs.modal', function () {
+        $('body').removeClass('professional-editor-secondary-modal-open');
+        if ($('#professionalEditorModal').hasClass('show')) {
             document.body.classList.add('modal-open');
         }
     });
@@ -2821,7 +3853,7 @@ $(document).ready(function () {
         }
     });
 
-    $('#closedDayModal, #professionalEditorModal, #professionalTransferModal').on('show.bs.modal', function () {
+    $('#closedDayModal, #professionalEditorModal, #professionalKnowledgeSectorsModal, #professionalTransferModal').on('show.bs.modal', function () {
         if ($('#settingsModal').hasClass('show')) {
             $('body').addClass('settings-secondary-modal-open');
         }
@@ -2866,7 +3898,7 @@ $(document).ready(function () {
         }
     });
 
-    $('#patientWorkPlanTaskModal, #patientDocumentModal, #workoutxExerciseModal').on('show.bs.modal', function () {
+    $('#patientWorkPlanTaskModal, #patientDocumentModal, #patientReportConfigModal, #patientReportSuggestionsModal, #patientEvolutionModal, #workoutxExerciseModal').on('show.bs.modal', function () {
         if ($('#patientEditorModal').hasClass('show')) {
             $('body').addClass('patient-editor-secondary-modal-open');
         }
@@ -2878,7 +3910,7 @@ $(document).ready(function () {
         }
     });
 
-    $('#patientWorkPlanTaskModal, #patientDocumentModal, #workoutxExerciseModal').on('hidden.bs.modal', function () {
+    $('#patientWorkPlanTaskModal, #patientDocumentModal, #patientReportConfigModal, #patientReportSuggestionsModal, #patientEvolutionModal, #workoutxExerciseModal').on('hidden.bs.modal', function () {
         $('body').removeClass('patient-editor-secondary-modal-open');
         if ($('#patientEditorModal').hasClass('show')) {
             document.body.classList.add('modal-open');
@@ -2952,6 +3984,9 @@ $(document).ready(function () {
         e.preventDefault();
         saveProfessionalEditor(this.querySelector('button[type="submit"]'));
     });
+    $('#professional-editor-knowledge-mode').on('change', updateProfessionalKnowledgeSectorUi);
+    $('#btn-professional-knowledge-sectors').on('click', openProfessionalKnowledgeSectorsModal);
+    $('#btn-save-professional-knowledge-sectors').on('click', saveProfessionalKnowledgeSectorsSelection);
     $('#professional-editor-email').on('input change', function () {
         updateProfessionalSummaryEmailUi();
     });
@@ -3140,6 +4175,7 @@ function bookAppointment() {
                 return;
             }
 
+            invalidateDashboardUpcomingAppointments();
             renderWeekInfo();
             if (!IS_ADMIN) {
                 loadPatientPortalSummary();
@@ -3523,6 +4559,7 @@ function startRedsysPayment(appointmentId, paymentMethod, options = {}) {
                 if (options.hideAppointmentModalOnError !== false) {
                     appointmentModal.hide();
                 }
+                invalidateDashboardUpcomingAppointments();
                 renderWeekInfo();
                 alert(res.error || options.failureMessage || 'La cita se ha reservado, pero no se pudo iniciar el pago.');
                 finishLoading();
@@ -3538,6 +4575,7 @@ function startRedsysPayment(appointmentId, paymentMethod, options = {}) {
             if (options.hideAppointmentModalOnError !== false) {
                 appointmentModal.hide();
             }
+            invalidateDashboardUpcomingAppointments();
             renderWeekInfo();
             alert(options.failureMessage || 'La cita se ha reservado, pero no se pudo conectar con Redsys.');
             finishLoading();
@@ -3666,7 +4704,7 @@ function openMyBonusesModal() {
 }
 
 function openAdminBonusesModal() {
-    openBonusListModal('Bonos de pacientes', 'api/bonuses.php?action=admin_list', true);
+    openBonusListModal(`Bonos de ${sectorLabel('patient', 'plural', 'pacientes')}`, 'api/bonuses.php?action=admin_list', true);
 }
 
 function openBonusListModal(title, url, adminView) {
@@ -4082,7 +5120,7 @@ function loadAdminPatients() {
         dataType: 'json',
         success: function (res) {
             if (!res.success) {
-                showAdminPatientsAlert('danger', res.error || 'No se pudieron cargar los pacientes.');
+                showAdminPatientsAlert('danger', res.error || `No se pudieron cargar los ${sectorLabel('patient', 'plural', 'pacientes')}.`);
                 return;
             }
             if (Array.isArray(res.professionals)) {
@@ -4097,7 +5135,7 @@ function loadAdminPatients() {
             refreshPatientSelectOptions();
         },
         error: function () {
-            showAdminPatientsAlert('danger', 'Error de conexion al cargar los pacientes.');
+            showAdminPatientsAlert('danger', `Error de conexion al cargar los ${sectorLabel('patient', 'plural', 'pacientes')}.`);
         }
     });
 }
@@ -4222,6 +5260,8 @@ function transferCurrentPatientProfessional() {
             updatePatientTransferUi(CURRENT_PATIENT_EDITOR);
             loadPatientAppointmentHistory(patientId);
             loadAdminPatients();
+            dashboardPatientsLoaded = false;
+            invalidateDashboardUpcomingAppointments();
             renderWeekInfo();
         },
         error: function () {
@@ -4333,6 +5373,392 @@ function filterAndSortAdminPatients(patients) {
     return rows;
 }
 
+function renderDashboardPatientsView() {
+    const patientPluralTitle = sectorLabel('patient', 'titlePlural', 'Pacientes');
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
+    const showProfessional = IS_SUPERADMIN;
+    const professionalFilter = showProfessional ? `
+        <div class="col-md-3">
+            <select class="form-select" id="dashboard-patients-professional">
+                <option value="all">Todos los profesionales</option>
+            </select>
+        </div>
+    ` : '';
+    $('#calendar-container').html(`
+        <section class="dashboard-inline-panel dashboard-patients-view">
+            <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+                <div>
+                    <h5 class="mb-1">${escapeHtml(patientPluralTitle)}</h5>
+                </div>
+                <button class="btn btn-primary btn-sm btn-dashboard-new-patient" type="button">
+                    <i class="bi bi-person-plus"></i> Nuevo ${escapeHtml(patientSingular)}
+                </button>
+            </div>
+            <div id="dashboard-patients-alert" class="alert d-none"></div>
+            <div class="row g-2 mb-3">
+                <div class="${showProfessional ? 'col-md-5' : 'col-md-8'}">
+                    <input type="search" class="form-control" id="dashboard-patients-search" placeholder="${showProfessional ? 'Buscar por nombre, email, telefono, tipo o profesional' : 'Buscar por nombre, email, telefono o tipo'}">
+                </div>
+                ${professionalFilter}
+                <div class="col-md-4">
+                    <select class="form-select" id="dashboard-patients-sort">
+                        <option value="name_asc">Ordenar por nombre A-Z</option>
+                        <option value="name_desc">Ordenar por nombre Z-A</option>
+                        <option value="admission_desc">Alta mas reciente</option>
+                        <option value="admission_asc">Alta mas antigua</option>
+                    </select>
+                </div>
+            </div>
+            <div class="table-responsive admin-patients-table-wrap">
+                <table class="table align-middle">
+                    <thead>
+                        <tr>
+                            <th>${escapeHtml(sectorLabel('patient', 'titleSingular', 'Paciente'))}</th>
+                            ${showProfessional ? '<th>Profesional</th>' : ''}
+                            <th>Contacto</th>
+                            <th>Tipo</th>
+                            <th>Alta</th>
+                            <th>Acceso</th>
+                            <th>Documento</th>
+                            <th class="text-end no-export">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dashboard-patients-body">
+                        <tr><td colspan="${showProfessional ? 8 : 7}" class="text-center text-muted py-4">Cargando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="text-end text-muted small mt-2" id="dashboard-patients-count"></div>
+        </section>
+    `);
+    if (!dashboardPatientsLoaded) {
+        loadDashboardPatients();
+    } else {
+        populateDashboardPatientsProfessionalsFilter();
+        renderDashboardPatients(DASHBOARD_PATIENTS);
+    }
+}
+
+function loadDashboardPatients() {
+    $('#dashboard-patients-alert').addClass('d-none').text('');
+    $('#dashboard-patients-body').html(`<tr><td colspan="${IS_SUPERADMIN ? 8 : 7}" class="text-center text-muted py-4">Cargando...</td></tr>`);
+    $('#dashboard-patients-count').text('');
+    $.ajax({
+        url: 'api/admin.php?action=list_patients',
+        data: IS_SUPERADMIN ? { professional_id: 'all' } : {},
+        dataType: 'json',
+        success: function (res) {
+            if (!res.success) {
+                $('#dashboard-patients-alert').removeClass('d-none alert-success').addClass('alert-danger').text(res.error || `No se pudieron cargar los ${sectorLabel('patient', 'plural', 'pacientes')}.`);
+                return;
+            }
+            if (Array.isArray(res.professionals)) {
+                CABINET_PROFESSIONALS = res.professionals.map(professional => ({
+                    ...professional,
+                    is_active: typeof professional.is_active === 'undefined' || professional.is_active === null ? 1 : professional.is_active
+                }));
+            }
+            DASHBOARD_PATIENTS = Array.isArray(res.patients) ? res.patients : [];
+            dashboardPatientsLoaded = true;
+            populateDashboardPatientsProfessionalsFilter(res.professionals || []);
+            renderDashboardPatients(DASHBOARD_PATIENTS);
+            refreshPatientSelectOptions();
+        },
+        error: function () {
+            $('#dashboard-patients-alert').removeClass('d-none alert-success').addClass('alert-danger').text(`Error de conexion al cargar los ${sectorLabel('patient', 'plural', 'pacientes')}.`);
+        }
+    });
+}
+
+function populateDashboardPatientsProfessionalsFilter(professionals = null) {
+    const $select = $('#dashboard-patients-professional');
+    if (!$select.length) return;
+    const selected = $select.val() || 'all';
+    const source = Array.isArray(professionals) && professionals.length ? professionals : CABINET_PROFESSIONALS;
+    $select.html('<option value="all">Todos los profesionales</option>');
+    source
+        .filter(professional => professional.is_active != 0)
+        .forEach(professional => {
+            $select.append(`<option value="${professional.id}">${escapeHtml(professional.display_name || 'Sin nombre')}</option>`);
+        });
+    if (selected && $select.find(`option[value="${selected}"]`).length) {
+        $select.val(selected);
+    }
+}
+
+function dashboardPatientsColspan() {
+    return IS_SUPERADMIN ? 8 : 7;
+}
+
+function filterAndSortDashboardPatients(patients) {
+    const search = ($('#dashboard-patients-search').val() || '').trim().toLowerCase();
+    const sort = $('#dashboard-patients-sort').val() || 'name_asc';
+    const professionalFilter = $('#dashboard-patients-professional').val() || 'all';
+    let rows = Array.isArray(patients) ? [...patients] : [];
+    if (IS_SUPERADMIN && professionalFilter !== 'all') {
+        rows = rows.filter(patient => String(patient.professional_id || '') === String(professionalFilter));
+    }
+    if (search) {
+        rows = rows.filter(patient => {
+            const haystack = [
+                patient.name,
+                patient.email,
+                patient.phone,
+                patient.patient_type,
+                patient.professional_name,
+                patient.admission_date
+            ].join(' ').toLowerCase();
+            return haystack.includes(search);
+        });
+    }
+    rows.sort((a, b) => {
+        if (sort === 'admission_desc' || sort === 'admission_asc') {
+            const aDate = a.admission_date || '';
+            const bDate = b.admission_date || '';
+            return sort === 'admission_desc'
+                ? bDate.localeCompare(aDate)
+                : aDate.localeCompare(bDate);
+        }
+        const aName = a.name || '';
+        const bName = b.name || '';
+        return sort === 'name_desc'
+            ? bName.localeCompare(aName, 'es')
+            : aName.localeCompare(bName, 'es');
+    });
+    return rows;
+}
+
+function renderDashboardPatients(patients) {
+    const rows = filterAndSortDashboardPatients(patients);
+    const colspan = dashboardPatientsColspan();
+    if (!patients.length) {
+        $('#dashboard-patients-body').html(`<tr><td colspan="${colspan}" class="text-center text-muted py-4">Todavia no hay ${sectorLabel('patient', 'plural', 'pacientes')}.</td></tr>`);
+        $('#dashboard-patients-count').text('');
+        return;
+    }
+    if (!rows.length) {
+        $('#dashboard-patients-body').html(`<tr><td colspan="${colspan}" class="text-center text-muted py-4">No hay ${sectorLabel('patient', 'plural', 'pacientes')} que coincidan con la busqueda.</td></tr>`);
+        $('#dashboard-patients-count').text('');
+        return;
+    }
+    const html = rows.map(patient => {
+        const photo = patient.photo_path
+            ? `<img class="table-avatar" src="${escapeHtml(assetUrl(patient.photo_path))}" alt="${escapeHtml(patient.name || '')}">`
+            : '<span class="table-avatar table-avatar-empty"><i class="bi bi-person"></i></span>';
+        const contact = [
+            patient.email ? `<div>${escapeHtml(patient.email)}</div>` : '',
+            patient.phone ? `<small class="text-muted">${escapeHtml(patient.phone)}${patientContactActionsHtml(patient.phone, 'ms-1')}</small>` : ''
+        ].join('') || '<span class="text-muted">Sin contacto</span>';
+        const accessBadge = parseInt(patient.has_portal_access || 0, 10) === 1
+            ? '<span class="badge text-bg-success">Con acceso</span>'
+            : '<span class="badge text-bg-secondary">Sin acceso</span>';
+        const inviteButton = parseInt(patient.has_portal_access || 0, 10) === 1
+            ? ''
+            : `<button class="btn btn-outline-primary btn-sm btn-dashboard-send-patient-invite" type="button" data-patient-id="${patient.id}" title="Enviar invitacion de registro"><i class="bi bi-envelope"></i></button>`;
+        const documentLink = patient.document_path
+            ? `<a href="api/admin.php?action=download_patient_document&patient_id=${patient.id}" target="_blank" rel="noopener">${escapeHtml(patient.document_name || 'Documento')}</a>`
+            : '<span class="text-muted">Sin archivo</span>';
+        return `
+            <tr class="dashboard-patient-row" data-patient-id="${patient.id}">
+                <td>
+                    <div class="d-flex align-items-center gap-2">
+                        ${photo}
+                        <strong>${escapeHtml(patient.name || '')}</strong>
+                    </div>
+                </td>
+                ${IS_SUPERADMIN ? `<td>${professionalCellHtml(patient, 'professional_name', 'professional_photo_path')}</td>` : ''}
+                <td>${contact}</td>
+                <td>${patient.patient_type ? escapeHtml(patient.patient_type) : '<span class="text-muted">-</span>'}</td>
+                <td>${patient.admission_date ? formatDisplayDate(patient.admission_date) : '<span class="text-muted">-</span>'}</td>
+                <td>${accessBadge}</td>
+                <td>${documentLink}</td>
+                <td class="text-end no-export">
+                    <div class="d-inline-flex gap-1">
+                        ${inviteButton}
+                        <button class="btn btn-outline-secondary btn-sm btn-dashboard-edit-patient" type="button" data-patient-id="${patient.id}" title="Datos del ${escapeHtml(sectorLabel('patient', 'singular', 'paciente'))}">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+    $('#dashboard-patients-body').html(html);
+    $('#dashboard-patients-count').text(`${rows.length} ${rows.length === 1 ? sectorLabel('patient', 'singular', 'paciente') : sectorLabel('patient', 'plural', 'pacientes')}`);
+}
+
+function renderDashboardUpcomingView() {
+    $('#calendar-container').html(`
+        <section class="dashboard-inline-panel dashboard-upcoming-view">
+            <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+                <div>
+                    <h5 class="mb-1">Pr&oacute;ximas citas</h5>
+                </div>
+                <button class="btn btn-primary btn-sm btn-dashboard-more-upcoming" type="button">
+                    <i class="bi bi-list-check"></i> M&aacute;s citas
+                </button>
+            </div>
+            <div id="dashboard-upcoming-alert" class="alert d-none"></div>
+            <div class="row g-2 mb-3">
+                <div class="${IS_SUPERADMIN ? 'col-md-5' : 'col-md-8'}">
+                    <input type="search" class="form-control" id="dashboard-upcoming-search" placeholder="Buscar por ${escapeHtml(sectorLabel('patient', 'singular', 'paciente'))}, email, profesional, servicio o pago">
+                </div>
+                ${IS_SUPERADMIN ? `
+                <div class="col-md-3">
+                    <select class="form-select" id="dashboard-upcoming-professional">
+                        <option value="current">Mis citas</option>
+                    </select>
+                </div>` : ''}
+                <div class="col-md-4">
+                    <select class="form-select" id="dashboard-upcoming-scope">
+                        <option value="limit10">10 pr&oacute;ximas citas</option>
+                        <option value="3days">Pr&oacute;ximos 3 d&iacute;as</option>
+                        <option value="7days">Pr&oacute;ximos 7 d&iacute;as</option>
+                        <option value="14days">Pr&oacute;ximos 14 d&iacute;as</option>
+                        <option value="all">Todas las pr&oacute;ximas</option>
+                    </select>
+                </div>
+            </div>
+            <div class="table-responsive upcoming-appointments-table-wrap">
+                <table class="table align-middle">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Profesional</th>
+                            <th>${escapeHtml(sectorLabel('patient', 'titleSingular', 'Paciente'))}</th>
+                            <th>Servicio</th>
+                            <th>Modalidad</th>
+                            <th>Pago</th>
+                            <th class="text-end no-export">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dashboard-upcoming-body">
+                        <tr><td colspan="7" class="text-center text-muted py-4">Cargando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="text-end text-muted small mt-2" id="dashboard-upcoming-count"></div>
+        </section>
+    `);
+    populateDashboardUpcomingProfessionalsFilter();
+    if (!dashboardUpcomingLoaded) {
+        loadDashboardUpcomingAppointments(true);
+    } else {
+        renderDashboardUpcomingAppointments(DASHBOARD_UPCOMING_APPOINTMENTS);
+    }
+}
+
+function loadDashboardUpcomingAppointments(initialLoad = false) {
+    $('#dashboard-upcoming-alert').addClass('d-none').text('');
+    $('#dashboard-upcoming-body').html('<tr><td colspan="7" class="text-center text-muted py-4">Cargando...</td></tr>');
+    $('#dashboard-upcoming-count').text('');
+    const professionalValue = IS_SUPERADMIN
+        ? ($('#dashboard-upcoming-professional').val() || (initialLoad ? 'current' : 'all'))
+        : '';
+    $.ajax({
+        url: 'api/admin.php?action=upcoming_appointments',
+        data: {
+            scope: $('#dashboard-upcoming-scope').val() || 'limit10',
+            planning_scope: '3days',
+            professional_id: professionalValue
+        },
+        dataType: 'json',
+        success: function (res) {
+            if (!res.success) {
+                $('#dashboard-upcoming-alert').removeClass('d-none alert-success').addClass('alert-danger').text(res.error || 'No se pudieron cargar las citas.');
+                return;
+            }
+            if (Array.isArray(res.professionals)) {
+                CABINET_PROFESSIONALS = res.professionals.map(professional => ({
+                    ...professional,
+                    is_active: typeof professional.is_active === 'undefined' || professional.is_active === null ? 1 : professional.is_active
+                }));
+                populateDashboardUpcomingProfessionalsFilter(res.professionals, initialLoad ? res.current_professional_id : null);
+            }
+            DASHBOARD_UPCOMING_APPOINTMENTS = Array.isArray(res.appointments) ? res.appointments : [];
+            dashboardUpcomingLoaded = true;
+            renderDashboardUpcomingAppointments(DASHBOARD_UPCOMING_APPOINTMENTS);
+        },
+        error: function () {
+            $('#dashboard-upcoming-alert').removeClass('d-none alert-success').addClass('alert-danger').text('Error de conexion al cargar las citas.');
+        }
+    });
+}
+
+function populateDashboardUpcomingProfessionalsFilter(professionals = null, preferredProfessionalId = null) {
+    const $select = $('#dashboard-upcoming-professional');
+    if (!$select.length) return;
+    const selected = $select.val() || 'current';
+    const source = Array.isArray(professionals) && professionals.length ? professionals : CABINET_PROFESSIONALS;
+    $select.html('<option value="current">Mis citas</option><option value="all">Todos los profesionales</option>');
+    source
+        .filter(professional => professional.is_active != 0)
+        .forEach(professional => {
+            $select.append(`<option value="${professional.id}">${escapeHtml(professional.display_name || 'Sin nombre')}</option>`);
+        });
+    const preferred = preferredProfessionalId ? String(preferredProfessionalId) : '';
+    if (preferred && $select.find(`option[value="${preferred}"]`).length) {
+        $select.val(preferred);
+    } else if (selected && $select.find(`option[value="${selected}"]`).length) {
+        $select.val(selected);
+    }
+}
+
+function filterDashboardUpcomingAppointments(appointments) {
+    const search = ($('#dashboard-upcoming-search').val() || '').trim().toLowerCase();
+    let rows = Array.isArray(appointments) ? [...appointments] : [];
+    if (search) {
+        rows = rows.filter(app => {
+            const haystack = [
+                app.appointment_date,
+                app.appointment_time,
+                app.patient_name,
+                app.patient_email,
+                app.patient_phone,
+                app.professional_name,
+                app.service_label,
+                consultationTypeLabel(app.consultation_type),
+                app.payment_status,
+                app.payment_method
+            ].join(' ').toLowerCase();
+            return haystack.includes(search);
+        });
+    }
+    rows.sort((a, b) => {
+        const aKey = `${a.appointment_date || ''} ${a.appointment_time || ''}`;
+        const bKey = `${b.appointment_date || ''} ${b.appointment_time || ''}`;
+        return aKey.localeCompare(bKey);
+    });
+    return rows;
+}
+
+function renderDashboardUpcomingAppointments(appointments) {
+    const rows = filterDashboardUpcomingAppointments(appointments);
+    if (!appointments.length) {
+        $('#dashboard-upcoming-body').html('<tr><td colspan="7" class="text-center text-muted py-4">No hay citas pr&oacute;ximas.</td></tr>');
+        $('#dashboard-upcoming-count').text('');
+        return;
+    }
+    if (!rows.length) {
+        $('#dashboard-upcoming-body').html('<tr><td colspan="7" class="text-center text-muted py-4">No hay citas que coincidan con la b&uacute;squeda.</td></tr>');
+        $('#dashboard-upcoming-count').text('');
+        return;
+    }
+    const html = rows.map(app => `
+        <tr class="dashboard-upcoming-row" data-appointment-id="${app.id || ''}">
+            <td><strong>${formatDisplayDate(app.appointment_date)}</strong><br><small class="text-muted">${escapeHtml(displayAppointmentTimeRange(app.appointment_time || '', app.duration_minutes || 60))}</small></td>
+            <td>${upcomingProfessionalCell(app)}</td>
+            <td>${escapeHtml(app.patient_name || '')}<br><small class="text-muted">${patientContactSummaryHtml(app.patient_email, app.patient_phone) || '-'}</small></td>
+            <td>${escapeHtml(displayAppointmentServiceLabel(app))}</td>
+            <td>${consultationTypeLabel(app.consultation_type)}</td>
+            <td>${adminPaymentLabel(app)}</td>
+            <td class="text-end no-export">${appointmentPaymentButton(app)}</td>
+        </tr>
+    `).join('');
+    $('#dashboard-upcoming-body').html(html);
+    $('#dashboard-upcoming-count').text(`${rows.length} ${rows.length === 1 ? 'cita' : 'citas'}`);
+}
+
 function loadKnowledgeProblems(callback) {
     const done = typeof callback === 'function' ? callback : function () {};
     if (!knowledgeBaseEnabled()) {
@@ -4376,8 +5802,10 @@ function populateKnowledgeProblemSelect() {
     const selected = String($('#patient-editor-knowledge-problem').val() || (CURRENT_PATIENT_EDITOR ? CURRENT_PATIENT_EDITOR.knowledge_problem_id || '' : ''));
     const diagnosisLabel = sectorText('clinicalTerms.diagnosis', 'diagnostico');
     const groups = {};
+    const hasMultipleSectors = new Set(KNOWLEDGE_PROBLEMS.map(problem => problem.sector_key || APP_CURRENT_SECTOR_KEY).filter(Boolean)).size > 1;
     KNOWLEDGE_PROBLEMS.forEach(problem => {
-        const area = problem.area_name || 'Sin area';
+        const sectorLabel = hasMultipleSectors ? (problem.sector_label || knowledgeSectorName(problem.sector_key || APP_CURRENT_SECTOR_KEY)) : '';
+        const area = `${sectorLabel ? `${sectorLabel} · ` : ''}${problem.area_name || 'Sin area'}`;
         if (!groups[area]) groups[area] = [];
         groups[area].push(problem);
     });
@@ -4539,6 +5967,7 @@ function renderKnowledgeProblemDetail(data) {
             </div>
             <div class="knowledge-summary-side">
                 <div class="knowledge-summary-badges">
+                    ${problem.sector_label ? `<span class="badge text-bg-light">${escapeHtml(problem.sector_label)}</span>` : ''}
                     ${knowledgeRiskBadge(problem.risk_level, 'Riesgo')}
                     ${problem.population ? `<span class="badge text-bg-light">${escapeHtml(problem.population)}</span>` : ''}
                 </div>
@@ -4599,7 +6028,7 @@ function initPatientBodyMap() {
 
 function switchPatientKnowledgeMode(mode) {
     if (!bodyMapEnabled()) return;
-    const selectedMode = mode === 'objective' ? 'objective' : 'muscles';
+    const selectedMode = mode === 'objective' || mode === 'custom-workout' ? mode : 'muscles';
     $('.patient-knowledge-mode-btn').each(function () {
         const isActive = $(this).data('knowledge-mode') === selectedMode;
         $(this)
@@ -4612,7 +6041,7 @@ function switchPatientKnowledgeMode(mode) {
     if (selectedMode === 'muscles') {
         initPatientBodyMap();
         syncPatientBodyMapResultsHeight();
-    } else {
+    } else if (selectedMode === 'objective') {
         loadKnowledgeProblems(function () {
             loadSelectedPatientKnowledgeProblem();
         });
@@ -4785,40 +6214,264 @@ function renderPatientBodyMapResults(data) {
         <div class="patient-body-exercise-list">
             ${exercises.map(exercise => {
                 const regions = Array.isArray(exercise.regions) ? exercise.regions : [];
-                const meta = translateFitnessExerciseMeta([
-                    exercise.category,
-                    exercise.equipment_name || exercise.equipment_id,
-                    exercise.difficulty
-                ]);
                 const roleLabels = Array.from(new Set(regions.map(region => patientBodyMapRoleLabel(region.role)).filter(Boolean)));
-                const imageUrl = exercise.image_url || '';
-                const hasWorkoutxMedia = Boolean(imageUrl || (exercise.external_source === 'workoutx' && exercise.external_id));
-                const exerciseName = exercise.name_es || exercise.name_en || exercise.exercise_id || '';
+                const exerciseName = workoutxExerciseDisplayName(exercise, exercise.exercise_id || '');
                 return `
-                    <article class="patient-body-exercise-item ${imageUrl ? 'has-media' : ''}">
-                        ${imageUrl ? `
-                            <div class="patient-body-exercise-media">
-                                <img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(exerciseName || 'Ejercicio')}" loading="lazy">
-                            </div>
-                        ` : ''}
+                    <article class="patient-body-exercise-item">
                         <div class="patient-body-exercise-main">
                             <strong>${escapeHtml(exerciseName)}</strong>
                             ${exercise.aliases ? `<div class="patient-body-exercise-aliases">${escapeHtml(exercise.aliases)}</div>` : ''}
-                            ${meta.length ? `<div class="patient-body-exercise-meta">${escapeHtml(meta.join(' - '))}</div>` : ''}
+                            <div class="patient-body-exercise-roles">
+                                ${roleLabels.map(role => `<span class="badge text-bg-light">${escapeHtml(role)}</span>`).join('')}
+                            </div>
                         </div>
                         <div class="patient-body-exercise-tags">
-                            ${roleLabels.map(role => `<span class="badge text-bg-light">${escapeHtml(role)}</span>`).join('')}
-                            ${hasWorkoutxMedia ? `<button type="button" class="btn btn-outline-primary btn-sm btn-workoutx-exercise" data-exercise-id="${escapeHtml(exercise.exercise_id || '')}" data-exercise-name="${escapeHtml(exerciseName)}">
-                                <i class="bi bi-play-circle"></i> Ver GIF
-                            </button>` : ''}
+                            <button type="button" class="btn btn-primary btn-sm btn-add-fitness-exercise" data-exercise-id="${escapeHtml(exercise.exercise_id || '')}">
+                                <i class="bi bi-plus-lg"></i> Agregar ejercicio
+                            </button>
+                            <button type="button" class="btn btn-outline-primary btn-sm btn-workoutx-exercise" data-exercise-id="${escapeHtml(exercise.exercise_id || '')}" data-exercise-name="${escapeHtml(exerciseName)}">
+                                <i class="bi bi-info-circle"></i> Detalle
+                            </button>
                         </div>
                         ${exercise.description_es ? `<p class="patient-body-exercise-description">${escapeHtml(exercise.description_es)}</p>` : ''}
-                        ${exercise.cues_es ? `<small class="patient-body-exercise-cues">${escapeHtml(exercise.cues_es)}</small>` : ''}
                     </article>
                 `;
             }).join('')}
         </div>
     `;
+}
+
+function generateWorkoutxPlan(button) {
+    if (!knowledgeBaseEnabled()) return;
+    const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
+    if (!patientId) {
+        showPatientKnowledgeAlert('danger', `Guarda primero el ${patientSingular}.`, true);
+        return;
+    }
+
+    const $button = $(button);
+    const original = $button.html();
+    const params = {
+        goal: $('#workoutx-plan-goal').val() || 'muscle_gain',
+        duration: $('#workoutx-plan-duration').val() || 45,
+        level: $('#workoutx-plan-level').val() || 'intermediate',
+        split: $('#workoutx-plan-split').val() || 'full_body',
+        equipment: getCheckedWorkoutxPlanValues('workoutx_plan_equipment[]').join(','),
+        bodyFocus: getCheckedWorkoutxPlanValues('workoutx_plan_body_focus[]').join(',')
+    };
+
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Generando');
+    $('#workoutx-generated-plan').html('<div class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2"></span>Generando rutina personalizada...</div>');
+
+    $.ajax({
+        url: 'api/admin.php?action=workoutx_generate_plan',
+        dataType: 'json',
+        data: params,
+        success: function (res) {
+            if (!res.success) {
+                $('#workoutx-generated-plan').html(`<div class="alert alert-warning mb-0">${escapeHtml(res.error || 'No se pudo generar la rutina.')}</div>`);
+                return;
+            }
+            $('#workoutx-generated-plan').html(renderWorkoutxGeneratedPlan(res.plan || {}, res.headers || {}));
+        },
+        error: function () {
+            $('#workoutx-generated-plan').html('<div class="alert alert-warning mb-0">Error de conexion al generar la rutina.</div>');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function renderWorkoutxGeneratedPlan(plan, usageHeaders = {}) {
+    const exercises = Array.isArray(plan.exercises) ? plan.exercises : [];
+    const warmup = Array.isArray(plan.warmup) ? plan.warmup : [];
+    const cooldown = Array.isArray(plan.cooldown) ? plan.cooldown : [];
+    const bodyFocus = Array.isArray(plan.bodyFocus) ? plan.bodyFocus : [];
+    const summary = [
+        workoutxPlanLabel('goal', plan.goal),
+        workoutxPlanLabel('level', plan.level),
+        plan.estimatedDurationMinutes ? `${plan.estimatedDurationMinutes} min` : '',
+        plan.totalExercises ? `${plan.totalExercises} ejercicios` : '',
+        bodyFocus.length ? translateFitnessExerciseMeta(bodyFocus).join(', ') : ''
+    ].filter(Boolean);
+
+    if (!exercises.length) {
+        return '<div class="text-muted py-3">No se han encontrado ejercicios para esos parametros.</div>';
+    }
+
+    return `
+        <div class="workoutx-generated-summary">
+            <div>
+                <h6 class="mb-1">Rutina generada</h6>
+                ${summary.length ? `<div class="small text-muted">${escapeHtml(summary.join(' · '))}</div>` : ''}
+            </div>
+            <div class="d-flex flex-wrap align-items-start justify-content-end gap-2">
+                <button type="button" class="btn btn-primary btn-sm btn-add-workoutx-generated-plan">
+                    <i class="bi bi-plus-lg"></i> Agregar rutina completa
+                </button>
+            </div>
+        </div>
+        ${warmup.length ? renderWorkoutxPlanActivityBlock('Calentamiento', warmup) : ''}
+        <div class="workoutx-generated-exercise-list">
+            ${exercises.map(item => renderWorkoutxGeneratedExerciseItem(item)).join('')}
+        </div>
+        ${cooldown.length ? renderWorkoutxPlanActivityBlock('Vuelta a la calma', cooldown) : ''}
+        ${renderWorkoutxUsage(usageHeaders)}
+    `;
+}
+
+function getCheckedWorkoutxPlanValues(name) {
+    return $(`input[name="${name}"]:checked`).map(function () {
+        return $(this).val();
+    }).get().filter(Boolean);
+}
+
+function workoutxExerciseDisplayName(exercise = {}, fallback = 'Ejercicio') {
+    return String(
+        exercise.localNameEs ||
+        exercise.name_es ||
+        exercise.nameEs ||
+        exercise.name_en ||
+        exercise.name ||
+        fallback ||
+        ''
+    ).trim() || fallback;
+}
+
+function renderWorkoutxGeneratedExerciseItem(item) {
+    const exercise = item && typeof item === 'object' && item.exercise ? item.exercise : item;
+    const name = workoutxExerciseDisplayName({
+        localNameEs: item.localNameEs,
+        name_es: item.localNameEs,
+        name_en: item.localNameEn,
+        name: exercise.name
+    }, 'Ejercicio');
+    const meta = translateFitnessExerciseMeta([exercise.bodyPart, exercise.target, exercise.equipment]).filter(Boolean);
+    const localExerciseId = item.localExerciseId || '';
+    const workoutxId = item.workoutxExternalId || exercise.id || '';
+    const prescription = [
+        item.sets ? `${item.sets} series` : '',
+        item.reps ? `${item.reps} reps` : '',
+        item.restSeconds ? `${item.restSeconds}s descanso` : '',
+        item.note || ''
+    ].filter(Boolean);
+
+    return `
+        <article class="workoutx-generated-exercise-item">
+            <div class="workoutx-generated-exercise-main">
+                <div class="d-flex align-items-start justify-content-between gap-2">
+                    <div>
+                        <strong>${escapeHtml(name)}</strong>
+                        ${exercise.name && name !== exercise.name ? `<div class="text-muted small">${escapeHtml(exercise.name)}</div>` : ''}
+                    </div>
+                    ${item.order ? `<span class="badge text-bg-light">#${escapeHtml(item.order)}</span>` : ''}
+                </div>
+                ${meta.length ? `<div class="small text-muted">${escapeHtml(meta.join(' · '))}</div>` : ''}
+                ${prescription.length ? `<div class="workoutx-generated-prescription small">${escapeHtml(prescription.join(' · '))}</div>` : ''}
+            </div>
+            <div class="workoutx-generated-exercise-actions">
+                <button type="button" class="btn btn-primary btn-sm btn-add-generated-workoutx-exercise" data-exercise-id="${escapeHtml(localExerciseId)}" data-workoutx-id="${escapeHtml(workoutxId)}">
+                    <i class="bi bi-plus-lg"></i> Agregar ejercicio
+                </button>
+                <button type="button" class="btn btn-outline-primary btn-sm btn-workoutx-exercise" data-exercise-id="${escapeHtml(localExerciseId)}" data-workoutx-id="${escapeHtml(workoutxId)}" data-exercise-name="${escapeHtml(name)}">
+                    <i class="bi bi-info-circle"></i> Detalle
+                </button>
+            </div>
+        </article>
+    `;
+}
+
+async function addWorkoutxGeneratedPlanToPatient(button) {
+    const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
+    if (!patientId) {
+        showPatientKnowledgeAlert('danger', `Guarda primero el ${patientSingular}.`, true);
+        return;
+    }
+    const $buttons = $('#workoutx-generated-plan .btn-add-generated-workoutx-exercise').filter(function () {
+        return !$(this).prop('disabled');
+    });
+    if (!$buttons.length) {
+        showPatientKnowledgeAlert('warning', 'No hay ejercicios pendientes para agregar.', true);
+        return;
+    }
+
+    const $button = $(button);
+    const original = $button.html();
+    let ok = 0;
+    let failed = 0;
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Agregando');
+    $buttons.prop('disabled', true);
+
+    for (let index = 0; index < $buttons.length; index++) {
+        const itemButton = $buttons[index];
+        const $itemButton = $(itemButton);
+        const itemOriginal = $itemButton.html();
+        $itemButton.html('<span class="spinner-border spinner-border-sm"></span>');
+        try {
+            const res = await postFitnessExerciseToPatient($itemButton.data('exercise-id'), $itemButton.data('workoutx-id') || '');
+            if (res && res.success) {
+                ok++;
+                $itemButton
+                    .removeClass('btn-primary')
+                    .addClass('btn-success')
+                    .html('<i class="bi bi-check-lg"></i> Agregado');
+            } else {
+                failed++;
+                $itemButton.prop('disabled', false).html(itemOriginal);
+            }
+        } catch (error) {
+            failed++;
+            $itemButton.prop('disabled', false).html(itemOriginal);
+        }
+    }
+
+    $button.prop('disabled', false).html(original);
+    if (ok > 0) {
+        loadPatientWorkPlan(patientId);
+        showPatientKnowledgeAlert('success', `${ok} ejercicios agregados al plan de trabajo${failed ? ` (${failed} con error)` : ''}.`, true);
+    } else {
+        showPatientKnowledgeAlert('danger', 'No se pudo agregar ningun ejercicio de la rutina.', true);
+    }
+}
+
+function renderWorkoutxPlanActivityBlock(title, items) {
+    const rows = items.map(item => {
+        const activity = item.activity || item.name || '';
+        const duration = item.durationMinutes ? `${item.durationMinutes} min` : '';
+        const note = item.note || '';
+        return `<li>${escapeHtml([activity, duration, note].filter(Boolean).join(' · '))}</li>`;
+    }).join('');
+    return `
+        <div class="workoutx-generated-activity">
+            <h6>${escapeHtml(title)}</h6>
+            <ul>${rows}</ul>
+        </div>
+    `;
+}
+
+function renderWorkoutxUsage(headers) {
+    return '';
+}
+
+function workoutxPlanLabel(type, value) {
+    const labels = {
+        goal: {
+            muscle_gain: 'Ganar músculo',
+            strength: 'Fuerza',
+            fat_loss: 'Pérdida de grasa',
+            endurance: 'Resistencia',
+            mobility: 'Movilidad'
+        },
+        level: {
+            beginner: 'Principiante',
+            intermediate: 'Intermedio',
+            advanced: 'Avanzado'
+        }
+    };
+    return labels[type] && labels[type][value] ? labels[type][value] : (value || '');
 }
 
 function patientBodyMapRoleLabel(role) {
@@ -4890,30 +6543,33 @@ function translateFitnessExerciseMeta(items) {
         .filter(Boolean);
 }
 
-function openWorkoutxExerciseModal(exerciseId, exerciseName = '') {
+function openWorkoutxExerciseModal(exerciseId, exerciseName = '', workoutxExternalId = '') {
     exerciseId = String(exerciseId || '').trim();
     exerciseName = String(exerciseName || '').trim();
-    if (!exerciseId || !workoutxExerciseModal) {
+    workoutxExternalId = String(workoutxExternalId || '').trim();
+    if ((!exerciseId && !workoutxExternalId) || !workoutxExerciseModal) {
         showPatientKnowledgeAlert('danger', 'No se pudo identificar el ejercicio.', true);
         return;
     }
 
     $('#workoutx-exercise-title').text(exerciseName || 'Ejercicio');
     $('#workoutx-exercise-alert').addClass('d-none').text('');
-    $('#workoutx-exercise-content').html('<div class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2"></span>Cargando GIF...</div>');
+    $('#workoutx-exercise-content').html('<div class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2"></span>Cargando ejercicio...</div>');
+    $('#workoutx-exercise-footer').addClass('d-none');
+    $('#btn-add-workoutx-exercise-footer').removeData('exercise-id').removeData('workoutx-id');
     workoutxExerciseModal.show();
 
     $.ajax({
         url: 'api/admin.php?action=workoutx_exercise_media',
         dataType: 'json',
-        data: { exercise_id: exerciseId },
+        data: { exercise_id: exerciseId, workoutx_external_id: workoutxExternalId },
         success: function (res) {
             if (!res.success) {
                 $('#workoutx-exercise-content').html('');
                 $('#workoutx-exercise-alert')
                     .removeClass('d-none alert-success')
                     .addClass('alert-danger')
-                    .text(res.error || 'No se pudo cargar el GIF de WorkoutX.');
+                    .text(res.error || 'No se pudo cargar el detalle del ejercicio.');
                 return;
             }
             renderWorkoutxExercise(res.exercise || {}, res.headers || {});
@@ -4923,20 +6579,111 @@ function openWorkoutxExerciseModal(exerciseId, exerciseName = '') {
             $('#workoutx-exercise-alert')
                 .removeClass('d-none alert-success')
                 .addClass('alert-danger')
-                .text('Error de conexion al consultar WorkoutX.');
+                .text('Error de conexion al consultar el detalle del ejercicio.');
+        }
+    });
+}
+
+function addFitnessExerciseToPatient(exerciseId, button, workoutxExternalId = '') {
+    exerciseId = String(exerciseId || '').trim();
+    workoutxExternalId = String(workoutxExternalId || '').trim();
+    const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
+    if (!patientId) {
+        showPatientKnowledgeAlert('danger', `Guarda primero el ${patientSingular}.`, true);
+        return;
+    }
+    if (!exerciseId && !workoutxExternalId) {
+        showPatientKnowledgeAlert('danger', 'No se pudo identificar el ejercicio.', true);
+        return;
+    }
+
+    const $button = $(button);
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+    postFitnessExerciseToPatient(exerciseId, workoutxExternalId)
+        .done(function (res) {
+            if (!res.success) {
+                showPatientKnowledgeAlert('danger', res.error || 'No se pudo agregar el ejercicio.', true);
+                return;
+            }
+            showPatientKnowledgeAlert('success', res.message || 'Ejercicio agregado al plan de trabajo.', true);
+            loadPatientWorkPlan(patientId);
+        })
+        .fail(function () {
+            showPatientKnowledgeAlert('danger', 'Error de conexion al agregar el ejercicio.', true);
+        })
+        .always(function () {
+            $button.prop('disabled', false).html(original);
+        });
+}
+
+function postFitnessExerciseToPatient(exerciseId, workoutxExternalId = '') {
+    const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
+    return $.ajax({
+        url: 'api/admin.php?action=add_fitness_exercise_to_work_plan',
+        method: 'POST',
+        dataType: 'json',
+        data: {
+            patient_id: patientId,
+            exercise_id: String(exerciseId || '').trim(),
+            workoutx_external_id: String(workoutxExternalId || '').trim(),
+            visible_to_patient: PAYMENT_SETTINGS.patient_tasks_visible_default == 1 ? 1 : 0
+        }
+    });
+}
+
+function openPatientPortalExerciseModal(taskId) {
+    taskId = parseInt(taskId || 0, 10);
+    if (!taskId || !workoutxExerciseModal) return;
+    $('#workoutx-exercise-title').text('Detalle del ejercicio');
+    $('#workoutx-exercise-alert').addClass('d-none').text('');
+    $('#workoutx-exercise-content').html('<div class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2"></span>Cargando ejercicio...</div>');
+    $('#workoutx-exercise-footer').addClass('d-none');
+    $('#btn-add-workoutx-exercise-footer').removeData('exercise-id').removeData('workoutx-id');
+    workoutxExerciseModal.show();
+
+    $.ajax({
+        url: 'api/appointments.php?action=patient_portal_exercise_media',
+        dataType: 'json',
+        data: { task_id: taskId },
+        success: function (res) {
+            if (!res.success) {
+                $('#workoutx-exercise-content').html('');
+                $('#workoutx-exercise-alert')
+                    .removeClass('d-none alert-success')
+                    .addClass('alert-danger')
+                    .text(res.error || 'No se pudo cargar el ejercicio.');
+                return;
+            }
+            renderWorkoutxExercise(res.exercise || {}, res.headers || {});
+            $('#workoutx-exercise-footer').addClass('d-none');
+            $('#btn-add-workoutx-exercise-footer').removeData('exercise-id').removeData('workoutx-id');
+        },
+        error: function () {
+            $('#workoutx-exercise-content').html('');
+            $('#workoutx-exercise-alert')
+                .removeClass('d-none alert-success')
+                .addClass('alert-danger')
+                .text('Error de conexion al consultar el ejercicio.');
         }
     });
 }
 
 function renderWorkoutxExercise(exercise, usageHeaders = {}) {
-    const name = exercise.name || 'Ejercicio';
+    const name = workoutxExerciseDisplayName(exercise, 'Ejercicio');
+    const localExerciseId = exercise.localExerciseId || '';
     const gifUrl = exercise.gifUrl || '';
-    const meta = [exercise.bodyPart, exercise.target, exercise.equipment, exercise.difficulty].filter(Boolean);
-    const secondary = Array.isArray(exercise.secondaryMuscles) ? exercise.secondaryMuscles : [];
-    const instructions = Array.isArray(exercise.instructions) ? exercise.instructions : [];
-    const quotaText = usageHeaders.quota_remaining
-        ? `WorkoutX: ${usageHeaders.quota_remaining} consultas restantes este mes`
-        : '';
+    const meta = translateFitnessExerciseMeta([exercise.bodyPart, exercise.target, exercise.equipment, exercise.difficulty]);
+    const secondary = Array.isArray(exercise.secondaryMuscles)
+        ? translateFitnessExerciseMeta(exercise.secondaryMuscles)
+        : [];
+    const instructions = Array.isArray(exercise.instructions)
+        ? exercise.instructions.map(step => String(step || '').trim()).filter(Boolean)
+        : [];
+    const description = exercise.descriptionEs || '';
+    const cues = exercise.cuesEs || '';
+    const caloriesHtml = renderWorkoutxCalories(exercise.caloriesPerMinute, exercise.patientWeightKg);
 
     $('#workoutx-exercise-title').text(name);
     $('#workoutx-exercise-alert').addClass('d-none').text('');
@@ -4944,28 +6691,264 @@ function renderWorkoutxExercise(exercise, usageHeaders = {}) {
         <div class="workoutx-exercise-layout">
             <div class="workoutx-exercise-gif">
                 ${gifUrl
-                    ? `<img src="${escapeHtml(gifUrl)}" alt="${escapeHtml(name)}" loading="lazy">`
-                    : '<div class="text-muted py-5 text-center">WorkoutX no devolvio GIF para este ejercicio.</div>'}
+                    ? `<div class="workoutx-exercise-gif-loader"><span class="spinner-border spinner-border-sm me-2"></span>Cargando imagen...</div><img class="workoutx-exercise-image is-loading" data-src="${escapeHtml(gifUrl)}" alt="${escapeHtml(name)}">`
+                    : '<div class="text-muted py-5 text-center">No hay GIF disponible para este ejercicio.</div>'}
             </div>
             <div class="workoutx-exercise-detail">
                 ${meta.length ? `<div class="workoutx-exercise-meta">${escapeHtml(meta.join(' - '))}</div>` : ''}
                 ${secondary.length ? `<div class="small text-muted mb-2">Secundarios: ${escapeHtml(secondary.join(', '))}</div>` : ''}
-                ${exercise.caloriesPerMinute ? `<div class="small text-muted mb-2">Calorias/min aprox.: ${escapeHtml(exercise.caloriesPerMinute)}</div>` : ''}
+                ${caloriesHtml}
+                ${description ? `<p class="small mb-0">${escapeHtml(description)}</p>` : ''}
+            </div>
+            <div class="workoutx-exercise-instruction-block">
+                <h6 class="workoutx-exercise-section-title">Instrucciones</h6>
                 ${instructions.length ? `
                     <ol class="workoutx-exercise-instructions">
                         ${instructions.slice(0, 8).map(step => `<li>${escapeHtml(step)}</li>`).join('')}
                     </ol>
-                ` : '<div class="text-muted small">Sin instrucciones disponibles.</div>'}
-                ${quotaText ? `<div class="text-muted small mt-3">${escapeHtml(quotaText)}</div>` : ''}
+                ` : '<div class="text-muted small">Sin instrucciones paso a paso disponibles.</div>'}
+                ${cues ? `
+                    <h6 class="workoutx-exercise-section-title mt-3">Recomendaciones</h6>
+                    <div class="small text-muted">${escapeHtml(cues)}</div>
+                ` : ''}
             </div>
         </div>
     `);
+    const $footer = $('#workoutx-exercise-footer');
+    const $footerButton = $('#btn-add-workoutx-exercise-footer');
+    if (localExerciseId || exercise.id) {
+        $footer.removeClass('d-none');
+        $footerButton
+            .data('exercise-id', localExerciseId)
+            .data('workoutx-id', exercise.id || '');
+    } else {
+        $footer.addClass('d-none');
+        $footerButton.removeData('exercise-id').removeData('workoutx-id');
+    }
+    const $img = $('#workoutx-exercise-content .workoutx-exercise-gif img');
+    if ($img.length) {
+        const revealImage = function () {
+            $(this).removeClass('is-loading');
+            $(this).siblings('.workoutx-exercise-gif-loader').addClass('d-none');
+        };
+        $img.on('load', revealImage).on('error', function () {
+            $(this).addClass('d-none').removeClass('is-loading');
+            $(this).siblings('.workoutx-exercise-gif-loader').html('<span class="text-muted">No se pudo cargar la imagen.</span>');
+        });
+        const source = String($img.data('src') || '').trim();
+        if (source) {
+            $img.attr('src', source);
+            if ($img[0].complete && $img[0].naturalWidth > 0) {
+                $img.trigger('load');
+            }
+        }
+    }
+}
+
+function renderWorkoutxCalories(baseCaloriesPerMinute, patientWeightKg = null) {
+    const base = Number(String(baseCaloriesPerMinute || '').replace(',', '.'));
+    if (!base || Number.isNaN(base)) return '';
+
+    const weight = Number(patientWeightKg || patientMetricNumber('#patient-editor-weight') || 0);
+    if (weight > 0) {
+        const adjusted = base * weight / 70;
+        return `
+            <div class="small text-muted mb-2">
+                Calorías/min aprox.: ${escapeHtml(adjusted.toFixed(1))}
+                <span class="d-block">Estimación ajustada al peso registrado: ${escapeHtml(formatMetricValue(weight))} kg.</span>
+            </div>
+        `;
+    }
+
+    return `
+        <div class="small text-muted mb-2">
+            Calorías/min aprox.: ${escapeHtml(base.toFixed(1))}
+            <span class="d-block">Nota: calorías estimadas para una persona de 70 kg de peso.</span>
+        </div>
+    `;
+}
+
+function translateWorkoutxExerciseName(value) {
+    let text = String(value || '').trim();
+    if (!text) return '';
+    const exact = {
+        'Barbell Wide Bench Press': 'Press de banca con agarre ancho',
+        'Barbell Decline Bench Press': 'Press de banca declinado con barra',
+        'Barbell Incline Bench Press': 'Press de banca inclinado con barra',
+        'Barbell Bench Press': 'Press de banca con barra',
+        'Dumbbell Bench Press': 'Press de banca con mancuernas',
+        'Cable Low Fly': 'Aperturas en polea baja',
+        'Cable Standing Fly': 'Aperturas de pie en polea',
+        'Smith Bench Press': 'Press de banca en maquina Smith'
+    };
+    if (exact[text]) return exact[text];
+    const replacements = [
+        ['Assisted', 'asistido'],
+        ['Weighted', 'lastrado'],
+        ['Barbell', 'con barra'],
+        ['Dumbbell', 'con mancuernas'],
+        ['Cable', 'en polea'],
+        ['Smith', 'en máquina Smith'],
+        ['Lever', 'en máquina'],
+        ['Kettlebell', 'con kettlebell'],
+        ['Chest Dip', 'fondo de pecho'],
+        ['Triceps Dip', 'fondo de tríceps'],
+        ['Bench Press', 'press de banca'],
+        ['Shoulder Press', 'press de hombro'],
+        ['Biceps Curl', 'curl de bíceps'],
+        ['Pull-up', 'dominada'],
+        ['Chin-up', 'dominada supina'],
+        ['Push-up', 'flexión'],
+        ['Squat', 'sentadilla'],
+        ['Row', 'remo'],
+        ['Crunch', 'crunch abdominal'],
+        ['Knee Raise', 'elevación de rodillas'],
+        ['Lateral Raise', 'elevación lateral'],
+        ['Extension', 'extensión'],
+        ['Curl', 'curl'],
+        ['Press', 'press'],
+        ['Fly', 'aperturas'],
+        ['kneeling', 'de rodillas'],
+        ['standing', 'de pie'],
+        ['seated', 'sentado'],
+        ['lying', 'tumbado'],
+        ['incline', 'inclinado'],
+        ['decline', 'declinado']
+    ];
+    replacements.forEach(([from, to]) => {
+        text = text.replace(new RegExp(`\\b${escapeRegExp(from)}\\b`, 'gi'), to);
+    });
+    text = text
+        .replace(/\bwith\b/gi, 'con')
+        .replace(/\bon\b/gi, 'en')
+        .replace(/\band\b/gi, 'y')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return text ? text.charAt(0).toUpperCase() + text.slice(1) : '';
+}
+
+function polishWorkoutxExerciseSpanishName(value) {
+    let text = String(value || '').trim();
+    if (!text) return '';
+    const exact = {
+        'Con barra declinado press de banca': 'Press de banca declinado con barra',
+        'Con barra inclinado press de banca': 'Press de banca inclinado con barra',
+        'Con barra ancho press de banca': 'Press de banca con agarre ancho',
+        'Con barra wide press de banca': 'Press de banca con agarre ancho',
+        'Con barra press de banca': 'Press de banca con barra',
+        'Con mancuernas press de banca': 'Press de banca con mancuernas',
+        'En polea low aperturas': 'Aperturas en polea baja',
+        'En polea standing aperturas': 'Aperturas de pie en polea'
+    };
+    if (exact[text]) return exact[text];
+    text = text
+        .replace(/^Con barra declinado press de banca$/i, 'Press de banca declinado con barra')
+        .replace(/^Con barra inclinado press de banca$/i, 'Press de banca inclinado con barra')
+        .replace(/^Con barra(?: wide| ancho) press de banca$/i, 'Press de banca con agarre ancho')
+        .replace(/^Con barra press de banca$/i, 'Press de banca con barra')
+        .replace(/^Con mancuernas press de banca$/i, 'Press de banca con mancuernas')
+        .replace(/^En polea low aperturas$/i, 'Aperturas en polea baja')
+        .replace(/^En polea standing aperturas$/i, 'Aperturas de pie en polea');
+    return text ? text.charAt(0).toUpperCase() + text.slice(1) : '';
+}
+
+function translateWorkoutxInstruction(value) {
+    let text = String(value || '').trim();
+    if (!text) return '';
+
+    const exact = {
+        'Adjust the machine to your desired height and secure your knees on the pad.': 'Ajusta la máquina a la altura adecuada y asegura las rodillas en el apoyo.',
+        'Grasp the handles with your palms facing down and your arms fully extended.': 'Agarra las asas con las palmas hacia abajo y los brazos completamente extendidos.',
+        'Lower your body by bending your elbows until your upper arms are parallel to the floor.': 'Baja el cuerpo flexionando los codos hasta que la parte superior de los brazos quede paralela al suelo.',
+        'Repeat for the desired number of repetitions.': 'Repite el movimiento el número de repeticiones indicado.',
+        'Pause for a moment, then push yourself back up to the starting position.': 'Haz una breve pausa y vuelve de forma controlada a la posición inicial.'
+    };
+    if (exact[text]) return exact[text];
+
+    const replacements = [
+        ['Adjust the machine to your desired height', 'Ajusta la máquina a la altura adecuada'],
+        ['adjust the machine', 'ajusta la máquina'],
+        ['secure your knees on the pad', 'asegura las rodillas en el apoyo'],
+        ['on the pad', 'en el apoyo'],
+        ['desired height', 'altura adecuada'],
+        ['desired number of repetitions', 'número de repeticiones indicado'],
+        ['Grasp the handles', 'Agarra las asas'],
+        ['Grab the handles', 'Agarra las asas'],
+        ['with your palms facing down', 'con las palmas hacia abajo'],
+        ['with your palms facing up', 'con las palmas hacia arriba'],
+        ['with your arms fully extended', 'con los brazos completamente extendidos'],
+        ['arms fully extended', 'brazos completamente extendidos'],
+        ['Lower your body', 'Baja el cuerpo'],
+        ['by bending your elbows', 'flexionando los codos'],
+        ['until your upper arms are parallel to the floor', 'hasta que la parte superior de los brazos quede paralela al suelo'],
+        ['Push yourself back up', 'Empuja para volver arriba'],
+        ['starting position', 'posición inicial'],
+        ['Stand with your feet shoulder-width apart', 'Colócate de pie con los pies a la anchura de los hombros'],
+        ['Sit on the machine', 'Siéntate en la máquina'],
+        ['Lie flat on your back', 'Túmbate boca arriba'],
+        ['Lie face down', 'Túmbate boca abajo'],
+        ['Keep your back straight', 'Mantén la espalda recta'],
+        ['Keep your core engaged', 'Mantén la zona media activada'],
+        ['Engage your core', 'Activa la zona media'],
+        ['Squeeze your', 'Contrae'],
+        ['Slowly return', 'Vuelve lentamente'],
+        ['Return to the starting position', 'Vuelve a la posición inicial'],
+        ['Hold for a moment', 'Mantén la posición un instante'],
+        ['Pause for a moment', 'Haz una breve pausa'],
+        ['Inhale', 'Inspira'],
+        ['Exhale', 'Espira'],
+        ['your chest', 'el pecho'],
+        ['your shoulders', 'los hombros'],
+        ['your elbows', 'los codos'],
+        ['your knees', 'las rodillas'],
+        ['your hips', 'la cadera'],
+        ['your arms', 'los brazos'],
+        ['your legs', 'las piernas'],
+        ['your feet', 'los pies'],
+        ['your hands', 'las manos'],
+        ['the weight', 'la carga'],
+        ['the barbell', 'la barra'],
+        ['the dumbbells', 'las mancuernas'],
+        ['the cable', 'la polea'],
+        ['the handle', 'el agarre'],
+        ['the handles', 'las asas'],
+        ['the floor', 'el suelo']
+    ];
+
+    replacements.forEach(([from, to]) => {
+        text = text.replace(new RegExp(escapeRegExp(from), 'gi'), to);
+    });
+
+    text = text
+        .replace(/\byour\b/gi, 'tu')
+        .replace(/\bthe\b/gi, 'el')
+        .replace(/\band\b/gi, 'y')
+        .replace(/\bon\b/gi, 'en')
+        .replace(/\bwith\b/gi, 'con')
+        .replace(/\buntil\b/gi, 'hasta')
+        .replace(/\bthen\b/gi, 'después')
+        .replace(/\bslowly\b/gi, 'lentamente')
+        .replace(/\bdown\b/gi, 'abajo')
+        .replace(/\bup\b/gi, 'arriba')
+        .replace(/\brepetitions\b/gi, 'repeticiones')
+        .replace(/\breps\b/gi, 'repeticiones')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    return text ? text.charAt(0).toUpperCase() + text.slice(1) : '';
+}
+
+function escapeRegExp(value) {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function showPatientKnowledgeAlert(type, message, autoHide = false) {
+    const alertClass = type === 'success'
+        ? 'alert-success'
+        : (type === 'warning' ? 'alert-warning' : (type === 'info' ? 'alert-info' : 'alert-danger'));
     const $alert = $('#patient-knowledge-alert')
-        .removeClass('d-none alert-success alert-danger')
-        .addClass(type === 'success' ? 'alert-success' : 'alert-danger')
+        .removeClass('d-none alert-success alert-danger alert-warning alert-info')
+        .addClass(alertClass)
         .text(message);
     if (autoHide || type === 'success') {
         setTimeout(() => $alert.addClass('d-none').text(''), 3000);
@@ -5140,6 +7123,24 @@ function openPatientEditorModal(patient = null) {
     populatePatientEditorProfessionalSelect(patient);
     $('#patient-editor-admission-date').val(patient ? patient.admission_date || formatDate(new Date()) : formatDate(new Date()));
     $('#patient-editor-notes').val(patient ? patient.notes || '' : '');
+    $('#patient-editor-physical-sex').val(patient ? patient.physical_sex || '' : '');
+    $('#patient-editor-weight').val(patient ? patient.weight_kg || '' : '');
+    $('#patient-editor-height').val(patient ? patient.height_cm || '' : '');
+    $('#patient-editor-body-fat').val(patient ? patient.body_fat_percentage || '' : '');
+    $('#patient-editor-waist').val(patient ? patient.waist_cm || '' : '');
+    $('#patient-editor-hip').val(patient ? patient.hip_cm || '' : '');
+    $('#patient-editor-chest').val(patient ? patient.chest_cm || '' : '');
+    $('#patient-editor-thigh').val(patient ? patient.thigh_cm || '' : '');
+    $('#patient-editor-biceps').val(patient ? patient.biceps_cm || '' : '');
+    $('#patient-editor-calf').val(patient ? patient.calf_cm || '' : '');
+    $('#patient-editor-skinfold-triceps').val(patient ? patient.skinfold_triceps_mm || '' : '');
+    $('#patient-editor-skinfold-subscapular').val(patient ? patient.skinfold_subscapular_mm || '' : '');
+    $('#patient-editor-skinfold-suprailiac').val(patient ? patient.skinfold_suprailiac_mm || '' : '');
+    $('#patient-editor-skinfold-abdominal').val(patient ? patient.skinfold_abdominal_mm || '' : '');
+    $('#patient-editor-skinfold-chest').val(patient ? patient.skinfold_chest_mm || '' : '');
+    $('#patient-editor-skinfold-thigh').val(patient ? patient.skinfold_thigh_mm || '' : '');
+    $('#patient-editor-body-fat-note').text('Puedes introducirlo manualmente si ya tienes una medicion fiable.');
+    updatePatientBmiDisplay();
     updatePatientTransferUi(patient);
     if (patient && patient.document_path) {
         $('#patient-editor-document-status').html(`Archivo actual: <a href="api/admin.php?action=download_patient_document&patient_id=${patient.id}" target="_blank" rel="noopener">${escapeHtml(patient.document_name || 'Documento')}</a>`);
@@ -5151,6 +7152,7 @@ function openPatientEditorModal(patient = null) {
     resetPatientWorkPlan(patient ? patient.id : 0);
     resetPatientEvolution(patient ? patient.id : 0);
     resetPatientFiles(patient ? patient.id : 0);
+    resetPatientReports(patient ? patient.id : 0);
     resetPatientBonuses(patient ? patient.id : 0);
     if (patient && patient.id) {
         loadPatientAppointmentHistory(patient.id);
@@ -5232,6 +7234,7 @@ function resetPatientWorkPlan(patientId = 0) {
     const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     CURRENT_PATIENT_WORK_PLAN_ID = parseInt(patientId || 0, 10);
     CURRENT_PATIENT_WORK_PLAN_ROWS = [];
+    syncPatientWorkPlanStatusUi();
     $('#patient-work-plan-alert').addClass('d-none').text('');
     $('#patient-work-plan-count').text('');
     hidePatientWorkPlanForm();
@@ -5247,6 +7250,7 @@ function loadPatientWorkPlan(patientId) {
         return;
     }
     CURRENT_PATIENT_WORK_PLAN_ID = patientId;
+    syncPatientWorkPlanStatusUi();
     $('#patient-work-plan-alert').addClass('d-none').text('');
     $('#patient-work-plan-pending').html('<div class="text-center text-muted py-4">Cargando plan de trabajo...</div>');
     $('#patient-work-plan-completed-list').html('<div class="text-center text-muted py-4">Cargando plan de trabajo...</div>');
@@ -5275,6 +7279,14 @@ function loadPatientWorkPlan(patientId) {
 
 function renderPatientWorkPlan(tasks) {
     const rows = Array.isArray(tasks) ? tasks : [];
+    const statusEnabled = workPlanTaskStatusEnabled();
+    syncPatientWorkPlanStatusUi();
+    if (!statusEnabled) {
+        $('#patient-work-plan-pending').html(renderPatientWorkPlanList(rows, 'all'));
+        $('#patient-work-plan-completed-list').html('');
+        $('#patient-work-plan-count').text(rows.length ? `${rows.length} tarea${rows.length === 1 ? '' : 's'}` : '');
+        return;
+    }
     const pending = rows.filter(task => task.status !== 'completed');
     const completed = rows.filter(task => task.status === 'completed');
     $('#patient-work-plan-pending').html(renderPatientWorkPlanList(pending, 'pending'));
@@ -5286,6 +7298,9 @@ function renderPatientWorkPlan(tasks) {
 
 function renderPatientWorkPlanList(tasks, listType) {
     if (!tasks.length) {
+        if (listType === 'all') {
+            return '<div class="text-center text-muted py-4">No hay tareas en el plan de trabajo.</div>';
+        }
         return `<div class="text-center text-muted py-4">${listType === 'pending' ? 'No hay tareas pendientes.' : 'No hay tareas completadas.'}</div>`;
     }
     return tasks.map(task => renderPatientWorkPlanTask(task)).join('');
@@ -5293,12 +7308,21 @@ function renderPatientWorkPlanList(tasks, listType) {
 
 function renderPatientWorkPlanTask(task) {
     const completed = task.status === 'completed';
+    const statusEnabled = workPlanTaskStatusEnabled();
     const priority = workPlanPriorityLabel(task.priority);
     const toggleTitle = completed ? 'Marcar como pendiente' : 'Marcar como completada';
     const toggleIcon = completed ? 'bi-arrow-counterclockwise' : 'bi-check2';
     const toggleClass = completed ? 'btn-outline-secondary' : 'btn-outline-success';
-    const completedText = completed && task.completed_at
+    const completedText = statusEnabled && completed && task.completed_at
         ? `<div class="small text-muted mt-2">Completada el ${formatDateTimeLabel(task.completed_at)}</div>`
+        : '';
+    const statusBadge = statusEnabled
+        ? (completed ? '<span class="badge text-bg-success">Completada</span>' : '<span class="badge text-bg-warning">Pendiente</span>')
+        : '';
+    const toggleButton = statusEnabled
+        ? `<button class="btn ${toggleClass} btn-sm btn-toggle-work-plan-task" type="button" data-task-id="${task.id}" data-next-status="${completed ? 'pending' : 'completed'}" title="${toggleTitle}">
+                        <i class="bi ${toggleIcon}"></i>
+                    </button>`
         : '';
     return `
         <div class="patient-work-plan-task ${completed ? 'is-completed' : ''}" data-task-id="${task.id}">
@@ -5306,7 +7330,7 @@ function renderPatientWorkPlanTask(task) {
                 <div class="pe-2">
                     <div class="d-flex flex-wrap align-items-center patient-work-plan-badges">
                         <span class="badge ${priority.className}">${priority.label}</span>
-                        ${completed ? '<span class="badge text-bg-success">Completada</span>' : '<span class="badge text-bg-warning">Pendiente</span>'}
+                        ${statusBadge}
                         ${task.visible_to_patient == 1 ? '<span class="badge text-bg-info">Visible portal</span>' : ''}
                     </div>
                     <h6 class="mb-1 mt-2">${escapeHtml(task.title || '')}</h6>
@@ -5314,9 +7338,7 @@ function renderPatientWorkPlanTask(task) {
                     ${completedText}
                 </div>
                 <div class="patient-work-plan-actions">
-                    <button class="btn ${toggleClass} btn-sm btn-toggle-work-plan-task" type="button" data-task-id="${task.id}" data-next-status="${completed ? 'pending' : 'completed'}" title="${toggleTitle}">
-                        <i class="bi ${toggleIcon}"></i>
-                    </button>
+                    ${toggleButton}
                     <button class="btn btn-outline-secondary btn-sm btn-edit-work-plan-task" type="button" data-task-id="${task.id}" title="Editar tarea">
                         <i class="bi bi-pencil"></i>
                     </button>
@@ -5327,6 +7349,24 @@ function renderPatientWorkPlanTask(task) {
             </div>
         </div>
     `;
+}
+
+function syncPatientWorkPlanStatusUi() {
+    const enabled = workPlanTaskStatusEnabled();
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
+    const helpText = enabled
+        ? `Desde aqu\u00ed puedes personalizar tareas, actividades, temas a tratar o pautas para este ${patientSingular}, y marcarlas como completadas o pendientes en las sucesivas citas.`
+        : `Desde aqu\u00ed puedes personalizar tareas, rutinas, actividades o pautas para este ${patientSingular}.`;
+    $('#patient-work-plan-help-text').text(helpText);
+    $('#patient-work-plan-pending-column')
+        .toggleClass('col-lg-6', enabled)
+        .toggleClass('col-lg-12', !enabled);
+    $('#patient-work-plan-pending-column h6').text(enabled ? 'Pendientes' : 'Tareas del plan');
+    $('#patient-work-plan-completed-column').toggleClass('d-none', !enabled);
+    $('#patient-work-plan-status-field').toggleClass('d-none', !enabled);
+    if (!enabled) {
+        $('#patient-work-plan-completed').prop('checked', false);
+    }
 }
 
 function workPlanPriorityLabel(priority) {
@@ -5380,8 +7420,9 @@ function openWorkPlanTaskModal(options = {}) {
     $('#patient-work-plan-title').val(task ? task.title || '' : '');
     $('#patient-work-plan-description').val(task ? task.description || '' : '');
     $('#patient-work-plan-priority').val(task ? String(task.priority || 2) : '2');
-    $('#patient-work-plan-completed').prop('checked', Boolean(task && task.status === 'completed'));
+    $('#patient-work-plan-completed').prop('checked', workPlanTaskStatusEnabled() && Boolean(task && task.status === 'completed'));
     $('#patient-work-plan-visible').prop('checked', task ? task.visible_to_patient == 1 : PAYMENT_SETTINGS.patient_tasks_visible_default == 1);
+    syncPatientWorkPlanStatusUi();
     togglePatientWorkPlanTaskMode();
     if (patientWorkPlanTaskModal) {
         patientWorkPlanTaskModal.show();
@@ -5439,6 +7480,7 @@ function resetPatientWorkPlanFormFields() {
     $('#patient-work-plan-completed').prop('checked', false);
     $('#patient-work-plan-visible').prop('checked', false);
     CURRENT_WORK_PLAN_FORM_CONTEXT = { source: 'patient', patientId: 0, appointmentId: 0 };
+    syncPatientWorkPlanStatusUi();
     togglePatientWorkPlanTaskMode();
 }
 
@@ -5520,7 +7562,7 @@ function savePatientWorkPlanTask(form) {
         title: $('#patient-work-plan-title').val() || '',
         description: $('#patient-work-plan-description').val() || '',
         priority: $('#patient-work-plan-priority').val() || 2,
-        status: $('#patient-work-plan-completed').is(':checked') ? 'completed' : 'pending',
+        status: workPlanTaskStatusEnabled() && $('#patient-work-plan-completed').is(':checked') ? 'completed' : 'pending',
         visible_to_patient: $('#patient-work-plan-visible').is(':checked') ? 1 : 0
     };
     if (context.source === 'appointment-session' && context.appointmentId) {
@@ -5567,6 +7609,9 @@ function savePatientWorkPlanTask(form) {
 }
 
 function setPatientWorkPlanTaskStatus(button) {
+    if (!workPlanTaskStatusEnabled()) {
+        return;
+    }
     const $button = $(button);
     const taskId = parseInt($button.data('task-id') || 0, 10);
     const status = $button.data('next-status') === 'completed' ? 'completed' : 'pending';
@@ -5735,7 +7780,8 @@ function populateWorkPlanTemplateSelect() {
         const taskSingular = sectorLabel('task', 'singular', 'tarea');
         const taskPlural = sectorLabel('task', 'plural', 'tareas');
         WORK_PLAN_KNOWLEDGE_IMPORT_OPTIONS.forEach(option => {
-            const key = `${option.area_name || knowledgeBaseLabel} · ${option.problem_name || diagnosisFallback}`;
+            const sectorName = option.sector_label || knowledgeSectorName(option.sector_key || APP_CURRENT_SECTOR_KEY);
+            const key = `${sectorName ? `${sectorName} · ` : ''}${option.area_name || knowledgeBaseLabel} · ${option.problem_name || diagnosisFallback}`;
             if (!knowledgeGrouped[key]) knowledgeGrouped[key] = [];
             knowledgeGrouped[key].push(option);
         });
@@ -6151,6 +8197,7 @@ function resetPatientEvolution(patientId = 0) {
     CURRENT_PATIENT_EVOLUTION_APPOINTMENTS = [];
     $('#patient-evolution-alert').addClass('d-none').text('');
     $('#patient-evolution-count').text('');
+    destroyPhysicalEvolutionCharts(PATIENT_EVOLUTION_CHARTS);
     hidePatientEvolutionForm();
     if (!patientId) {
         $('#patient-evolution-list').html(`<div class="text-center text-muted py-4">Guarda el ${patientSingular} para ver su evolución.</div>`);
@@ -6166,6 +8213,7 @@ function loadPatientEvolution(patientId) {
         return;
     }
     CURRENT_PATIENT_EVOLUTION_ID = patientId;
+    $('#patient-evolution-chart-grid').html('<div class="text-center text-muted py-4">Cargando graficos...</div>');
     $('#patient-evolution-alert').addClass('d-none').text('');
     $('#patient-evolution-list').html('<div class="text-center text-muted py-4">Cargando evolución...</div>');
     $('#patient-evolution-count').text('');
@@ -6183,6 +8231,7 @@ function loadPatientEvolution(patientId) {
             CURRENT_PATIENT_EVOLUTION_APPOINTMENTS = Array.isArray(res.appointments) ? res.appointments : [];
             populatePatientEvolutionAppointmentSelect();
             renderPatientEvolution(CURRENT_PATIENT_EVOLUTION_ROWS);
+            renderPatientEvolutionCharts();
         },
         error: function () {
             showPatientEvolutionAlert('danger', 'Error de conexión al cargar la evolución.');
@@ -6201,6 +8250,98 @@ function populatePatientEvolutionAppointmentSelect(selected = '') {
     if (selected && $select.find(`option[value="${selected}"]`).length) {
         $select.val(String(selected));
     }
+}
+
+function copyCurrentPhysicalMetricsToEvolution() {
+    $('#patient-evolution-weight').val($('#patient-editor-weight').val() || '');
+    $('#patient-evolution-height').val($('#patient-editor-height').val() || '');
+    $('#patient-evolution-body-fat').val($('#patient-editor-body-fat').val() || '');
+    $('#patient-evolution-waist').val($('#patient-editor-waist').val() || '');
+    $('#patient-evolution-hip').val($('#patient-editor-hip').val() || '');
+    $('#patient-evolution-chest').val($('#patient-editor-chest').val() || '');
+    $('#patient-evolution-thigh').val($('#patient-editor-thigh').val() || '');
+    $('#patient-evolution-biceps').val($('#patient-editor-biceps').val() || '');
+    $('#patient-evolution-calf').val($('#patient-editor-calf').val() || '');
+    $('#patient-evolution-skinfold-triceps').val($('#patient-editor-skinfold-triceps').val() || '');
+    $('#patient-evolution-skinfold-subscapular').val($('#patient-editor-skinfold-subscapular').val() || '');
+    $('#patient-evolution-skinfold-suprailiac').val($('#patient-editor-skinfold-suprailiac').val() || '');
+    $('#patient-evolution-skinfold-abdominal').val($('#patient-editor-skinfold-abdominal').val() || '');
+    $('#patient-evolution-skinfold-chest').val($('#patient-editor-skinfold-chest').val() || '');
+    $('#patient-evolution-skinfold-thigh').val($('#patient-editor-skinfold-thigh').val() || '');
+    updatePatientEvolutionBmiDisplay();
+}
+
+function patientEvolutionMetricFieldMap() {
+    return [
+        ['weight_kg', '#patient-evolution-weight'],
+        ['height_cm', '#patient-evolution-height'],
+        ['body_fat_percentage', '#patient-evolution-body-fat'],
+        ['waist_cm', '#patient-evolution-waist'],
+        ['hip_cm', '#patient-evolution-hip'],
+        ['chest_cm', '#patient-evolution-chest'],
+        ['thigh_cm', '#patient-evolution-thigh'],
+        ['biceps_cm', '#patient-evolution-biceps'],
+        ['calf_cm', '#patient-evolution-calf'],
+        ['skinfold_triceps_mm', '#patient-evolution-skinfold-triceps'],
+        ['skinfold_subscapular_mm', '#patient-evolution-skinfold-subscapular'],
+        ['skinfold_suprailiac_mm', '#patient-evolution-skinfold-suprailiac'],
+        ['skinfold_abdominal_mm', '#patient-evolution-skinfold-abdominal'],
+        ['skinfold_chest_mm', '#patient-evolution-skinfold-chest'],
+        ['skinfold_thigh_mm', '#patient-evolution-skinfold-thigh']
+    ];
+}
+
+function evolutionRowHasPhysicalMetrics(row = {}) {
+    return patientEvolutionMetricFieldMap().some(([key]) => row[key] !== null && row[key] !== undefined && String(row[key]).trim() !== '');
+}
+
+function copyLatestPhysicalMetricsToEvolution() {
+    const latest = (Array.isArray(CURRENT_PATIENT_EVOLUTION_ROWS) ? CURRENT_PATIENT_EVOLUTION_ROWS : [])
+        .filter(evolutionRowHasPhysicalMetrics)
+        .slice()
+        .sort((a, b) => {
+            const dateCompare = String(b.note_date || '').localeCompare(String(a.note_date || ''));
+            if (dateCompare !== 0) return dateCompare;
+            return parseInt(b.id || 0, 10) - parseInt(a.id || 0, 10);
+        })[0] || null;
+    if (!latest) {
+        copyCurrentPhysicalMetricsToEvolution();
+        return;
+    }
+    patientEvolutionMetricFieldMap().forEach(([key, selector]) => {
+        $(selector).val(latest[key] || '');
+    });
+    updatePatientEvolutionBmiDisplay();
+}
+
+function renderEvolutionMetrics(note) {
+    const metrics = [];
+    if (note.weight_kg) metrics.push(`Peso ${formatMetricValue(note.weight_kg)} kg`);
+    if (note.height_cm) metrics.push(`Altura ${formatMetricValue(note.height_cm)} cm`);
+    const bmi = calculateBmiFromValues(note.weight_kg, note.height_cm);
+    if (bmi > 0) metrics.push(`IMC ${bmi.toFixed(1)}`);
+    if (note.body_fat_percentage) metrics.push(`Grasa ${formatMetricValue(note.body_fat_percentage)}%`);
+    if (note.waist_cm) metrics.push(`Cintura ${formatMetricValue(note.waist_cm)} cm`);
+    if (note.hip_cm) metrics.push(`Cadera ${formatMetricValue(note.hip_cm)} cm`);
+    if (note.chest_cm) metrics.push(`Pecho ${formatMetricValue(note.chest_cm)} cm`);
+    if (note.thigh_cm) metrics.push(`Muslo ${formatMetricValue(note.thigh_cm)} cm`);
+    if (note.biceps_cm) metrics.push(`Biceps ${formatMetricValue(note.biceps_cm)} cm`);
+    if (note.calf_cm) metrics.push(`Gemelo ${formatMetricValue(note.calf_cm)} cm`);
+    if (note.skinfold_triceps_mm) metrics.push(`Pliegue triceps ${formatMetricValue(note.skinfold_triceps_mm)} mm`);
+    if (note.skinfold_subscapular_mm) metrics.push(`Pliegue subescapular ${formatMetricValue(note.skinfold_subscapular_mm)} mm`);
+    if (note.skinfold_suprailiac_mm) metrics.push(`Pliegue suprailiaco ${formatMetricValue(note.skinfold_suprailiac_mm)} mm`);
+    if (note.skinfold_abdominal_mm) metrics.push(`Pliegue abdominal ${formatMetricValue(note.skinfold_abdominal_mm)} mm`);
+    if (note.skinfold_chest_mm) metrics.push(`Pliegue pectoral ${formatMetricValue(note.skinfold_chest_mm)} mm`);
+    if (note.skinfold_thigh_mm) metrics.push(`Pliegue muslo ${formatMetricValue(note.skinfold_thigh_mm)} mm`);
+    return metrics.length
+        ? `<div class="patient-evolution-metrics small text-muted mt-2">${metrics.map(item => `<span>${escapeHtml(item)}</span>`).join('')}</div>`
+        : '';
+}
+
+function formatMetricValue(value) {
+    const number = Number(String(value || '').replace(',', '.'));
+    if (Number.isNaN(number)) return value || '';
+    return number.toFixed(1).replace(/\.0$/, '');
 }
 
 function renderPatientEvolution(notes) {
@@ -6235,6 +8376,7 @@ function renderPatientEvolution(notes) {
                     </button>
                 </div>
                 ${note.description ? `<p class="mb-2 mt-2">${escapeHtml(note.description)}</p>` : ''}
+                ${renderEvolutionMetrics(note)}
                 ${note.observations ? `<div class="small text-muted"><strong>Observaciones:</strong> ${escapeHtml(note.observations)}</div>` : ''}
                 ${note.next_steps ? `<div class="small text-muted"><strong>Pendientes:</strong> ${escapeHtml(note.next_steps)}</div>` : ''}
             </div>
@@ -6252,7 +8394,7 @@ function showPatientEvolutionForm(note = null) {
         showPatientEvolutionAlert('danger', `Guarda primero el ${patientSingular}.`);
         return;
     }
-    $('#patient-evolution-form').removeClass('d-none');
+    $('#patient-evolution-modal-title').text(note ? 'Editar registro de evolución' : 'Nuevo registro de evolución');
     $('#patient-evolution-id').val(note ? note.id : 0);
     $('#patient-evolution-patient-id').val(patientId);
     $('#patient-evolution-date').val(note ? note.note_date || formatDate(new Date()) : formatDate(new Date()));
@@ -6261,16 +8403,42 @@ function showPatientEvolutionForm(note = null) {
     $('#patient-evolution-observations').val(note ? note.observations || '' : '');
     $('#patient-evolution-next-steps').val(note ? note.next_steps || '' : '');
     $('#patient-evolution-files').val('');
+    $('#patient-evolution-weight').val(note ? note.weight_kg || '' : '');
+    $('#patient-evolution-height').val(note ? note.height_cm || '' : '');
+    $('#patient-evolution-body-fat').val(note ? note.body_fat_percentage || '' : '');
+    $('#patient-evolution-waist').val(note ? note.waist_cm || '' : '');
+    $('#patient-evolution-hip').val(note ? note.hip_cm || '' : '');
+    $('#patient-evolution-chest').val(note ? note.chest_cm || '' : '');
+    $('#patient-evolution-thigh').val(note ? note.thigh_cm || '' : '');
+    $('#patient-evolution-biceps').val(note ? note.biceps_cm || '' : '');
+    $('#patient-evolution-calf').val(note ? note.calf_cm || '' : '');
+    $('#patient-evolution-skinfold-triceps').val(note ? note.skinfold_triceps_mm || '' : '');
+    $('#patient-evolution-skinfold-subscapular').val(note ? note.skinfold_subscapular_mm || '' : '');
+    $('#patient-evolution-skinfold-suprailiac').val(note ? note.skinfold_suprailiac_mm || '' : '');
+    $('#patient-evolution-skinfold-abdominal').val(note ? note.skinfold_abdominal_mm || '' : '');
+    $('#patient-evolution-skinfold-chest').val(note ? note.skinfold_chest_mm || '' : '');
+    $('#patient-evolution-skinfold-thigh').val(note ? note.skinfold_thigh_mm || '' : '');
+    if (!note) {
+        copyLatestPhysicalMetricsToEvolution();
+    } else {
+        updatePatientEvolutionBmiDisplay();
+    }
     populatePatientEvolutionAppointmentSelect(note ? note.appointment_id || '' : '');
-    $('#patient-evolution-title').trigger('focus');
+    if (patientEvolutionModal) {
+        patientEvolutionModal.show();
+        setTimeout(() => $('#patient-evolution-title').trigger('focus'), 180);
+    }
 }
 
 function hidePatientEvolutionForm() {
-    $('#patient-evolution-form').addClass('d-none');
+    if (patientEvolutionModal && $('#patientEvolutionModal').hasClass('show')) {
+        patientEvolutionModal.hide();
+    }
     if ($('#patient-evolution-form').length) {
         $('#patient-evolution-form')[0].reset();
     }
     $('#patient-evolution-id').val(0);
+    $('#patient-evolution-bmi').text('-');
 }
 
 function savePatientEvolution(form) {
@@ -6304,6 +8472,540 @@ function savePatientEvolution(form) {
         },
         error: function () {
             showPatientEvolutionAlert('danger', 'Error de conexión al guardar la evolución.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function resetPatientReports(patientId = 0) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
+    CURRENT_PATIENT_REPORTS_ID = parseInt(patientId || 0, 10);
+    CURRENT_PATIENT_REPORTS_ROWS = [];
+    $('#patient-reports-alert').addClass('d-none').text('');
+    $('#patient-reports-count').text('');
+    $('#btn-refresh-patient-reports').prop('disabled', !patientId);
+    $('#btn-show-custom-patient-report').prop('disabled', !patientId);
+    updatePatientReportSuggestionButton();
+    if (!patientId) {
+        $('#patient-reports-body').html(`<tr><td colspan="5" class="text-center text-muted py-4">Guarda el ${patientSingular} para ver sus informes.</td></tr>`);
+        return;
+    }
+    $('#patient-reports-body').html('<tr><td colspan="5" class="text-center text-muted py-4">Cargando informes...</td></tr>');
+}
+
+function currentPatientKnowledgeProblemId() {
+    const selected = parseInt($('#patient-editor-knowledge-problem').val() || 0, 10);
+    if (selected > 0) {
+        return selected;
+    }
+    return parseInt(CURRENT_PATIENT_EDITOR && CURRENT_PATIENT_EDITOR.knowledge_problem_id ? CURRENT_PATIENT_EDITOR.knowledge_problem_id : 0, 10);
+}
+
+function updatePatientReportSuggestionButton() {
+    const patientId = CURRENT_PATIENT_REPORTS_ID || parseInt($('#patient-editor-id').val() || '0', 10);
+    $('#btn-show-suggested-patient-reports')
+        .prop('disabled', !patientId)
+        .attr('title', !patientId ? `Guarda primero el ${sectorLabel('patient', 'singular', 'paciente')} para ver informes sugeridos.` : '');
+}
+
+function loadPatientReports(patientId) {
+    patientId = parseInt(patientId || 0, 10);
+    if (!patientId) {
+        resetPatientReports(0);
+        return;
+    }
+    CURRENT_PATIENT_REPORTS_ID = patientId;
+    $('#patient-reports-alert').addClass('d-none').text('');
+    $('#patient-reports-body').html('<tr><td colspan="5" class="text-center text-muted py-4">Cargando informes...</td></tr>');
+    $('#patient-reports-count').text('');
+    $('#btn-refresh-patient-reports').prop('disabled', false);
+    $('#btn-show-custom-patient-report').prop('disabled', false);
+    updatePatientReportSuggestionButton();
+    $.ajax({
+        url: 'api/admin.php?action=patient_reports',
+        dataType: 'json',
+        data: { patient_id: patientId },
+        success: function (res) {
+            if (!res.success) {
+                showPatientReportsAlert('danger', res.error || 'No se pudieron cargar los informes.');
+                $('#patient-reports-body').html('<tr><td colspan="5" class="text-center text-muted py-4">No se pudieron cargar los informes.</td></tr>');
+                return;
+            }
+            renderPatientReports(res.reports || []);
+        },
+        error: function () {
+            showPatientReportsAlert('danger', 'Error de conexion al cargar los informes.');
+            $('#patient-reports-body').html('<tr><td colspan="5" class="text-center text-muted py-4">No se pudieron cargar los informes.</td></tr>');
+        }
+    });
+}
+
+function showPatientReportSuggestions() {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
+    const patientId = CURRENT_PATIENT_REPORTS_ID || parseInt($('#patient-editor-id').val() || '0', 10);
+    if (!patientId) {
+        showPatientReportsAlert('danger', `Guarda primero el ${patientSingular} para sugerir informes.`);
+        return;
+    }
+    $('#patient-report-suggestions-alert').addClass('d-none').text('');
+    $('#patient-report-suggestions-body').html('<div class="text-center text-muted py-4">Selecciona un diagnóstico/objetivo para ver informes sugeridos.</div>');
+    $('#patient-report-suggestions-problem').prop('disabled', true).html('<option value="">Cargando diagnósticos...</option>');
+    if (patientReportSuggestionsModal) {
+        patientReportSuggestionsModal.show();
+    }
+    loadKnowledgeProblems(function () {
+        populatePatientReportSuggestionProblemSelect();
+        const selectedProblemId = parseInt($('#patient-report-suggestions-problem').val() || 0, 10);
+        if (selectedProblemId > 0) {
+            loadPatientReportSuggestionsForProblem(selectedProblemId);
+        }
+    });
+}
+
+function populatePatientReportSuggestionProblemSelect() {
+    const selected = String(currentPatientKnowledgeProblemId() || '');
+    const diagnosisLabel = sectorText('clinicalTerms.diagnosis', 'diagnóstico');
+    const $select = $('#patient-report-suggestions-problem');
+    const rows = Array.isArray(KNOWLEDGE_PROBLEMS) ? KNOWLEDGE_PROBLEMS : [];
+    if (!rows.length) {
+        $select.prop('disabled', true).html(`<option value="">No hay ${escapeHtml(diagnosisLabel)} disponibles</option>`);
+        $('#patient-report-suggestions-body').html(`<div class="text-center text-muted py-4">No hay ${escapeHtml(diagnosisLabel)} disponibles.</div>`);
+        return;
+    }
+    const groups = {};
+    const hasMultipleSectors = new Set(rows.map(problem => problem.sector_key || APP_CURRENT_SECTOR_KEY).filter(Boolean)).size > 1;
+    rows.forEach(problem => {
+        const sectorLabelText = hasMultipleSectors ? (problem.sector_label || knowledgeSectorName(problem.sector_key || APP_CURRENT_SECTOR_KEY)) : '';
+        const area = `${sectorLabelText ? `${sectorLabelText} · ` : ''}${problem.area_name || 'Sin área'}`;
+        if (!groups[area]) groups[area] = [];
+        groups[area].push(problem);
+    });
+    let html = `<option value="">Selecciona ${escapeHtml(diagnosisLabel)}</option>`;
+    Object.keys(groups).sort().forEach(area => {
+        html += `<optgroup label="${escapeHtml(area)}">`;
+        groups[area].forEach(problem => {
+            const label = `${problem.name || ''}${problem.alias ? ` (${problem.alias})` : ''}`;
+            html += `<option value="${parseInt(problem.id, 10)}">${escapeHtml(label)}</option>`;
+        });
+        html += '</optgroup>';
+    });
+    $select.html(html).val(selected).prop('disabled', false);
+    if (selected && !$select.val()) {
+        $select.val('');
+    }
+}
+
+function loadPatientReportSuggestionsForProblem(problemId) {
+    const patientId = CURRENT_PATIENT_REPORTS_ID || parseInt($('#patient-editor-id').val() || '0', 10);
+    problemId = parseInt(problemId || 0, 10);
+    if (!patientId || !problemId) {
+        $('#patient-report-suggestions-body').html('<div class="text-center text-muted py-4">Selecciona un diagnóstico/objetivo para ver informes sugeridos.</div>');
+        return;
+    }
+    $('#patient-report-suggestions-alert').addClass('d-none').text('');
+    $('#patient-report-suggestions-body').html('<div class="text-center text-muted py-4">Cargando sugerencias...</div>');
+    $.ajax({
+        url: 'api/admin.php?action=patient_report_suggestions',
+        dataType: 'json',
+        data: { patient_id: patientId, knowledge_problem_id: problemId },
+        success: function (res) {
+            if (!res.success) {
+                $('#patient-report-suggestions-alert').removeClass('d-none alert-success').addClass('alert-danger').text(res.error || 'No se pudieron cargar las sugerencias.');
+                $('#patient-report-suggestions-body').html('<div class="text-center text-muted py-4">No hay sugerencias disponibles.</div>');
+                return;
+            }
+            renderPatientReportSuggestions(res.suggestions || []);
+        },
+        error: function () {
+            $('#patient-report-suggestions-alert').removeClass('d-none alert-success').addClass('alert-danger').text('Error de conexion al cargar las sugerencias.');
+            $('#patient-report-suggestions-body').html('<div class="text-center text-muted py-4">No hay sugerencias disponibles.</div>');
+        }
+    });
+}
+
+function renderPatientReportSuggestions(suggestions) {
+    const rows = Array.isArray(suggestions) ? suggestions : [];
+    if (!rows.length) {
+        $('#patient-report-suggestions-body').html('<div class="text-center text-muted py-4">No hay informes sugeridos para este diagnostico.</div>');
+        return;
+    }
+    const html = rows.map(item => {
+        const title = item.title || 'Informe';
+        const typeLabel = patientReportTypeLabel(item.report_key);
+        const usedCount = parseInt(item.used_count || 0, 10);
+        const usedText = usedCount === 1 ? 'Usado en 1 paciente similar' : `Usado en ${usedCount} pacientes similares`;
+        const lastUsed = item.last_used_at ? formatDateTimeLabel(item.last_used_at) : '';
+        const sourceDocumentName = String(item.source_document_name || '').trim();
+        const sourceName = sourceDocumentName && sourceDocumentName !== '0' && sourceDocumentName !== '-'
+            ? `<br><small class="text-muted">Plantilla: ${escapeHtml(sourceDocumentName)}</small>`
+            : '';
+        return `
+            <div class="patient-report-suggestion-item border rounded p-3 mb-2">
+                <div class="d-flex justify-content-between gap-3 flex-wrap">
+                    <div>
+                        <strong>${escapeHtml(title)}</strong>
+                        <div class="text-muted small">${escapeHtml(typeLabel)} · ${escapeHtml(usedText)}${lastUsed ? ` · Ultimo uso: ${escapeHtml(lastUsed)}` : ''}</div>
+                        ${sourceName}
+                    </div>
+                    <div class="text-end">
+                        <button type="button" class="btn btn-outline-primary btn-sm btn-add-suggested-patient-report" data-source-report-id="${parseInt(item.id || 0, 10)}">
+                            <i class="bi bi-plus-lg"></i> Añadir
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+    $('#patient-report-suggestions-body').html(html);
+}
+
+function addSuggestedPatientReport(button) {
+    const patientId = CURRENT_PATIENT_REPORTS_ID || parseInt($('#patient-editor-id').val() || '0', 10);
+    const sourceReportId = parseInt($(button).data('source-report-id') || 0, 10);
+    const problemId = parseInt($('#patient-report-suggestions-problem').val() || 0, 10);
+    if (!patientId || !sourceReportId) {
+        $('#patient-report-suggestions-alert').removeClass('d-none alert-success').addClass('alert-danger').text('No se pudo identificar el informe sugerido.');
+        return;
+    }
+    const $button = $(button);
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Añadiendo...');
+    $.ajax({
+        url: 'api/admin.php?action=add_suggested_patient_report',
+        method: 'POST',
+        dataType: 'json',
+        data: { patient_id: patientId, source_report_id: sourceReportId, knowledge_problem_id: problemId },
+        success: function (res) {
+            if (!res.success) {
+                $('#patient-report-suggestions-alert').removeClass('d-none alert-success').addClass('alert-danger').text(res.error || 'No se pudo anadir el informe sugerido.');
+                return;
+            }
+            $('#patient-report-suggestions-alert').removeClass('d-none alert-danger').addClass('alert-success').text(res.message || 'Informe anadido correctamente.');
+            $button.closest('.patient-report-suggestion-item').fadeOut(180, function () {
+                $(this).remove();
+                if (!$('#patient-report-suggestions-body .patient-report-suggestion-item').length) {
+                    $('#patient-report-suggestions-body').html('<div class="text-center text-muted py-4">No hay mas sugerencias disponibles.</div>');
+                }
+            });
+            loadPatientReports(patientId);
+        },
+        error: function () {
+            $('#patient-report-suggestions-alert').removeClass('d-none alert-success').addClass('alert-danger').text('Error de conexion al anadir el informe sugerido.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function renderPatientReports(reports) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
+    const rows = Array.isArray(reports) ? reports : [];
+    CURRENT_PATIENT_REPORTS_ROWS = rows;
+    const templateRows = patientReportTemplates().map(template => {
+        const lastGenerated = rows.find(report => report.report_key === template.key);
+        const generatedMeta = lastGenerated
+            ? (lastGenerated.generated_at ? formatDisplayDateOnly(lastGenerated.generated_at) : (lastGenerated.created_at ? formatDisplayDateOnly(lastGenerated.created_at) : ''))
+            : '';
+        const configButton = lastGenerated && template.key !== 'internal_summary'
+            ? `<button type="button" class="btn btn-outline-secondary btn-sm btn-configure-patient-report" data-report-id="${parseInt(lastGenerated.id || 0, 10)}" title="Configurar informe" aria-label="Configurar informe"><i class="bi bi-gear"></i></button>`
+            : '';
+        const finalButton = lastGenerated && lastGenerated.final_url
+            ? `<a class="btn btn-outline-success btn-sm" href="${escapeHtml(lastGenerated.final_url)}" target="_blank" rel="noopener" title="Descargar informe final" aria-label="Descargar informe final"><i class="bi bi-download"></i></a>`
+            : '';
+        const paymentBadge = lastGenerated ? patientReportPaymentBadge(lastGenerated) : '<span class="badge bg-light text-dark">Configurable</span>';
+        const paymentLabel = lastGenerated ? patientReportPaymentLabel(lastGenerated) : template.defaultPayment;
+        const statusLabel = lastGenerated ? patientReportStatusLabel(lastGenerated.status) : 'Pendiente';
+        return `
+        <tr class="patient-report-template-row">
+            <td>
+                <strong>${escapeHtml(template.title)}</strong>
+                <br><small class="text-muted">${escapeHtml(template.description)}</small>
+            </td>
+            <td><span class="badge bg-light text-dark">${escapeHtml(statusLabel)}</span><br><small class="text-muted">Predefinido</small></td>
+            <td>${paymentBadge}<br><small class="text-muted">${escapeHtml(paymentLabel)}</small></td>
+            <td>${escapeHtml(generatedMeta)}</td>
+            <td class="text-end">
+                <div class="d-flex justify-content-end gap-1 flex-wrap">
+                    ${configButton}
+                    ${finalButton}
+                    <button type="button" class="btn btn-outline-primary btn-sm btn-patient-report" data-report-key="${escapeHtml(template.key)}" data-report-type="${escapeHtml(template.type)}" title="${lastGenerated ? 'Abrir/imprimir informe' : 'Generar informe'}" aria-label="${lastGenerated ? 'Abrir/imprimir informe' : 'Generar informe'}">
+                        <i class="bi bi-printer"></i>
+                    </button>
+                </div>
+            </td>
+        </tr>
+        `;
+    });
+    const customRows = rows.filter(report => report.report_key === 'custom_upload').map(report => {
+        const statusLabel = patientReportStatusLabel(report.status);
+        const paymentLabel = patientReportPaymentLabel(report);
+        const statusBadge = `<span class="badge bg-light text-dark">${escapeHtml(statusLabel)}</span>`;
+        const paymentBadge = patientReportPaymentBadge(report);
+        const previewButton = report.url
+            ? `<a class="btn btn-outline-primary btn-sm" href="${escapeHtml(report.url)}" target="_blank" rel="noopener" title="Abrir borrador" aria-label="Abrir borrador"><i class="bi bi-file-earmark-text"></i></a>`
+            : '';
+        const sourceButton = report.source_url
+            ? `<a class="btn btn-outline-primary btn-sm" href="${escapeHtml(report.source_url)}" target="_blank" rel="noopener" title="Descargar archivo" aria-label="Descargar archivo"><i class="bi bi-download"></i></a>`
+            : '';
+        const finalButton = report.final_url
+            ? `<a class="btn btn-outline-success btn-sm" href="${escapeHtml(report.final_url)}" target="_blank" rel="noopener" title="Descargar informe final" aria-label="Descargar informe final"><i class="bi bi-download"></i></a>`
+            : '';
+        const configButton = `<button type="button" class="btn btn-outline-secondary btn-sm btn-configure-patient-report" data-report-id="${parseInt(report.id || 0, 10)}" title="Configurar informe" aria-label="Configurar informe"><i class="bi bi-gear"></i></button>`;
+        const portalBadge = parseInt(report.portal_available || 0, 10) === 1
+            ? '<br><span class="badge bg-info text-dark mt-1">Portal</span>'
+            : '';
+        return `
+        <tr>
+            <td>
+                <strong>${escapeHtml(report.title || 'Informe')}</strong>
+                <br><small class="text-muted">${escapeHtml(patientReportTypeLabel(report.report_key))}</small>
+            </td>
+            <td>${statusBadge}</td>
+            <td>${paymentBadge}<br><small class="text-muted">${escapeHtml(paymentLabel)}</small>${portalBadge}</td>
+            <td>${report.generated_at ? formatDisplayDateOnly(report.generated_at) : (report.created_at ? formatDisplayDateOnly(report.created_at) : '')}</td>
+            <td class="text-end">
+                <div class="d-flex justify-content-end gap-1 flex-wrap">
+                    ${configButton}
+                    ${previewButton}
+                    ${sourceButton}
+                    ${finalButton}
+                </div>
+            </td>
+        </tr>
+        `;
+    });
+    const generatedTemplateCount = patientReportTemplates().filter(template => rows.some(report => report.report_key === template.key)).length;
+    const generatedCount = generatedTemplateCount + customRows.length;
+    const html = templateRows.concat(customRows).join('');
+    $('#patient-reports-body').html(html);
+    $('#patient-reports-count').text(`${generatedCount} ${generatedCount === 1 ? 'informe generado/subido' : 'informes generados/subidos'}`);
+}
+
+function patientReportTemplates() {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
+    return [
+        {
+            key: 'internal_summary',
+            type: 'internal',
+            title: 'Informe interno',
+            description: 'Informe para uso del profesional.',
+            defaultPayment: 'Gratuito',
+            icon: 'bi bi-file-earmark-plus'
+        },
+        {
+            key: 'patient_summary',
+            type: 'patient',
+            title: `Informe ${patientSingular}`,
+            description: `Alta, citas y tareas para entregar al ${patientSingular}.`,
+            defaultPayment: 'Gratuito',
+            icon: 'bi bi-file-earmark-plus'
+        },
+        {
+            key: 'clinical_summary',
+            type: 'clinical',
+            title: 'Informe clínico',
+            description: 'Borrador con diagnóstico, antecedentes, interpretación, conclusiones, etc.',
+            defaultPayment: 'De pago',
+            icon: 'bi bi-file-earmark-plus'
+        },
+        {
+            key: 'evolution_report',
+            type: 'evolution',
+            title: 'Informe de evolución',
+            description: 'Evolución del paciente, resultados de pruebas, etc.',
+            defaultPayment: 'Incluido en consulta',
+            icon: 'bi bi-file-earmark-plus'
+        }
+    ];
+}
+
+function patientReportPaymentBadge(report) {
+    if (!report || report.payment_mode !== 'paid') {
+        return '<span class="badge bg-light text-dark">Sin pago</span>';
+    }
+    return report.payment_status === 'paid'
+        ? '<span class="badge bg-success">Pagado</span>'
+        : '<span class="badge bg-warning text-dark">Pendiente de pago</span>';
+}
+
+function patientReportTypeLabel(reportKey) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
+    const labels = {
+        internal_summary: 'Borrador interno',
+        patient_summary: `Resumen para el ${patientSingular}`,
+        clinical_summary: 'Informe clínico',
+        evolution_report: 'Informe de evolución',
+        custom_upload: 'Plantilla de informe'
+    };
+    return labels[reportKey] || reportKey || 'Informe';
+}
+
+function patientReportStatusLabel(status) {
+    const labels = {
+        draft: 'Borrador',
+        generated: 'Generado',
+        final_uploaded: 'Final subido',
+        cancelled: 'Cancelado'
+    };
+    return labels[status] || status || 'Generado';
+}
+
+function patientReportPaymentLabel(report) {
+    if (!report || report.payment_mode !== 'paid') {
+        return report && report.payment_mode === 'included' ? 'Incluido en consulta' : 'Gratuito';
+    }
+    const price = parseFloat(report.price || 0);
+    return price > 0 ? `${price.toFixed(2)} EUR` : 'De pago';
+}
+
+function showPatientReportConfigForm(reportId) {
+    const report = (CURRENT_PATIENT_REPORTS_ROWS || []).find(item => String(item.id) === String(reportId));
+    if (!report) {
+        showPatientReportsAlert('danger', 'No se pudo localizar el informe seleccionado.');
+        return;
+    }
+    const configForm = $('#patient-report-config-form')[0];
+    if (configForm) {
+        configForm.reset();
+    }
+    $('#patient-report-config-alert').addClass('d-none').text('');
+    $('#patient-report-config-id').val(report.id || 0);
+    $('#patient-report-config-patient-id').val(report.patient_id || CURRENT_PATIENT_REPORTS_ID || 0);
+    $('#patientReportConfigModal .modal-title').text('Configurar informe');
+    $('#patient-report-title').val(report.title || 'Informe');
+    $('#patient-report-payment-mode').val(report.payment_mode || 'free');
+    $('#patient-report-payment-status').val(report.payment_status || (report.payment_mode === 'paid' ? 'pending' : 'not_required'));
+    $('#patient-report-price').val(report.price ? parseFloat(report.price).toFixed(2) : '');
+    $('#patient-report-portal-available').prop('checked', parseInt(report.portal_available || 0, 10) === 1);
+    $('#patient-report-final-document').val('');
+    $('#patient-report-source-document-wrap').toggleClass('d-none', report.source_type !== 'custom_upload');
+    $('#patient-report-source-document').prop('required', false).val('');
+    const sourceName = report.source_document_name || '';
+    const sourceUrl = report.source_url || '';
+    $('#patient-report-current-source').html(sourceName
+        ? `Archivo base actual: ${sourceUrl ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener">${escapeHtml(sourceName)}</a>` : escapeHtml(sourceName)}${report.source_document_size ? ` (${formatFileSize(report.source_document_size)})` : ''}`
+        : '');
+    const finalName = report.final_document_name || '';
+    const finalUrl = report.final_url || '';
+    $('#patient-report-current-final').html(finalName
+        ? `Documento final actual: ${finalUrl ? `<a href="${escapeHtml(finalUrl)}" target="_blank" rel="noopener">${escapeHtml(finalName)}</a>` : escapeHtml(finalName)}${report.final_document_size ? ` (${formatFileSize(report.final_document_size)})` : ''}`
+        : 'Todavia no hay version final/oficial subida.');
+    updatePatientReportPaymentFields();
+    if (patientReportConfigModal) {
+        patientReportConfigModal.show();
+    }
+}
+
+function showCustomPatientReportForm() {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
+    const patientId = CURRENT_PATIENT_REPORTS_ID || parseInt($('#patient-editor-id').val() || '0', 10);
+    if (!patientId) {
+        showPatientReportsAlert('danger', `Guarda primero el ${patientSingular} para subir un informe propio.`);
+        return;
+    }
+    const configForm = $('#patient-report-config-form')[0];
+    if (configForm) {
+        configForm.reset();
+    }
+    $('#patient-report-config-alert').addClass('d-none').text('');
+    $('#patientReportConfigModal .modal-title').text('Añadir plantilla de informe');
+    $('#patient-report-config-id').val('0');
+    $('#patient-report-config-patient-id').val(patientId);
+    $('#patient-report-title').val('');
+    $('#patient-report-payment-mode').val('free');
+    $('#patient-report-payment-status').val('not_required');
+    $('#patient-report-price').val('');
+    $('#patient-report-portal-available').prop('checked', false);
+    $('#patient-report-source-document-wrap').removeClass('d-none');
+    $('#patient-report-source-document').prop('required', true).val('');
+    $('#patient-report-current-source').text('Sube el archivo base de la plantilla de informe.');
+    $('#patient-report-final-document').val('');
+    $('#patient-report-current-final').text('La version final/oficial se puede subir ahora o mas adelante.');
+    updatePatientReportPaymentFields();
+    if (patientReportConfigModal) {
+        patientReportConfigModal.show();
+    }
+}
+
+function updatePatientReportPaymentFields() {
+    const mode = $('#patient-report-payment-mode').val() || 'free';
+    const isPaid = mode === 'paid';
+    $('#patient-report-price').prop('disabled', !isPaid);
+    $('#patient-report-payment-status option[value="pending"]').prop('disabled', !isPaid);
+    if (!isPaid && $('#patient-report-payment-status').val() === 'pending') {
+        $('#patient-report-payment-status').val('not_required');
+    }
+    if (isPaid && $('#patient-report-payment-status').val() === 'not_required') {
+        $('#patient-report-payment-status').val('pending');
+    }
+}
+
+function savePatientReportConfig(form) {
+    const $button = $('#btn-save-patient-report-config');
+    const original = $button.html();
+    const formData = new FormData(form);
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Guardando...');
+    $('#patient-report-config-alert').addClass('d-none').text('');
+    const reportId = parseInt($('#patient-report-config-id').val() || '0', 10);
+    $.ajax({
+        url: reportId > 0 ? 'api/admin.php?action=update_patient_report' : 'api/admin.php?action=create_custom_patient_report',
+        method: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        dataType: 'json',
+        success: function (res) {
+            if (!res.success) {
+                $('#patient-report-config-alert').removeClass('d-none alert-success').addClass('alert-danger').text(res.error || 'No se pudo guardar el informe.');
+                return;
+            }
+            if (patientReportConfigModal) {
+                patientReportConfigModal.hide();
+            }
+            showPatientReportsAlert('success', res.message || 'Informe actualizado correctamente.', true);
+            loadPatientReports(CURRENT_PATIENT_REPORTS_ID || parseInt($('#patient-editor-id').val() || '0', 10));
+        },
+        error: function () {
+            $('#patient-report-config-alert').removeClass('d-none alert-success').addClass('alert-danger').text('Error de conexion al guardar el informe.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function generatePatientReport(button) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
+    const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
+    if (!patientId) {
+        showPatientReportsAlert('danger', `Guarda primero el ${patientSingular} para generar el informe.`);
+        return;
+    }
+    const $button = $(button);
+    const reportKey = $button.data('report-key') || ($button.data('report-type') === 'patient' ? 'patient_summary' : 'internal_summary');
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+    $.ajax({
+        url: 'api/admin.php?action=create_patient_report',
+        method: 'POST',
+        dataType: 'json',
+        data: { patient_id: patientId, report_key: reportKey },
+        success: function (res) {
+            if (!res.success) {
+                showPatientReportsAlert('danger', res.error || 'No se pudo generar el informe.');
+                return;
+            }
+            showPatientReportsAlert('success', res.message || 'Informe generado correctamente.', true);
+            loadPatientReports(patientId);
+            if (res.url) {
+                window.open(res.url, '_blank', 'noopener');
+            }
+        },
+        error: function () {
+            showPatientReportsAlert('danger', 'Error de conexion al generar el informe.');
         },
         complete: function () {
             $button.prop('disabled', false).html(original);
@@ -6731,6 +9433,68 @@ function showPatientBonusesAlert(type, message, autoHide = false) {
     }
 }
 
+function patientEditorSnapshot(patientId) {
+    const existing = ADMIN_PATIENTS.find(item => String(item.id) === String(patientId)) || CURRENT_PATIENT_EDITOR || {};
+    return {
+        ...existing,
+        id: parseInt(patientId || existing.id || 0, 10),
+        name: $('#patient-editor-name').val() || '',
+        patient_type: $('#patient-editor-type').val() || '',
+        patient_status: $('#patient-editor-status').val() || 'active',
+        birth_date: $('#patient-editor-birth-date').val() || '',
+        referral_source: $('#patient-editor-referral-source').val() || '',
+        knowledge_problem_id: parseInt($('#patient-editor-knowledge-problem').val() || 0, 10),
+        emergency_contact_name: $('#patient-editor-emergency-name').val() || '',
+        emergency_contact_phone: $('#patient-editor-emergency-phone').val() || '',
+        emergency_contact_relation: $('#patient-editor-emergency-relation').val() || '',
+        initial_consultation_reason: $('#patient-editor-initial-reason').val() || '',
+        email: $('#patient-editor-email').val() || '',
+        phone: $('#patient-editor-phone').val() || '',
+        admission_date: $('#patient-editor-admission-date').val() || '',
+        notes: $('#patient-editor-notes').val() || '',
+        physical_sex: $('#patient-editor-physical-sex').val() || '',
+        weight_kg: $('#patient-editor-weight').val() || '',
+        height_cm: $('#patient-editor-height').val() || '',
+        body_fat_percentage: $('#patient-editor-body-fat').val() || '',
+        waist_cm: $('#patient-editor-waist').val() || '',
+        hip_cm: $('#patient-editor-hip').val() || '',
+        chest_cm: $('#patient-editor-chest').val() || '',
+        thigh_cm: $('#patient-editor-thigh').val() || '',
+        biceps_cm: $('#patient-editor-biceps').val() || '',
+        calf_cm: $('#patient-editor-calf').val() || '',
+        skinfold_triceps_mm: $('#patient-editor-skinfold-triceps').val() || '',
+        skinfold_subscapular_mm: $('#patient-editor-skinfold-subscapular').val() || '',
+        skinfold_suprailiac_mm: $('#patient-editor-skinfold-suprailiac').val() || '',
+        skinfold_abdominal_mm: $('#patient-editor-skinfold-abdominal').val() || '',
+        skinfold_chest_mm: $('#patient-editor-skinfold-chest').val() || '',
+        skinfold_thigh_mm: $('#patient-editor-skinfold-thigh').val() || ''
+    };
+}
+
+function mergePatientEditorSnapshot(patientId) {
+    patientId = parseInt(patientId || 0, 10);
+    if (!patientId) return;
+    const snapshot = patientEditorSnapshot(patientId);
+    const index = ADMIN_PATIENTS.findIndex(item => parseInt(item.id || 0, 10) === patientId);
+    if (index >= 0) {
+        ADMIN_PATIENTS[index] = { ...ADMIN_PATIENTS[index], ...snapshot };
+    } else {
+        ADMIN_PATIENTS.push(snapshot);
+    }
+    const dashboardIndex = DASHBOARD_PATIENTS.findIndex(item => parseInt(item.id || 0, 10) === patientId);
+    if (dashboardIndex >= 0) {
+        DASHBOARD_PATIENTS[dashboardIndex] = { ...DASHBOARD_PATIENTS[dashboardIndex], ...snapshot };
+    } else if (dashboardPatientsLoaded) {
+        DASHBOARD_PATIENTS.push(snapshot);
+    }
+    CURRENT_PATIENT_EDITOR = { ...snapshot };
+    renderAdminPatients(ADMIN_PATIENTS);
+    if (currentCalendarView === 'patients') {
+        renderDashboardPatients(DASHBOARD_PATIENTS);
+    }
+    refreshPatientSelectOptions();
+}
+
 function savePatient(form) {
     const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     const patientTitleSingular = sectorLabel('patient', 'titleSingular', 'Paciente');
@@ -6767,12 +9531,17 @@ function savePatient(form) {
             showAdminPatientsAlert('success', res.message || `${patientTitleSingular} guardado correctamente.`);
             if (res.patient_id) {
                 $('#patient-editor-id').val(res.patient_id);
+                mergePatientEditorSnapshot(res.patient_id);
                 $('.btn-patient-report').prop('disabled', false);
                 loadPatientAppointmentHistory(res.patient_id);
             }
             patientEditorModal.hide();
             loadAdminPatients();
-            loadBookingPatients();
+            dashboardPatientsLoaded = false;
+            if (currentCalendarView === 'patients') {
+                loadDashboardPatients();
+            }
+            loadBookingPatients(true);
         },
         error: function () {
             showPatientEditorAlert('danger', `Error de conexión al guardar el ${patientSingular}.`);
@@ -6818,7 +9587,7 @@ function openPatientInviteModal(patientId, button) {
 
 function refreshPatientSelectOptions() {
     const $select = $('#patientSelect');
-    if (!$select.length || !ADMIN_BOOKING_PATIENTS.length) {
+    if (!$select.length) {
         return;
     }
     const selected = $select.val();
@@ -6832,8 +9601,61 @@ function refreshPatientSelectOptions() {
     }
 }
 
-function loadBookingPatients() {
-    if (!IS_ADMIN) return;
+function setBookingPatientsLoadingState(loading) {
+    const $select = $('#patientSelect');
+    if ($select.length) {
+        if (loading) {
+            $select.prop('disabled', true).html('<option value="">Cargando...</option>');
+        } else {
+            $select.prop('disabled', bookingContextLoading);
+            refreshPatientSelectOptions();
+        }
+    }
+    $('#booking-professional').prop('disabled', !!loading || bookingContextLoading);
+    $('#btn-confirm-action').prop('disabled', !!loading || bookingContextLoading);
+}
+
+function setBookingModalLoadingState(loading, message = 'Cargando...') {
+    bookingContextLoading = !!loading;
+    const $modal = $('#appointmentModal');
+    $modal.toggleClass('booking-modal-loading', bookingContextLoading);
+    $('#patientSelect, #booking-professional, #service-option').prop('disabled', bookingContextLoading);
+    $('#booking-professional-cards .patient-professional-card')
+        .prop('disabled', bookingContextLoading)
+        .toggleClass('is-loading', bookingContextLoading);
+    $('#booking-consultation-cards .booking-consultation-card')
+        .each(function () {
+            const $card = $(this);
+            $card.prop('disabled', bookingContextLoading || $card.hasClass('is-disabled'));
+        })
+        .toggleClass('is-loading', bookingContextLoading);
+    $('#btn-confirm-action').prop('disabled', bookingContextLoading);
+    if (bookingContextLoading && message) {
+        const $service = $('#service-option');
+        if ($service.length && !$service.hasClass('d-none')) {
+            $service.html(`<option value="">${escapeHtml(message)}</option>`);
+        }
+    }
+}
+
+function loadBookingPatients(force = false) {
+    if (!IS_ADMIN) {
+        return $.Deferred().resolve().promise();
+    }
+    if (force) {
+        bookingPatientsLoaded = false;
+    }
+    if (bookingPatientsLoaded) {
+        return $.Deferred().resolve().promise();
+    }
+    if (bookingPatientsLoading) {
+        return bookingPatientsRequest || $.Deferred().resolve().promise();
+    }
+
+    bookingPatientsLoading = true;
+    const deferred = $.Deferred();
+    bookingPatientsRequest = deferred.promise();
+
     $.ajax({
         url: 'api/admin.php?action=get_patients',
         dataType: 'json',
@@ -6849,9 +9671,22 @@ function loadBookingPatients() {
                 CURRENT_PROFESSIONAL_ID = parseInt(res.current_professional_id || CURRENT_PROFESSIONAL_ID || 0, 10);
                 refreshPatientSelectOptions();
                 populateBookingProfessionalSelect(CURRENT_PROFESSIONAL_ID);
+                bookingPatientsLoaded = true;
+                deferred.resolve(res);
+                return;
             }
+            deferred.reject(res);
+        },
+        error: function (xhr) {
+            deferred.reject(xhr);
+        },
+        complete: function () {
+            bookingPatientsLoading = false;
+            bookingPatientsRequest = null;
         }
     });
+
+    return bookingPatientsRequest;
 }
 
 function bookingPatientById(patientId) {
@@ -6992,8 +9827,7 @@ function loadBookingContextForProfessional(professionalId) {
         return;
     }
     const $select = $('#service-option');
-    $select.html('<option value="">Cargando servicios...</option>');
-    $('#btn-confirm-action').prop('disabled', true);
+    setBookingModalLoadingState(true, 'Cargando servicios...');
     $.ajax({
         url: 'api/appointments.php?action=booking_context',
         method: 'GET',
@@ -7014,7 +9848,7 @@ function loadBookingContextForProfessional(professionalId) {
             $select.html('<option value="">Error al cargar la agenda del profesional</option>');
         },
         complete: function () {
-            $('#btn-confirm-action').prop('disabled', false);
+            setBookingModalLoadingState(false);
         }
     });
 }
@@ -7086,6 +9920,23 @@ function showPatientFilesAlert(type, message) {
     patientFilesAlertTimer = setTimeout(function () {
         $('#patient-files-alert').addClass('d-none').text('');
     }, 3000);
+}
+
+function showPatientReportsAlert(type, message, autoHide = false) {
+    if (patientReportsAlertTimer) {
+        clearTimeout(patientReportsAlertTimer);
+        patientReportsAlertTimer = null;
+    }
+    $('#patient-reports-alert')
+        .removeClass('d-none alert-success alert-danger alert-warning')
+        .addClass(type === 'success' ? 'alert-success' : (type === 'warning' ? 'alert-warning' : 'alert-danger'))
+        .text(message);
+    if (autoHide || type === 'success') {
+        patientReportsAlertTimer = setTimeout(function () {
+            $('#patient-reports-alert').addClass('d-none').text('');
+            patientReportsAlertTimer = null;
+        }, 3000);
+    }
 }
 
 function openUpcomingAppointmentsModal() {
@@ -7187,7 +10038,7 @@ function renderUpcomingAppointments(appointments) {
     rows.forEach(app => {
         const professional = upcomingProfessionalCell(app);
         html += `
-            <tr>
+            <tr class="upcoming-appointment-row" data-appointment-id="${app.id || ''}">
                 <td><strong>${formatDisplayDate(app.appointment_date)}</strong><br><small class="text-muted">${escapeHtml(displayAppointmentTimeRange(app.appointment_time || '', app.duration_minutes || 60))}</small></td>
                 <td>${professional}</td>
                 <td>${escapeHtml(app.patient_name || '')}<br><small class="text-muted">${patientContactSummaryHtml(app.patient_email, app.patient_phone) || '-'}</small></td>
@@ -7474,12 +10325,12 @@ function adminPaymentLabel(app) {
     if (app.payment_status === 'paid') {
         return app.payment_method === 'bonus'
             ? '<span class="badge text-bg-success">Bono</span>'
-            : '<span class="badge text-bg-success">Pagada</span>';
+            : '<span class="badge text-bg-success">Pagado</span>';
     }
     if (app.payment_status === 'failed') {
         return '<span class="badge text-bg-danger">Fallido</span>';
     }
-    return '<span class="badge text-bg-warning">Pendiente</span>';
+    return '<span class="badge text-bg-warning">Pendiente de pago</span>';
 }
 
 function paymentMethodLabel(method) {
@@ -7500,8 +10351,8 @@ function appointmentPaymentButton(app = {}) {
         return '';
     }
     return `
-        <button class="btn btn-outline-primary btn-sm" type="button" onclick="openAppointmentPaymentModal(${parseInt(app.id, 10)})" title="Editar estado de pago">
-            <i class="bi bi-cash-coin"></i>
+        <button class="btn btn-outline-primary btn-sm" type="button" onclick="openAppointmentPaymentModal(${parseInt(app.id, 10)})" title="Ver detalles">
+            <i class="bi bi-eye"></i>
         </button>
     `;
 }
@@ -8126,6 +10977,9 @@ function openAppointmentSessionNoteModal() {
 }
 
 function setAppointmentSessionTaskStatus(button) {
+    if (!workPlanTaskStatusEnabled()) {
+        return;
+    }
     const $button = $(button);
     const taskId = parseInt($button.data('task-id') || 0, 10);
     const status = $button.data('next-status') === 'completed' ? 'completed' : 'pending';
@@ -8249,6 +11103,7 @@ function deleteAppointmentSessionTask(button) {
 }
 
 function renderAppointmentSession(app = CURRENT_APPOINTMENT_PAYMENT_DETAIL) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     $('#appointment-session-content').html(`
         <div class="row g-3">
             <div class="col-12">
@@ -8285,12 +11140,21 @@ function renderAppointmentSession(app = CURRENT_APPOINTMENT_PAYMENT_DETAIL) {
 function renderAppointmentSessionTasks(tasks) {
     const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     const rows = Array.isArray(tasks) ? tasks : [];
+    const statusEnabled = workPlanTaskStatusEnabled();
     if (!rows.length) {
-        return `<div class="text-center text-muted py-3">No hay tareas pendientes o completadas en el plan del ${escapeHtml(patientSingular)}.</div>`;
+        return `<div class="text-center text-muted py-3">${statusEnabled ? `No hay tareas pendientes o completadas en el plan del ${escapeHtml(patientSingular)}.` : `No hay tareas en el plan del ${escapeHtml(patientSingular)}.`}</div>`;
     }
     return rows.map(task => {
         const completed = task.status === 'completed';
         const priority = workPlanPriorityLabel(task.priority);
+        const statusBadge = statusEnabled
+            ? (completed ? '<span class="badge text-bg-success">Completada</span>' : '<span class="badge text-bg-warning">Pendiente</span>')
+            : '';
+        const toggleButton = statusEnabled
+            ? `<button class="btn btn-outline-success btn-sm btn-toggle-session-task" type="button" data-task-id="${task.id}" data-next-status="${completed ? 'pending' : 'completed'}" title="${completed ? 'Marcar pendiente' : 'Completar'}">
+                        <i class="bi ${completed ? 'bi-arrow-counterclockwise' : 'bi-check2'}"></i>
+                    </button>`
+            : '';
         return `
             <div class="appointment-session-task ${completed ? 'is-completed' : ''}">
                 <div class="appointment-session-task-main">
@@ -8299,10 +11163,8 @@ function renderAppointmentSessionTasks(tasks) {
                 </div>
                 <div class="appointment-session-task-side">
                     <span class="badge ${priority.className}">${priority.label}</span>
-                    ${completed ? '<span class="badge text-bg-success">Completada</span>' : '<span class="badge text-bg-warning">Pendiente</span>'}
-                    <button class="btn btn-outline-success btn-sm btn-toggle-session-task" type="button" data-task-id="${task.id}" data-next-status="${completed ? 'pending' : 'completed'}" title="${completed ? 'Marcar pendiente' : 'Completar'}">
-                        <i class="bi ${completed ? 'bi-arrow-counterclockwise' : 'bi-check2'}"></i>
-                    </button>
+                    ${statusBadge}
+                    ${toggleButton}
                 </div>
             </div>
         `;
@@ -8601,6 +11463,7 @@ function saveAppointmentPayment() {
 }
 
 function refreshAfterAppointmentPaymentUpdate() {
+    invalidateDashboardUpcomingAppointments();
     renderWeekInfo();
     if ($('#upcomingAppointmentsModal').hasClass('show')) {
         loadUpcomingAppointments();
@@ -9356,12 +12219,18 @@ function loadPaymentSettings() {
             $('#legal-professional-college').val(settings.legal_professional_college || '');
             $('#legal-uses-non-technical-cookies').prop('checked', settings.legal_uses_non_technical_cookies == 1);
             $('#legal-terms-notes').val(settings.legal_terms_notes || '');
-            $('#initial-calendar-view').val(settings.initial_calendar_view === 'week' ? 'week' : 'month');
+            const initialView = ['week', 'month', 'patients', 'upcoming'].includes(settings.initial_calendar_view) ? settings.initial_calendar_view : 'month';
+            $('#initial-calendar-view').val(initialView);
             LOADED_DASHBOARD_CONFIG_MODE = ['simple', 'advanced', 'custom'].includes(settings.dashboard_config_mode) ? settings.dashboard_config_mode : 'simple';
             $('#dashboard-config-mode').val(LOADED_DASHBOARD_CONFIG_MODE);
             toggleDashboardConfigModeControls();
             $('#online-booking-enabled').prop('checked', settings.online_booking_enabled === undefined ? true : settings.online_booking_enabled == 1);
             $('#patient-tasks-visible-default').prop('checked', settings.patient_tasks_visible_default == 1);
+            $('#work-plan-task-status-enabled').prop('checked', settings.work_plan_task_status_enabled === undefined ? true : settings.work_plan_task_status_enabled == 1);
+            syncPatientWorkPlanStatusUi();
+            if (CURRENT_PATIENT_WORK_PLAN_ROWS.length) {
+                renderPatientWorkPlan(CURRENT_PATIENT_WORK_PLAN_ROWS);
+            }
             $('#patient-registration-requires-invite').prop('checked', settings.patient_registration_mode !== 'open');
             $('#bonuses-enabled').prop('checked', settings.bonuses_enabled == 1);
             $('#create-compensation-bonus-on-paid-cancel').prop('checked', settings.create_compensation_bonus_on_paid_cancel === undefined ? true : settings.create_compensation_bonus_on_paid_cancel == 1);
@@ -9892,6 +12761,8 @@ function normalizeProfessional(professional = {}) {
         facebook_url: professional.facebook_url || '',
         tiktok_url: professional.tiktok_url || '',
         appointment_summary_email_mode: professional.appointment_summary_email_mode || 'on_booking',
+        knowledge_sector_mode: ['own', 'related', 'custom'].includes(professional.knowledge_sector_mode) ? professional.knowledge_sector_mode : 'own',
+        knowledge_sector_keys: normalizeKnowledgeSectorKeys(professional.knowledge_sector_keys || []),
         role: professional.role === 'superadmin' ? 'superadmin' : 'admin',
         is_active: professional.is_active == 0 ? 0 : 1,
         is_current_user: professional.is_current_user == 1 ? 1 : 0
@@ -9926,6 +12797,158 @@ function showProfessionalEditorAlert(type, message) {
         .removeClass('d-none alert-success alert-danger')
         .addClass(type === 'success' ? 'alert-success' : 'alert-danger')
         .text(message || '');
+}
+
+function normalizeKnowledgeSectorKeys(keys) {
+    if (typeof keys === 'string') {
+        try {
+            const parsed = JSON.parse(keys);
+            keys = Array.isArray(parsed) ? parsed : keys.split(',');
+        } catch (err) {
+            keys = keys.split(',');
+        }
+    }
+    if (!Array.isArray(keys)) return [];
+    const normalized = [];
+    keys.forEach(key => {
+        key = String(key || '').trim().toLowerCase();
+        if (key && !normalized.includes(key)) {
+            normalized.push(key);
+        }
+    });
+    return normalized;
+}
+
+function knowledgeSectorName(key) {
+    key = String(key || '').toLowerCase();
+    const sector = (KNOWLEDGE_SECTOR_OPTIONS.sectors || []).find(item => String(item.key || '').toLowerCase() === key);
+    if (sector && sector.name) return sector.name;
+    const textOption = (APP_SECTOR_TEXT_OPTIONS || []).find(item => String(item.key || '').toLowerCase() === key);
+    return textOption && textOption.name ? textOption.name : capitalizeFirst(key.replace(/[_-]+/g, ' '));
+}
+
+function loadKnowledgeSectorOptions(force = false) {
+    if (KNOWLEDGE_SECTOR_OPTIONS.loaded && !force) {
+        return $.Deferred().resolve(KNOWLEDGE_SECTOR_OPTIONS).promise();
+    }
+    return $.ajax({
+        url: 'api/admin.php?action=knowledge_sector_options',
+        dataType: 'json',
+        success: function (res) {
+            if (!res.success) {
+                KNOWLEDGE_SECTOR_OPTIONS = {
+                    loaded: true,
+                    enabled: false,
+                    multi_sector_enabled: false,
+                    main_sector: APP_CURRENT_SECTOR_KEY,
+                    related_sectors: [],
+                    sectors: []
+                };
+                return;
+            }
+            KNOWLEDGE_SECTOR_OPTIONS = {
+                loaded: true,
+                enabled: Boolean(res.enabled),
+                multi_sector_enabled: Boolean(res.multi_sector_enabled),
+                main_sector: String(res.main_sector || APP_CURRENT_SECTOR_KEY || '').toLowerCase(),
+                related_sectors: normalizeKnowledgeSectorKeys(res.related_sectors || []),
+                sectors: Array.isArray(res.sectors) ? res.sectors : []
+            };
+            updateProfessionalKnowledgeSectorUi();
+        },
+        error: function () {
+            KNOWLEDGE_SECTOR_OPTIONS.loaded = true;
+            KNOWLEDGE_SECTOR_OPTIONS.enabled = false;
+            updateProfessionalKnowledgeSectorUi();
+        }
+    });
+}
+
+function professionalEditorSelectedKnowledgeKeys() {
+    return normalizeKnowledgeSectorKeys($('#professional-editor-knowledge-sector-keys').val() || '[]');
+}
+
+function setProfessionalEditorSelectedKnowledgeKeys(keys) {
+    const main = KNOWLEDGE_SECTOR_OPTIONS.main_sector || APP_CURRENT_SECTOR_KEY || '';
+    keys = normalizeKnowledgeSectorKeys(keys);
+    if (main && !keys.includes(main)) {
+        keys.unshift(main);
+    }
+    $('#professional-editor-knowledge-sector-keys').val(JSON.stringify(keys));
+}
+
+function updateProfessionalKnowledgeSectorUi() {
+    const $row = $('#professional-editor-knowledge-row');
+    if (!$row.length) return;
+    const enabled = Boolean(KNOWLEDGE_SECTOR_OPTIONS.enabled);
+    const allowed = enabled && Boolean(KNOWLEDGE_SECTOR_OPTIONS.multi_sector_enabled);
+    const mode = allowed ? ($('#professional-editor-knowledge-mode').val() || 'own') : 'own';
+    $('#professional-editor-knowledge-mode').prop('disabled', !allowed).val(mode);
+    $('#btn-professional-knowledge-sectors').toggleClass('d-none', !allowed || mode !== 'custom');
+}
+
+function renderProfessionalKnowledgeSectorsModal() {
+    const $list = $('#professional-knowledge-sectors-list');
+    if (!$list.length) return;
+    const main = KNOWLEDGE_SECTOR_OPTIONS.main_sector || APP_CURRENT_SECTOR_KEY || '';
+    const selected = professionalEditorSelectedKnowledgeKeys();
+    const sectors = Array.isArray(KNOWLEDGE_SECTOR_OPTIONS.sectors) ? KNOWLEDGE_SECTOR_OPTIONS.sectors : [];
+    if (!sectors.length) {
+        $list.html('<div class="text-muted">No hay sectores con base de conocimiento disponible.</div>');
+        return;
+    }
+    const related = normalizeKnowledgeSectorKeys(KNOWLEDGE_SECTOR_OPTIONS.related_sectors || []);
+    const sectorRank = sector => {
+        const key = String(sector.key || '').toLowerCase();
+        if (key === main) return 0;
+        if (related.includes(key)) return 1;
+        return 2;
+    };
+    const sortedSectors = sectors.slice().sort((a, b) => {
+        const rankDiff = sectorRank(a) - sectorRank(b);
+        if (rankDiff !== 0) return rankDiff;
+        const nameA = String(a.name || knowledgeSectorName(a.key || '') || '').toLowerCase();
+        const nameB = String(b.name || knowledgeSectorName(b.key || '') || '').toLowerCase();
+        return nameA.localeCompare(nameB, 'es');
+    });
+    $list.html(sortedSectors.map(sector => {
+        const key = String(sector.key || '').toLowerCase();
+        const checked = key === main || selected.includes(key);
+        const disabled = key === main;
+        const total = parseInt(sector.total || 0, 10);
+        const isRelated = related.includes(key) && key !== main;
+        return `
+            <label class="form-check border rounded m-0 professional-knowledge-sector-option">
+                <input class="form-check-input professional-knowledge-sector-check" type="checkbox" value="${escapeHtml(key)}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}>
+                <span class="form-check-label">
+                    <strong>${escapeHtml(sector.name || knowledgeSectorName(key))}</strong>
+                    ${disabled ? '<span class="badge text-bg-primary ms-2">Principal</span>' : ''}
+                    ${isRelated ? '<span class="badge text-bg-light ms-2">Relacionado</span>' : ''}
+                    ${total ? `<span class="text-muted small ms-2">${total} entradas</span>` : ''}
+                </span>
+            </label>
+        `;
+    }).join(''));
+}
+
+function openProfessionalKnowledgeSectorsModal() {
+    if (!professionalKnowledgeSectorsModal) return;
+    loadKnowledgeSectorOptions().always(function () {
+        renderProfessionalKnowledgeSectorsModal();
+        professionalKnowledgeSectorsModal.show();
+    });
+}
+
+function saveProfessionalKnowledgeSectorsSelection() {
+    const keys = [];
+    $('.professional-knowledge-sector-check:checked').each(function () {
+        keys.push(this.value);
+    });
+    setProfessionalEditorSelectedKnowledgeKeys(keys);
+    updateProfessionalKnowledgeSectorUi();
+    if (professionalKnowledgeSectorsModal) {
+        professionalKnowledgeSectorsModal.hide();
+    }
 }
 
 function renderProfessionalsSettings() {
@@ -10006,6 +13029,10 @@ function openProfessionalEditor(index = -1) {
     $('#professional-editor-facebook').val(professional.facebook_url || '');
     $('#professional-editor-tiktok').val(professional.tiktok_url || '');
     $('#professional-editor-summary-mode').val(professional.appointment_summary_email_mode || 'on_booking');
+    $('#professional-editor-knowledge-mode').val(professional.knowledge_sector_mode || 'own');
+    setProfessionalEditorSelectedKnowledgeKeys(professional.knowledge_sector_keys || []);
+    updateProfessionalKnowledgeSectorUi();
+    loadKnowledgeSectorOptions();
     $('#professional-editor-photo').val('');
     PROFESSIONAL_PHOTO_FILE = null;
     const photo = professional.public_photo_path || professional.display_photo_path || '';
@@ -10043,6 +13070,8 @@ function saveProfessionalEditor(button = null) {
         facebook_url: $('#professional-editor-facebook').val().trim(),
         tiktok_url: $('#professional-editor-tiktok').val().trim(),
         appointment_summary_email_mode: $('#professional-editor-summary-mode').val() || 'on_booking',
+        knowledge_sector_mode: $('#professional-editor-knowledge-mode').val() || 'own',
+        knowledge_sector_keys: professionalEditorSelectedKnowledgeKeys(),
         public_photo_path: existing.public_photo_path || '',
         display_photo_path: existing.display_photo_path || existing.public_photo_path || '',
         role: isCurrentSuperadmin ? 'superadmin' : $('#professional-editor-role').val(),
@@ -10583,6 +13612,7 @@ function savePaymentSettings(alertSelector = '#payment-settings-alert', onSucces
     formData.append('dashboard_config_mode', LOADED_DASHBOARD_CONFIG_MODE || 'advanced');
     formData.append('online_booking_enabled', $('#online-booking-enabled').is(':checked') ? '1' : '0');
     formData.append('patient_tasks_visible_default', $('#patient-tasks-visible-default').is(':checked') ? '1' : '0');
+    formData.append('work_plan_task_status_enabled', $('#work-plan-task-status-enabled').is(':checked') ? '1' : '0');
     formData.append('patient_registration_mode', $('#patient-registration-requires-invite').is(':checked') ? 'invite' : 'open');
     if ($('#profile-image')[0] && $('#profile-image')[0].files[0]) {
         formData.append('profile_image', $('#profile-image')[0].files[0]);

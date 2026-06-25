@@ -1,0 +1,69 @@
+﻿tecnica_id;nombre;descripcion;nivel_riesgo;tipo_intervencion;fuente_ids
+FIS2_T001;Entrevista y anamnesis fisioterapéutica;Recoger motivo, historia, evolución, función, salud, medicación, actividad y objetivos.;bajo;evaluación;"FIS2_SRC003;FIS2_SRC004"
+FIS2_T002;Cribado de banderas rojas;Detectar signos de derivación urgente/preferente y límites de intervención.;alto;seguridad;"FIS2_SRC003;FIS2_SRC006"
+FIS2_T003;Evaluación funcional por objetivos;Medir tareas relevantes: marcha, escaleras, levantarse, cargar, deporte, trabajo.;bajo;evaluación;"FIS2_SRC001;FIS2_SRC004"
+FIS2_T004;Medición de dolor y función;Usar escalas, cuestionarios y tests de función para seguimiento.;bajo;evaluación;"FIS2_SRC003;FIS2_SRC004"
+FIS2_T005;Educación sobre dolor y pronóstico;Explicar dolor, recuperación, carga, señales de alarma y autocuidado.;bajo;educación;"FIS2_SRC006;FIS2_SRC007"
+FIS2_T006;Actividad gradual;Reintroducir actividad aumentando dosis según tolerancia.;bajo;educación/ejercicio;"FIS2_SRC001;FIS2_SRC006"
+FIS2_T007;Pacing y dosificación;Regular actividad para evitar ciclos de sobrecarga-reposo excesivo.;bajo;dolor_persistente;"FIS2_SRC006;FIS2_SRC007"
+FIS2_T008;Ejercicio terapéutico individualizado;Prescribir fuerza, movilidad, control motor o cardio según evaluación.;bajo;ejercicio;"FIS2_SRC005;FIS2_SRC003"
+FIS2_T009;Movilidad articular activa;Ejercicios activos para recuperar rango y confianza.;bajo;movilidad;"FIS2_SRC005;FIS2_SRC018"
+FIS2_T010;Movilización manual / terapia manual;Técnicas manuales como complemento al ejercicio y educación cuando proceda.;medio;manual;"FIS2_SRC006;FIS2_SRC011"
+FIS2_T011;Control motor cervical;Trabajo de flexores profundos, coordinación y posicionamiento cervical.;bajo;control_motor;FIS2_SRC011
+FIS2_T012;Movilidad cervical graduada;Movimientos cervicales suaves y progresivos en rangos tolerados.;bajo;movilidad;FIS2_SRC011
+FIS2_T013;Movilidad torácica;Extensión, rotación y movilidad costovertebral progresiva.;bajo;movilidad;"FIS2_SRC002;FIS2_SRC016"
+FIS2_T014;Ejercicios respiratorios básicos;Respiración diafragmática/costal, control ventilatorio y expansión torácica.;medio;respiratoria;"FIS2_SRC001;FIS2_SRC018"
+FIS2_T015;Control lumbo-pélvico;Ejercicios de estabilidad y coordinación de pelvis/columna.;medio;control_motor;"FIS2_SRC007;FIS2_SRC016"
+FIS2_T016;Fortalecimiento de core;Trabajo anti-extensión, anti-rotación, resistencia y estabilidad.;bajo;fuerza;"FIS2_SRC007;FIS2_SRC005"
+FIS2_T017;Higiene de carga lumbar;Estrategias de manejo de carga, variación postural y exposición gradual.;bajo;educación;"FIS2_SRC006;FIS2_SRC007"
+FIS2_T018;Neurodinamia dosificada;Movilización neural suave cuando procede y no irritativa.;medio;neural;FIS2_SRC006
+FIS2_T019;Fortalecimiento escapular;Trabajo de serrato, trapecio, romboides y control escapular.;bajo;fuerza/control;"FIS2_SRC012;FIS2_SRC016"
+FIS2_T020;Fortalecimiento manguito rotador;Rotaciones, elevaciones y progresiones de estabilidad de hombro.;medio;fuerza;FIS2_SRC012
+FIS2_T021;Movilidad de hombro graduada;Movilidad asistida/activa y progresiones de rango.;medio;movilidad;FIS2_SRC012
+FIS2_T022;Progresión de carga de hombro;Subir carga de hombro gradualmente según tolerancia.;medio;ejercicio;FIS2_SRC012
+FIS2_T023;Fortalecimiento de agarre y antebrazo;Carga progresiva de muñeca, codo, agarre y antebrazo.;medio;fuerza;FIS2_SRC002
+FIS2_T024;Carga progresiva tendinosa;Gestionar carga, dolor aceptable y progresión para tendón.;medio;tendón;"FIS2_SRC013;FIS2_SRC014"
+FIS2_T025;Isométricos analgésicos/tolerancia;Contracciones isométricas dosificadas según dolor y objetivo.;medio;tendón/fuerza;FIS2_SRC013
+FIS2_T026;Fortalecimiento excéntrico-concéntrico;Progresión de fuerza con fases controladas para tendón/músculo.;medio;fuerza;FIS2_SRC013
+FIS2_T027;Fortalecimiento de glúteos;Progresiones de glúteo medio/mayor y control pélvico.;bajo;fuerza;FIS2_SRC016
+FIS2_T028;Movilidad de cadera;Movimientos activos de flexión, extensión, rotación y abducción.;bajo;movilidad;FIS2_SRC016
+FIS2_T029;Control de valgo de rodilla;Trabajo de alineación, fuerza de cadera/pie y feedback.;medio;control_motor;"FIS2_SRC014;FIS2_SRC016"
+FIS2_T030;Fortalecimiento de cuádriceps;Progresiones de extensión, sentadilla, prensa, step o isométricos.;medio;fuerza;"FIS2_SRC014;FIS2_SRC008"
+FIS2_T031;Fortalecimiento de isquiosurales;Bisagra, curl, puente y progresiones de fuerza posterior.;bajo;fuerza;FIS2_SRC016
+FIS2_T032;Movilidad de rodilla;Trabajo de flexión/extensión según tolerancia y fase.;medio;movilidad;FIS2_SRC008
+FIS2_T033;Propiocepción de tobillo;Equilibrio, superficies, perturbaciones y control del tobillo.;medio;propiocepción;FIS2_SRC002
+FIS2_T034;Movilidad de tobillo;Dorsiflexión, movilidad talocrural y control de rango.;bajo;movilidad;FIS2_SRC016
+FIS2_T035;Fortalecimiento de tríceps sural;Elevaciones de talón, sóleo/gemelo y progresión de carga.;medio;fuerza/tendón;FIS2_SRC013
+FIS2_T036;Trabajo intrínsecos del pie;Ejercicios de control del arco, dedos y pie.;bajo;fuerza/control;FIS2_SRC015
+FIS2_T037;Reeducación de la marcha;Trabajo de patrón, apoyo, cadencia, simetría y seguridad.;medio;funcional;"FIS2_SRC001;FIS2_SRC009"
+FIS2_T038;Retorno progresivo a carrera;Alternar caminar/correr y progresar volumen/intensidad según tolerancia.;medio;readaptación;"FIS2_SRC005;FIS2_SRC017"
+FIS2_T039;Pliometría progresiva;Saltos y aterrizajes graduados con control y criterios de retorno.;medio;readaptación;FIS2_SRC005
+FIS2_T040;Agilidad y cambios de dirección;Progresión de desplazamientos, frenadas, giros y cortes.;medio;readaptación;FIS2_SRC005
+FIS2_T041;Criterios de retorno al deporte;Usar fuerza, dolor, función, confianza y tolerancia como criterios.;medio;readaptación;FIS2_SRC005
+FIS2_T042;Rehabilitación por fases postoperatorias;Fases según indicación médica: protección, movilidad, fuerza, función.;alto;postoperatorio;FIS2_SRC010
+FIS2_T043;Manejo de edema;Elevación, movilidad, compresión si procede e indicación médica.;medio;postoperatorio;FIS2_SRC010
+FIS2_T044;Movilidad post-inmovilización;Recuperar rango de forma progresiva tras inmovilización autorizada.;medio;postfractura;FIS2_SRC010
+FIS2_T045;Reaprendizaje motor neurológico;Práctica repetida, orientada a tarea, feedback y progresión.;alto;neurológica;FIS2_SRC009
+FIS2_T046;Entrenamiento de equilibrio neurológico;Equilibrio seguro estático/dinámico, transferencia y marcha.;alto;neurológica;FIS2_SRC009
+FIS2_T047;Entrenamiento de marcha neurológica;Trabajo de pasos, apoyo, ritmo, ayudas técnicas y seguridad.;alto;neurológica;FIS2_SRC009
+FIS2_T048;Fortalecimiento funcional neurológico;Fuerza orientada a tareas como levantarse, caminar o subir escalón.;alto;neurológica;FIS2_SRC009
+FIS2_T049;Entrenamiento aeróbico graduado;Dosificar caminata, bici u otra actividad según tolerancia.;medio;cardiorrespiratoria;"FIS2_SRC001;FIS2_SRC017"
+FIS2_T050;Monitorización de esfuerzo;Usar escala de esfuerzo, síntomas y recuperación para ajustar actividad.;medio;seguridad;"FIS2_SRC017;FIS2_SRC018"
+FIS2_T051;Fuerza funcional para mayores;Sit-to-stand, escalón, transporte de carga y tareas cotidianas.;medio;mayores;"FIS2_SRC001;FIS2_SRC005"
+FIS2_T052;Equilibrio y prevención de caídas;Ejercicios de equilibrio, marcha, fuerza y seguridad del entorno.;alto;mayores;"FIS2_SRC001;FIS2_SRC018"
+FIS2_T053;Educación de dolor persistente;Explicar sensibilización, seguridad, exposición gradual y factores biopsicosociales.;medio;dolor_persistente;"FIS2_SRC006;FIS2_SRC007"
+FIS2_T054;Exposición gradual al movimiento;Reintroducir movimientos temidos de forma dosificada y segura.;medio;dolor_persistente;"FIS2_SRC006;FIS2_SRC007"
+FIS2_T055;Ergonomía y variabilidad postural;Ajustar entorno y promover variación, pausas y movimiento.;bajo;ergonomía;"FIS2_SRC017;FIS2_SRC018"
+FIS2_T056;Pausas activas;Bloques breves de movilidad/fuerza suave durante el día.;bajo;hábitos;FIS2_SRC017
+FIS2_T057;Educación en manipulación de cargas;Estrategias de aproximación, postura variable, progresión y ayudas.;medio;ergonomía;FIS2_SRC018
+FIS2_T058;Educación de sueño y recuperación;Relación entre sueño, dolor, fatiga y recuperación.;bajo;hábitos;"FIS2_SRC001;FIS2_SRC017"
+FIS2_T059;Educación básica de suelo pélvico;Conciencia, función y señales de derivación a especialista.;medio;suelo_pélvico;FIS2_SRC018
+FIS2_T060;Coordinación interdisciplinar;Coordinar con medicina, traumatología, neurología, psicología o fisio especializado.;alto;seguridad;"FIS2_SRC001;FIS2_SRC004"
+FIS2_T061;Prescripción de ejercicio domiciliario;Definir ejercicios claros, dosis, frecuencia, progresión y criterios de pausa.;bajo;tareas;"FIS2_SRC003;FIS2_SRC004"
+FIS2_T062;Adherencia a ejercicios;Ajustar volumen, recordatorios, seguimiento y barreras para cumplir tareas.;bajo;hábitos;FIS2_SRC003
+FIS2_T063;Uso de Body Muscles para educación anatómica;Explicar región implicada y objetivos visuales con mapa anatómico.;bajo;educación;FIS2_SRC016
+FIS2_T064;Semáforo de dolor/tolerancia;Definir verde/amarillo/rojo según dolor, función y evolución 24-48h.;medio;seguridad;"FIS2_SRC006;FIS2_SRC007"
+FIS2_T065;Prevención de recaídas;Planificar señales tempranas, dosificación y retorno gradual.;bajo;prevención;"FIS2_SRC006;FIS2_SRC017"
+FIS2_T066;Educación sobre artrosis y ejercicio;Explicar artrosis, dolor, ejercicio, fuerza y manejo de síntomas.;medio;artrosis;FIS2_SRC008
+FIS2_T067;Fortalecimiento en artrosis;Fuerza progresiva y adaptada a tolerancia para artrosis.;medio;artrosis;FIS2_SRC008
+FIS2_T068;Entrenamiento de actividades de la vida diaria;Practicar tareas funcionales relevantes para la persona.;bajo;funcional;"FIS2_SRC001;FIS2_SRC009"

@@ -6,5 +6,5 @@ if (isset($_SESSION['user_id']) && in_array(($_SESSION['role'] ?? ''), ['admin',
     exit;
 }
 
-header('Location: ../login.php?admin=1');
+header('Location: ../login.php');
 exit;

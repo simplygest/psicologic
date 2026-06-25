@@ -1,6 +1,0 @@
-﻿routine_id;name_es;goal_id;level;days_per_week;description_es
-FIT_RUT001;Full Body Novus 3 días;GOAL_GENERAL;Principiante;3;Rutina sencilla de cuerpo completo para empezar.
-FIT_RUT002;Hipertrofia Magister 4 días Upper/Lower;GOAL_HYPERTROPHY;Intermedio;4;Rutina torso/pierna para hipertrofia y progresión.
-FIT_RUT003;Push Pull Legs 6 días;GOAL_HYPERTROPHY;Intermedio/Avanzado;6;División clásica empuje/tirón/pierna.
-FIT_RUT004;Fuerza básica 3 días;GOAL_STRENGTH;Principiante/Intermedio;3;Patrones básicos de fuerza con barra.
-FIT_RUT005;Casa sin máquinas 3 días;GOAL_GENERAL;Principiante;3;Entrenamiento con peso corporal y poco material.

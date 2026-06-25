@@ -1,0 +1,61 @@
+problema_id;area_id;nombre;descripcion;poblacion;nivel_riesgo;fuente_ids
+PSP2_P001;PSP2_A001;TDAH - inatención en tareas escolares;Dificultad para mantener la atención, seguir instrucciones y completar tareas.;Infantil/Adolescente;medio;"PSP2_SRC001;PSP2_SRC004"
+PSP2_P002;PSP2_A001;TDAH - hiperactividad motora;Necesidad elevada de movimiento que interfiere con aula, estudio o convivencia.;Infantil/Adolescente;medio;"PSP2_SRC001;PSP2_SRC004"
+PSP2_P003;PSP2_A001;TDAH - impulsividad en aula;Responder sin esperar, interrumpir o actuar antes de pensar.;Infantil/Adolescente;medio;"PSP2_SRC001;PSP2_SRC004"
+PSP2_P004;PSP2_A001;TDAH - olvidos frecuentes;Olvido de materiales, deberes, fechas o instrucciones.;Infantil/Adolescente;bajo;"PSP2_SRC001;PSP2_SRC009"
+PSP2_P005;PSP2_A001;TDAH - dificultad para iniciar tareas;Bloqueo o demora al comenzar tareas académicas.;Infantil/Adolescente;bajo;"PSP2_SRC001;PSP2_SRC009"
+PSP2_P006;PSP2_A001;TDAH - baja persistencia;Abandono rápido cuando la tarea exige esfuerzo sostenido.;Infantil/Adolescente;medio;"PSP2_SRC001;PSP2_SRC009"
+PSP2_P007;PSP2_A001;TDAH - gestión del tiempo escolar;Dificultad para estimar tiempos, organizar deberes o preparar exámenes.;Adolescente;bajo;"PSP2_SRC001;PSP2_SRC009"
+PSP2_P008;PSP2_A001;TDAH - seguimiento de instrucciones múltiples;Pérdida de pasos cuando una instrucción contiene varias acciones.;Infantil/Adolescente;bajo;"PSP2_SRC001;PSP2_SRC006"
+PSP2_P009;PSP2_A002;TEA - dificultad de comunicación social;Dificultad en reciprocidad social, conversación o interpretación de claves sociales.;Infantil/Adolescente;medio;"PSP2_SRC002;PSP2_SRC003"
+PSP2_P010;PSP2_A002;TEA - rigidez ante cambios;Malestar ante cambios de rutina, imprevistos o transiciones.;Infantil/Adolescente;medio;"PSP2_SRC002;PSP2_SRC003"
+PSP2_P011;PSP2_A002;TEA - intereses restringidos o intensos;Intereses muy focalizados que pueden ser fortaleza o interferencia.;Infantil/Adolescente;bajo;"PSP2_SRC002;PSP2_SRC003"
+PSP2_P012;PSP2_A002;TEA - sobrecarga sensorial;Dificultad para tolerar ruido, luz, tacto, multitudes o cambios sensoriales.;Infantil/Adolescente;medio;"PSP2_SRC002;PSP2_SRC003"
+PSP2_P013;PSP2_A002;TEA - dificultad en juego o interacción con iguales;Problemas para iniciar, mantener o comprender dinámicas con compañeros.;Infantil;medio;"PSP2_SRC002;PSP2_SRC003"
+PSP2_P014;PSP2_A002;TEA - necesidad de anticipación;Ansiedad o bloqueo cuando no se conoce lo que va a ocurrir.;Infantil/Adolescente;bajo;"PSP2_SRC002;PSP2_SRC007"
+PSP2_P015;PSP2_A002;Asperger - perfil histórico dentro del TEA;Uso del término Asperger por familia/profesional como referencia histórica del espectro autista.;Adolescente;bajo;"PSP2_SRC002;PSP2_SRC003"
+PSP2_P016;PSP2_A002;TEA - comprensión literal del lenguaje;Dificultad con ironías, dobles sentidos, metáforas o inferencias sociales.;Infantil/Adolescente;bajo;"PSP2_SRC002;PSP2_SRC010"
+PSP2_P017;PSP2_A003;Altas Capacidades - aburrimiento curricular;Desmotivación por tareas repetitivas o baja demanda cognitiva.;Infantil/Adolescente;bajo;PSP2_SRC014
+PSP2_P018;PSP2_A003;Altas Capacidades - perfeccionismo;Miedo al error, baja tolerancia a no destacar o bloqueo por exigencia.;Infantil/Adolescente;medio;PSP2_SRC014
+PSP2_P019;PSP2_A003;Altas Capacidades - desajuste socioemocional;Sensación de diferencia, aislamiento o dificultad para conectar con iguales.;Infantil/Adolescente;medio;PSP2_SRC014
+PSP2_P020;PSP2_A003;Doble excepcionalidad - alta capacidad y dificultad específica;Perfil de alta capacidad con TDAH, TEA, dislexia u otra necesidad coexistente.;Infantil/Adolescente;medio;"PSP2_SRC013;PSP2_SRC014"
+PSP2_P021;PSP2_A003;Altas Capacidades - baja tolerancia a frustración;Malestar intenso ante tareas difíciles o no dominadas rápidamente.;Infantil/Adolescente;bajo;PSP2_SRC014
+PSP2_P022;PSP2_A004;Dislexia - conciencia fonológica;Dificultad para identificar, segmentar o manipular sonidos del lenguaje.;Infantil;medio;"PSP2_SRC008;PSP2_SRC010"
+PSP2_P023;PSP2_A004;Dislexia - decodificación lectora;Dificultad para convertir grafemas en sonidos y leer palabras nuevas.;Infantil/Adolescente;medio;"PSP2_SRC008;PSP2_SRC010"
+PSP2_P024;PSP2_A004;Dislexia - fluidez lectora baja;Lectura lenta, poco automatizada o con esfuerzo elevado.;Infantil/Adolescente;medio;"PSP2_SRC008;PSP2_SRC010"
+PSP2_P025;PSP2_A004;Dislexia - comprensión afectada por esfuerzo lector;Comprensión reducida por sobrecarga en decodificación o fluidez.;Infantil/Adolescente;medio;"PSP2_SRC008;PSP2_SRC010"
+PSP2_P026;PSP2_A004;Dificultad ortográfica persistente;Errores ortográficos frecuentes pese a práctica general.;Infantil/Adolescente;bajo;"PSP2_SRC008;PSP2_SRC010"
+PSP2_P027;PSP2_A005;Discalculia - sentido numérico;Dificultad para comprender cantidad, magnitud, comparación o estimación.;Infantil;medio;"PSP2_SRC009;PSP2_SRC011"
+PSP2_P028;PSP2_A005;Discalculia - cálculo básico;Dificultad persistente con operaciones, hechos numéricos o procedimientos.;Infantil/Adolescente;medio;"PSP2_SRC009;PSP2_SRC011"
+PSP2_P029;PSP2_A005;Discalculia - resolución de problemas;Dificultad para traducir enunciados a operaciones y pasos.;Infantil/Adolescente;medio;PSP2_SRC011
+PSP2_P030;PSP2_A005;Ansiedad matemática;Bloqueo, evitación o malestar ante matemáticas.;Infantil/Adolescente;medio;"PSP2_SRC011;PSP2_SRC009"
+PSP2_P031;PSP2_A006;Disgrafía - grafomotricidad;Dificultad en trazo, tamaño, presión, velocidad o legibilidad.;Infantil;medio;PSP2_SRC009
+PSP2_P032;PSP2_A006;Disgrafía - fatiga al escribir;Cansancio, dolor o evitación por esfuerzo gráfico.;Infantil/Adolescente;medio;PSP2_SRC009
+PSP2_P033;PSP2_A006;Producción escrita desorganizada;Dificultad para planificar, ordenar y revisar textos.;Infantil/Adolescente;bajo;"PSP2_SRC005;PSP2_SRC009"
+PSP2_P034;PSP2_A006;Dificultad para expresar ideas por escrito;Ideas adecuadas oralmente pero pobre expresión escrita.;Infantil/Adolescente;bajo;"PSP2_SRC005;PSP2_SRC009"
+PSP2_P035;PSP2_A007;Funciones ejecutivas - memoria de trabajo;Dificultad para mantener información activa mientras se realiza una tarea.;Infantil/Adolescente;medio;PSP2_SRC009
+PSP2_P036;PSP2_A007;Funciones ejecutivas - planificación;Dificultad para anticipar pasos, materiales, tiempos y objetivos.;Infantil/Adolescente;bajo;PSP2_SRC009
+PSP2_P037;PSP2_A007;Funciones ejecutivas - organización material;Mochila, agenda, cuadernos o archivos desordenados.;Infantil/Adolescente;bajo;PSP2_SRC009
+PSP2_P038;PSP2_A007;Funciones ejecutivas - inhibición;Dificultad para frenar respuestas, distracciones o impulsos.;Infantil/Adolescente;medio;"PSP2_SRC001;PSP2_SRC009"
+PSP2_P039;PSP2_A007;Funciones ejecutivas - flexibilidad cognitiva;Dificultad para cambiar estrategia o aceptar alternativas.;Infantil/Adolescente;medio;"PSP2_SRC002;PSP2_SRC009"
+PSP2_P040;PSP2_A007;Funciones ejecutivas - monitorización;Dificultad para revisar errores, comprobar resultado o autocorregir.;Infantil/Adolescente;bajo;PSP2_SRC009
+PSP2_P041;PSP2_A008;Ansiedad ante exámenes;Malestar, bloqueo o evitación ante pruebas académicas.;Infantil/Adolescente;medio;"PSP2_SRC006;PSP2_SRC009"
+PSP2_P042;PSP2_A008;Miedo a participar en clase;Evitar leer, preguntar, exponer o responder ante compañeros.;Infantil/Adolescente;medio;PSP2_SRC006
+PSP2_P043;PSP2_A008;Miedo al error académico;Evitar tareas por temor a equivocarse o recibir crítica.;Infantil/Adolescente;bajo;PSP2_SRC006
+PSP2_P044;PSP2_A008;Autoconcepto académico bajo;Creencia persistente de incapacidad académica.;Infantil/Adolescente;medio;"PSP2_SRC006;PSP2_SRC009"
+PSP2_P045;PSP2_A009;Estudio pasivo ineficaz;Uso predominante de releer/subrayar sin recuperación activa.;Adolescente;bajo;PSP2_SRC005
+PSP2_P046;PSP2_A009;Mala planificación de exámenes;Estudio concentrado al final, sin repaso espaciado.;Adolescente;bajo;PSP2_SRC005
+PSP2_P047;PSP2_A009;Dificultad para resumir y estructurar contenidos;Problemas para identificar ideas principales y jerarquizarlas.;Infantil/Adolescente;bajo;PSP2_SRC005
+PSP2_P048;PSP2_A009;Baja metacognición;Dificultad para saber qué se sabe, qué falta y cómo mejorar.;Infantil/Adolescente;bajo;"PSP2_SRC005;PSP2_SRC006"
+PSP2_P049;PSP2_A010;Necesidad de adaptación de acceso;Requiere ajustes para acceder a información: formato, tiempo, apoyos o entorno.;Infantil/Adolescente;medio;"PSP2_SRC006;PSP2_SRC007"
+PSP2_P050;PSP2_A010;Necesidad de adaptación de expresión;Requiere alternativas para demostrar aprendizaje: oral, visual, digital o tiempo adicional.;Infantil/Adolescente;medio;"PSP2_SRC006;PSP2_SRC007"
+PSP2_P051;PSP2_A010;Necesidad de coordinación familia-centro;Falta de comunicación clara entre familia, escuela y profesional.;Infantil/Adolescente;bajo;PSP2_SRC006
+PSP2_P052;PSP2_A010;Seguimiento de ajustes educativos;Necesidad de revisar si las adaptaciones son útiles y sostenibles.;Infantil/Adolescente;bajo;"PSP2_SRC006;PSP2_SRC007"
+PSP2_P053;PSP2_A011;Conducta disruptiva leve en aula;Interrupciones, llamadas de atención o incumplimiento de normas sin alto riesgo.;Infantil/Adolescente;medio;"PSP2_SRC005;PSP2_SRC006"
+PSP2_P054;PSP2_A011;Dificultad para seguir normas;Problemas para comprender, recordar o aceptar normas del aula.;Infantil/Adolescente;bajo;PSP2_SRC006
+PSP2_P055;PSP2_A011;Conflictos con iguales;Dificultad para resolver conflictos o reparar interacciones.;Infantil/Adolescente;medio;PSP2_SRC006
+PSP2_P056;PSP2_A011;Baja participación cooperativa;Dificultad para trabajar en grupo, turnarse o asumir roles.;Infantil/Adolescente;bajo;"PSP2_SRC006;PSP2_SRC007"
+PSP2_P057;PSP2_A012;Desmotivación escolar;Baja implicación, apatía o percepción de irrelevancia de las tareas.;Infantil/Adolescente;medio;PSP2_SRC006
+PSP2_P058;PSP2_A012;Evitación de tareas difíciles;Evitar o abandonar tareas por frustración, miedo o baja autoeficacia.;Infantil/Adolescente;medio;"PSP2_SRC006;PSP2_SRC009"
+PSP2_P059;PSP2_A012;Baja autonomía académica;Dependencia excesiva de adulto para iniciar, organizar o revisar tareas.;Infantil/Adolescente;bajo;PSP2_SRC006
+PSP2_P060;PSP2_A012;Adherencia baja a pautas psicopedagógicas;Dificultad para mantener tareas, registros o estrategias entre sesiones.;Infantil/Adolescente;bajo;"PSP2_SRC006;PSP2_SRC009"

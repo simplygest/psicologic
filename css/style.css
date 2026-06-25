@@ -22,6 +22,34 @@ body {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
 }
 
+body.is-admin .navbar .container {
+    max-width: none;
+    padding-left: 12px;
+    padding-right: 12px;
+}
+
+body.is-admin .navbar {
+    background-color: var(--primary-color) !important;
+    color: var(--dashboard-navbar-text);
+}
+
+body.is-admin .navbar .navbar-brand,
+body.is-admin .navbar .dashboard-user-greeting {
+    color: var(--dashboard-navbar-text) !important;
+}
+
+body.is-admin .navbar .btn-light {
+    background: var(--dashboard-navbar-control-bg);
+    border-color: transparent;
+    color: var(--dashboard-navbar-text);
+}
+
+body.is-admin .navbar .btn-light:hover,
+body.is-admin .navbar .btn-light:focus {
+    background: var(--dashboard-navbar-control-hover-bg);
+    color: var(--dashboard-navbar-text);
+}
+
 .navbar-brand {
     font-weight: 600;
     color: var(--primary-color) !important;
@@ -92,6 +120,16 @@ body {
     .dashboard-actions-admin #btn-calendar-view-toggle {
         margin-left: auto !important;
     }
+
+    .dashboard-view-switcher {
+        display: none !important;
+        margin-left: 0 !important;
+        width: 100%;
+    }
+
+    .dashboard-view-switcher .btn {
+        flex: 1 1 0;
+    }
 }
 
 @media (max-width: 575.98px) {
@@ -145,8 +183,39 @@ body {
     border: 3px solid var(--primary-light);
 }
 
+.auth-brand-image-official {
+    border: 0;
+}
+
 .auth-page {
     padding: 32px 16px;
+}
+
+.auth-page-with-nav {
+    align-items: stretch;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    padding: 0;
+}
+
+.auth-page-with-nav > .container {
+    align-items: center;
+    display: flex;
+    flex: 1 0 auto;
+    justify-content: center;
+    padding-bottom: 32px;
+    padding-top: 32px;
+}
+
+.auth-page-with-nav > .container > .row {
+    width: 100%;
+}
+
+.auth-page-with-nav .auth-legal-footer {
+    flex: 0 0 auto;
+    margin-top: 0;
+    padding: 0 16px 22px;
 }
 
 .auth-brand-logo {
@@ -192,6 +261,39 @@ body {
     border-radius: 8px;
     object-fit: cover;
     border: 1px solid var(--border-color);
+}
+
+#professionalEditorModal .col-form-label,
+#professionalEditorModal .form-label,
+#professionalEditorModal .form-check-label {
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+.patient-report-template-card {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    height: 100%;
+    justify-content: space-between;
+    padding: 16px;
+}
+
+.patient-report-template-card h6 {
+    color: var(--primary-color);
+    margin-bottom: 6px;
+}
+
+.patient-report-template-card p {
+    color: var(--text-muted);
+    font-size: .9rem;
+    margin-bottom: 0;
+}
+
+.patient-report-template-card.is-muted {
+    background: #f8fafc;
 }
 
 .card {
@@ -420,6 +522,213 @@ body:not(.is-admin) .slot.booked {
     cursor: not-allowed;
 }
 
+.dashboard-shell-container {
+    max-width: 1560px;
+}
+
+.dashboard-shell {
+    align-items: flex-start;
+    display: flex;
+    gap: 20px;
+}
+
+.dashboard-shell-main {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.dashboard-side-nav {
+    background: var(--card-background);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.02);
+    display: none;
+    flex: 0 0 220px;
+    gap: 18px;
+    padding: 14px;
+    position: sticky;
+    top: 18px;
+}
+
+.dashboard-side-nav-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.dashboard-side-nav-label {
+    color: var(--text-muted);
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+    padding: 0 8px 4px;
+    text-transform: uppercase;
+}
+
+.dashboard-side-nav-item {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: 8px;
+    color: var(--text-color);
+    display: flex;
+    gap: 10px;
+    min-height: 38px;
+    padding: 8px 10px;
+    text-align: left;
+    transition: background .15s ease, color .15s ease;
+    width: 100%;
+}
+
+.dashboard-side-nav-item i {
+    color: var(--primary-color);
+    font-size: 1rem;
+    width: 18px;
+}
+
+.dashboard-side-nav-item:hover,
+.dashboard-side-nav-item:focus {
+    background: color-mix(in srgb, var(--primary-color) 10%, white);
+    color: var(--primary-color);
+}
+
+.dashboard-side-nav-item.active,
+.dashboard-side-nav-item.btn-primary {
+    background: var(--primary-color);
+    color: #fff;
+}
+
+.dashboard-side-nav-item.active i,
+.dashboard-side-nav-item.btn-primary i {
+    color: #fff;
+}
+
+.dashboard-calendar-mode-switcher:not(.d-none) {
+    display: flex;
+    justify-content: center;
+}
+
+.dashboard-calendar-mode-switcher .btn {
+    align-items: center;
+    display: inline-flex;
+    gap: 6px;
+}
+
+.dashboard-calendar-mode-switcher .btn-dashboard-calendar-mode {
+    background: #fff;
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+.dashboard-calendar-mode-switcher .btn-dashboard-calendar-mode:hover,
+.dashboard-calendar-mode-switcher .btn-dashboard-calendar-mode:focus,
+.dashboard-calendar-mode-switcher .btn-dashboard-calendar-mode.active,
+.dashboard-calendar-mode-switcher .btn-dashboard-calendar-mode.btn-primary {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: #fff;
+}
+
+@media (min-width: 1200px) {
+    body.is-admin .navbar .container {
+        padding-left: 24px;
+        padding-right: 24px;
+    }
+
+    body.is-admin .dashboard-shell-container {
+        margin-top: 0 !important;
+        max-width: none;
+        padding-left: 0;
+        padding-right: 0;
+    }
+
+    body.is-admin .dashboard-shell {
+        align-items: stretch;
+        gap: 0;
+        min-height: calc(100vh - 74px);
+    }
+
+    body.is-admin .dashboard-shell-main {
+        padding: 24px;
+    }
+
+    body.is-admin .dashboard-side-nav {
+        background: linear-gradient(180deg, color-mix(in srgb, var(--primary-color) 14%, white), color-mix(in srgb, var(--primary-color) 8%, white));
+        border: 0;
+        border-radius: 0;
+        border-right: 1px solid color-mix(in srgb, var(--primary-color) 18%, white);
+        box-shadow: none;
+        display: flex;
+        flex-direction: column;
+        flex: 0 0 250px;
+        min-height: calc(100vh - 74px);
+        padding: 28px 20px;
+        position: sticky;
+        top: 0;
+    }
+
+    body.is-admin .dashboard-actions-admin {
+        display: none !important;
+    }
+}
+
+@media (max-width: 1199.98px) {
+    body.is-admin .dashboard-view-switcher {
+        display: none !important;
+    }
+}
+
+.dashboard-view-switcher {
+    flex-wrap: wrap;
+}
+
+.dashboard-view-switcher .btn {
+    align-items: center;
+    display: inline-flex;
+    gap: 6px;
+    justify-content: center;
+    white-space: nowrap;
+}
+
+.dashboard-view-switcher .btn-dashboard-view {
+    background: #fff;
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+.dashboard-view-switcher .btn-dashboard-view:hover,
+.dashboard-view-switcher .btn-dashboard-view:focus,
+.dashboard-view-switcher .btn-dashboard-view.active,
+.dashboard-view-switcher .btn-dashboard-view.btn-primary {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: #fff;
+}
+
+.dashboard-inline-panel {
+    background: var(--card-background);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.02);
+    padding: 16px;
+}
+
+.dashboard-inline-panel .table {
+    margin-bottom: 0;
+}
+
+.dashboard-patient-row,
+.dashboard-upcoming-row,
+.upcoming-appointment-row {
+    cursor: pointer;
+}
+
+.dashboard-patient-row:hover,
+.dashboard-upcoming-row:hover,
+.upcoming-appointment-row:hover {
+    background: rgba(0, 0, 0, 0.02);
+}
+
 .month-calendar-layout {
     --month-calendar-height: min(72vh, 720px);
     align-items: stretch;
@@ -443,13 +752,43 @@ body:not(.is-admin) .slot.booked {
     flex-direction: column;
 }
 
+.month-calendar-header,
+.week-calendar-nav {
+    align-items: center;
+    display: grid;
+    gap: 10px;
+    grid-template-columns: 40px minmax(0, 1fr) 40px;
+    margin-bottom: 12px;
+}
+
+.week-calendar-nav {
+    margin-bottom: 14px;
+}
+
+.calendar-nav-icon {
+    align-items: center;
+    aspect-ratio: 1;
+    display: inline-flex;
+    height: 38px;
+    justify-content: center;
+    padding: 0;
+    width: 38px;
+}
+
 .month-calendar-title {
     color: var(--primary-color);
     font-size: 1.25rem;
     font-weight: 700;
-    margin-bottom: 14px;
+    margin-bottom: 0;
     text-align: center;
     text-transform: capitalize;
+}
+
+.week-calendar-title {
+    color: var(--primary-color);
+    font-size: 1.05rem;
+    font-weight: 700;
+    text-align: center;
 }
 
 .month-weekdays,
@@ -2052,25 +2391,47 @@ body:not(.is-admin) .slot.booked {
 }
 
 .stats-summary-card {
-    background: #f7f9f8;
-    border: 1px solid var(--border-color);
+    background: color-mix(in srgb, var(--primary-color) 10%, white);
+    border: 1px solid color-mix(in srgb, var(--primary-color) 18%, white);
     border-radius: 8px;
     padding: 14px;
 }
 
 .stats-summary-card span,
 .stats-summary-card small {
-    color: #66737d;
+    color: color-mix(in srgb, var(--primary-color) 55%, #66737d);
     display: block;
     font-size: 0.78rem;
 }
 
 .stats-summary-card strong {
-    color: #263238;
+    color: color-mix(in srgb, var(--primary-color) 65%, #263238);
     display: block;
     font-size: 1.35rem;
     line-height: 1.2;
     margin: 5px 0;
+}
+
+#adminStatsModal .btn-export-modal-table,
+#adminStatsModal .btn-print-report-section,
+#adminStatsModal .btn-export-report-section,
+#adminStatsModal .btn-export-report-section-xls {
+    background: #fff;
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+#adminStatsModal .btn-export-modal-table:hover,
+#adminStatsModal .btn-export-modal-table:focus,
+#adminStatsModal .btn-print-report-section:hover,
+#adminStatsModal .btn-print-report-section:focus,
+#adminStatsModal .btn-export-report-section:hover,
+#adminStatsModal .btn-export-report-section:focus,
+#adminStatsModal .btn-export-report-section-xls:hover,
+#adminStatsModal .btn-export-report-section-xls:focus {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: #fff;
 }
 
 .stats-bars {
@@ -2581,13 +2942,18 @@ body:not(.is-admin) .slot.booked {
 
 .booking-professional-card-grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    margin: 0 -4px;
+    gap: 12px 14px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .booking-professional-card-grid .patient-professional-card {
-    margin: 0 4px 8px;
     min-height: 62px;
+}
+
+.booking-modal-loading .patient-professional-card,
+.booking-modal-loading .booking-consultation-card {
+    cursor: wait;
+    opacity: 0.58;
 }
 
 .booking-consultation-card-grid {
@@ -2854,6 +3220,12 @@ body.patients-secondary-modal-open #adminPatientsModal .modal-content {
 }
 
 body.patient-editor-secondary-modal-open #patientEditorModal .modal-content {
+    filter: grayscale(0.2);
+    opacity: 0.42;
+    transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
+body.professional-editor-secondary-modal-open #professionalEditorModal .modal-content {
     filter: grayscale(0.2);
     opacity: 0.42;
     transition: opacity 0.15s ease, filter 0.15s ease;
@@ -3251,7 +3623,7 @@ body.appointment-work-plan-modal-open #appointmentPaymentModal .modal-content {
 .patient-body-exercise-description {
     color: #66737d;
     grid-column: 1 / -1;
-    margin: 0;
+    margin: 4px 0 0;
 }
 
 .patient-body-exercise-main small,
@@ -3264,6 +3636,13 @@ body.appointment-work-plan-modal-open #appointmentPaymentModal .modal-content {
 
 .patient-body-exercise-aliases {
     opacity: 0.85;
+}
+
+.patient-body-exercise-roles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
 }
 
 .patient-body-exercise-tags {
@@ -3281,6 +3660,111 @@ body.appointment-work-plan-modal-open #appointmentPaymentModal .modal-content {
     grid-column: 1 / -1;
 }
 
+.patient-evolution-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.patient-evolution-metrics span {
+    background: #f7f8fb;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    padding: 2px 8px;
+}
+
+.patient-evolution-chart-toolbar {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 14px;
+}
+
+.patient-evolution-chart-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+@media (max-width: 767.98px) {
+    .patient-evolution-chart-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.patient-evolution-chart-card {
+    background: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px;
+}
+
+.patient-evolution-chart-title {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.patient-evolution-chart-title h6 {
+    color: var(--primary-color);
+    font-weight: 700;
+    margin: 0;
+}
+
+.patient-evolution-chart-title span {
+    color: #6c757d;
+    font-size: 0.82rem;
+}
+
+.patient-evolution-chart-canvas {
+    height: 230px;
+    min-height: 230px;
+    position: relative;
+}
+
+.bmi-indicator {
+    min-height: 38px;
+    padding: 7px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: #f8f9fa;
+}
+
+.bmi-indicator-value {
+    font-size: 1rem;
+    line-height: 1.1;
+}
+
+.bmi-indicator-bar {
+    height: 5px;
+    margin-top: 7px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: #e9ecef;
+}
+
+.bmi-indicator-fill {
+    display: block;
+    height: 100%;
+    width: 0;
+    border-radius: inherit;
+    background: #adb5bd;
+    transition: width 0.2s ease, background-color 0.2s ease;
+}
+
+.bmi-indicator.is-low .bmi-indicator-fill {
+    background: #f0ad00;
+}
+
+.bmi-indicator.is-healthy .bmi-indicator-fill {
+    background: #198754;
+}
+
+.bmi-indicator.is-high .bmi-indicator-fill {
+    background: #dc3545;
+}
+
 .patient-body-exercise-item.has-media .patient-body-exercise-description,
 .patient-body-exercise-item.has-media .patient-body-exercise-cues {
     grid-column: 2 / -1;
@@ -3288,7 +3772,7 @@ body.appointment-work-plan-modal-open #appointmentPaymentModal .modal-content {
 
 .workoutx-exercise-layout {
     display: grid;
-    grid-template-columns: minmax(220px, 320px) 1fr;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
     gap: 1rem;
     align-items: start;
 }
@@ -3302,18 +3786,50 @@ body.appointment-work-plan-modal-open #appointmentPaymentModal .modal-content {
     justify-content: center;
     min-height: 240px;
     overflow: hidden;
+    position: relative;
+    grid-column: span 5;
 }
 
 .workoutx-exercise-gif img {
     width: 100%;
     max-height: 360px;
     object-fit: contain;
+    opacity: 1;
+    transition: opacity 0.15s ease;
+}
+
+.workoutx-exercise-gif img.is-loading {
+    opacity: 0;
+}
+
+.workoutx-exercise-gif-loader {
+    color: #5f6f7a;
+    font-size: 0.92rem;
+    padding: 2rem 1rem;
+    position: absolute;
+    text-align: center;
+    z-index: 1;
+}
+
+.workoutx-exercise-detail {
+    grid-column: span 7;
+}
+
+.workoutx-exercise-instruction-block {
+    grid-column: 1 / -1;
 }
 
 .workoutx-exercise-meta {
     color: #5f6f7a;
     font-size: 0.92rem;
     margin-bottom: 0.75rem;
+}
+
+.workoutx-exercise-section-title {
+    color: var(--primary-color);
+    font-size: 0.95rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
 }
 
 .workoutx-exercise-instructions {
@@ -3323,6 +3839,86 @@ body.appointment-work-plan-modal-open #appointmentPaymentModal .modal-content {
 
 .workoutx-exercise-instructions li {
     margin-bottom: 0.4rem;
+}
+
+.workoutx-option-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: #fff;
+}
+
+.workoutx-option-grid .form-check {
+    min-height: 0;
+    margin: 0;
+}
+
+.workoutx-option-grid .form-check-label {
+    color: #3d4852;
+    font-size: 0.9rem;
+}
+
+.workoutx-generated-summary,
+.workoutx-generated-exercise-item {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: #fff;
+}
+
+.workoutx-generated-summary {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+}
+
+.workoutx-generated-exercise-list {
+    display: grid;
+    gap: 8px;
+}
+
+.workoutx-generated-exercise-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    padding: 12px 14px;
+}
+
+.workoutx-generated-prescription {
+    color: var(--primary-color);
+    font-weight: 600;
+    margin-top: 4px;
+}
+
+.workoutx-generated-exercise-actions {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+}
+
+.workoutx-generated-activity {
+    margin: 10px 0;
+    padding: 10px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: #f8f9fb;
+}
+
+.workoutx-generated-activity h6 {
+    margin-bottom: 6px;
+}
+
+.workoutx-generated-activity ul {
+    margin: 0;
+    padding-left: 18px;
+}
+
+.workoutx-generated-activity li {
+    margin-bottom: 3px;
 }
 
 @media (max-width: 768px) {
@@ -3344,6 +3940,26 @@ body.appointment-work-plan-modal-open #appointmentPaymentModal .modal-content {
     }
 
     .workoutx-exercise-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .workoutx-exercise-gif,
+    .workoutx-exercise-detail,
+    .workoutx-exercise-instruction-block {
+        grid-column: 1 / -1;
+    }
+
+    .workoutx-generated-summary,
+    .workoutx-generated-exercise-item {
+        grid-template-columns: 1fr;
+    }
+
+    .workoutx-generated-exercise-actions {
+        justify-content: flex-end;
+        flex-wrap: wrap;
+    }
+
+    .workoutx-option-grid {
         grid-template-columns: 1fr;
     }
 
@@ -3427,6 +4043,7 @@ body.appointment-work-plan-modal-open #appointmentPaymentModal .modal-content {
 .quick-appointment-topline .btn {
     letter-spacing: 0;
     text-transform: none;
+    white-space: nowrap;
 }
 
 .quick-appointment-body {
@@ -3570,6 +4187,69 @@ body.appointment-work-plan-modal-open #appointmentPaymentModal .modal-content {
     text-decoration: line-through;
 }
 
+.patient-portal-composition-current,
+.patient-portal-composition-history {
+    display: grid;
+    gap: 12px;
+}
+
+.patient-portal-composition-bmi,
+.patient-portal-composition-history-item,
+.patient-portal-metric-card {
+    background: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.patient-portal-composition-bmi,
+.patient-portal-composition-history-item {
+    padding: 12px;
+}
+
+.patient-portal-metric-section h6 {
+    color: var(--primary-color);
+    font-size: 0.95rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.patient-portal-metric-grid {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.patient-portal-metric-card {
+    padding: 10px 12px;
+}
+
+.patient-portal-metric-card span {
+    color: var(--text-muted);
+    display: block;
+    font-size: 0.82rem;
+}
+
+.patient-portal-metric-card strong {
+    color: var(--text-color);
+    display: block;
+    font-size: 1rem;
+    margin-top: 2px;
+}
+
+.patient-portal-history-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+.patient-portal-history-metrics span {
+    background: #f7f8fb;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    padding: 3px 8px;
+}
+
 .global-search-results {
     max-height: 65vh;
     overflow: auto;
@@ -3647,6 +4327,27 @@ body.appointment-work-plan-modal-open #appointmentPaymentModal .modal-content {
 body.appointment-session-note-modal-open .modal-backdrop.show,
 body.appointment-work-plan-modal-open .modal-backdrop.show {
     z-index: 1065;
+}
+
+#professional-knowledge-sectors-list {
+    padding: 0 0.5rem 0.25rem;
+}
+
+.professional-knowledge-sector-option {
+    align-items: flex-start;
+    display: flex;
+    gap: 0.75rem;
+    padding: 0.72rem 0.85rem !important;
+}
+
+.professional-knowledge-sector-option .form-check-input {
+    flex: 0 0 auto;
+    margin-left: 0;
+    margin-top: 0.18rem;
+}
+
+.professional-knowledge-sector-option .form-check-label {
+    min-width: 0;
 }
 
 @media (max-width: 768px) {
@@ -3816,6 +4517,10 @@ body.appointment-work-plan-modal-open .modal-backdrop.show {
         justify-content: flex-end;
         min-height: 0;
         width: 100%;
+    }
+
+    .patient-portal-metric-grid {
+        grid-template-columns: 1fr;
     }
 
     .stats-bar-value {

@@ -1,0 +1,57 @@
+﻿tecnica_id;nombre;descripcion;nivel_riesgo;tipo_intervencion;fuente_ids
+FIT2_T001;Entrevista inicial fitness;Recoger objetivo, historial, nivel, disponibilidad, material, preferencias, limitaciones y señales de derivación.;bajo;evaluación;"FIT2_SRC002;FIT2_SRC011"
+FIT2_T002;Objetivos SMART fitness;Convertir metas genéricas en objetivos específicos, medibles y revisables.;bajo;planificación;FIT2_SRC010
+FIT2_T003;Programación semanal multicomponente;Combinar fuerza, cardio, movilidad, descanso y actividad diaria.;bajo;programación;"FIT2_SRC001;FIT2_SRC002"
+FIT2_T004;Sobrecarga progresiva;Aumentar gradualmente carga, repeticiones, series, rango o dificultad.;bajo;entrenamiento;"FIT2_SRC004;FIT2_SRC007"
+FIT2_T005;Doble progresión;Progresar repeticiones dentro de un rango antes de subir carga.;bajo;entrenamiento;FIT2_SRC004
+FIT2_T006;Control de volumen semanal;Gestionar series efectivas por grupo muscular y objetivo.;bajo;programación;"FIT2_SRC004;FIT2_SRC007"
+FIT2_T007;Frecuencia muscular;Distribuir estímulos de cada grupo muscular durante la semana.;bajo;programación;FIT2_SRC004
+FIT2_T008;RIR/RPE;Usar repeticiones en reserva o esfuerzo percibido para ajustar intensidad.;medio;entrenamiento;"FIT2_SRC004;FIT2_SRC007"
+FIT2_T009;Cercanía al fallo técnico;Acercarse al fallo manteniendo técnica segura según objetivo y nivel.;medio;entrenamiento;"FIT2_SRC004;FIT2_SRC007"
+FIT2_T010;Progresión lineal básica;Subir carga de manera planificada en ejercicios principales.;medio;fuerza;FIT2_SRC004
+FIT2_T011;Periodización simple;Alternar semanas de carga, volumen o énfasis para evitar estancamiento.;medio;programación;FIT2_SRC004
+FIT2_T012;Descarga planificada;Reducir carga/volumen temporalmente ante fatiga o bajo rendimiento.;bajo;recuperación;"FIT2_SRC004;FIT2_SRC011"
+FIT2_T013;Técnica por patrones de movimiento;Enseñar sentadilla, bisagra, empuje, tracción, zancada, transporte y core.;medio;técnica;"FIT2_SRC009;FIT2_SRC004"
+FIT2_T014;Regresión/progresión de ejercicio;Elegir versión más fácil o difícil según nivel y control.;bajo;programación;"FIT2_SRC002;FIT2_SRC009"
+FIT2_T015;Calentamiento RAMP;Elevar temperatura, activar, movilizar y potenciar antes de entrenar.;bajo;preparación;"FIT2_SRC002;FIT2_SRC009"
+FIT2_T016;Movilidad dinámica;Movimientos activos para preparar articulaciones y rango útil.;bajo;movilidad;"FIT2_SRC002;FIT2_SRC009"
+FIT2_T017;Movilidad activa específica;Trabajar rango activo de cadera, hombro, tobillo o columna.;bajo;movilidad;FIT2_SRC009
+FIT2_T018;Estiramiento estático dosificado;Aplicar estiramientos específicos sin dolor ni rebote agresivo.;bajo;movilidad;"FIT2_SRC002;FIT2_SRC009"
+FIT2_T019;Control motor;Practicar movimiento lento, controlado y con feedback.;medio;técnica;FIT2_SRC009
+FIT2_T020;Entrenamiento de core anti-movimiento;Planchas, pallof, dead bug, carries y variantes de estabilidad.;bajo;core;"FIT2_SRC009;FIT2_SRC004"
+FIT2_T021;Estabilidad escapular;Control de escápulas en empuje, tracción y postura.;bajo;técnica;"FIT2_SRC009;FIT2_SRC012"
+FIT2_T022;Braceo y respiración;Coordinar respiración, presión intraabdominal y tensión del tronco.;medio;técnica;"FIT2_SRC004;FIT2_SRC009"
+FIT2_T023;NEAT y pasos diarios;Aumentar movimiento cotidiano y reducir sedentarismo.;bajo;hábitos;"FIT2_SRC001;FIT2_SRC003"
+FIT2_T024;Cardio zona 2;Trabajo aeróbico moderado y sostenible.;bajo;cardio;"FIT2_SRC001;FIT2_SRC002"
+FIT2_T025;Intervalos moderados;Alternar esfuerzos y recuperación sin exceder tolerancia.;medio;cardio;FIT2_SRC002
+FIT2_T026;HIIT dosificado;Intervalos intensos con volumen limitado y recuperación suficiente.;medio;cardio;"FIT2_SRC002;FIT2_SRC011"
+FIT2_T027;Caminata-carrera progresiva;Alternar caminar y correr para introducir carrera de forma gradual.;medio;cardio;"FIT2_SRC002;FIT2_SRC008"
+FIT2_T028;Circuitos de cuerpo completo;Combinar ejercicios con descansos cortos para resistencia muscular.;bajo;resistencia;"FIT2_SRC002;FIT2_SRC010"
+FIT2_T029;EMOM/AMRAP controlado;Trabajo por tiempo manteniendo técnica y margen de seguridad.;medio;resistencia;FIT2_SRC010
+FIT2_T030;Densidad de entrenamiento;Aumentar trabajo por unidad de tiempo gradualmente.;medio;resistencia;"FIT2_SRC002;FIT2_SRC010"
+FIT2_T031;Déficit energético moderado;Orientación no clínica: pérdida de grasa requiere balance energético sostenible.;medio;nutrición básica;"FIT2_SRC006;FIT2_SRC005"
+FIT2_T032;Proteína objetivo;Asegurar proteína suficiente para mantenimiento/ganancia muscular.;bajo;nutrición básica;FIT2_SRC005
+FIT2_T033;Hidratación y electrolitos básicos;Promover ingesta de líquidos y atención a calor/sudoración.;bajo;nutrición básica;"FIT2_SRC008;FIT2_SRC011"
+FIT2_T034;Educación de composición corporal;Usar peso, cintura, fotos y rendimiento sin obsesión por una sola métrica.;bajo;seguimiento;"FIT2_SRC006;FIT2_SRC010"
+FIT2_T035;Seguimiento de cargas;Registrar ejercicios, series, repeticiones, peso y notas.;bajo;seguimiento;"FIT2_SRC004;FIT2_SRC010"
+FIT2_T036;Seguimiento de medidas;Registrar peso, perímetros, fotos y adherencia según objetivo.;bajo;seguimiento;"FIT2_SRC006;FIT2_SRC010"
+FIT2_T037;Plan de adherencia mínima;Crear versión mínima viable del entrenamiento para semanas difíciles.;bajo;hábitos;"FIT2_SRC008;FIT2_SRC010"
+FIT2_T038;Diseño de hábitos;Anclar entrenamiento a rutina, entorno, señales y recompensas.;bajo;hábitos;FIT2_SRC010
+FIT2_T039;Entrevista motivacional fitness;Explorar razones, barreras, autonomía y compromisos pequeños.;bajo;hábitos;FIT2_SRC010
+FIT2_T040;Gestión de barreras;Identificar obstáculos y planificar alternativas concretas.;bajo;hábitos;"FIT2_SRC008;FIT2_SRC010"
+FIT2_T041;Entrenamiento en casa con peso corporal;Crear progresiones usando el propio cuerpo y poco espacio.;bajo;programación;FIT2_SRC010
+FIT2_T042;Entrenamiento con mancuernas;Programar ejercicios multiarticulares y accesorios con mancuernas.;bajo;programación;"FIT2_SRC010;FIT2_SRC004"
+FIT2_T043;Entrenamiento con bandas;Usar bandas para fuerza, movilidad, activación o asistencia.;bajo;programación;"FIT2_SRC010;FIT2_SRC009"
+FIT2_T044;Sesiones express;Diseñar sesiones de 10-25 minutos con prioridad clara.;bajo;adherencia;"FIT2_SRC001;FIT2_SRC008"
+FIT2_T045;Retorno gradual de carga;Subir volumen/intensidad poco a poco tras pausa o molestia leve.;medio;readaptación;"FIT2_SRC002;FIT2_SRC011"
+FIT2_T046;Regla de tolerancia al esfuerzo;Ajustar sesión si dolor, fatiga o rendimiento indican exceso.;alto;seguridad;"FIT2_SRC011;FIT2_SRC002"
+FIT2_T047;Señales de derivación;Detectar dolor agudo, síntomas neurológicos, mareos, dolor torácico u otros signos.;alto;seguridad;"FIT2_SRC011;FIT2_SRC002"
+FIT2_T048;Entrenamiento funcional para mayores;Fuerza, equilibrio, movilidad y tareas cotidianas con seguridad.;medio;mayores;"FIT2_SRC001;FIT2_SRC002"
+FIT2_T049;Equilibrio progresivo;Ejercicios de estabilidad con apoyo, base y dificultad graduada.;medio;mayores;"FIT2_SRC002;FIT2_SRC011"
+FIT2_T050;Fuerza funcional sit-to-stand;Entrenar sentarse/levantarse, escalones, cargas y transferencias.;medio;mayores;FIT2_SRC002
+FIT2_T051;Sueño y recuperación;Educar sobre descanso, días de recuperación y señales de fatiga.;bajo;recuperación;"FIT2_SRC011;FIT2_SRC005"
+FIT2_T052;Planificación de comidas alrededor del entrenamiento;Orientación básica de energía, proteína e hidratación según horarios.;bajo;nutrición básica;FIT2_SRC005
+FIT2_T053;Prevención de recaídas fitness;Plan para mantener avances ante viajes, estrés, lesión leve o falta de tiempo.;bajo;hábitos;FIT2_SRC010
+FIT2_T054;Feedback técnico con vídeo;Usar grabaciones para revisar patrón y progresar con seguridad.;medio;técnica;FIT2_SRC009
+FIT2_T055;Selección de ejercicios por Body Muscles;Elegir ejercicios según región muscular y objetivo visual/anatómico.;bajo;programación;FIT2_SRC012
+FIT2_T056;Autoregulación de entrenamiento;Ajustar carga y volumen según energía, sueño, dolor y rendimiento.;medio;programación;"FIT2_SRC004;FIT2_SRC011"

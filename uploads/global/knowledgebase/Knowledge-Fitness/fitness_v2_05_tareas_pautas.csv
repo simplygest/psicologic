@@ -1,0 +1,81 @@
+﻿tarea_id;titulo;descripcion;objetivo;nivel_riesgo;duracion_estimada;tipo_intervencion;tecnica_id
+FIT2_TA001;Ficha inicial fitness;Registrar objetivo, nivel, historial, material, tiempo, preferencias y señales de derivación.;Personalizar el plan.;bajo;15-30 min;evaluación;FIT2_T001
+FIT2_TA002;Objetivo SMART semanal;Definir objetivo concreto con indicador y fecha de revisión.;Clarificar dirección y medir progreso.;bajo;10 min semanal;planificación;FIT2_T002
+FIT2_TA003;Plan semanal fuerza-cardio-movilidad;Programar días de fuerza, cardio, movilidad y descanso.;Crear estructura equilibrada.;bajo;15 min semanal;programación;FIT2_T003
+FIT2_TA004;Registro de entrenamiento;Anotar ejercicio, series, repeticiones, peso, RIR/RPE y notas.;Medir progreso real.;bajo;cada sesión;seguimiento;FIT2_T035
+FIT2_TA005;Doble progresión por rango;Mantener rango objetivo y subir peso al completar repeticiones con técnica.;Progresar sin precipitar carga.;bajo;semanal;entrenamiento;FIT2_T005
+FIT2_TA006;Revisión de series efectivas;Contar series semanales por grupo muscular y ajustar.;Optimizar volumen.;bajo;semanal;programación;FIT2_T006
+FIT2_TA007;Distribución muscular semanal;Repartir estímulos por grupo muscular 2 veces/semana si procede.;Mejorar frecuencia y recuperación.;bajo;semanal;programación;FIT2_T007
+FIT2_TA008;Registro RIR/RPE;Valorar esfuerzo en series principales y ajustar siguiente sesión.;Controlar intensidad.;medio;cada sesión;entrenamiento;FIT2_T008
+FIT2_TA009;Serie cercana al fallo técnico;Aplicar una serie exigente sin perder técnica en ejercicio seleccionado.;Estimular adaptación.;medio;según plan;entrenamiento;FIT2_T009
+FIT2_TA010;Progresión lineal de básicos;Aumentar carga mínima si se cumplen repeticiones y técnica.;Mejorar fuerza.;medio;semanal;fuerza;FIT2_T010
+FIT2_TA011;Semana de descarga;Reducir volumen/intensidad ante fatiga acumulada o estancamiento.;Recuperar rendimiento.;bajo;cada 4-8 semanas;recuperación;FIT2_T012
+FIT2_TA012;Grabación técnica breve;Grabar una serie lateral/frontal y revisar puntos clave.;Mejorar técnica.;medio;semanal;técnica;FIT2_T054
+FIT2_TA013;Calentamiento RAMP;Realizar 5-10 min de elevar, activar, movilizar y preparar patrón.;Preparar sesión.;bajo;cada sesión;preparación;FIT2_T015
+FIT2_TA014;Movilidad dinámica pre-entreno;Incluir 3-5 movimientos activos según sesión.;Preparar articulaciones.;bajo;cada sesión;movilidad;FIT2_T016
+FIT2_TA015;Rutina movilidad cadera;Ejercicios activos de flexión, rotación y extensión de cadera.;Mejorar rango de cadera.;bajo;3-5 días/semana;movilidad;FIT2_T017
+FIT2_TA016;Rutina movilidad hombro;Trabajo activo de elevación, rotación y control escapular.;Mejorar movilidad de hombro.;bajo;3-5 días/semana;movilidad;FIT2_T017
+FIT2_TA017;Rutina movilidad tobillo;Dorsiflexión rodilla-pared y control de tobillo.;Mejorar sentadilla/zancada.;bajo;3-5 días/semana;movilidad;FIT2_T017
+FIT2_TA018;Estiramiento específico dosificado;Estirar zona limitada sin dolor y registrar sensación.;Mejorar flexibilidad básica.;bajo;3-5 días/semana;movilidad;FIT2_T018
+FIT2_TA019;Control motor lento;Realizar repeticiones lentas con pausa en punto difícil.;Mejorar control del patrón.;medio;2-3 días/semana;técnica;FIT2_T019
+FIT2_TA020;Plancha frontal/lateral progresiva;Trabajar core con tiempo o variante adecuada.;Mejorar estabilidad del tronco.;bajo;2-3 días/semana;core;FIT2_T020
+FIT2_TA021;Dead bug o bird dog;Ejercicios de core con control lumbo-pélvico.;Mejorar coordinación core-extremidades.;bajo;2-3 días/semana;core;FIT2_T020
+FIT2_TA022;Pallof press o antirotación;Trabajo de resistencia a rotación con banda/cable.;Mejorar estabilidad antirotación.;bajo;2-3 días/semana;core;FIT2_T020
+FIT2_TA023;Activación escapular;Series de face pulls, Y-T-W o retracción/protracción controlada.;Mejorar control escapular.;bajo;2-4 días/semana;técnica;FIT2_T021
+FIT2_TA024;Práctica de braceo;Respirar, bloquear y mantener tensión en series moderadas.;Mejorar estabilidad en fuerza.;medio;cada sesión de fuerza;técnica;FIT2_T022
+FIT2_TA025;Meta de pasos diarios;Definir meta realista de pasos y revisar media semanal.;Aumentar NEAT.;bajo;diario;hábitos;FIT2_T023
+FIT2_TA026;Pausas activas;Levantarme y moverme 2-5 minutos cada cierto tiempo.;Reducir sedentarismo.;bajo;diario;hábitos;FIT2_T023
+FIT2_TA027;Cardio zona 2;Realizar cardio conversacional 20-40 minutos.;Mejorar base aeróbica.;bajo;2-4 días/semana;cardio;FIT2_T024
+FIT2_TA028;Intervalos moderados;Alternar 1-3 min de esfuerzo y recuperación controlada.;Mejorar capacidad cardiovascular.;medio;1-2 días/semana;cardio;FIT2_T025
+FIT2_TA029;HIIT dosificado;Realizar intervalos intensos con volumen bajo y recuperación suficiente.;Mejorar potencia aeróbica/anaeróbica.;medio;1 día/semana;cardio;FIT2_T026
+FIT2_TA030;Plan caminar-correr;Alternar caminar y correr aumentando tiempo de carrera gradualmente.;Preparar carrera básica.;medio;3 días/semana;cardio;FIT2_T027
+FIT2_TA031;Circuito full body 20 min;Completar circuito con 5-6 ejercicios y descansos breves.;Mejorar resistencia muscular.;bajo;1-3 días/semana;resistencia;FIT2_T028
+FIT2_TA032;EMOM 10-15 min;Realizar repeticiones al inicio de cada minuto manteniendo técnica.;Mejorar densidad sin caos.;medio;semanal;resistencia;FIT2_T029
+FIT2_TA033;AMRAP técnico;Hacer rondas controladas durante tiempo fijo sin sacrificar técnica.;Mejorar tolerancia al esfuerzo.;medio;semanal;resistencia;FIT2_T029
+FIT2_TA034;Reducir descansos gradualmente;Mantener carga/reps y bajar descanso de forma progresiva.;Aumentar densidad.;medio;2-4 semanas;resistencia;FIT2_T030
+FIT2_TA035;Registro de peso y cintura;Anotar peso medio semanal y perímetro de cintura.;Seguir composición corporal.;bajo;semanal;seguimiento;FIT2_T036
+FIT2_TA036;Fotos comparativas;Tomar fotos con misma luz, postura y distancia.;Evaluar cambios visuales.;bajo;mensual;seguimiento;FIT2_T036
+FIT2_TA037;Objetivo de proteína;Definir meta de proteína diaria aproximada según profesional.;Apoyar músculo y saciedad.;bajo;diario;nutrición básica;FIT2_T032
+FIT2_TA038;Plan de hidratación;Definir botella/meta diaria y estrategia en entrenamientos/calor.;Mejorar hidratación.;bajo;diario;nutrición básica;FIT2_T033
+FIT2_TA039;Comida pre-entreno simple;Planificar opción digestiva y energética antes de entrenar.;Mejorar energía de sesión.;bajo;según sesión;nutrición básica;FIT2_T052
+FIT2_TA040;Comida post-entreno simple;Planificar proteína y comida normal tras entrenar.;Apoyar recuperación.;bajo;según sesión;nutrición básica;FIT2_T052
+FIT2_TA041;Registro de adherencia;Marcar sesiones, pasos, sueño, proteína/hidratación y barreras.;Detectar obstáculos.;bajo;semanal;hábitos;FIT2_T037
+FIT2_TA042;Versión mínima viable;Definir entrenamiento mínimo de 10-15 min para días difíciles.;Evitar abandono.;bajo;cuando proceda;hábitos;FIT2_T037
+FIT2_TA043;Anclaje de hábito;Vincular entrenamiento a una señal fija del día.;Automatizar constancia.;bajo;diario/semanal;hábitos;FIT2_T038
+FIT2_TA044;Plan de barreras;Listar barrera probable y alternativa concreta.;Mejorar continuidad.;bajo;semanal;hábitos;FIT2_T040
+FIT2_TA045;Revisión motivacional;Escribir razones personales, beneficios y coste de no actuar.;Aumentar compromiso autónomo.;bajo;mensual;hábitos;FIT2_T039
+FIT2_TA046;Rutina peso corporal A;Flexiones/regresión, sentadillas, puente glúteo, remo con banda/toalla, plancha.;Entrenar sin material.;bajo;2-3 días/semana;programación;FIT2_T041
+FIT2_TA047;Rutina mancuernas full body;Sentadilla goblet, press, remo, peso muerto rumano, zancada y core.;Entrenar con mancuernas.;bajo;2-4 días/semana;programación;FIT2_T042
+FIT2_TA048;Rutina con bandas;Remo, press, bisagra, abducción, face pull y pallof con banda.;Entrenar con bandas.;bajo;2-4 días/semana;programación;FIT2_T043
+FIT2_TA049;Sesión express 15 minutos;Elegir 3 ejercicios prioritarios y completar bloques simples.;Entrenar con poco tiempo.;bajo;cuando proceda;adherencia;FIT2_T044
+FIT2_TA050;Retorno 50-70%;Volver con menos volumen/carga que antes de la pausa.;Reducir exceso inicial.;medio;1-2 semanas;readaptación;FIT2_T045
+FIT2_TA051;Semáforo de tolerancia;"Verde: continuar; amarillo: ajustar; rojo: parar/derivar según señales.";Entrenar con prudencia.;alto;cada sesión;seguridad;FIT2_T046
+FIT2_TA052;Checklist de derivación;Dolor torácico, mareos, dolor agudo, síntomas neurológicos o empeoramiento: derivar.;Detectar riesgo.;alto;si aparece;seguridad;FIT2_T047
+FIT2_TA053;Sit-to-stand;Practicar levantarse/sentarse con control y progresión.;Mejorar función en mayores.;medio;2-3 días/semana;mayores;FIT2_T050
+FIT2_TA054;Equilibrio con apoyo;Ejercicios de equilibrio cerca de soporte seguro.;Mejorar estabilidad.;medio;3 días/semana;mayores;FIT2_T049
+FIT2_TA055;Caminata funcional;Caminar a ritmo cómodo con progresión gradual.;Mantener capacidad funcional.;bajo;3-5 días/semana;mayores/cardio;FIT2_T048
+FIT2_TA056;Movilidad suave mayores;Rutina articular de cuello, hombros, cadera, rodilla y tobillo.;Mantener rango y autonomía.;bajo;diario;mayores;FIT2_T048
+FIT2_TA057;Registro de sueño y energía;Anotar sueño, energía y rendimiento de entrenamiento.;Ajustar recuperación.;bajo;7-14 días;recuperación;FIT2_T051
+FIT2_TA058;Día de recuperación activa;Programar paseo, movilidad o descanso en lugar de intensidad.;Mejorar recuperación.;bajo;semanal;recuperación;FIT2_T051
+FIT2_TA059;Plan viaje/vacaciones;Definir rutina mínima, pasos y expectativas realistas fuera de casa.;Prevenir abandono.;bajo;antes del viaje;hábitos;FIT2_T053
+FIT2_TA060;Plan post-estancamiento;Revisar sueño, nutrición, volumen, intensidad y técnica antes de cambiar todo.;Resolver estancamiento.;medio;cuando proceda;programación;FIT2_T056
+FIT2_TA061;Selección por grupo muscular;Elegir 2-4 ejercicios por región Body Muscles objetivo.;Conectar objetivo visual/anatómico.;bajo;según rutina;programación;FIT2_T055
+FIT2_TA062;Test flexiones máximas técnicas;Medir repeticiones con técnica válida y sin dolor.;Evaluar resistencia de empuje.;bajo;mensual;evaluación;FIT2_T028
+FIT2_TA063;Test sentadilla 60 segundos;Contar repeticiones controladas en 60 segundos.;Evaluar resistencia de piernas.;bajo;mensual;evaluación;FIT2_T028
+FIT2_TA064;Test plancha;Medir tiempo de plancha con técnica válida.;Evaluar core.;bajo;mensual;evaluación;FIT2_T020
+FIT2_TA065;Test rodilla-pared;Medir dorsiflexión de tobillo de forma consistente.;Evaluar movilidad de tobillo.;bajo;mensual;evaluación;FIT2_T017
+FIT2_TA066;Test sentadilla profunda controlada;Observar rango, control y compensaciones sin dolor.;Evaluar movilidad global.;bajo;mensual;evaluación;FIT2_T019
+FIT2_TA067;Estimación 1RM submáxima;Calcular 1RM estimado con repeticiones submáximas, sin máximo real innecesario.;Evaluar fuerza.;medio;cada 6-8 semanas;evaluación;FIT2_T010
+FIT2_TA068;Revisión de técnica de sentadilla;Checklist de pies, rodillas, cadera, tronco, profundidad y control.;Mejorar sentadilla.;medio;semanal;técnica;FIT2_T013
+FIT2_TA069;Revisión de bisagra;Checklist de cadera atrás, columna neutra, tensión dorsal y rango.;Mejorar bisagra.;medio;semanal;técnica;FIT2_T013
+FIT2_TA070;Revisión de empuje;Checklist de escápulas, muñeca/codo, trayectoria y control.;Mejorar press/flexión.;bajo;semanal;técnica;FIT2_T013
+FIT2_TA071;Revisión de tracción;Checklist de escápula, codo, torso y recorrido.;Mejorar remos/dominadas.;bajo;semanal;técnica;FIT2_T013
+FIT2_TA072;Revisión de unilateral;Checklist de equilibrio, rodilla, cadera y control de zancadas.;Mejorar trabajo unilateral.;bajo;semanal;técnica;FIT2_T013
+FIT2_TA073;Diario de molestias;Registrar molestia, ejercicio, intensidad 0-10 y evolución 24-48h.;Ajustar sin ignorar señales.;alto;cuando aparezca;seguridad;FIT2_T046
+FIT2_TA074;Plan de calentamiento específico;Elegir movilidad y series de aproximación según ejercicio principal.;Preparar básicos.;bajo;cada sesión;preparación;FIT2_T015
+FIT2_TA075;Reducción de carga por fatiga;Aplicar autoregulación si sueño/energía/rendimiento están bajos.;Evitar exceso.;medio;cada sesión;programación;FIT2_T056
+FIT2_TA076;Reto de pasos progresivo;Subir 500-1000 pasos/día cada 1-2 semanas según tolerancia.;Aumentar gasto y salud.;bajo;semanal;hábitos;FIT2_T023
+FIT2_TA077;Plan de cenas/proteína simple;Preparar opciones sencillas de cena alta en proteína si el objetivo lo requiere.;Apoyar recuperación/adherencia.;bajo;semanal;nutrición básica;FIT2_T032
+FIT2_TA078;Control de expectativas;Definir ritmo realista de progreso visual, fuerza o peso.;Reducir frustración.;bajo;mensual;hábitos;FIT2_T039
+FIT2_TA079;Revisión mensual de progreso;Analizar datos, ajustar plan y fijar siguiente bloque.;Mantener dirección.;bajo;mensual;seguimiento;FIT2_T053
+FIT2_TA080;Plan de salida de sedentarismo;Añadir caminatas cortas, pausas activas y fuerza básica gradual.;Reducir sedentarismo.;bajo;2-4 semanas;hábitos;FIT2_T023

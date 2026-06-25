@@ -18,6 +18,7 @@
             "payments.online": false,
             "knowledgeBase.enabled": false,
             "knowledgeBase.importTasks": false,
+            "knowledgeBase.multiSector": false,
             "questionnaires.enabled": false,
             "reminders.patient24h": false,
             "calendarSync.enabled": false,
