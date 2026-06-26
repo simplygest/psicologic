@@ -1080,6 +1080,9 @@ function monthDayStatus(dateStr, appointmentsMap, closedDays, inMonth = true) {
     if (!inMonth) {
         return { available: false, freeSlots: 0, label: '', className: 'outside-month' };
     }
+    if (isPastDate(dateStr)) {
+        return { available: false, freeSlots: 0, label: '', className: 'past-day' };
+    }
     if (closedDays[dateStr]) {
         return { available: false, freeSlots: 0, label: IS_ADMIN ? closedDays[dateStr] : 'No disponible', className: 'closed-day' };
     }
@@ -2447,6 +2450,10 @@ function handleGlobalSearchAction(kind, id, patientId) {
 
 function isPastSlot(dateStr, timeStr) {
     return new Date(`${dateStr}T${timeStr}:00`) < new Date();
+}
+
+function isPastDate(dateStr) {
+    return dateStr < formatDate(new Date());
 }
 
 function isOutsideAllowedBookingWindow(dateStr) {
@@ -5273,6 +5280,12 @@ function transferCurrentPatientProfessional() {
     });
 }
 
+function patientPortalStatusIcon(patient) {
+    return parseInt(patient && patient.has_portal_access || 0, 10) === 1
+        ? '<i class="bi bi-check-circle-fill text-success" title="Con acceso al portal"></i>'
+        : '<i class="bi bi-x-circle-fill text-danger" title="Sin acceso al portal"></i>';
+}
+
 function renderAdminPatients(patients) {
     const filteredPatients = filterAndSortAdminPatients(patients);
     const colspan = adminPatientsColspan();
@@ -5295,16 +5308,14 @@ function renderAdminPatients(patients) {
         const contact = [
             patient.email ? `<div>${escapeHtml(patient.email)}</div>` : '',
             patient.phone ? `<small class="text-muted">${escapeHtml(patient.phone)}${patientContactActionsHtml(patient.phone, 'ms-1')}</small>` : ''
-        ].join('') || '<span class="text-muted">Sin contacto</span>';
-        const accessBadge = parseInt(patient.has_portal_access || 0, 10) === 1
-            ? '<span class="badge text-bg-success">Con acceso</span>'
-            : '<span class="badge text-bg-secondary">Sin acceso</span>';
+        ].join('');
+        const accessBadge = patientPortalStatusIcon(patient);
         const inviteButton = parseInt(patient.has_portal_access || 0, 10) === 1
             ? ''
             : `<button class="btn btn-outline-primary btn-sm btn-send-patient-invite" type="button" data-patient-id="${patient.id}" title="Enviar invitacion de registro"><i class="bi bi-envelope"></i></button>`;
         const documentLink = patient.document_path
             ? `<a href="api/admin.php?action=download_patient_document&patient_id=${patient.id}" target="_blank" rel="noopener">${escapeHtml(patient.document_name || 'Documento')}</a>`
-            : '<span class="text-muted">Sin archivo</span>';
+            : '';
 
         return `
             <tr class="admin-patient-row" data-patient-id="${patient.id}">
@@ -5316,7 +5327,7 @@ function renderAdminPatients(patients) {
                 </td>
                 ${showProfessional ? `<td>${professionalCellHtml(patient, 'professional_name', 'professional_photo_path')}</td>` : ''}
                 <td>${contact}</td>
-                <td>${patient.patient_type ? escapeHtml(patient.patient_type) : '<span class="text-muted">-</span>'}</td>
+                <td>${patient.patient_type ? escapeHtml(patient.patient_type) : ''}</td>
                 <td>${patient.admission_date ? formatDisplayDate(patient.admission_date) : '<span class="text-muted">-</span>'}</td>
                 <td>${accessBadge}</td>
                 <td>${documentLink}</td>
@@ -5418,7 +5429,7 @@ function renderDashboardPatientsView() {
                             <th>Contacto</th>
                             <th>Tipo</th>
                             <th>Alta</th>
-                            <th>Acceso</th>
+                            <th>Portal</th>
                             <th>Documento</th>
                             <th class="text-end no-export">Acciones</th>
                         </tr>
@@ -5548,16 +5559,14 @@ function renderDashboardPatients(patients) {
         const contact = [
             patient.email ? `<div>${escapeHtml(patient.email)}</div>` : '',
             patient.phone ? `<small class="text-muted">${escapeHtml(patient.phone)}${patientContactActionsHtml(patient.phone, 'ms-1')}</small>` : ''
-        ].join('') || '<span class="text-muted">Sin contacto</span>';
-        const accessBadge = parseInt(patient.has_portal_access || 0, 10) === 1
-            ? '<span class="badge text-bg-success">Con acceso</span>'
-            : '<span class="badge text-bg-secondary">Sin acceso</span>';
+        ].join('');
+        const accessBadge = patientPortalStatusIcon(patient);
         const inviteButton = parseInt(patient.has_portal_access || 0, 10) === 1
             ? ''
             : `<button class="btn btn-outline-primary btn-sm btn-dashboard-send-patient-invite" type="button" data-patient-id="${patient.id}" title="Enviar invitacion de registro"><i class="bi bi-envelope"></i></button>`;
         const documentLink = patient.document_path
             ? `<a href="api/admin.php?action=download_patient_document&patient_id=${patient.id}" target="_blank" rel="noopener">${escapeHtml(patient.document_name || 'Documento')}</a>`
-            : '<span class="text-muted">Sin archivo</span>';
+            : '';
         return `
             <tr class="dashboard-patient-row" data-patient-id="${patient.id}">
                 <td>
@@ -5568,7 +5577,7 @@ function renderDashboardPatients(patients) {
                 </td>
                 ${IS_SUPERADMIN ? `<td>${professionalCellHtml(patient, 'professional_name', 'professional_photo_path')}</td>` : ''}
                 <td>${contact}</td>
-                <td>${patient.patient_type ? escapeHtml(patient.patient_type) : '<span class="text-muted">-</span>'}</td>
+                <td>${patient.patient_type ? escapeHtml(patient.patient_type) : ''}</td>
                 <td>${patient.admission_date ? formatDisplayDate(patient.admission_date) : '<span class="text-muted">-</span>'}</td>
                 <td>${accessBadge}</td>
                 <td>${documentLink}</td>
@@ -5744,17 +5753,20 @@ function renderDashboardUpcomingAppointments(appointments) {
         $('#dashboard-upcoming-count').text('');
         return;
     }
-    const html = rows.map(app => `
-        <tr class="dashboard-upcoming-row" data-appointment-id="${app.id || ''}">
-            <td><strong>${formatDisplayDate(app.appointment_date)}</strong><br><small class="text-muted">${escapeHtml(displayAppointmentTimeRange(app.appointment_time || '', app.duration_minutes || 60))}</small></td>
-            <td>${upcomingProfessionalCell(app)}</td>
-            <td>${escapeHtml(app.patient_name || '')}<br><small class="text-muted">${patientContactSummaryHtml(app.patient_email, app.patient_phone) || '-'}</small></td>
-            <td>${escapeHtml(displayAppointmentServiceLabel(app))}</td>
-            <td>${consultationTypeLabel(app.consultation_type)}</td>
-            <td>${adminPaymentLabel(app)}</td>
-            <td class="text-end no-export">${appointmentPaymentButton(app)}</td>
-        </tr>
-    `).join('');
+    const html = rows.map(app => {
+        const contact = patientContactSummaryHtml(app.patient_email, app.patient_phone);
+        return `
+            <tr class="dashboard-upcoming-row" data-appointment-id="${app.id || ''}">
+                <td><strong>${formatDisplayDate(app.appointment_date)}</strong><br><small class="text-muted">${escapeHtml(displayAppointmentTimeRange(app.appointment_time || '', app.duration_minutes || 60))}</small></td>
+                <td>${upcomingProfessionalCell(app)}</td>
+                <td>${escapeHtml(app.patient_name || '')}${contact ? `<br><small class="text-muted">${contact}</small>` : ''}</td>
+                <td>${escapeHtml(displayAppointmentServiceLabel(app))}</td>
+                <td>${consultationTypeLabel(app.consultation_type)}</td>
+                <td>${adminPaymentLabel(app)}</td>
+                <td class="text-end no-export">${appointmentPaymentButton(app)}</td>
+            </tr>
+        `;
+    }).join('');
     $('#dashboard-upcoming-body').html(html);
     $('#dashboard-upcoming-count').text(`${rows.length} ${rows.length === 1 ? 'cita' : 'citas'}`);
 }
@@ -10037,11 +10049,12 @@ function renderUpcomingAppointments(appointments) {
     let html = '';
     rows.forEach(app => {
         const professional = upcomingProfessionalCell(app);
+        const contact = patientContactSummaryHtml(app.patient_email, app.patient_phone);
         html += `
             <tr class="upcoming-appointment-row" data-appointment-id="${app.id || ''}">
                 <td><strong>${formatDisplayDate(app.appointment_date)}</strong><br><small class="text-muted">${escapeHtml(displayAppointmentTimeRange(app.appointment_time || '', app.duration_minutes || 60))}</small></td>
                 <td>${professional}</td>
-                <td>${escapeHtml(app.patient_name || '')}<br><small class="text-muted">${patientContactSummaryHtml(app.patient_email, app.patient_phone) || '-'}</small></td>
+                <td>${escapeHtml(app.patient_name || '')}${contact ? `<br><small class="text-muted">${contact}</small>` : ''}</td>
                 <td>${escapeHtml(displayAppointmentServiceLabel(app))}</td>
                 <td>${consultationTypeLabel(app.consultation_type)}</td>
                 <td>${adminPaymentLabel(app)}</td>
@@ -10069,12 +10082,13 @@ function renderCancelledAppointments(appointments) {
     const html = rows.map(app => {
         const professional = upcomingProfessionalCell(app);
         const cancelledAt = app.cancelled_at ? formatDateTimeLabel(app.cancelled_at) : '-';
+        const contact = patientContactSummaryHtml(app.patient_email, app.patient_phone);
         return `
             <tr>
                 <td><strong>${formatDisplayDate(app.appointment_date)}</strong><br><small class="text-muted">${escapeHtml(displayAppointmentTimeRange(app.appointment_time || '', app.duration_minutes || 60))}</small></td>
                 <td>${escapeHtml(cancelledAt)}</td>
                 <td>${professional}</td>
-                <td>${escapeHtml(app.patient_name || '')}<br><small class="text-muted">${patientContactSummaryHtml(app.patient_email, app.patient_phone) || '-'}</small></td>
+                <td>${escapeHtml(app.patient_name || '')}${contact ? `<br><small class="text-muted">${contact}</small>` : ''}</td>
                 <td>${escapeHtml(displayAppointmentServiceLabel(app))}</td>
                 <td>${consultationTypeLabel(app.consultation_type)}</td>
                 <td>${adminPaymentLabel(app)}</td>
@@ -11580,6 +11594,11 @@ function renderAdminStats(stats) {
     `);
 }
 
+function patientNameWithOptionalContactHtml(name, email, phone) {
+    const contact = patientContactSummaryHtml(email, phone);
+    return `${escapeHtml(name || '')}${contact ? `<br><small class="text-muted">${contact}</small>` : ''}`;
+}
+
 function renderAdminReports(reports) {
     const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     const patientPlural = sectorLabel('patient', 'plural', 'pacientes');
@@ -11601,7 +11620,7 @@ function renderAdminReports(reports) {
             patientsWithoutUpcoming,
             patient => [
                 `<strong>${escapeHtml(patient.name || '')}</strong>`,
-                patientContactSummaryHtml(patient.email, patient.phone) || '-',
+                patientContactSummaryHtml(patient.email, patient.phone),
                 patient.last_appointment_at ? escapeHtml(formatDateTimeLabel(patient.last_appointment_at)) : 'Sin citas previas'
             ],
             `No hay ${escapeHtml(patientPlural)} sin pr&oacute;xima cita.`
@@ -11613,7 +11632,7 @@ function renderAdminReports(reports) {
             app => [
                 `<strong>${formatDisplayDate(app.appointment_date || '')}</strong><br><small class="text-muted">${escapeHtml(displayAppointmentTimeRange(app.appointment_time || '', app.duration_minutes || 60))}</small>`,
                 app.cancelled_at ? escapeHtml(formatDateTimeLabel(app.cancelled_at)) : '-',
-                `${escapeHtml(app.patient_name || '')}<br><small class="text-muted">${patientContactSummaryHtml(app.patient_email, app.patient_phone) || '-'}</small>`,
+                patientNameWithOptionalContactHtml(app.patient_name, app.patient_email, app.patient_phone),
                 escapeHtml(app.professional_name || 'Sin asignar'),
                 `${escapeHtml(displayAppointmentServiceLabel(app))}<br><small class="text-muted">${displayAppointmentDurationLabel(app.duration_minutes || 60)}</small>`
             ],
@@ -11625,7 +11644,7 @@ function renderAdminReports(reports) {
             pendingPayments,
             app => [
                 `<strong>${formatDisplayDate(app.appointment_date || '')}</strong><br><small class="text-muted">${escapeHtml(displayAppointmentTimeRange(app.appointment_time || '', app.duration_minutes || 60))}</small>`,
-                `${escapeHtml(app.patient_name || '')}<br><small class="text-muted">${patientContactSummaryHtml(app.patient_email, app.patient_phone) || '-'}</small>`,
+                patientNameWithOptionalContactHtml(app.patient_name, app.patient_email, app.patient_phone),
                 escapeHtml(app.professional_name || 'Sin asignar'),
                 escapeHtml(displayAppointmentServiceLabel(app)),
                 consultationTypeLabel(app.consultation_type)

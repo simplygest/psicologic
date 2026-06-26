@@ -610,7 +610,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                     <th>Contacto</th>
                     <th>Tipo</th>
                     <th>Alta</th>
-                    <th>Acceso</th>
+                    <th>Portal</th>
                     <th>Documento</th>
                     <th class="text-end no-export">Acciones</th>
                   </tr>

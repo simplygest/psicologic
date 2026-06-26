@@ -889,6 +889,7 @@ body:not(.is-admin) .slot.booked {
 
 .month-day.full-day,
 .month-day.disabled-day,
+.month-day.past-day,
 .month-day.outside-month {
     background: #f5f6f7;
     color: #a0a8af;
@@ -901,12 +902,14 @@ body:not(.is-admin) .slot.booked {
 
 .month-day.disabled-day,
 .month-day.full-day,
+.month-day.past-day,
 .month-day.closed-day {
     cursor: pointer;
 }
 
 .month-day.disabled-day.selected,
 .month-day.full-day.selected,
+.month-day.past-day.selected,
 .month-day.closed-day.selected {
     box-shadow: inset 0 0 0 2px var(--primary-color);
 }
@@ -4003,7 +4006,7 @@ body.appointment-work-plan-modal-open #appointmentPaymentModal .modal-content {
 .quick-appointment-card {
     background: #fff;
     border: 1px solid var(--border-color);
-    border-left: 4px solid #8f7cba;
+    border-left: 4px solid var(--primary-color);
     border-radius: 8px;
     box-shadow: 0 6px 18px rgba(31, 41, 55, 0.06);
     display: flex;
@@ -4013,7 +4016,7 @@ body.appointment-work-plan-modal-open #appointmentPaymentModal .modal-content {
 }
 
 .quick-appointment-current {
-    border-left-color: #198754;
+    border-left-color: var(--primary-color);
 }
 
 .quick-appointment-topline,
