@@ -51,7 +51,9 @@ if ($isInstalled) {
 }
 
 $app_name = $branding['app_name'] ?: 'SimplyGest Praxis';
-$help_static_base = '/' . trim(function_exists('tenant_app_base_path') ? tenant_app_base_path() : 'sgpraxis', '/') . '/ayuda/';
+$help_static_base = function_exists('tenant_public_base_url')
+    ? tenant_public_base_url() . 'ayuda/'
+    : '/' . (trim(function_exists('tenant_app_base_path') ? tenant_app_base_path() : '', '/') !== '' ? trim(tenant_app_base_path(), '/') . '/' : '') . 'ayuda/';
 
 if (!function_exists('help_upload_asset_url')) {
     function help_upload_asset_url($path)
@@ -123,6 +125,7 @@ if (!function_exists('help_upload_asset_url')) {
                 <a href="#configuracion">Configuración</a>
                 <a href="#emails">Emails y recordatorios</a>
                 <a href="#publica">Web pública</a>
+                <a href="#dominios-personalizados">Dominios personalizados</a>
                 <a href="#problemas">Problemas frecuentes</a>
             </div>
         </aside>
@@ -456,6 +459,25 @@ if (!function_exists('help_upload_asset_url')) {
                     <li>El footer de la web enlaza la información legal: política de privacidad, aviso legal, cookies y condiciones.</li>
                     <li>El registro puede funcionar solo por invitación o como alta libre desde la web, según <strong>General &gt; Registro de nuevos pacientes</strong>.</li>
                 </ul>
+            </article>
+
+            <article class="help-section" id="dominios-personalizados">
+                <h2>Dominios personalizados</h2>
+                <p>
+                    Un dominio personalizado permite que la web pública del tenant se abra con una dirección propia,
+                    por ejemplo <strong>clinicaejemplo.es</strong>, sin mostrar el dominio de SimplyGest Praxis en el navegador.
+                    Esta opción está disponible solo en el plan Summum.
+                </p>
+                <ol>
+                    <li>Configura el dominio o subdominio en tu proveedor DNS apuntando al servidor de SimplyGest Praxis.</li>
+                    <li>Añade el dominio en Azure como <strong>Custom domain</strong> y espera a que el certificado/SNI quede activo.</li>
+                    <li>Entra en <strong>Configuración &gt; Interfaz &gt; Dominio personalizado</strong> y guarda el dominio, sin rutas ni parámetros.</li>
+                    <li>Comprueba que la web carga manteniendo visible el dominio propio.</li>
+                </ol>
+                <p>
+                    Si usas integraciones externas como Google, puede ser necesario añadir el dominio en la consola del proveedor
+                    como dominio autorizado. Los enlaces enviados por email o SMS respetarán el dominio personalizado cuando esté configurado.
+                </p>
             </article>
 
             <article class="help-section" id="problemas">

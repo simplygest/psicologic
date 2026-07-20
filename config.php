@@ -43,7 +43,7 @@ define('DB_PASS', psicologic_config_value('db_password', '19SwoumJ19!'));
 define('DB_NAME', psicologic_config_value('db_name', 'sgpraxis'));
 define('DB_SSL', (bool) psicologic_config_value('db_ssl', true));
 define('DB_SSL_CERT', psicologic_config_value('db_ssl_cert', 'mysql.pem'));
-define('APP_BASE_PATH', trim((string) psicologic_config_value('app_base_path', 'sgpraxis'), '/'));
+define('APP_BASE_PATH', trim((string) psicologic_config_value('app_base_path', ''), '/'));
 define('AUTO_SCHEMA_MIGRATIONS', (bool) psicologic_config_value('auto_schema_migrations', false));
 
 function app_auto_schema_migrations_enabled()
@@ -65,6 +65,12 @@ define('URLME_API_KEY', psicologic_config_value('urlme_api_key', '367939f724112f
 
 // WorkoutX Exercise API token used for external exercise media lookup.
 define('WORKOUTX_API_KEY', psicologic_config_value('workoutx_api_key', 'wx_f0a9a3231d3fb410b9cb003cec9df23f948deb2f5454cda96c52b833'));
+
+// Google OAuth credentials shared by all tenants. Each tenant/professional stores only its own authorization token.
+define('GOOGLE_OAUTH_CLIENT_ID', psicologic_config_value('google_oauth_client_id', ''));
+define('GOOGLE_OAUTH_CLIENT_SECRET', psicologic_config_value('google_oauth_client_secret', ''));
+$google_oauth_base_url = trim((string) psicologic_config_value('google_oauth_base_url', ''), " \t\n\r\0\x0B/");
+define('GOOGLE_OAUTH_BASE_URL', $google_oauth_base_url !== '' ? $google_oauth_base_url . '/' : '');
 
 // Set timezone
 date_default_timezone_set(psicologic_config_value('timezone', 'Atlantic/Canary'));

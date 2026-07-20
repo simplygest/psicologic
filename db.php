@@ -14,7 +14,20 @@ try {
     $flags = 0;
     if (defined('DB_SSL') && DB_SSL) {
         $cert_name = defined('DB_SSL_CERT') ? DB_SSL_CERT : 'mysql.pem';
-        $cert_path = ($_SERVER['DOCUMENT_ROOT'] ?? __DIR__) . '/' . ltrim($cert_name, '/\\');
+        $cert_path = $cert_name;
+        if (!preg_match('/^(?:[a-zA-Z]:[\/\\\\]|\/)/', $cert_name)) {
+            $cert_candidates = [
+                __DIR__ . '/' . ltrim($cert_name, '/\\'),
+                ($_SERVER['DOCUMENT_ROOT'] ?? __DIR__) . '/' . ltrim($cert_name, '/\\'),
+            ];
+            $cert_path = $cert_candidates[0];
+            foreach ($cert_candidates as $candidate) {
+                if (file_exists($candidate)) {
+                    $cert_path = $candidate;
+                    break;
+                }
+            }
+        }
         if (file_exists($cert_path)) {
             $mysqli->ssl_set(null, null, $cert_path, null, null);
         }

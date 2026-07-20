@@ -4,6 +4,7 @@ require_once 'payment_helpers.php';
 require_once 'mail_helpers.php';
 require_once 'google_helpers.php';
 require_once 'settings_helpers.php';
+require_once 'app_log_helpers.php';
 
 ensure_appointment_payment_columns($mysqli);
 ensure_appointment_services_tables($mysqli);
@@ -74,6 +75,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
             notify_appointment_cancelled($mysqli, $appointment);
+            app_log($mysqli, [
+                'user_id' => (int) ($appointment['user_id'] ?? 0),
+                'action' => 'appointment_cancelled',
+                'status' => 'ok',
+                'target_type' => 'appointment',
+                'target_id' => (int) $appointment['id'],
+                'title' => 'Cita cancelada',
+                'message' => 'Cita cancelada por enlace publico para ' . ($appointment['name'] ?? '') . ' el ' . appointment_label($appointment['appointment_date'], $appointment['appointment_time']) . '.',
+                'metadata' => [
+                    'origin' => 'public_manage_link',
+                    'patient_id' => (int) ($appointment['user_id'] ?? 0),
+                    'patient_name' => $appointment['name'] ?? '',
+                    'appointment_date' => $appointment['appointment_date'] ?? '',
+                    'appointment_time' => $appointment['appointment_time'] ?? '',
+                    'payment_status' => $appointment['payment_status'] ?? '',
+                    'payment_method' => $appointment['payment_method'] ?? '',
+                    'bonus_session_restored' => (int) ($appointment['bonus_session_restored'] ?? 0),
+                    'compensation_bonus_created' => (int) ($appointment['compensation_bonus_created'] ?? 0)
+                ]
+            ]);
         }
     }
 }

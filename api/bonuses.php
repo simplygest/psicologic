@@ -5,6 +5,7 @@ require_once '../settings_helpers.php';
 require_once '../payment_helpers.php';
 require_once '../cabinet_helpers.php';
 require_once '../dashboard_config_helpers.php';
+require_once '../invoice_helpers.php';
 header('Content-Type: application/json');
 
 if (!isset($_SESSION['user_id'])) {
@@ -14,7 +15,7 @@ if (!isset($_SESSION['user_id'])) {
 
 $action = $_GET['action'] ?? '';
 $user_id = (int) $_SESSION['user_id'];
-$is_admin = in_array(($_SESSION['role'] ?? ''), ['admin', 'superadmin'], true);
+$is_admin = in_array(($_SESSION['role'] ?? ''), ['admin', 'superadmin', 'reception', 'administration', 'technical'], true);
 $is_superadmin = ($_SESSION['role'] ?? '') === 'superadmin';
 
 if (!$is_admin && !online_booking_enabled($mysqli)) {
@@ -245,6 +246,10 @@ if ($action === 'create_patient_bonus') {
         echo json_encode(['success' => false, 'error' => 'Paciente no valido.']);
         exit;
     }
+    if (invoice_billing_enabled($mysqli) && !invoice_manual_confirmation_received()) {
+        echo json_encode(['success' => false, 'error' => 'Confirma la emision de la factura para crear este bono como cobrado.']);
+        exit;
+    }
     if ($bonus_id <= 0) {
         echo json_encode(['success' => false, 'error' => 'Selecciona un bono valido.']);
         exit;
@@ -272,13 +277,25 @@ if ($action === 'create_patient_bonus') {
         $professional_id = bonus_current_professional_id_for_user($mysqli, $user_id);
     }
 
-    $stmt = $mysqli->prepare("
-        INSERT INTO patient_bonuses (tenant_id, professional_id, user_id, bonus_id, total_sessions, remaining_sessions, status, purchased_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
-    ");
-    $stmt->bind_param("iiiiiis", $tenant_id, $professional_id, $patient_id, $bonus_id, $total_sessions, $remaining_sessions, $status);
-    if (!$stmt->execute()) {
-        echo json_encode(['success' => false, 'error' => 'No se pudo crear el bono.']);
+    $mysqli->begin_transaction();
+    try {
+        $stmt = $mysqli->prepare("
+            INSERT INTO patient_bonuses (tenant_id, professional_id, user_id, bonus_id, total_sessions, remaining_sessions, status, purchased_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+        ");
+        $stmt->bind_param("iiiiiis", $tenant_id, $professional_id, $patient_id, $bonus_id, $total_sessions, $remaining_sessions, $status);
+        if (!$stmt->execute()) {
+            throw new Exception('No se pudo crear el bono.');
+        }
+        $patient_bonus_id = (int) $stmt->insert_id;
+        $invoice_result = invoice_emit_for_patient_bonus($mysqli, $patient_bonus_id, 'manual');
+        if (empty($invoice_result['success'])) {
+            throw new Exception($invoice_result['error'] ?? 'No se pudo emitir la factura del bono.');
+        }
+        $mysqli->commit();
+    } catch (\Exception $e) {
+        $mysqli->rollback();
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
         exit;
     }
 

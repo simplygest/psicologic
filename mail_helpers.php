@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/settings_helpers.php';
 
 function ensure_admin_notification_email_column($mysqli)
 {
@@ -40,7 +41,7 @@ function get_email_settings($mysqli)
 
     $res = $mysqli->query("
         SELECT app_name, email_provider, smtp_host, smtp_port, smtp_username, smtp_password, smtp_secure,
-               smtp_from_email, smtp_from_name, google_connected_email
+               smtp_from_email, smtp_from_name, google_connected_email, google_refresh_token
         FROM payment_settings
         WHERE tenant_id = $tenant_id
     ");
@@ -111,6 +112,10 @@ function send_app_email($to, $subject, $html_body, $reply_to = null, $mysqli = n
 
     if ($provider === 'google') {
         require_once __DIR__ . '/google_helpers.php';
+        if (empty($settings['google_connected_email']) || empty($settings['google_refresh_token'])) {
+            $APP_EMAIL_LAST_ERROR = 'No hay ninguna cuenta Gmail conectada.';
+            return false;
+        }
         try {
             return google_send_email($mysqli, $to, $subject, $html_body, $reply_to);
         } catch (\Exception $e) {
@@ -144,6 +149,11 @@ function send_app_email($to, $subject, $html_body, $reply_to = null, $mysqli = n
                 $mail->SMTPSecure = \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS;
             }
         } else {
+            $from_email_candidate = trim((string) ($settings['smtp_from_email'] ?? ''));
+            if ($from_email_candidate === '' && empty($settings['smtp_from_name'])) {
+                $APP_EMAIL_LAST_ERROR = 'No hay ninguna cuenta o remitente de email configurado.';
+                return false;
+            }
             $mail->isMail();
         }
 
@@ -286,6 +296,53 @@ function appointment_consultation_label($consultation_type)
     return $consultation_type === 'online' ? 'Online' : 'Presencial';
 }
 
+function appointment_google_maps_url($address)
+{
+    $address = trim((string) $address);
+    if ($address === '') {
+        return '';
+    }
+    return 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode($address);
+}
+
+function appointment_location_looks_like_address($value)
+{
+    $value = trim((string) $value);
+    $value = function_exists('mb_strtolower') ? mb_strtolower($value, 'UTF-8') : strtolower($value);
+    if ($value === '') {
+        return false;
+    }
+    if (preg_match('/\b(calle|c\/|avenida|avda|av\.|plaza|paseo|camino|carretera|rambla|callejon|urbanizacion|edificio|portal|numero|nº|no\.|cp|codigo postal)\b/u', $value)) {
+        return true;
+    }
+    return (bool) preg_match('/\d+.*[,]/u', $value);
+}
+
+function appointment_location_email_html($appointment, $center_address = '', $use_center_fallback = false)
+{
+    $value = trim((string) ($appointment['online_session_url'] ?? ''));
+    $is_online = ($appointment['consultation_type'] ?? '') === 'online';
+    if ($value === '') {
+        if ($is_online || !$use_center_fallback) {
+            return '';
+        }
+        $value = trim((string) $center_address);
+    }
+    if ($value === '') {
+        return '';
+    }
+    if ($is_online) {
+        return '<br><a href="' . htmlspecialchars($value) . '" style="color:#1e5aa8;font-size:12px;">Enlace videollamada</a>';
+    }
+    $map_address = appointment_location_looks_like_address($value) ? $value : trim((string) $center_address);
+    if ($map_address === '') {
+        $map_address = $value;
+    }
+    $maps_url = appointment_google_maps_url($map_address);
+    return '<br><span style="color:#4b5563;font-size:12px;"><b>Lugar:</b> ' . htmlspecialchars($value) . '</span>' .
+        ($maps_url !== '' ? ' <a href="' . htmlspecialchars($maps_url) . '" style="color:#1e5aa8;font-size:12px;">Cómo llegar</a>' : '');
+}
+
 function appointment_payment_label($payment_status)
 {
     if ($payment_status === 'paid') {
@@ -356,16 +413,14 @@ function professional_appointments_summary_table($mysqli, $professional_id, $sta
         $consultation_color = ($appointment['consultation_type'] ?? '') === 'online' ? '#1e5aa8' : '#166534';
         $payment_bg = ($appointment['payment_status'] ?? '') === 'paid' ? '#dcfce7' : '#fff7d6';
         $payment_color = ($appointment['payment_status'] ?? '') === 'paid' ? '#166534' : '#8a6d1d';
-        $online_link = (($appointment['consultation_type'] ?? '') === 'online' && !empty($appointment['online_session_url']))
-            ? '<br><a href="' . htmlspecialchars($appointment['online_session_url']) . '" style="color:#1e5aa8;font-size:12px;">Enlace videollamada</a>'
-            : '';
+        $location_line = appointment_location_email_html($appointment);
 
         $rows .= '<tr style="background:' . $bg . ';">' .
             '<td style="padding:10px 12px;border-bottom:1px solid #ebe7f1;color:#4b5563;white-space:nowrap;">' . htmlspecialchars($date_text) . '</td>' .
             '<td style="padding:10px 12px;border-bottom:1px solid #ebe7f1;color:#2f2642;font-weight:700;white-space:nowrap;">' . htmlspecialchars($time_text) . '</td>' .
             '<td style="padding:10px 12px;border-bottom:1px solid #ebe7f1;color:#2f2642;font-weight:600;">' . htmlspecialchars($appointment['patient_name'] ?? 'Paciente') . '</td>' .
             '<td style="padding:10px 12px;border-bottom:1px solid #ebe7f1;color:#4b5563;">' . htmlspecialchars($service) . '</td>' .
-            '<td style="padding:10px 12px;border-bottom:1px solid #ebe7f1;white-space:nowrap;"><span style="display:inline-block;padding:4px 8px;border-radius:999px;background:' . $consultation_bg . ';color:' . $consultation_color . ';font-size:12px;font-weight:700;">' . htmlspecialchars($consultation) . '</span>' . $online_link . '</td>' .
+            '<td style="padding:10px 12px;border-bottom:1px solid #ebe7f1;white-space:nowrap;"><span style="display:inline-block;padding:4px 8px;border-radius:999px;background:' . $consultation_bg . ';color:' . $consultation_color . ';font-size:12px;font-weight:700;">' . htmlspecialchars($consultation) . '</span>' . $location_line . '</td>' .
             '<td style="padding:10px 12px;border-bottom:1px solid #ebe7f1;white-space:nowrap;"><span style="display:inline-block;padding:4px 8px;border-radius:999px;background:' . $payment_bg . ';color:' . $payment_color . ';font-size:12px;font-weight:700;">' . htmlspecialchars($payment) . '</span></td>' .
             '</tr>';
     }
@@ -423,6 +478,10 @@ function notify_appointment_cancelled($mysqli, $appointment)
     $bonus_session_restored = !empty($appointment['bonus_session_restored']);
     $compensation_bonus_created = !empty($appointment['compensation_bonus_created']);
     $payment_text = appointment_cancel_payment_label($appointment);
+    $branding_settings = get_public_branding_settings($mysqli);
+    $center_address = trim((string) ($branding_settings['legal_address'] ?? ''));
+    $location_line = appointment_location_email_html($appointment);
+    $patient_location_line = appointment_location_email_html($appointment, $center_address, true);
     $paid_warning = $payment_status === 'paid'
         ? '<p><b>Atención:</b> esta cita constaba como pagada. Revisa si corresponde hacer devolución o contactar con el paciente.</p>'
         : '';
@@ -453,6 +512,7 @@ function notify_appointment_cancelled($mysqli, $appointment)
         '<b>Fecha:</b> ' . htmlspecialchars($appointment_text) . '<br>' .
         '<b>Servicio:</b> ' . htmlspecialchars($service_text) . '<br>' .
         '<b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '<br>' .
+        $location_line .
         '<b>Estado del pago:</b> ' . htmlspecialchars($payment_text) . '</p>' .
         $paid_warning,
         $patient_email ?: null
@@ -467,6 +527,7 @@ function notify_appointment_cancelled($mysqli, $appointment)
             '<p>Tu cita ' . htmlspecialchars(strtolower($service_text)) . ' ' . htmlspecialchars(strtolower($consultation_text)) . ' para el ' . htmlspecialchars($appointment_text) . ' ha sido cancelada correctamente.</p>' .
             '<p><b>Servicio:</b> ' . htmlspecialchars($service_text) . '</p>' .
             '<p><b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '</p>' .
+            ($patient_location_line ? '<p>' . preg_replace('/^<br>/', '', $patient_location_line) . '</p>' : '') .
             $patient_payment_note,
             null,
             $mysqli

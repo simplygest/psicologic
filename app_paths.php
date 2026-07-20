@@ -49,9 +49,35 @@ function app_current_tenant_key()
     }
 
     if ($configured === '' && PHP_SAPI !== 'cli') {
-        $script_name = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '');
-        $parts = array_values(array_filter(explode('/', trim($script_name, '/'))));
-        $configured = $parts[0] ?? basename(app_root_dir());
+        $path = parse_url($_SERVER['REQUEST_URI'] ?? ($_SERVER['SCRIPT_NAME'] ?? ''), PHP_URL_PATH);
+        $parts = array_values(array_filter(explode('/', trim(str_replace('\\', '/', (string) $path), '/'))));
+        $base = '';
+        if (defined('APP_BASE_PATH')) {
+            $base = APP_BASE_PATH;
+        } elseif (function_exists('psicologic_config_value')) {
+            $base = psicologic_config_value('app_base_path', '');
+        }
+        $base = strtolower(trim((string) $base, '/'));
+        if ($base !== '' && strtolower((string) ($parts[0] ?? '')) === $base) {
+            array_shift($parts);
+        }
+
+        $first = (string) ($parts[0] ?? '');
+        $reserved = [
+            'api',
+            'admin',
+            'ayuda',
+            'css',
+            'install',
+            'js',
+            'phpmailer',
+            'redsys',
+            'uploads',
+            'index.php',
+        ];
+        $configured = ($first !== '' && !in_array(strtolower($first), $reserved, true) && !preg_match('/\.php$/i', $first))
+            ? $first
+            : basename(app_root_dir());
     }
 
     if ($configured === '') {

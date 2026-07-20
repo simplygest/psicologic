@@ -27,7 +27,7 @@ foreach ($sector_image_paths as $sector_key => $sector_image_path) {
 $showcase_cards = [
     [
         'title' => 'Agenda, reservas y Portal de Pacientes',
-        'text' => 'Una agenda personalizable para gestionar citas, reservas online, recordatorios y acceso privado para tus pacientes',
+        'text' => 'Una agenda personalizable para gestionar citas, reservas online, recordatorios por email o SMS y acceso privado para tus pacientes',
         'image_path' => 'uploads/global/landing/showcase/agenda.webp',
         'placeholder_title' => 'Agenda y Portal',
         'placeholder_text' => 'Calendario, reservas y acceso privado',
@@ -385,9 +385,12 @@ function praxis_detail_groups($person_plural, $professional_plural, $knowledge_l
             'Calendario mensual y semanal para organizar citas, sesiones y disponibilidad.',
             'Vistas de agenda, ' . $person_plural . ' y próximas citas para trabajar según la rutina de cada centro.',
             'Recordatorios de próxima cita y sesión en curso con acciones rápidas.',
-            'Modalidad presencial u online, enlace de videollamada, emails e invitación de calendario.',
+            'Modalidad presencial u online, videollamada integrada, emails e invitación de calendario...',
             'Reservas online opcionales y portal privado cuando el centro quiera ofrecerlo.',
-            'Recordatorios de citas por email y sincronización con Google Calendar o iCloud Calendar.',
+            'Recordatorios de citas por email o SMS y sincronización con Google Calendar o iCloud Calendar.',
+            'Servicios, duraciones y salas/ubicaciones personalizables para adaptar la agenda a cada centro.',
+            'Pacientes/clientes en lista de espera con propuesta de huecos próximos.',
+            'Estado de la cita y asistencia: reservada, realizada, no-show, pendiente o pagada.',
         ],
         ucfirst($person_plural) . ' y seguimiento' => [
             'Ficha adaptada a cada caso según el sector.',
@@ -407,8 +410,11 @@ function praxis_detail_groups($person_plural, $professional_plural, $knowledge_l
         ],
         'Gestión del centro' => [
             'Personaliza tu app y el portal con tu logo y color preferido.',
-            'Equipo de ' . $professional_plural . ' configurable, asignación de ' . $person_plural . ' y permisos.',
+            'Dominio propio personalizado para centros con plan Summum.',
+            'Equipo de ' . $professional_plural . ' configurable, asignación de ' . $person_plural . ' y permisos personalizados para miembros del equipo.',
+            'Diferentes tipos y permisos para los miembros del personal: recepcionista, administración, profesional...',
             'Bonos, pagos online, invitaciones con QR y recordatorios.',
+            'Datos fiscales preparados para facturación cuando el plan lo permite.',
         ],
     ];
 
@@ -448,6 +454,7 @@ $default_detail_groups = $detail_profiles['psicologia'];
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow, noarchive">
     <meta name="description" content="SimplyGest Praxis es una plataforma multisectorial para gestionar agenda, seguimiento, documentación, informes, portal privado y bases de conocimiento profesionales.">
     <title>SimplyGest Praxis | Software multisectorial para servicios profesionales</title>
     <link rel="icon" href="<?= htmlspecialchars($brand_logo_url, ENT_QUOTES, 'UTF-8') ?>">
@@ -509,6 +516,12 @@ $default_detail_groups = $detail_profiles['psicologia'];
             color: var(--sg-primary-dark);
         }
 
+        .sg-mobile-plans-link {
+            color: var(--sg-primary-dark);
+            font-size: .9rem;
+            white-space: nowrap;
+        }
+
         .sg-pill {
             display: inline-flex;
             align-items: center;
@@ -523,6 +536,23 @@ $default_detail_groups = $detail_profiles['psicologia'];
 
         .sg-hero {
             padding: 5.4rem 0 3.6rem;
+        }
+
+        .sg-app-title {
+            margin: 0 0 1.25rem;
+            text-align: center;
+            font-size: clamp(2.45rem, 6vw, 5rem);
+            line-height: 1;
+            font-weight: 800;
+            letter-spacing: 0;
+        }
+
+        .sg-app-title-simply {
+            color: var(--sg-primary-dark);
+        }
+
+        .sg-app-title-praxis {
+            color: #06b6d4;
         }
 
         .sg-hero h2 {
@@ -1005,7 +1035,7 @@ $default_detail_groups = $detail_profiles['psicologia'];
 </head>
 
 <body>
-    <nav class="sg-nav py-3">
+    <nav class="sg-nav">
         <div class="container d-flex align-items-center justify-content-between">
             <a href="./" class="d-inline-flex align-items-center text-decoration-none">
                 <img src="<?= htmlspecialchars($full_logo_url, ENT_QUOTES, 'UTF-8') ?>" alt="SimplyGest Praxis" class="sg-brand-logo">
@@ -1016,6 +1046,7 @@ $default_detail_groups = $detail_profiles['psicologia'];
                 <a class="sg-nav-link" href="#detalle">Detalle</a>
                 <a class="sg-nav-link" href="app-plans.php">Planes</a>
             </div>
+            <a class="sg-nav-link sg-mobile-plans-link d-md-none" href="app-plans.php">Planes</a>
         </div>
     </nav>
 
@@ -1024,6 +1055,10 @@ $default_detail_groups = $detail_profiles['psicologia'];
             <div class="container">
                 <div class="row align-items-center g-4">
                     <div class="col-12">
+                        <h1 class="sg-app-title mb-5">
+                            <span class="sg-app-title-simply">SimplyGest</span>
+                            <span class="sg-app-title-praxis">Praxis</span>
+                        </h1>
                         <div class="sg-universal-card">
                             <span class="sg-pill">Software multisectorial para servicios profesionales</span>
                             <h2>Una plataforma flexible para organizar agenda, seguimiento, documentación e informes.</h2>
@@ -1341,7 +1376,7 @@ $default_detail_groups = $detail_profiles['psicologia'];
             const audienceTerms = praxisShowcaseAudienceTerms[key] || praxisShowcaseAudienceTerms.default;
             if (audienceTerms && agendaShowcaseTitle && agendaShowcaseText) {
                 agendaShowcaseTitle.textContent = `Agenda, reservas y Portal de ${audienceTerms.title}`;
-                agendaShowcaseText.textContent = `Una agenda personalizable para gestionar citas, reservas online, recordatorios y acceso privado para tus ${audienceTerms.text}`;
+                agendaShowcaseText.textContent = `Una agenda personalizable para gestionar citas, reservas online, recordatorios por email o SMS y acceso privado para tus ${audienceTerms.text}`;
             }
             renderPraxisDetails(key);
         }

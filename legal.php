@@ -12,7 +12,7 @@ $show_prices_public = (int) ($branding['show_prices_public'] ?? 0) === 1;
 $show_contact_public = (int) ($branding['show_contact_public'] ?? 0) === 1;
 $show_team_public = cabinet_public_team_enabled($mysqli);
 $is_logged_in = isset($_SESSION['user_id']);
-$is_admin = in_array($_SESSION['role'] ?? '', ['admin', 'superadmin'], true);
+$is_admin = in_array($_SESSION['role'] ?? '', ['admin', 'superadmin', 'reception', 'administration', 'technical'], true);
 $online_booking_enabled = (int) ($branding['online_booking_enabled'] ?? 1) === 1;
 $show_patient_area = $online_booking_enabled || $is_admin;
 
@@ -84,7 +84,7 @@ function legal_delivery_text($mode)
 </head>
 
 <body class="public-site">
-    <nav class="navbar navbar-expand-lg public-navbar py-3">
+    <nav class="navbar navbar-expand-lg public-navbar">
         <div class="container">
             <a class="navbar-brand d-flex align-items-center gap-2" href="index.php">
                 <?php if ($profile_image_path): ?>

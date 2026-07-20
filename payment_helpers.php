@@ -73,8 +73,12 @@ function ensure_appointment_payment_columns($mysqli)
         'cancel_token' => "ALTER TABLE appointments ADD cancel_token VARCHAR(64) DEFAULT NULL",
         'cancelled_at' => "ALTER TABLE appointments ADD cancelled_at DATETIME DEFAULT NULL",
         'reminder_sent_at' => "ALTER TABLE appointments ADD reminder_sent_at DATETIME DEFAULT NULL",
+        'second_reminder_sent_at' => "ALTER TABLE appointments ADD second_reminder_sent_at DATETIME DEFAULT NULL",
         'online_session_url' => "ALTER TABLE appointments ADD online_session_url VARCHAR(500) DEFAULT NULL",
+        'livekit_access_token' => "ALTER TABLE appointments ADD livekit_access_token CHAR(64) DEFAULT NULL",
+        'session_notes' => "ALTER TABLE appointments ADD session_notes TEXT DEFAULT NULL",
         'consultation_type' => "ALTER TABLE appointments ADD consultation_type VARCHAR(16) NOT NULL DEFAULT 'presencial'",
+        'location_id' => "ALTER TABLE appointments ADD location_id INT UNSIGNED DEFAULT NULL",
         'service_type' => "ALTER TABLE appointments ADD service_type VARCHAR(16) NOT NULL DEFAULT 'individual'",
         'service_option_id' => "ALTER TABLE appointments ADD service_option_id INT UNSIGNED DEFAULT NULL",
         'duration_minutes' => "ALTER TABLE appointments ADD duration_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 60",
@@ -87,6 +91,141 @@ function ensure_appointment_payment_columns($mysqli)
             $mysqli->query($sql);
         }
     }
+    $status_res = $mysqli->query("SHOW COLUMNS FROM appointments LIKE 'status'");
+    if ($status_res && ($status_row = $status_res->fetch_assoc())) {
+        $status_type = strtolower((string) ($status_row['Type'] ?? ''));
+        if (strpos($status_type, 'varchar') !== 0) {
+            $mysqli->query("ALTER TABLE appointments MODIFY status VARCHAR(32) NOT NULL DEFAULT 'booked'");
+        }
+    }
+}
+
+function ensure_appointment_locations_table($mysqli)
+{
+    if (function_exists('app_auto_schema_migrations_enabled') && !app_auto_schema_migrations_enabled()) {
+        return;
+    }
+
+    $tenant_id = current_tenant_id();
+    $mysqli->query("
+        CREATE TABLE IF NOT EXISTS appointment_locations (
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            tenant_id INT UNSIGNED NOT NULL DEFAULT 1,
+            location_key VARCHAR(80) DEFAULT NULL,
+            name VARCHAR(120) NOT NULL,
+            location_type VARCHAR(24) NOT NULL DEFAULT 'custom',
+            is_enabled TINYINT(1) NOT NULL DEFAULT 1,
+            is_system TINYINT(1) NOT NULL DEFAULT 0,
+            sort_order INT UNSIGNED NOT NULL DEFAULT 0,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uniq_appointment_locations_key (tenant_id, location_key),
+            INDEX idx_appointment_locations_enabled (tenant_id, is_enabled, sort_order)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+    payment_add_column_if_missing($mysqli, 'appointment_locations', 'tenant_id', "INT UNSIGNED NOT NULL DEFAULT $tenant_id AFTER id");
+    payment_add_column_if_missing($mysqli, 'appointment_locations', 'location_key', "VARCHAR(80) DEFAULT NULL AFTER tenant_id");
+    payment_add_column_if_missing($mysqli, 'appointment_locations', 'location_type', "VARCHAR(24) NOT NULL DEFAULT 'custom' AFTER name");
+    payment_add_column_if_missing($mysqli, 'appointment_locations', 'is_enabled', "TINYINT(1) NOT NULL DEFAULT 1 AFTER location_type");
+    payment_add_column_if_missing($mysqli, 'appointment_locations', 'is_system', "TINYINT(1) NOT NULL DEFAULT 0 AFTER is_enabled");
+    payment_add_column_if_missing($mysqli, 'appointment_locations', 'sort_order', "INT UNSIGNED NOT NULL DEFAULT 0 AFTER is_system");
+    payment_add_column_if_missing($mysqli, 'appointments', 'location_id', "INT UNSIGNED DEFAULT NULL AFTER consultation_type");
+    if (payment_column_exists($mysqli, 'professional_settings', 'default_appointment_location')) {
+        payment_add_column_if_missing($mysqli, 'professional_settings', 'default_location_id', "INT UNSIGNED DEFAULT NULL AFTER default_appointment_location");
+    }
+
+    seed_default_appointment_locations($mysqli);
+}
+
+function seed_default_appointment_locations($mysqli)
+{
+    $tenant_id = current_tenant_id();
+    $defaults = [
+        ['default', 'Predeterminada', 'default', 1, 1, 10],
+        ['home', 'A domicilio', 'home', 0, 1, 20]
+    ];
+    foreach ($defaults as $row) {
+        [$key, $name, $type, $enabled, $system, $sort] = $row;
+        $stmt = $mysqli->prepare("
+            INSERT INTO appointment_locations (tenant_id, location_key, name, location_type, is_enabled, is_system, sort_order)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                name = VALUES(name),
+                location_type = VALUES(location_type),
+                is_system = VALUES(is_system),
+                sort_order = VALUES(sort_order)
+        ");
+        $stmt->bind_param("isssiii", $tenant_id, $key, $name, $type, $enabled, $system, $sort);
+        $stmt->execute();
+    }
+}
+
+function fetch_appointment_locations($mysqli, $only_enabled = false)
+{
+    ensure_appointment_locations_table($mysqli);
+    $tenant_id = current_tenant_id();
+    $where = $only_enabled ? "AND is_enabled = 1" : "";
+    $res = $mysqli->query("
+        SELECT id, location_key, name, location_type, is_enabled, is_system, sort_order
+        FROM appointment_locations
+        WHERE tenant_id = $tenant_id $where
+        ORDER BY sort_order ASC, id ASC
+    ");
+    $locations = [];
+    while ($res && ($row = $res->fetch_assoc())) {
+        $row['id'] = (int) $row['id'];
+        $row['is_enabled'] = (int) $row['is_enabled'];
+        $row['is_system'] = (int) $row['is_system'];
+        $row['sort_order'] = (int) $row['sort_order'];
+        $locations[] = $row;
+    }
+    return $locations;
+}
+
+function default_appointment_location_id($mysqli)
+{
+    ensure_appointment_locations_table($mysqli);
+    $tenant_id = current_tenant_id();
+    $res = $mysqli->query("SELECT id FROM appointment_locations WHERE tenant_id = $tenant_id AND location_key = 'default' LIMIT 1");
+    $row = $res ? $res->fetch_assoc() : null;
+    return (int) ($row['id'] ?? 0);
+}
+
+function fetch_appointment_location($mysqli, $location_id)
+{
+    ensure_appointment_locations_table($mysqli);
+    $tenant_id = current_tenant_id();
+    $location_id = (int) $location_id;
+    if ($location_id <= 0) {
+        return null;
+    }
+    $stmt = $mysqli->prepare("
+        SELECT id, location_key, name, location_type, is_enabled, is_system, sort_order
+        FROM appointment_locations
+        WHERE tenant_id = ? AND id = ?
+        LIMIT 1
+    ");
+    $stmt->bind_param("ii", $tenant_id, $location_id);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    if (!$row) {
+        return null;
+    }
+    $row['id'] = (int) $row['id'];
+    $row['is_enabled'] = (int) $row['is_enabled'];
+    $row['is_system'] = (int) $row['is_system'];
+    return $row;
+}
+
+function appointment_location_display_name($location)
+{
+    if (!$location) {
+        return '';
+    }
+    if (($location['location_key'] ?? '') === 'default' || ($location['location_type'] ?? '') === 'default') {
+        return '';
+    }
+    return trim((string) ($location['name'] ?? ''));
 }
 
 function ensure_appointment_services_tables($mysqli)
@@ -442,11 +581,11 @@ function seed_default_appointment_services($mysqli)
     if (function_exists('app_auto_schema_migrations_enabled') && app_auto_schema_migrations_enabled()) {
         $columns = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'available_session_types'");
         if ($columns && $columns->num_rows === 0) {
-            $mysqli->query("ALTER TABLE payment_settings ADD available_session_types VARCHAR(100) NOT NULL DEFAULT 'individual'");
+            $mysqli->query("ALTER TABLE payment_settings ADD available_session_types VARCHAR(255) NOT NULL DEFAULT 'individual'");
         }
         $columns = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'available_session_durations'");
         if ($columns && $columns->num_rows === 0) {
-            $mysqli->query("ALTER TABLE payment_settings ADD available_session_durations VARCHAR(50) NOT NULL DEFAULT '60'");
+            $mysqli->query("ALTER TABLE payment_settings ADD available_session_durations VARCHAR(100) NOT NULL DEFAULT '60'");
         }
         $columns = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'appointment_delivery_mode'");
         if ($columns && $columns->num_rows === 0) {
@@ -465,6 +604,12 @@ function seed_default_appointment_services($mysqli)
     }
 
     $allowed_service_keys = array_column($sector_services, 'key');
+    $existing_keys = [];
+    $existing_res = $mysqli->query("SELECT service_key FROM appointment_services WHERE tenant_id = $tenant_id");
+    while ($existing_res && ($existing_row = $existing_res->fetch_assoc())) {
+        $existing_keys[] = $existing_row['service_key'];
+    }
+    $allowed_service_keys = array_values(array_unique(array_merge($allowed_service_keys, $existing_keys)));
     $active_service_types = array_values(array_intersect(
         array_filter(array_map('trim', explode(',', (string) ($settings['available_session_types'] ?? '')))),
         $allowed_service_keys
@@ -473,6 +618,15 @@ function seed_default_appointment_services($mysqli)
         $active_service_types = $default_service_keys;
     }
     $allowed_durations = array_map(fn($item) => (int) $item['minutes'], $sector_durations);
+    $existing_duration_res = $mysqli->query("
+        SELECT DISTINCT duration_minutes
+        FROM appointment_service_options
+        WHERE tenant_id = $tenant_id
+    ");
+    while ($existing_duration_res && ($duration_row = $existing_duration_res->fetch_assoc())) {
+        $allowed_durations[] = (int) $duration_row['duration_minutes'];
+    }
+    $allowed_durations = array_values(array_unique(array_filter($allowed_durations)));
     $active_durations = array_values(array_intersect(
         array_map('intval', array_filter(array_map('trim', explode(',', (string) ($settings['available_session_durations'] ?? ''))))),
         $allowed_durations
@@ -511,7 +665,6 @@ function seed_default_appointment_services($mysqli)
 
     $service_ids = [];
     $escaped_keys = array_map(fn($key) => "'" . $mysqli->real_escape_string($key) . "'", array_keys($services));
-    $mysqli->query("UPDATE appointment_services SET is_active = 0 WHERE tenant_id = $tenant_id AND service_key NOT IN (" . implode(',', $escaped_keys) . ")");
     $res = $mysqli->query("SELECT id, service_key FROM appointment_services WHERE tenant_id = $tenant_id AND service_key IN (" . implode(',', $escaped_keys) . ")");
     while ($row = $res->fetch_assoc()) {
         $service_ids[$row['service_key']] = (int) $row['id'];
@@ -647,14 +800,19 @@ function appointment_price_for_row($settings, $appointment)
 
 function app_public_base_url()
 {
+    if (function_exists('tenant_public_base_url')) {
+        $url = tenant_public_base_url();
+        if ($url !== '') {
+            return $url;
+        }
+    }
+
     $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || ($_SERVER['SERVER_PORT'] ?? null) == 443) ? 'https://' : 'http://';
     $host = $_SERVER['HTTP_HOST'] ?? '';
-    $script = $_SERVER['SCRIPT_NAME'] ?? '';
-    $path = rtrim(str_replace('\\', '/', dirname($script)), '/');
+    $path = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '')), '/');
     if (basename($path) === 'api') {
         $path = rtrim(dirname($path), '/');
     }
-
     return $protocol . $host . ($path ? $path . '/' : '/');
 }
 
@@ -718,8 +876,8 @@ function ensure_payment_settings_price_columns($mysqli)
         'online_appointment_price' => "ALTER TABLE payment_settings ADD online_appointment_price DECIMAL(10,2) NOT NULL DEFAULT 70.00 AFTER appointment_price",
         'couple_appointment_price' => "ALTER TABLE payment_settings ADD couple_appointment_price DECIMAL(10,2) NOT NULL DEFAULT 90.00 AFTER online_appointment_price",
         'online_couple_appointment_price' => "ALTER TABLE payment_settings ADD online_couple_appointment_price DECIMAL(10,2) NOT NULL DEFAULT 90.00 AFTER couple_appointment_price",
-        'available_session_types' => "ALTER TABLE payment_settings ADD available_session_types VARCHAR(100) NOT NULL DEFAULT 'individual'",
-        'available_session_durations' => "ALTER TABLE payment_settings ADD available_session_durations VARCHAR(50) NOT NULL DEFAULT '60'"
+        'available_session_types' => "ALTER TABLE payment_settings ADD available_session_types VARCHAR(255) NOT NULL DEFAULT 'individual'",
+        'available_session_durations' => "ALTER TABLE payment_settings ADD available_session_durations VARCHAR(100) NOT NULL DEFAULT '60'"
     ];
 
     foreach ($columns as $column => $sql) {
@@ -733,8 +891,8 @@ function ensure_payment_settings_price_columns($mysqli)
     $mysqli->query("ALTER TABLE payment_settings ALTER online_appointment_price SET DEFAULT 70.00");
     $mysqli->query("ALTER TABLE payment_settings ALTER couple_appointment_price SET DEFAULT 90.00");
     $mysqli->query("ALTER TABLE payment_settings ALTER online_couple_appointment_price SET DEFAULT 90.00");
-    $mysqli->query("ALTER TABLE payment_settings MODIFY available_session_types VARCHAR(100) NOT NULL DEFAULT 'individual'");
-    $mysqli->query("ALTER TABLE payment_settings MODIFY available_session_durations VARCHAR(50) NOT NULL DEFAULT '60'");
+    $mysqli->query("ALTER TABLE payment_settings MODIFY available_session_types VARCHAR(255) NOT NULL DEFAULT 'individual'");
+    $mysqli->query("ALTER TABLE payment_settings MODIFY available_session_durations VARCHAR(100) NOT NULL DEFAULT '60'");
 }
 
 function appointment_price_for_type($settings, $consultation_type, $service_type = 'individual')

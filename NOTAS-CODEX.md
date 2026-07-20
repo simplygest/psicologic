@@ -400,6 +400,32 @@ git config --global --add safe.directory C:/Sete/psicologic
   - Nueva columna `payment_settings.sector_texts_key VARCHAR(32) NOT NULL DEFAULT 'psicologia'`.
   - `sector_text_helpers.php` carga el JSON activo, lista sectores disponibles y usa siempre `psicologia` como fallback si falta el valor o el archivo.
   - Configuracion > Interfaz incorpora el selector `Sector`; `get_payment_settings` devuelve `sector_texts` y `sector_texts_options` para sustituir textos por claves progresivamente.
+- Cambios recientes en dashboard, agenda y facturacion:
+  - Configuracion incorpora pestana `Facturacion`; la opcion queda limitada por plan con `billing.enabled`.
+  - `plan-config/summum.json` activa `billing.enabled`; `novus`, `magister` y `default` lo dejan desactivado.
+  - La carga inicial del dashboard profesional trae configuracion esencial para que facturacion, menues y confirmaciones no dependan de abrir Configuracion.
+  - Los cobros manuales de citas, bonos e informes muestran modal propio de confirmacion antes de marcar como pagado cuando corresponde emitir factura.
+  - La agenda mensual permite pulsar el nombre del mes para abrir selector rapido de meses/anio.
+  - En pantallas grandes, las vistas inline `Agenda`, `Pacientes` y `Citas` muestran loader inmediato al alternar para evitar sensacion de bloqueo.
+  - En el portal del paciente, la botonera pasa a menu desplegable por debajo de 995px.
+  - El navbar superior queda ordenado como buscador global, Opciones y foto de usuario; si no hay foto, no se muestra avatar.
+  - La columna `Portal` de los listados de pacientes queda centrada en cabecera y celda.
+- Ubicacion de citas:
+  - Se reutiliza `appointments.online_session_url` como campo unico: en citas online se muestra como link; en citas presenciales se muestra como `Lugar / ubicacion`.
+  - En citas presenciales el lugar es opcional: si queda vacio se asume que la cita es en el centro. En UI no se muestra nada extra; en emails al paciente se usa la direccion del centro para el enlace de Google Maps si esta configurada.
+  - Se anade `professional_settings.default_appointment_location` para indicar ubicaciones por profesional como `Sala 1` o `Puerta B`; si el texto no parece una direccion completa, los enlaces de Maps usan la direccion del centro.
+  - Para citas presenciales se anaden botones `Ver en el mapa` y `Domicilio del paciente`.
+  - Se anade `patient_profiles.address` como domicilio del paciente. No existia un campo equivalente previo; `payment_settings.legal_address` es el domicilio legal/profesional del tenant y no debe reutilizarse para pacientes.
+- Migraciones a demanda:
+  - Se anade `migration.php`, ejecutable desde navegador por superadmin, por token (`migration_token`/`CRON_WEBHOOK_TOKEN`) o desde CLI.
+  - El script aplica cambios idempotentes: crea/actualiza columnas esperadas en `patient_profiles`, columnas de cita usadas por modalidad/servicios y ejecuta la preparacion de facturacion (`movim`, columnas de `payment_settings`, campos fiscales de paciente).
+  - Sirve para aplicar `ALTER TABLE`/`CREATE TABLE` cuando no haya acceso inmediato a Workbench, sin reactivar migraciones automaticas en cada carga.
+- Videollamada integrada con LiveKit:
+  - `livekit_helpers.php` firma tokens de acceso en PHP con las credenciales globales `livekit_url`, `livekit_api_key` y `livekit_api_secret`; el secret no se expone al navegador.
+  - `livekit_call.php` es la pantalla propia de videollamada, con sala, identidad y nombre visible generados automáticamente por cita y participante.
+  - La preferencia `professional_settings.livekit_enabled` se aplica por profesional y viene activada por defecto. Al desactivarla se conserva el enlace manual para Zoom, Teams u otro proveedor.
+  - La función queda restringida al flag `livekit.enabled`: solo `Summum` lo activa. Novus y Magister muestran el ajuste bloqueado y mantienen el flujo manual.
+  - Las reservas online con LiveKit envían al paciente un enlace firmado y temporal; el profesional abre su sala desde el detalle de la cita.
 
 ## Pendientes sugeridos
 
@@ -439,6 +465,31 @@ git config --global --add safe.directory C:/Sete/psicologic
   - Usa la libreria Body Muscles por CDN y permite alternar vista frontal/posterior, seleccionar varios musculos y consultar resultados relacionados.
   - Para `fitness`, el endpoint `body_map_recommendations` consulta `fitness_exercises` y `fitness_exercise_regions` enlazadas con `praxis_bodymuscles_regions`.
   - Para Fisioterapia/Osteopatia/Quiropractica el panel queda preparado y devuelve mensaje vacio hasta que existan recomendaciones vinculadas a musculos.
+- Recordatorios de citas por email:
+  - Se mantiene el check fijo de recordatorio 24 horas antes.
+  - Se anade un segundo recordatorio opcional, desactivado por defecto, con numero de horas configurable y valor inicial 48.
+  - El valor 24 se bloquea en UI y API para evitar enviar dos recordatorios duplicados.
+  - El cron existente gestiona ambos recordatorios y marca el segundo con `appointments.second_reminder_sent_at`.
+- Configuracion SMS:
+  - Se anade la pestana `SMS` con proveedor `MundoSMS`, `SMSUp` o `SMSAPI`, remitente comun y credenciales especificas por proveedor.
+  - MundoSMS usa usuario y contrasena; SMSUp/SMSAPI usan API Key. Las claves se conservan si se deja el campo vacio.
+  - Los SMS tendran un unico recordatorio configurable, por defecto 24 horas antes, con aviso para evitar envios en horario nocturno.
+  - `sms_helpers.php` centraliza envio y consulta de saldo para MundoSMS, SMSUp y SMSAPI, con retorno estructurado y normalizacion de telefonos.
+  - El cron de recordatorios envia SMS con texto corto, primer nombre del profesional y enlace acortado de `urlme.es` para gestionar/cancelar la cita.
+- Agenda y asistencia:
+  - Se anade modo `Agenda` para escritorio, junto a `Mes` y `Semana`, con vista semanal detallada por horas y bloques posicionados por duracion.
+  - Las citas pueden marcarse desde el detalle como `Reservada`, `Realizada` o `No asistio`; el estado `no_show` queda visible en agenda con badge y tono propio.
+  - La carga de calendario incluye `booked`, `completed` y `no_show` para que las citas informativas no desaparezcan al cambiar de estado.
+- Ficha de pacientes e informes:
+  - La pestana `Mas datos` incorpora `Antecedentes` y `Red de apoyo y contexto vital` como textareas clinicos junto al motivo inicial y las notas internas.
+  - Se anaden las columnas `patient_profiles.background_notes` y `patient_profiles.support_network_notes`.
+  - Los nuevos campos se incluyen en los informes generados; `Notas internas` queda limitada al informe interno.
+  - La carga parcial de calendario/servicios ya no reemplaza `PAYMENT_SETTINGS`, sino que mezcla los valores recibidos, para no ocultar `Facturas` tras perder `billing_enabled`.
+- Facturacion de pacientes:
+  - Si la facturacion esta activa, la ficha del paciente muestra la pestana `Datos Facturacion`.
+  - Permite marcar `Usar datos fiscales diferentes para las facturas` y capturar nombre, NIF, email, telefono y direccion alternativos.
+  - La emision de facturas usa esos datos alternativos solo cuando el check esta activado; si no, usa nombre fiscal/NIF y fallback al nombre habitual.
+  - En el portal del paciente, el modal `Mis datos` muestra pestana `Datos facturacion` solo si la facturacion esta activa; el paciente puede completar campos vacios, pero los ya existentes quedan bloqueados.
 
 ## Como retomar en otro PC
 

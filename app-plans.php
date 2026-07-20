@@ -73,6 +73,45 @@ function praxis_plans_feature_enabled($plan, $feature)
     return !empty($features[$feature]);
 }
 
+function praxis_plans_limit_value($plan, $limit, $default = null)
+{
+    return array_key_exists($limit, $plan['limits'] ?? []) ? $plan['limits'][$limit] : $default;
+}
+
+function praxis_plans_team_limit_label($plan)
+{
+    $limit = praxis_plans_limit_value($plan, 'teamMembers', null);
+    if ($limit === null || $limit === '' || (int) $limit === 0) {
+        return 'Sin limite';
+    }
+    $limit = max(1, (int) $limit);
+    if ($limit === 1) {
+        return 'Solo superadmin';
+    }
+    return 'Hasta ' . $limit . ' miembros';
+    if ($limit === null || $limit === '') {
+        return 'Sin límite';
+    }
+    $limit = max(0, (int) $limit);
+    if ($limit === 0) {
+        return 'Solo superadmin';
+    }
+    return 'Hasta ' . $limit . ' miembro' . ($limit === 1 ? '' : 's');
+}
+
+function praxis_plans_team_limit_badge_value($plan)
+{
+    $limit = praxis_plans_limit_value($plan, 'teamMembers', null);
+    if ($limit === null || $limit === '' || (int) $limit === 0) {
+        return null;
+    }
+    return max(1, (int) $limit);
+    if ($limit === null || $limit === '') {
+        return null;
+    }
+    return max(0, (int) $limit) + 1;
+}
+
 $brand_logo_url = praxis_plans_asset_data_uri($brand_logo_path);
 $brand_icon_url = praxis_plans_asset_data_uri($brand_icon_path);
 $plans = [
@@ -105,6 +144,72 @@ $plan_summaries = [
     ],
 ];
 
+$plan_summaries['novus']['tagline'] = 'Para profesionales que necesitan agenda, pacientes y seguimiento básico sin portal ni módulos avanzados.';
+$plan_summaries['magister']['tagline'] = 'Para centros que necesitan portal, equipo, bonos, conocimiento sectorial y sincronización, sin pagos online ni facturación.';
+$plan_summaries['summum']['tagline'] = 'La experiencia completa: pagos online, facturación, videollamada integrada, base multisectorial y personalización avanzada.';
+
+$feature_labels = [
+    'patientPortal.enabled' => 'Portal privado para pacientes o clientes',
+    'patientPortal.invitations' => 'Invitaciones de registro al portal',
+    'onlineBooking.enabled' => 'Reservas online desde el portal',
+    'tasks.enabled' => 'Tareas, pautas o ejercicios',
+    'closures.enabled' => 'Vacaciones, cierres y bloqueos de agenda',
+    'bonuses.enabled' => 'Bonos y sesiones prepagadas',
+    'billing.enabled' => 'Facturación integrada',
+    'reports.globalReports' => 'Estadísticas, listados e informes globales',
+    'upcomingAppointments.planning' => 'Planning de próximas citas',
+    'appointments.effectiveDuration' => 'Duración efectiva visible para el paciente',
+    'taskTemplates.enabled' => 'Plantillas reutilizables de tareas',
+    'onlinePayments.enabled' => 'Compatibilidad con pago online',
+    'payments.online' => 'Cobro online por Redsys',
+    'knowledgeBase.enabled' => 'Base de conocimiento por sector',
+    'knowledgeBase.importTasks' => 'Importación de recomendaciones al plan de trabajo',
+    'knowledgeBase.multiSector' => 'Consulta de bases de conocimiento relacionadas',
+    'questionnaires.enabled' => 'Cuestionarios y documentación de seguimiento',
+    'reminders.patient24h' => 'Recordatorios de cita por email',
+    'reminders.sms' => 'Recordatorios de cita por SMS',
+    'calendarSync.enabled' => 'Sincronización con calendarios online',
+    'livekit.enabled' => 'Videollamada integrada con LiveKit',
+    'branding.customLogo' => 'Logotipo propio en dashboard y portal',
+    'branding.customDomain' => 'Dominio propio personalizado',
+    'team.enabled' => 'Equipo de trabajo con varios profesionales',
+    'team.memberTypes' => 'Tipos de miembro: recepción, administración y técnico',
+    'team.permissions' => 'Permisos personalizados por miembro',
+    'catalog.customServices' => 'Servicios ofrecidos personalizables',
+    'catalog.customDurations' => 'Duraciones de cita personalizables',
+    'catalog.customLocations' => 'Salas y ubicaciones personalizables',
+    'appointments.attendanceStatus' => 'Estados de cita y asistencia',
+    'billing.fiscalData' => 'Datos fiscales para facturación',
+    'ui.customization' => 'Personalización avanzada de opciones visibles',
+];
+
+$plan_highlight_features = [
+    'novus' => [
+        'tasks.enabled',
+        'taskTemplates.enabled',
+    ],
+    'magister' => [
+        'patientPortal.enabled',
+        'onlineBooking.enabled',
+        'team.enabled',
+        'bonuses.enabled',
+        'knowledgeBase.enabled',
+        'calendarSync.enabled',
+        'reminders.sms',
+        'catalog.customServices',
+    ],
+    'summum' => [
+        'billing.enabled',
+        'billing.fiscalData',
+        ['onlinePayments.enabled', 'payments.online'],
+        'livekit.enabled',
+        'team.permissions',
+        'branding.customDomain',
+        'knowledgeBase.multiSector',
+        'ui.customization',
+    ],
+];
+
 $comparison_groups = [
     'Incluido en todos los planes' => [
         ['label' => 'Agenda visual con vistas mensual y semanal', 'common' => true],
@@ -113,18 +218,24 @@ $comparison_groups = [
         ['label' => 'Historial de citas y documentación asociada', 'common' => true],
         ['label' => 'Dashboard profesional adaptable a cada sector', 'common' => true],
         ['label' => 'Configuración básica de servicios, horarios y disponibilidad', 'common' => true],
+        ['label' => 'Estados de cita: reservada, realizada, no asistió, pagada o pendiente', 'feature' => 'appointments.attendanceStatus'],
     ],
     'Portal y reservas online' => [
         ['label' => 'Portal privado para pacientes o clientes', 'feature' => 'patientPortal.enabled'],
         ['label' => 'Generación de invitaciones de registro', 'feature' => 'patientPortal.invitations'],
         ['label' => 'Reservas online desde el portal', 'feature' => 'onlineBooking.enabled'],
         ['label' => 'Recordatorios de cita por email', 'feature' => 'reminders.patient24h'],
+        ['label' => 'Recordatorios de cita por SMS', 'feature' => 'reminders.sms'],
     ],
     'Agenda y gestión diaria' => [
         ['label' => 'Vacaciones, cierres y bloqueos de agenda', 'feature' => 'closures.enabled'],
         ['label' => 'Planning de próximas citas', 'feature' => 'upcomingAppointments.planning'],
         ['label' => 'Duración efectiva visible para el paciente', 'feature' => 'appointments.effectiveDuration'],
+        ['label' => 'Servicios ofrecidos personalizables', 'feature' => 'catalog.customServices'],
+        ['label' => 'Duraciones de cita personalizables', 'feature' => 'catalog.customDurations'],
+        ['label' => 'Salas y ubicaciones personalizables', 'feature' => 'catalog.customLocations'],
         ['label' => 'Sincronización con calendarios online', 'feature' => 'calendarSync.enabled'],
+        ['label' => 'Videollamada integrada con LiveKit', 'feature' => 'livekit.enabled'],
     ],
     'Seguimiento profesional' => [
         ['label' => 'Tareas, pautas o ejercicios asignables', 'feature' => 'tasks.enabled'],
@@ -138,13 +249,75 @@ $comparison_groups = [
         ['label' => 'Consulta de bases de conocimiento relacionadas', 'feature' => 'knowledgeBase.multiSector'],
         ['label' => 'Estadísticas, listados e informes globales', 'feature' => 'reports.globalReports'],
     ],
-    'Pagos, equipo y marca' => [
+    'Pagos y facturación' => [
         ['label' => 'Compatibilidad con pago online', 'feature' => ['onlinePayments.enabled', 'payments.online']],
+        ['label' => 'Datos fiscales para facturación', 'feature' => 'billing.fiscalData'],
+        ['label' => 'Facturación integrada', 'feature' => 'billing.enabled'],
+    ],
+    'Equipo, marca y personalización' => [
         ['label' => 'Equipo de trabajo con varios profesionales', 'feature' => 'team.enabled'],
+        ['label' => 'Miembros adicionales del equipo', 'limit' => 'teamMembers'],
+        ['label' => 'Tipos de miembro no profesional: recepción, administración y técnico', 'feature' => 'team.memberTypes'],
+        ['label' => 'Permisos personalizados para miembros del equipo', 'feature' => 'team.permissions'],
         ['label' => 'Logotipo propio en dashboard y portal', 'feature' => 'branding.customLogo'],
+        ['label' => 'Dominio propio personalizado', 'feature' => 'branding.customDomain'],
         ['label' => 'Personalización avanzada de opciones visibles', 'feature' => 'ui.customization'],
     ],
 ];
+
+$comparison_group_order = [
+    'Incluido en todos los planes',
+    'Seguimiento profesional',
+    'Portal y reservas online',
+    'Agenda y gestión diaria',
+    'Base de conocimiento e informes',
+    'Equipo, marca y personalización',
+    'Pagos y facturación',
+];
+$ordered_comparison_groups = [];
+foreach ($comparison_group_order as $group_title) {
+    if (isset($comparison_groups[$group_title])) {
+        $ordered_comparison_groups[$group_title] = $comparison_groups[$group_title];
+    }
+}
+foreach ($comparison_groups as $group_title => $features) {
+    if (!isset($ordered_comparison_groups[$group_title])) {
+        $ordered_comparison_groups[$group_title] = $features;
+    }
+}
+$comparison_groups = $ordered_comparison_groups;
+$payment_group_title = null;
+foreach (array_keys($comparison_groups) as $group_title) {
+    if (strpos($group_title, 'Pagos y facturaci') === 0) {
+        $payment_group_title = $group_title;
+        break;
+    }
+}
+if ($payment_group_title !== null) {
+    $payment_group_features = $comparison_groups[$payment_group_title];
+    unset($comparison_groups[$payment_group_title]);
+    $comparison_groups[$payment_group_title] = $payment_group_features;
+}
+
+foreach ($comparison_groups as $group_title => $features) {
+    foreach ($features as $index => $feature) {
+        $enabled_count = 0;
+        foreach ($plans as $plan) {
+            if (isset($feature['limit']) || !empty($feature['common']) || praxis_plans_feature_enabled($plan, $feature['feature'] ?? '')) {
+                $enabled_count++;
+            }
+        }
+        $comparison_groups[$group_title][$index]['enabled_count'] = $enabled_count;
+        $comparison_groups[$group_title][$index]['sort_index'] = $index;
+    }
+    usort($comparison_groups[$group_title], function ($a, $b) {
+        $by_enabled = ($b['enabled_count'] ?? 0) <=> ($a['enabled_count'] ?? 0);
+        if ($by_enabled !== 0) {
+            return $by_enabled;
+        }
+        return ($a['sort_index'] ?? 0) <=> ($b['sort_index'] ?? 0);
+    });
+}
 
 ?>
 <!DOCTYPE html>
@@ -153,6 +326,7 @@ $comparison_groups = [
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow, noarchive">
     <meta name="description" content="Planes de SimplyGest Praxis para servicios profesionales multisectoriales.">
     <title>Planes y precios | SimplyGest Praxis</title>
     <link rel="icon" href="<?= htmlspecialchars($brand_icon_url, ENT_QUOTES, 'UTF-8') ?>">
@@ -501,7 +675,7 @@ $comparison_groups = [
 </head>
 
 <body>
-    <nav class="sg-nav py-3">
+    <nav class="sg-nav">
         <div class="container d-flex align-items-center justify-content-between">
             <a href="./" class="d-inline-flex align-items-center text-decoration-none">
                 <img src="<?= htmlspecialchars($brand_logo_url, ENT_QUOTES, 'UTF-8') ?>" alt="SimplyGest Praxis" class="sg-brand-logo">
@@ -572,6 +746,16 @@ $comparison_groups = [
                         <?php
                         $enabled_count = count(array_filter($plan['features'] ?? []));
                         $summary = $plan_summaries[$plan_key] ?? ['tagline' => 'Plan configurable.', 'tone' => 'Plan'];
+                        $highlight_features = [];
+                        foreach (($plan_highlight_features[$plan_key] ?? []) as $highlight_feature) {
+                            if (praxis_plans_feature_enabled($plan, $highlight_feature)) {
+                                if (is_array($highlight_feature)) {
+                                    $highlight_features[] = 'Pago online por Redsys';
+                                } else {
+                                    $highlight_features[] = $feature_labels[$highlight_feature] ?? $highlight_feature;
+                                }
+                            }
+                        }
                         ?>
                         <div class="col-lg-4">
                             <article class="sg-plan-card <?= $plan_key === 'summum' ? 'is-featured' : '' ?>">
@@ -586,7 +770,11 @@ $comparison_groups = [
                                 </div>
                                 <ul class="sg-plan-list">
                                     <li><i class="bi bi-check-circle-fill"></i><span>Base común de agenda y gestión diaria.</span></li>
-                                    <li><i class="bi bi-check-circle-fill"></i><span><?= (int) $enabled_count ?> opciones avanzadas incluidas.</span></li>
+                                    <?php foreach ($highlight_features as $highlight): ?>
+                                        <li><i class="bi bi-check-circle-fill"></i><span><?= htmlspecialchars($highlight, ENT_QUOTES, 'UTF-8') ?></span></li>
+                                    <?php endforeach; ?>
+                                    <li><i class="bi bi-check-circle-fill"></i><span>Miembros adicionales: <?= htmlspecialchars(praxis_plans_team_limit_label($plan), ENT_QUOTES, 'UTF-8') ?>.</span></li>
+                                    <li><i class="bi bi-check-circle-fill"></i><span><?= (int) $enabled_count ?> funciones configurables incluidas.</span></li>
                                     <li><i class="bi bi-check-circle-fill"></i><span>Duraciones disponibles: <?= htmlspecialchars(implode(', ', $plan['limits']['appointmentDurations'] ?? [60, 90, 120]), ENT_QUOTES, 'UTF-8') ?> min.</span></li>
                                 </ul>
                             </article>
@@ -623,9 +811,20 @@ $comparison_groups = [
                                             <?php foreach ($plans as $plan): ?>
                                                 <?php $enabled = !empty($feature['common']) || praxis_plans_feature_enabled($plan, $feature['feature'] ?? ''); ?>
                                                 <td class="text-center">
-                                                    <span class="<?= $enabled ? 'sg-check' : 'sg-cross' ?>" title="<?= $enabled ? 'Incluido' : 'No incluido' ?>">
-                                                        <i class="bi <?= $enabled ? 'bi-check-lg' : 'bi-dash-lg' ?>"></i>
-                                                    </span>
+                                                    <?php if (isset($feature['limit']) && $feature['limit'] === 'teamMembers'): ?>
+                                                        <?php $team_limit_badge = praxis_plans_team_limit_badge_value($plan); ?>
+                                                        <span class="sg-check" title="<?= $team_limit_badge === null ? 'Sin limite' : ((string) $team_limit_badge) ?>">
+                                                            <?php if ($team_limit_badge === null): ?>
+                                                                <i class="bi bi-check-lg"></i>
+                                                            <?php else: ?>
+                                                                <?= (int) $team_limit_badge ?>
+                                                            <?php endif; ?>
+                                                        </span>
+                                                    <?php else: ?>
+                                                        <span class="<?= $enabled ? 'sg-check' : 'sg-cross' ?>" title="<?= $enabled ? 'Incluido' : 'No incluido' ?>">
+                                                            <i class="bi <?= $enabled ? 'bi-check-lg' : 'bi-dash-lg' ?>"></i>
+                                                        </span>
+                                                    <?php endif; ?>
                                                 </td>
                                             <?php endforeach; ?>
                                         </tr>

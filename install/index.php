@@ -10,6 +10,8 @@ require_once $rootDir . '/app_paths.php';
 require_once $rootDir . '/config.php';
 require_once $rootDir . '/tenant_helpers.php';
 require_once $rootDir . '/cabinet_helpers.php';
+require_once $rootDir . '/payment_helpers.php';
+require_once $rootDir . '/invoice_helpers.php';
 require_once $rootDir . '/sector_text_helpers.php';
 
 $requestMethod = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -31,7 +33,21 @@ function install_open_db()
     $flags = 0;
     if (defined('DB_SSL') && DB_SSL) {
         $cert_name = defined('DB_SSL_CERT') ? DB_SSL_CERT : 'mysql.pem';
-        $cert_path = ($_SERVER['DOCUMENT_ROOT'] ?? dirname(__DIR__)) . '/' . ltrim($cert_name, '/\\');
+        $cert_path = $cert_name;
+        if (!preg_match('/^(?:[a-zA-Z]:[\/\\\\]|\/)/', $cert_name)) {
+            $rootDir = dirname(__DIR__);
+            $cert_candidates = [
+                $rootDir . '/' . ltrim($cert_name, '/\\'),
+                ($_SERVER['DOCUMENT_ROOT'] ?? $rootDir) . '/' . ltrim($cert_name, '/\\'),
+            ];
+            $cert_path = $cert_candidates[0];
+            foreach ($cert_candidates as $candidate) {
+                if (file_exists($candidate)) {
+                    $cert_path = $candidate;
+                    break;
+                }
+            }
+        }
         if (file_exists($cert_path)) {
             $mysqli->ssl_set(null, null, $cert_path, null, null);
         }
@@ -248,7 +264,16 @@ function install_base_tables($mysqli)
 
     $mysqli->query("CREATE TABLE IF NOT EXISTS patient_profiles (
         user_id INT UNSIGNED NOT NULL PRIMARY KEY,
+        tenant_id INT UNSIGNED NOT NULL DEFAULT 1,
         patient_type VARCHAR(80) DEFAULT NULL,
+        fiscal_name VARCHAR(180) DEFAULT NULL,
+        fiscal_nif VARCHAR(50) DEFAULT NULL,
+        invoice_use_alt_data TINYINT(1) NOT NULL DEFAULT 0,
+        invoice_name VARCHAR(180) DEFAULT NULL,
+        invoice_nif VARCHAR(50) DEFAULT NULL,
+        invoice_email VARCHAR(180) DEFAULT NULL,
+        invoice_phone VARCHAR(40) DEFAULT NULL,
+        invoice_address VARCHAR(255) DEFAULT NULL,
         patient_status VARCHAR(20) NOT NULL DEFAULT 'active',
         birth_date DATE DEFAULT NULL,
         referral_source VARCHAR(80) DEFAULT NULL,
@@ -256,6 +281,7 @@ function install_base_tables($mysqli)
         emergency_contact_name VARCHAR(150) DEFAULT NULL,
         emergency_contact_phone VARCHAR(40) DEFAULT NULL,
         emergency_contact_relation VARCHAR(80) DEFAULT NULL,
+        address VARCHAR(255) DEFAULT NULL,
         admission_date DATE DEFAULT NULL,
         notes LONGTEXT DEFAULT NULL,
         photo_path VARCHAR(255) DEFAULT NULL,
@@ -359,6 +385,8 @@ function install_base_tables($mysqli)
         professional_id INT UNSIGNED DEFAULT NULL,
         appointment_date DATE NOT NULL,
         appointment_time TIME NOT NULL,
+        consultation_type VARCHAR(20) NOT NULL DEFAULT 'presencial',
+        location_id INT UNSIGNED DEFAULT NULL,
         status VARCHAR(32) NOT NULL DEFAULT 'booked',
         payment_status VARCHAR(32) NOT NULL DEFAULT 'pending',
         payment_method VARCHAR(16) DEFAULT NULL,
@@ -366,6 +394,7 @@ function install_base_tables($mysqli)
         payment_updated_at DATETIME DEFAULT NULL,
         payment_updated_by INT UNSIGNED DEFAULT NULL,
         online_session_url VARCHAR(500) DEFAULT NULL,
+        sms_reminder_sent_at DATETIME DEFAULT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         cancelled_at DATETIME NULL,
         INDEX idx_date_time (appointment_date, appointment_time),
@@ -373,6 +402,28 @@ function install_base_tables($mysqli)
         INDEX idx_calendar_professional (tenant_id, professional_id, status, appointment_date, appointment_time),
         INDEX idx_calendar_patient (tenant_id, user_id, status, appointment_date, appointment_time)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $mysqli->query("CREATE TABLE IF NOT EXISTS appointment_locations (
+        id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        tenant_id INT UNSIGNED NOT NULL DEFAULT 1,
+        location_key VARCHAR(80) DEFAULT NULL,
+        name VARCHAR(120) NOT NULL,
+        location_type VARCHAR(24) NOT NULL DEFAULT 'custom',
+        is_enabled TINYINT(1) NOT NULL DEFAULT 1,
+        is_system TINYINT(1) NOT NULL DEFAULT 0,
+        sort_order INT UNSIGNED NOT NULL DEFAULT 0,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_appointment_locations_key (tenant_id, location_key),
+        INDEX idx_appointment_locations_enabled (tenant_id, is_enabled, sort_order)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $mysqli->query("INSERT INTO appointment_locations (tenant_id, location_key, name, location_type, is_enabled, is_system, sort_order)
+        VALUES (1, 'default', 'Predeterminada', 'default', 1, 1, 10)
+        ON DUPLICATE KEY UPDATE name = VALUES(name), location_type = VALUES(location_type), is_enabled = 1, is_system = 1, sort_order = VALUES(sort_order)");
+    $mysqli->query("INSERT INTO appointment_locations (tenant_id, location_key, name, location_type, is_enabled, is_system, sort_order)
+        VALUES (1, 'home', 'A domicilio', 'home', 0, 1, 20)
+        ON DUPLICATE KEY UPDATE name = VALUES(name), location_type = VALUES(location_type), is_system = 1, sort_order = VALUES(sort_order)");
 
     $mysqli->query("CREATE TABLE IF NOT EXISTS closed_days (
         id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -412,6 +463,11 @@ function install_base_tables($mysqli)
         legal_professional_college VARCHAR(255) NULL,
         legal_uses_non_technical_cookies TINYINT NOT NULL DEFAULT 0,
         legal_terms_notes TEXT NULL,
+        billing_enabled TINYINT(1) NOT NULL DEFAULT 0,
+        billing_country VARCHAR(2) NOT NULL DEFAULT 'ES',
+        billing_province VARCHAR(80) NULL,
+        billing_session_concept VARCHAR(255) NOT NULL DEFAULT 'Sesion del dia {fecha} de duracion {duracion} minutos',
+        billing_report_concept VARCHAR(255) NOT NULL DEFAULT 'Informe {titulo}',
         online_payment_enabled TINYINT(1) NOT NULL DEFAULT 0,
         environment ENUM('sandbox','production') NOT NULL DEFAULT 'sandbox',
         merchant_code VARCHAR(20) NULL,
@@ -424,6 +480,7 @@ function install_base_tables($mysqli)
 
     $mysqli->query("INSERT IGNORE INTO payment_settings (id, app_name, site_tagline, appointment_price) VALUES (1, 'SimplyGest Praxis', '', 70.00)");
 
+    ensure_invoice_schema($mysqli);
     ensure_cabinet_schema($mysqli);
 }
 
@@ -432,7 +489,16 @@ function install_ensure_payment_settings_columns($mysqli)
     $mysqli->query("ALTER TABLE users MODIFY password_hash VARCHAR(255) NULL");
     $mysqli->query("ALTER TABLE users MODIFY role ENUM('superadmin','admin','patient') NOT NULL DEFAULT 'patient'");
     install_add_column_if_missing($mysqli, 'invitations', 'user_id', 'INT UNSIGNED DEFAULT NULL AFTER token');
+    install_add_column_if_missing($mysqli, 'patient_profiles', 'tenant_id', 'INT UNSIGNED NOT NULL DEFAULT 1 AFTER user_id');
     install_add_column_if_missing($mysqli, 'patient_profiles', 'patient_status', "VARCHAR(20) NOT NULL DEFAULT 'active' AFTER patient_type");
+    install_add_column_if_missing($mysqli, 'patient_profiles', 'fiscal_name', 'VARCHAR(180) DEFAULT NULL AFTER patient_type');
+    install_add_column_if_missing($mysqli, 'patient_profiles', 'fiscal_nif', 'VARCHAR(50) DEFAULT NULL AFTER fiscal_name');
+    install_add_column_if_missing($mysqli, 'patient_profiles', 'invoice_use_alt_data', 'TINYINT(1) NOT NULL DEFAULT 0 AFTER fiscal_nif');
+    install_add_column_if_missing($mysqli, 'patient_profiles', 'invoice_name', 'VARCHAR(180) DEFAULT NULL AFTER invoice_use_alt_data');
+    install_add_column_if_missing($mysqli, 'patient_profiles', 'invoice_nif', 'VARCHAR(50) DEFAULT NULL AFTER invoice_name');
+    install_add_column_if_missing($mysqli, 'patient_profiles', 'invoice_email', 'VARCHAR(180) DEFAULT NULL AFTER invoice_nif');
+    install_add_column_if_missing($mysqli, 'patient_profiles', 'invoice_phone', 'VARCHAR(40) DEFAULT NULL AFTER invoice_email');
+    install_add_column_if_missing($mysqli, 'patient_profiles', 'invoice_address', 'VARCHAR(255) DEFAULT NULL AFTER invoice_phone');
     install_add_column_if_missing($mysqli, 'patient_profiles', 'birth_date', 'DATE DEFAULT NULL AFTER patient_status');
     install_add_column_if_missing($mysqli, 'patient_profiles', 'referral_source', 'VARCHAR(80) DEFAULT NULL AFTER birth_date');
     install_add_column_if_missing($mysqli, 'patient_profiles', 'knowledge_problem_id', 'INT UNSIGNED DEFAULT NULL AFTER referral_source');
@@ -440,6 +506,7 @@ function install_ensure_payment_settings_columns($mysqli)
     install_add_column_if_missing($mysqli, 'patient_profiles', 'emergency_contact_name', 'VARCHAR(150) DEFAULT NULL AFTER initial_consultation_reason');
     install_add_column_if_missing($mysqli, 'patient_profiles', 'emergency_contact_phone', 'VARCHAR(40) DEFAULT NULL AFTER emergency_contact_name');
     install_add_column_if_missing($mysqli, 'patient_profiles', 'emergency_contact_relation', 'VARCHAR(80) DEFAULT NULL AFTER emergency_contact_phone');
+    install_add_column_if_missing($mysqli, 'patient_profiles', 'address', 'VARCHAR(255) DEFAULT NULL AFTER emergency_contact_relation');
     install_add_column_if_missing($mysqli, 'patient_work_plan_tasks', 'appointment_id', 'INT UNSIGNED DEFAULT NULL AFTER patient_id');
     install_add_column_if_missing($mysqli, 'patient_work_plan_tasks', 'visible_to_patient', 'TINYINT(1) NOT NULL DEFAULT 0 AFTER priority');
     install_add_column_if_missing($mysqli, 'patient_profiles', 'document_path', 'VARCHAR(255) DEFAULT NULL AFTER notes');

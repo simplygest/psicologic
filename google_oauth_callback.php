@@ -4,7 +4,10 @@ require_once 'db.php';
 require_once 'google_helpers.php';
 require_once 'settings_helpers.php';
 
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['admin', 'superadmin'], true)) {
+$oauth_state = (string) ($_GET['state'] ?? '');
+$signed_state_tenant_key = function_exists('tenant_key_from_signed_state') ? tenant_key_from_signed_state($oauth_state) : '';
+$has_authenticated_oauth_user = isset($_SESSION['user_id']) && in_array($_SESSION['role'] ?? '', ['admin', 'superadmin', 'reception', 'administration', 'technical'], true);
+if (!$has_authenticated_oauth_user && $signed_state_tenant_key === '') {
     header('Location: login.php');
     exit;
 }
@@ -12,9 +15,23 @@ if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['admin',
 $ok = false;
 $message = '';
 $branding = get_public_branding_settings($mysqli);
+$return_url = $_SESSION['google_oauth_return_url'] ?? google_tenant_dashboard_url();
+
+function google_oauth_return_to_dashboard($return_url, $status, $message = '')
+{
+    $_SESSION['google_oauth_flash'] = [
+        'status' => $status,
+        'message' => $message
+    ];
+    header('Location: ' . $return_url);
+    exit;
+}
 
 try {
-    if (empty($_GET['state']) || empty($_SESSION['google_oauth_state']) || $_GET['state'] !== $_SESSION['google_oauth_state']) {
+    $session_state = (string) ($_SESSION['google_oauth_state'] ?? '');
+    $state_from_session = $session_state !== '' && hash_equals($session_state, $oauth_state);
+    $state_from_signature = $signed_state_tenant_key !== '' && $signed_state_tenant_key === current_tenant_key();
+    if ($oauth_state === '' || (!$state_from_session && !$state_from_signature)) {
         throw new \Exception('Estado OAuth inválido');
     }
 
@@ -28,10 +45,13 @@ try {
 
     google_exchange_code($mysqli, $_GET['code']);
     unset($_SESSION['google_oauth_state']);
+    unset($_SESSION['google_oauth_return_url']);
     $ok = true;
     $message = 'Google se ha conectado correctamente.';
+    google_oauth_return_to_dashboard($return_url, 'success', $message);
 } catch (\Exception $e) {
     $message = $e->getMessage();
+    google_oauth_return_to_dashboard($return_url, 'error', $message);
 }
 ?>
 <!DOCTYPE html>
@@ -40,7 +60,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="robots" content="noindex, nofollow">
+    <meta name="robots" content="noindex, nofollow, noarchive">
     <title>Conexión Google - Psicología Minimal</title>
     <?= favicon_link_tags($branding) ?>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -59,7 +79,7 @@ try {
                     </h2>
                     <p><?= htmlspecialchars($message) ?></p>
                     <div class="mt-4">
-                        <a href="dashboard.php" class="btn btn-primary">Volver al panel</a>
+                        <a href="<?= htmlspecialchars($return_url, ENT_QUOTES, 'UTF-8') ?>" class="btn btn-primary">Volver al panel</a>
                     </div>
                 </div>
             </div>

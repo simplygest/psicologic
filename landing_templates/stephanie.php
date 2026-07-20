@@ -73,7 +73,7 @@ function public_delivery_text($mode)
 </head>
 
 <body class="public-site">
-    <nav class="navbar navbar-expand-lg public-navbar py-3">
+    <nav class="navbar navbar-expand-lg public-navbar">
         <div class="container">
             <a class="navbar-brand d-flex align-items-center gap-2" href="index.php">
                 <img src="<?= htmlspecialchars($tenant_brand_logo_url) ?>" alt="<?= htmlspecialchars($app_name) ?>" class="brand-avatar">
@@ -109,7 +109,7 @@ function public_delivery_text($mode)
         <section class="landing-hero">
             <div class="container">
                 <div class="row align-items-center g-5">
-                    <div class="col-lg-7">
+                    <div class="<?= $landing_image_path ? 'col-lg-7' : 'col-lg-9' ?>">
                         <p class="landing-kicker"><?= htmlspecialchars($site_tagline) ?></p>
                         <h1><?= htmlspecialchars($app_name) ?></h1>
                         <p class="landing-lead">Acompañamiento psicológico basado en evidencia, con <?= htmlspecialchars(public_delivery_text($appointment_delivery_mode)) ?> para adultos, infancia y adolescencia.</p>
@@ -131,21 +131,17 @@ function public_delivery_text($mode)
                             </div>
                         <?php endif; ?>
                     </div>
+                    <?php if ($landing_image_path): ?>
                     <div class="col-lg-5">
                         <div class="landing-portrait">
-                            <?php if ($landing_image_path): ?>
-                                <img src="<?= htmlspecialchars($landing_image_path) ?>" alt="<?= htmlspecialchars($app_name) ?>">
-                            <?php else: ?>
-                                <div class="landing-portrait-placeholder">
-                                    <span>SLB</span>
-                                </div>
-                            <?php endif; ?>
+                            <img src="<?= htmlspecialchars($landing_image_path) ?>" alt="<?= htmlspecialchars($app_name) ?>">
                             <div class="landing-portrait-caption">
                                 <strong>N.º colegiada T-04491</strong>
                                 <span>Consulta privada en Santa Cruz de Tenerife</span>
                             </div>
                         </div>
                     </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </section>

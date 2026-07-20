@@ -53,7 +53,7 @@ $phone_href = preg_replace('/[^\d+]/', '', $site_phone);
 </head>
 
 <body class="public-site">
-    <nav class="navbar navbar-expand-lg public-navbar py-3">
+    <nav class="navbar navbar-expand-lg public-navbar">
         <div class="container">
             <a class="navbar-brand d-flex align-items-center gap-2" href="index.php">
                 <img src="<?= htmlspecialchars($tenant_brand_logo_url, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($app_name, ENT_QUOTES, 'UTF-8') ?>" class="brand-avatar">

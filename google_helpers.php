@@ -9,26 +9,77 @@ function google_get_settings($mysqli)
     $tenant_id = current_tenant_id();
 
     $res = $mysqli->query("
-        SELECT app_name, smtp_from_name, google_client_id, google_client_secret, google_refresh_token, google_connected_email,
+        SELECT app_name, smtp_from_name, google_refresh_token, google_connected_email,
                google_redirect_uri, google_calendar_enabled, google_calendar_id
         FROM payment_settings
         WHERE tenant_id = $tenant_id
     ");
 
-    return $res->fetch_assoc() ?: [];
+    $settings = $res->fetch_assoc() ?: [];
+    $settings['google_client_id'] = google_oauth_client_id();
+    $settings['google_client_secret'] = google_oauth_client_secret();
+
+    return $settings;
+}
+
+function google_oauth_client_id()
+{
+    return defined('GOOGLE_OAUTH_CLIENT_ID') ? trim((string) GOOGLE_OAUTH_CLIENT_ID) : '';
+}
+
+function google_oauth_client_secret()
+{
+    return defined('GOOGLE_OAUTH_CLIENT_SECRET') ? trim((string) GOOGLE_OAUTH_CLIENT_SECRET) : '';
+}
+
+function google_oauth_credentials_configured()
+{
+    return google_oauth_client_id() !== '' && google_oauth_client_secret() !== '';
 }
 
 function google_default_redirect_uri()
 {
-    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || ($_SERVER['SERVER_PORT'] ?? null) == 443) ? 'https://' : 'http://';
-    $host = $_SERVER['HTTP_HOST'] ?? '';
-    $path = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\');
-    return $protocol . $host . ($path ? $path . '/' : '/') . 'google_oauth_callback.php';
+    return google_oauth_base_url() . 'google_oauth_callback.php';
+}
+
+function google_oauth_base_url()
+{
+    $configured = defined('GOOGLE_OAUTH_BASE_URL') ? trim((string) GOOGLE_OAUTH_BASE_URL) : '';
+    if ($configured !== '') {
+        return rtrim($configured, '/') . '/';
+    }
+
+    return google_current_origin() . google_app_base_url_path();
+}
+
+function google_current_origin()
+{
+    $forwarded_proto = strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''));
+    $protocol = ($forwarded_proto === 'https' || (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || ($_SERVER['SERVER_PORT'] ?? null) == 443) ? 'https://' : 'http://';
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    return $protocol . $host;
+}
+
+function google_app_base_url_path()
+{
+    $base_path = function_exists('tenant_app_base_path') ? tenant_app_base_path() : (defined('APP_BASE_PATH') ? APP_BASE_PATH : '');
+    $base_path = trim((string) $base_path, '/');
+    return '/' . ($base_path !== '' ? $base_path . '/' : '');
+}
+
+function google_tenant_dashboard_url()
+{
+    $tenant_key = function_exists('current_tenant_key') ? current_tenant_key() : '';
+    $tenant_key = trim((string) $tenant_key, '/');
+    if (function_exists('tenant_canonical_base_url')) {
+        return tenant_canonical_base_url() . 'dashboard.php';
+    }
+    return google_current_origin() . google_app_base_url_path() . ($tenant_key !== '' ? rawurlencode($tenant_key) . '/' : '') . 'dashboard.php';
 }
 
 function google_redirect_uri($settings)
 {
-    return !empty($settings['google_redirect_uri']) ? $settings['google_redirect_uri'] : google_default_redirect_uri();
+    return google_default_redirect_uri();
 }
 
 function google_scopes()
@@ -44,10 +95,16 @@ function google_build_auth_url($mysqli)
 {
     $settings = google_get_settings($mysqli);
     if (empty($settings['google_client_id'])) {
-        throw new \Exception('Falta Google Client ID');
+        throw new \Exception('Falta configurar Google OAuth Client ID en el servidor');
     }
 
-    $_SESSION['google_oauth_state'] = bin2hex(random_bytes(16));
+    $state = function_exists('tenant_make_signed_state')
+        ? tenant_make_signed_state(current_tenant_key())
+        : '';
+    if ($state === '') {
+        $state = bin2hex(random_bytes(16));
+    }
+    $_SESSION['google_oauth_state'] = $state;
 
     $params = [
         'client_id' => $settings['google_client_id'],
@@ -56,7 +113,7 @@ function google_build_auth_url($mysqli)
         'scope' => implode(' ', google_scopes()),
         'access_type' => 'offline',
         'prompt' => 'consent',
-        'state' => $_SESSION['google_oauth_state']
+        'state' => $state
     ];
 
     return 'https://accounts.google.com/o/oauth2/v2/auth?' . http_build_query($params);
@@ -105,7 +162,7 @@ function google_exchange_code($mysqli, $code)
 {
     $settings = google_get_settings($mysqli);
     if (empty($settings['google_client_id']) || empty($settings['google_client_secret'])) {
-        throw new \Exception('Faltan credenciales Google');
+        throw new \Exception('Faltan credenciales Google OAuth en el servidor');
     }
 
     [$status, $response] = google_http_post('https://oauth2.googleapis.com/token', [
@@ -148,7 +205,7 @@ function google_access_token($mysqli)
 {
     $settings = google_get_settings($mysqli);
     if (empty($settings['google_client_id']) || empty($settings['google_client_secret']) || empty($settings['google_refresh_token'])) {
-        throw new \Exception('Faltan credenciales Google');
+        throw new \Exception('Faltan credenciales Google o la cuenta no esta conectada');
     }
 
     [$status, $response] = google_http_post('https://oauth2.googleapis.com/token', [

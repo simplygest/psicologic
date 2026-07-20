@@ -1,6 +1,6 @@
 Protocolo: FTPS
 Host: waws-prod-esc-005.ftp.azurewebsites.windows.net
 Ruta: /site/wwwroot
-Subcarpeta de esta app: /sgpraxis
-Usuario FTPS: simplygest\$simplygest
-Contraseña: uHh5edBAxPPsvPkfEN2YQHRi6vQtGcFHrLr4jb7M4xrk6Z6MfG7YbMrBrC7c
+Subcarpeta de esta app:
+Usuario FTPS: SGPraxisWebApp\$SGPraxisWebApp
+Contrasena: zCb5Ym2a6QTNYoEjlHThZfXpghSAzM2a6hiWlCuoFShd6CqFyp1q9lbbf892

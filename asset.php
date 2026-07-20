@@ -70,7 +70,7 @@ if (!in_array($category, $public_categories, true)) {
     }
 
     if ($category === 'patients') {
-        if (!in_array($session_role, ['admin', 'superadmin'], true)) {
+if (!in_array($session_role, ['admin', 'superadmin', 'reception', 'administration', 'technical'], true)) {
             $stmt = $mysqli->prepare("SELECT photo_path FROM patient_profiles WHERE tenant_id = ? AND user_id = ? LIMIT 1");
             $tenant_id = current_tenant_id();
             $stmt->bind_param("ii", $tenant_id, $session_user_id);

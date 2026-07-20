@@ -100,7 +100,7 @@ function ensure_cabinet_schema($mysqli)
     }
 
     $tenant_id = current_tenant_id();
-    $mysqli->query("ALTER TABLE users MODIFY role ENUM('superadmin','admin','patient') NOT NULL DEFAULT 'patient'");
+    $mysqli->query("ALTER TABLE users MODIFY role ENUM('superadmin','admin','reception','administration','technical','patient') NOT NULL DEFAULT 'patient'");
     cabinet_add_column_if_missing($mysqli, 'users', 'tenant_id', "INT UNSIGNED NOT NULL DEFAULT $tenant_id AFTER id");
     cabinet_drop_single_column_unique_indexes($mysqli, 'users', 'email');
     cabinet_drop_single_column_unique_indexes($mysqli, 'users', 'phone');
@@ -189,13 +189,17 @@ function ensure_cabinet_schema($mysqli)
             tenant_id INT UNSIGNED NOT NULL DEFAULT 1,
             professional_id INT UNSIGNED NOT NULL,
             appointment_delivery_mode ENUM('both', 'presencial', 'online') DEFAULT NULL,
-            available_session_types VARCHAR(32) DEFAULT NULL,
-            available_session_durations VARCHAR(16) DEFAULT NULL,
+            available_session_types VARCHAR(255) DEFAULT NULL,
+            available_session_durations VARCHAR(100) DEFAULT NULL,
             appointment_start_time TIME DEFAULT NULL,
             appointment_end_time TIME DEFAULT NULL,
             break_start_time TIME DEFAULT NULL,
             break_end_time TIME DEFAULT NULL,
             available_weekdays VARCHAR(32) DEFAULT NULL,
+            default_appointment_location VARCHAR(255) DEFAULT NULL,
+            default_location_id INT UNSIGNED DEFAULT NULL,
+            livekit_enabled TINYINT(1) NOT NULL DEFAULT 1,
+            member_permissions_json TEXT DEFAULT NULL,
             min_booking_notice_days INT UNSIGNED DEFAULT NULL,
             max_booking_notice_days INT UNSIGNED DEFAULT NULL,
             knowledge_sector_mode VARCHAR(16) NOT NULL DEFAULT 'own',
@@ -210,6 +214,12 @@ function ensure_cabinet_schema($mysqli)
 
     cabinet_add_column_if_missing($mysqli, 'patient_professionals', 'tenant_id', "INT UNSIGNED NOT NULL DEFAULT $tenant_id AFTER id");
     cabinet_add_column_if_missing($mysqli, 'professional_settings', 'tenant_id', "INT UNSIGNED NOT NULL DEFAULT $tenant_id AFTER id");
+    $mysqli->query("ALTER TABLE professional_settings MODIFY available_session_types VARCHAR(255) DEFAULT NULL");
+    $mysqli->query("ALTER TABLE professional_settings MODIFY available_session_durations VARCHAR(100) DEFAULT NULL");
+    cabinet_add_column_if_missing($mysqli, 'professional_settings', 'default_appointment_location', "VARCHAR(255) DEFAULT NULL AFTER available_weekdays");
+    cabinet_add_column_if_missing($mysqli, 'professional_settings', 'default_location_id', "INT UNSIGNED DEFAULT NULL AFTER default_appointment_location");
+    cabinet_add_column_if_missing($mysqli, 'professional_settings', 'livekit_enabled', "TINYINT(1) NOT NULL DEFAULT 1 AFTER default_appointment_location");
+    cabinet_add_column_if_missing($mysqli, 'professional_settings', 'member_permissions_json', "TEXT DEFAULT NULL AFTER livekit_enabled");
     cabinet_add_column_if_missing($mysqli, 'professional_settings', 'min_booking_notice_days', "INT UNSIGNED DEFAULT NULL AFTER available_weekdays");
     cabinet_add_column_if_missing($mysqli, 'professional_settings', 'max_booking_notice_days', "INT UNSIGNED DEFAULT NULL AFTER min_booking_notice_days");
     cabinet_add_column_if_missing($mysqli, 'professional_settings', 'bonuses_enabled', "TINYINT(1) DEFAULT NULL AFTER max_booking_notice_days");
@@ -300,9 +310,149 @@ function cabinet_default_professional_settings()
         'break_start_time' => '15:00:00',
         'break_end_time' => '16:00:00',
         'available_weekdays' => '1,2,3,4,5',
+        'default_appointment_location' => '',
+        'default_location_id' => null,
+        'livekit_enabled' => 1,
+        'member_permissions_json' => null,
         'min_booking_notice_days' => 2,
         'max_booking_notice_days' => 40
     ];
+}
+
+function cabinet_member_permission_keys()
+{
+    return [
+        'bookable',
+        'settings',
+        'agenda',
+        'patients',
+        'appointments',
+        'statistics',
+        'private_patient_data',
+        'create_appointments',
+        'cancel_appointments',
+        'create_patients'
+    ];
+}
+
+function cabinet_default_member_permissions_for_role($role)
+{
+    $role = (string) $role;
+    $all = array_fill_keys(cabinet_member_permission_keys(), true);
+    if ($role === 'superadmin') {
+        return $all;
+    }
+    if ($role === 'admin') {
+        return $all;
+    }
+    if ($role === 'reception') {
+        return [
+            'bookable' => false,
+            'settings' => false,
+            'agenda' => true,
+            'patients' => true,
+            'appointments' => true,
+            'statistics' => false,
+            'private_patient_data' => false,
+            'create_appointments' => true,
+            'cancel_appointments' => true,
+            'create_patients' => true
+        ];
+    }
+    if ($role === 'administration') {
+        return [
+            'bookable' => false,
+            'settings' => false,
+            'agenda' => true,
+            'patients' => true,
+            'appointments' => true,
+            'statistics' => true,
+            'private_patient_data' => false,
+            'create_appointments' => true,
+            'cancel_appointments' => true,
+            'create_patients' => true
+        ];
+    }
+    if ($role === 'technical') {
+        return [
+            'bookable' => false,
+            'settings' => true,
+            'agenda' => false,
+            'patients' => false,
+            'appointments' => false,
+            'statistics' => false,
+            'private_patient_data' => false,
+            'create_appointments' => false,
+            'cancel_appointments' => false,
+            'create_patients' => false
+        ];
+    }
+
+    return array_fill_keys(cabinet_member_permission_keys(), false);
+}
+
+function cabinet_normalize_member_permissions($permissions, $role)
+{
+    if (is_string($permissions) && trim($permissions) !== '') {
+        $decoded = json_decode($permissions, true);
+        $permissions = is_array($decoded) ? $decoded : [];
+    }
+    if (!is_array($permissions)) {
+        $permissions = [];
+    }
+
+    $normalized = cabinet_default_member_permissions_for_role($role);
+    foreach (cabinet_member_permission_keys() as $key) {
+        if (array_key_exists($key, $permissions)) {
+            $normalized[$key] = !empty($permissions[$key]);
+        }
+    }
+    if ($role === 'superadmin') {
+        $normalized = array_fill_keys(cabinet_member_permission_keys(), true);
+    }
+    return $normalized;
+}
+
+function cabinet_member_permissions_json($permissions, $role)
+{
+    return json_encode(cabinet_normalize_member_permissions($permissions, $role), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+}
+
+function cabinet_member_has_permission($permissions_json, $role, $permission)
+{
+    $permissions = cabinet_normalize_member_permissions($permissions_json, $role);
+    return !empty($permissions[$permission]);
+}
+
+function cabinet_member_permissions_for_user($mysqli, $user_id, $role = null)
+{
+    ensure_cabinet_schema($mysqli);
+    $tenant_id = current_tenant_id();
+    $user_id = (int) $user_id;
+    $role = $role !== null ? (string) $role : '';
+    if ($user_id <= 0) {
+        return cabinet_default_member_permissions_for_role($role);
+    }
+
+    $stmt = $mysqli->prepare("
+        SELECT u.role, ps.member_permissions_json
+        FROM users u
+        LEFT JOIN professionals p ON p.user_id = u.id AND p.tenant_id = u.tenant_id
+        LEFT JOIN professional_settings ps ON ps.professional_id = p.id AND ps.tenant_id = p.tenant_id
+        WHERE u.tenant_id = ? AND u.id = ?
+        LIMIT 1
+    ");
+    if (!$stmt) {
+        return cabinet_default_member_permissions_for_role($role);
+    }
+    $stmt->bind_param("ii", $tenant_id, $user_id);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    if (!$row) {
+        return cabinet_default_member_permissions_for_role($role);
+    }
+    $effective_role = $row['role'] ?: $role;
+    return cabinet_normalize_member_permissions($row['member_permissions_json'] ?? null, $effective_role);
 }
 
 function cabinet_global_settings_as_professional_defaults($mysqli)
@@ -369,13 +519,24 @@ function cabinet_active_professional_exists($mysqli, $professional_id)
     if ($professional_id <= 0) {
         return false;
     }
-    $stmt = $mysqli->prepare("SELECT id FROM professionals WHERE tenant_id = ? AND id = ? AND is_active = 1 LIMIT 1");
+    $stmt = $mysqli->prepare("
+        SELECT p.id, u.role AS user_role, ps.member_permissions_json
+        FROM professionals p
+        LEFT JOIN users u ON u.id = p.user_id AND u.tenant_id = p.tenant_id
+        LEFT JOIN professional_settings ps ON ps.professional_id = p.id AND ps.tenant_id = p.tenant_id
+        WHERE p.tenant_id = ?
+          AND p.id = ?
+          AND p.is_active = 1
+          AND u.role IN ('superadmin', 'admin')
+        LIMIT 1
+    ");
     if (!$stmt) {
         return false;
     }
     $stmt->bind_param("ii", $tenant_id, $professional_id);
     $stmt->execute();
-    return (bool) $stmt->get_result()->fetch_assoc();
+    $row = $stmt->get_result()->fetch_assoc();
+    return $row && cabinet_member_has_permission($row['member_permissions_json'] ?? null, $row['user_role'] ?? 'admin', 'bookable');
 }
 
 function cabinet_patient_primary_professional_id($mysqli, $patient_user_id)
@@ -436,14 +597,29 @@ function cabinet_new_patient_fixed_professional_id($mysqli)
         return $superadmin_id;
     }
 
-    $stmt = $mysqli->prepare("SELECT id FROM professionals WHERE tenant_id = ? AND is_active = 1 ORDER BY sort_order ASC, id ASC LIMIT 1");
+    $stmt = $mysqli->prepare("
+        SELECT p.id, u.role AS user_role, ps.member_permissions_json
+        FROM professionals p
+        LEFT JOIN users u ON u.id = p.user_id AND u.tenant_id = p.tenant_id
+        LEFT JOIN professional_settings ps ON ps.professional_id = p.id AND ps.tenant_id = p.tenant_id
+        WHERE p.tenant_id = ?
+          AND p.is_active = 1
+          AND u.role IN ('superadmin', 'admin')
+        ORDER BY p.sort_order ASC, p.id ASC
+        LIMIT 1
+    ");
     if (!$stmt) {
         return 0;
     }
     $stmt->bind_param("i", $tenant_id);
     $stmt->execute();
-    $row = $stmt->get_result()->fetch_assoc();
-    return $row ? (int) $row['id'] : 0;
+    $res = $stmt->get_result();
+    while ($row = $res->fetch_assoc()) {
+        if (cabinet_member_has_permission($row['member_permissions_json'] ?? null, $row['user_role'] ?? 'admin', 'bookable')) {
+            return (int) $row['id'];
+        }
+    }
+    return 0;
 }
 
 function cabinet_new_patient_booking_mode($mysqli)
@@ -462,10 +638,13 @@ function cabinet_active_professionals_for_booking($mysqli)
     $tenant_id = current_tenant_id();
     $professionals = [];
     $stmt = $mysqli->prepare("
-        SELECT p.id, p.display_name, p.public_photo_path, u.role AS user_role
+        SELECT p.id, p.display_name, p.public_photo_path, u.role AS user_role, ps.member_permissions_json
         FROM professionals p
         LEFT JOIN users u ON u.id = p.user_id AND u.tenant_id = p.tenant_id
-        WHERE p.tenant_id = ? AND p.is_active = 1
+        LEFT JOIN professional_settings ps ON ps.professional_id = p.id AND ps.tenant_id = p.tenant_id
+        WHERE p.tenant_id = ?
+          AND p.is_active = 1
+          AND u.role IN ('superadmin', 'admin')
         ORDER BY CASE WHEN u.role = 'superadmin' THEN 0 ELSE 1 END ASC,
                  p.sort_order ASC,
                  p.display_name ASC
@@ -480,6 +659,9 @@ function cabinet_active_professionals_for_booking($mysqli)
         return [];
     }
     while ($row = $res->fetch_assoc()) {
+        if (!cabinet_member_has_permission($row['member_permissions_json'] ?? null, $row['user_role'] ?? 'admin', 'bookable')) {
+            continue;
+        }
         $payload = cabinet_professional_display_payload($mysqli, (int) $row['id']);
         if ($payload) {
             $professionals[] = $payload;
@@ -499,7 +681,7 @@ function cabinet_fetch_professional_settings_row($mysqli, $professional_id)
     $stmt = $mysqli->prepare("
         SELECT appointment_delivery_mode, available_session_types, available_session_durations,
                appointment_start_time, appointment_end_time, break_start_time, break_end_time,
-               available_weekdays, min_booking_notice_days, max_booking_notice_days
+               available_weekdays, default_appointment_location, default_location_id, livekit_enabled, min_booking_notice_days, max_booking_notice_days
         FROM professional_settings
         WHERE tenant_id = ? AND professional_id = ?
         LIMIT 1
@@ -550,6 +732,9 @@ function cabinet_upsert_professional_settings($mysqli, $professional_id, $settin
     $break_start_time = $settings['break_start_time'] ?? null;
     $break_end_time = $settings['break_end_time'] ?? null;
     $available_weekdays = $settings['available_weekdays'] ?? '1,2,3,4,5';
+    $default_appointment_location = trim((string) ($settings['default_appointment_location'] ?? ''));
+    $default_location_id = !empty($settings['default_location_id']) ? (int) $settings['default_location_id'] : null;
+    $livekit_enabled = !empty($settings['livekit_enabled']) ? 1 : 0;
     $min_booking_notice_days = (int) ($settings['min_booking_notice_days'] ?? 2);
     $max_booking_notice_days = (int) ($settings['max_booking_notice_days'] ?? 40);
 
@@ -565,9 +750,12 @@ function cabinet_upsert_professional_settings($mysqli, $professional_id, $settin
             break_start_time,
             break_end_time,
             available_weekdays,
+            default_appointment_location,
+            default_location_id,
+            livekit_enabled,
             min_booking_notice_days,
             max_booking_notice_days
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
             appointment_delivery_mode = VALUES(appointment_delivery_mode),
             available_session_types = VALUES(available_session_types),
@@ -577,6 +765,9 @@ function cabinet_upsert_professional_settings($mysqli, $professional_id, $settin
             break_start_time = VALUES(break_start_time),
             break_end_time = VALUES(break_end_time),
             available_weekdays = VALUES(available_weekdays),
+            default_appointment_location = VALUES(default_appointment_location),
+            default_location_id = VALUES(default_location_id),
+            livekit_enabled = VALUES(livekit_enabled),
             min_booking_notice_days = VALUES(min_booking_notice_days),
             max_booking_notice_days = VALUES(max_booking_notice_days)
     ");
@@ -585,7 +776,7 @@ function cabinet_upsert_professional_settings($mysqli, $professional_id, $settin
     }
 
     $stmt->bind_param(
-        "iissssssssii",
+        "iisssssssssiiii",
         $tenant_id,
         $professional_id,
         $appointment_delivery_mode,
@@ -596,6 +787,9 @@ function cabinet_upsert_professional_settings($mysqli, $professional_id, $settin
         $break_start_time,
         $break_end_time,
         $available_weekdays,
+        $default_appointment_location,
+        $default_location_id,
+        $livekit_enabled,
         $min_booking_notice_days,
         $max_booking_notice_days
     );
@@ -642,9 +836,12 @@ function cabinet_seed_professional_settings_from_superadmin($mysqli, $profession
             break_start_time,
             break_end_time,
             available_weekdays,
+            default_appointment_location,
+            default_location_id,
+            livekit_enabled,
             min_booking_notice_days,
             max_booking_notice_days
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ");
     if (!$stmt) {
         return false;
@@ -658,11 +855,14 @@ function cabinet_seed_professional_settings_from_superadmin($mysqli, $profession
     $break_start_time = $settings['break_start_time'] ?? null;
     $break_end_time = $settings['break_end_time'] ?? null;
     $available_weekdays = $settings['available_weekdays'] ?? '1,2,3,4,5';
+    $default_appointment_location = trim((string) ($settings['default_appointment_location'] ?? ''));
+    $default_location_id = !empty($settings['default_location_id']) ? (int) $settings['default_location_id'] : null;
+    $livekit_enabled = !empty($settings['livekit_enabled']) ? 1 : 0;
     $min_booking_notice_days = (int) ($settings['min_booking_notice_days'] ?? 2);
     $max_booking_notice_days = (int) ($settings['max_booking_notice_days'] ?? 40);
 
     $stmt->bind_param(
-        "iissssssssii",
+        "iisssssssssiiii",
         $tenant_id,
         $professional_id,
         $appointment_delivery_mode,
@@ -673,6 +873,9 @@ function cabinet_seed_professional_settings_from_superadmin($mysqli, $profession
         $break_start_time,
         $break_end_time,
         $available_weekdays,
+        $default_appointment_location,
+        $default_location_id,
+        $livekit_enabled,
         $min_booking_notice_days,
         $max_booking_notice_days
     );
@@ -733,17 +936,7 @@ function cabinet_professional_display_payload($mysqli, $professional_id)
         return null;
     }
 
-    $tenant_id = current_tenant_id();
-    $dashboard_photo = '';
-    $settings_res = $mysqli->query("SELECT profile_image_path FROM payment_settings WHERE tenant_id = $tenant_id");
-    if ($settings_row = ($settings_res ? $settings_res->fetch_assoc() : null)) {
-        $dashboard_photo = $settings_row['profile_image_path'] ?? '';
-    }
-
     $photo = $professional['public_photo_path'] ?? '';
-    if (!$photo && ($professional['user_role'] ?? '') === 'superadmin') {
-        $photo = $dashboard_photo;
-    }
     $effective_settings = cabinet_get_effective_professional_settings($mysqli, (int) $professional['id']);
 
     return [
@@ -760,20 +953,18 @@ function cabinet_fetch_public_team_members($mysqli)
 {
     ensure_cabinet_schema($mysqli);
     $tenant_id = current_tenant_id();
-    $dashboard_photo = '';
-    $settings_res = $mysqli->query("SELECT profile_image_path FROM payment_settings WHERE tenant_id = $tenant_id");
-    if ($settings_row = ($settings_res ? $settings_res->fetch_assoc() : null)) {
-        $dashboard_photo = $settings_row['profile_image_path'] ?? '';
-    }
     $members = [];
     $stmt = $mysqli->prepare("
         SELECT p.id, p.user_id, p.display_name, p.professional_title, p.license_number, p.professional_specialty,
                p.public_bio, p.public_photo_path, p.public_email, p.public_phone,
                p.instagram_url, p.facebook_url, p.tiktok_url,
-               u.role AS user_role
+               u.role AS user_role, ps.member_permissions_json
         FROM professionals p
         LEFT JOIN users u ON u.id = p.user_id AND u.tenant_id = p.tenant_id
-        WHERE p.tenant_id = ? AND p.is_active = 1
+        LEFT JOIN professional_settings ps ON ps.professional_id = p.id AND ps.tenant_id = p.tenant_id
+        WHERE p.tenant_id = ?
+          AND p.is_active = 1
+          AND u.role IN ('superadmin', 'admin')
         ORDER BY CASE WHEN u.role = 'superadmin' THEN 0 ELSE 1 END ASC,
                  p.sort_order ASC,
                  p.display_name ASC
@@ -788,7 +979,10 @@ function cabinet_fetch_public_team_members($mysqli)
         return [];
     }
     while ($row = $res->fetch_assoc()) {
-        $row['display_photo_path'] = $row['public_photo_path'] ?: (($row['user_role'] ?? '') === 'superadmin' ? $dashboard_photo : '');
+        if (!cabinet_member_has_permission($row['member_permissions_json'] ?? null, $row['user_role'] ?? 'admin', 'bookable')) {
+            continue;
+        }
+        $row['display_photo_path'] = $row['public_photo_path'] ?: '';
         $members[] = $row;
     }
     return $members;
@@ -811,11 +1005,21 @@ function cabinet_resolve_professional_id($mysqli, $session_user_id, $patient_use
     $patient_user_id = (int) $patient_user_id;
 
     if ($is_admin && $session_user_id > 0) {
-        $stmt = $mysqli->prepare("SELECT id FROM professionals WHERE tenant_id = ? AND user_id = ? AND is_active = 1 LIMIT 1");
+        $stmt = $mysqli->prepare("
+            SELECT p.id, u.role AS user_role, ps.member_permissions_json
+            FROM professionals p
+            LEFT JOIN users u ON u.id = p.user_id AND u.tenant_id = p.tenant_id
+            LEFT JOIN professional_settings ps ON ps.professional_id = p.id AND ps.tenant_id = p.tenant_id
+            WHERE p.tenant_id = ?
+              AND p.user_id = ?
+              AND p.is_active = 1
+              AND u.role IN ('superadmin', 'admin')
+            LIMIT 1
+        ");
         $stmt->bind_param("ii", $tenant_id, $session_user_id);
         $stmt->execute();
         $row = $stmt->get_result()->fetch_assoc();
-        if ($row) {
+        if ($row && cabinet_member_has_permission($row['member_permissions_json'] ?? null, $row['user_role'] ?? 'admin', 'bookable')) {
             return (int) $row['id'];
         }
     }
@@ -834,12 +1038,24 @@ function cabinet_resolve_professional_id($mysqli, $session_user_id, $patient_use
         }
     }
 
-    $stmt = $mysqli->prepare("SELECT id FROM professionals WHERE tenant_id = ? AND is_active = 1 ORDER BY sort_order ASC, id ASC LIMIT 1");
+    $stmt = $mysqli->prepare("
+        SELECT p.id, u.role AS user_role, ps.member_permissions_json
+        FROM professionals p
+        LEFT JOIN users u ON u.id = p.user_id AND u.tenant_id = p.tenant_id
+        LEFT JOIN professional_settings ps ON ps.professional_id = p.id AND ps.tenant_id = p.tenant_id
+        WHERE p.tenant_id = ?
+          AND p.is_active = 1
+          AND u.role IN ('superadmin', 'admin')
+        ORDER BY p.sort_order ASC, p.id ASC
+        LIMIT 1
+    ");
     $stmt->bind_param("i", $tenant_id);
     $stmt->execute();
-    $row = $stmt->get_result()->fetch_assoc();
-    if ($row) {
-        return (int) $row['id'];
+    $res = $stmt->get_result();
+    while ($row = $res->fetch_assoc()) {
+        if (cabinet_member_has_permission($row['member_permissions_json'] ?? null, $row['user_role'] ?? 'admin', 'bookable')) {
+            return (int) $row['id'];
+        }
     }
 
     return seed_default_professional($mysqli);

@@ -2,9 +2,15 @@
 session_start();
 require_once '../db.php';
 require_once '../mail_helpers.php';
+require_once '../sms_helpers.php';
 require_once '../settings_helpers.php';
 require_once '../dashboard_config_helpers.php';
 require_once '../payment_helpers.php';
+require_once '../google_helpers.php';
+require_once '../livekit_helpers.php';
+require_once '../invoice_helpers.php';
+require_once '../message_template_helpers.php';
+require_once '../app_log_helpers.php';
 require_once '../fastcron_helpers.php';
 require_once '../urlme_helpers.php';
 require_once '../cabinet_helpers.php';
@@ -12,7 +18,7 @@ require_once '../workoutx_helpers.php';
 header('Content-Type: application/json');
 
 $is_superadmin = ($_SESSION['role'] ?? '') === 'superadmin';
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['admin', 'superadmin'], true)) {
+if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['admin', 'superadmin', 'reception', 'administration', 'technical'], true)) {
     echo json_encode(['success' => false, 'error' => 'No autorizado']);
     exit;
 }
@@ -25,14 +31,70 @@ if (function_exists('app_auto_schema_migrations_enabled') && app_auto_schema_mig
     ensure_work_plan_task_template_tables($mysqli);
     ensure_appointment_payment_columns($mysqli);
     ensure_appointment_services_tables($mysqli);
+    ensure_appointment_locations_table($mysqli);
     ensure_bonus_tables($mysqli);
     ensure_payment_attempts_table($mysqli);
+    ensure_invoice_schema($mysqli);
     ensure_cabinet_schema($mysqli);
     ensure_knowledge_base_sector_schema($mysqli);
 }
 
 $action = $_GET['action'] ?? '';
 $tenant_id = current_tenant_id();
+$member_permissions = cabinet_member_permissions_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0), $_SESSION['role'] ?? '');
+
+function require_member_permission($permission, $error = 'No tienes permiso para realizar esta accion.')
+{
+    global $is_superadmin, $member_permissions;
+    if ($is_superadmin || !empty($member_permissions[$permission])) {
+        return;
+    }
+    echo json_encode(['success' => false, 'error' => $error]);
+    exit;
+}
+
+$statistics_actions = ['admin_stats'];
+$patient_actions = [
+    'get_patients', 'list_patients', 'waiting_list_patients', 'patient_reports', 'create_patient_report',
+    'create_custom_patient_report', 'patient_report_suggestions', 'add_suggested_patient_report',
+    'update_patient_report', 'patient_report', 'patient_evolution', 'save_patient_evolution',
+    'patient_files', 'save_patient_document_file', 'download_patient_document_file',
+    'delete_patient_document_file', 'patient_work_plan', 'save_patient_work_plan_task',
+    'add_fitness_exercise_to_work_plan', 'set_patient_work_plan_task_status',
+    'delete_patient_work_plan_task', 'patient_appointments', 'transfer_patient_professional',
+    'send_patient_invite'
+];
+$appointment_actions = [
+    'appointment_payment_detail', 'appointment_session', 'update_appointment_payment',
+    'update_appointment_status', 'update_appointment_session_notes', 'update_appointment_online_details',
+    'send_appointment_online_link', 'send_manual_appointment_reminder', 'regenerate_appointment_livekit_link', 'quick_appointments',
+    'upcoming_appointments', 'list_closed_days', 'add_closed_day', 'delete_closed_day', 'delete_closed_range'
+];
+$settings_actions = [
+    'save_dashboard_custom_config', 'save_bonuses', 'create_service_catalog_item',
+    'delete_service_catalog_item', 'create_location_catalog_item', 'delete_location_catalog_item',
+    'save_services', 'save_payment_settings', 'get_message_template', 'save_message_template',
+    'get_custom_domain', 'save_custom_domain'
+];
+if (in_array($action, $statistics_actions, true)) {
+    require_member_permission('statistics', 'No tienes permiso para acceder a estadisticas.');
+}
+if (in_array($action, $patient_actions, true)) {
+    require_member_permission('patients', 'No tienes permiso para acceder a pacientes.');
+}
+if (in_array($action, $appointment_actions, true)) {
+    require_member_permission('appointments', 'No tienes permiso para acceder a citas.');
+}
+if (in_array($action, $settings_actions, true)) {
+    require_member_permission('settings', 'No tienes permiso para modificar la configuracion.');
+}
+if ($action === 'generate_invite' || $action === 'send_invite_email') {
+    require_member_permission('create_patients', 'No tienes permiso para crear nuevos pacientes.');
+}
+if ($action === 'list_app_logs' && !$is_superadmin) {
+    echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede consultar el log.']);
+    exit;
+}
 
 function ensure_action_feature($mysqli, $feature, $error)
 {
@@ -40,6 +102,72 @@ function ensure_action_feature($mysqli, $feature, $error)
         echo json_encode(['success' => false, 'error' => $error]);
         exit;
     }
+}
+
+function ensure_tenant_domains_runtime_table($mysqli)
+{
+    $mysqli->query("
+        CREATE TABLE IF NOT EXISTS tenant_domains (
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            tenant_id INT UNSIGNED NOT NULL,
+            domain VARCHAR(255) NOT NULL,
+            is_primary TINYINT(1) NOT NULL DEFAULT 0,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_tenant_domains_domain (domain),
+            KEY idx_tenant_domains_tenant (tenant_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+}
+
+function normalize_custom_domain_input($value, &$error = '')
+{
+    $value = strtolower(trim((string) $value));
+    $value = trim($value);
+    if ($value === '') {
+        return '';
+    }
+
+    if (preg_match('#^http://#i', $value)) {
+        $error = 'Usa un dominio seguro. No introduzcas direcciones con http://.';
+        return '';
+    }
+
+    if (substr_count(strtolower($value), 'https://') > 1) {
+        $error = 'La URL no es valida. Revisa que no hayas pegado https:// dos veces.';
+        return '';
+    }
+
+    $value = preg_replace('#^https://#i', '', $value);
+    $value = trim($value, "/ \t\n\r\0\x0B");
+
+    if ($value === '' || strpos($value, '/') !== false || strpos($value, '?') !== false || strpos($value, '#') !== false) {
+        $error = 'Introduce solo el dominio, sin rutas ni parametros.';
+        return '';
+    }
+
+    if (preg_match('/:\d+$/', $value)) {
+        $error = 'Introduce solo el dominio, sin puerto.';
+        return '';
+    }
+
+    if (!preg_match('/^(?=.{4,255}$)(?!-)(?:[a-z0-9-]{1,63}\.)+[a-z]{2,63}$/', $value)) {
+        $error = 'El dominio no parece valido. Ejemplo: tudominio.es';
+        return '';
+    }
+
+    $domain_candidates = [$value];
+    if (strpos($value, 'www.') === 0) {
+        $domain_candidates[] = substr($value, 4);
+    } else {
+        $domain_candidates[] = 'www.' . $value;
+    }
+    if (array_intersect(array_unique($domain_candidates), tenant_platform_domains())) {
+        $error = 'Ese dominio pertenece a la plataforma y no puede configurarse como dominio personalizado.';
+        return '';
+    }
+
+    return $value;
 }
 
 function work_plan_task_status_enabled($mysqli)
@@ -633,16 +761,21 @@ function active_professionals_payload($mysqli)
     $dashboard_photo = $branding['profile_image_path'] ?? '';
     $rows = [];
     $res = $mysqli->query("
-        SELECT p.id, p.display_name, p.public_photo_path, u.role AS user_role
+        SELECT p.id, p.display_name, p.public_photo_path, u.role AS user_role, ps.member_permissions_json
         FROM professionals p
         LEFT JOIN users u ON u.id = p.user_id AND u.tenant_id = p.tenant_id
+        LEFT JOIN professional_settings ps ON ps.professional_id = p.id AND ps.tenant_id = p.tenant_id
         WHERE p.tenant_id = $tenant_id
           AND p.is_active = 1
+          AND u.role IN ('superadmin', 'admin')
         ORDER BY CASE WHEN u.role = 'superadmin' THEN 0 ELSE 1 END ASC,
                  p.sort_order ASC,
                  p.display_name ASC
     ");
     while ($row = $res->fetch_assoc()) {
+        if (!cabinet_member_has_permission($row['member_permissions_json'] ?? null, $row['user_role'] ?? 'admin', 'bookable')) {
+            continue;
+        }
         $display_photo_path = professional_photo_with_dashboard_fallback($row, $dashboard_photo);
         $effective_settings = cabinet_get_effective_professional_settings($mysqli, (int) $row['id']);
         $rows[] = [
@@ -696,10 +829,222 @@ function quick_appointment_payload($row, $dashboard_photo = '')
         'professional_name' => $row['professional_name'] ?? '',
         'professional_photo_path' => $row['professional_photo_path'] ?? '',
         'consultation_type' => $row['consultation_type'] ?? 'presencial',
+        'online_session_url' => $row['online_session_url'] ?? '',
         'service_label' => appointment_service_option_label($row),
         'payment_status' => $row['payment_status'] ?? 'pending',
         'payment_method' => $row['payment_method'] ?? '',
         'patient_bonus_id' => $row['patient_bonus_id'] ?? null
+    ];
+}
+
+function dashboard_waiting_list_count($mysqli, $professional_id = 0, $include_unassigned = false)
+{
+    ensure_patient_management_tables($mysqli);
+    $tenant_id = current_tenant_id();
+    $professional_id = (int) $professional_id;
+    $where = '';
+    if ($professional_id > 0) {
+        $where = " AND (COALESCE(ppf.professional_id, pp.professional_id) = $professional_id";
+        if ($include_unassigned) {
+            $where .= " OR COALESCE(ppf.professional_id, pp.professional_id, 0) = 0";
+        }
+        $where .= ")";
+    } elseif ($professional_id < 0) {
+        $where = " AND 1 = 0";
+    }
+
+    $res = $mysqli->query("
+        SELECT COUNT(DISTINCT u.id) AS total
+        FROM users u
+        LEFT JOIN patient_profiles pp ON pp.user_id = u.id AND pp.tenant_id = u.tenant_id
+        LEFT JOIN patient_professionals ppf ON ppf.patient_id = u.id AND ppf.tenant_id = u.tenant_id AND ppf.is_primary = 1
+        WHERE u.tenant_id = $tenant_id
+          AND u.role = 'patient'
+          AND COALESCE(pp.waiting_list, 0) = 1
+          $where
+    ");
+    $row = $res ? $res->fetch_assoc() : null;
+    return $row ? (int) ($row['total'] ?? 0) : 0;
+}
+
+function dashboard_time_label($minutes)
+{
+    $minutes = max(0, (int) $minutes);
+    return sprintf('%02d:%02d', intdiv($minutes, 60), $minutes % 60);
+}
+
+function dashboard_active_weekdays_from_settings($settings)
+{
+    $days = [];
+    foreach (explode(',', (string) ($settings['available_weekdays'] ?? '1,2,3,4,5')) as $day) {
+        $day = (int) trim($day);
+        if ($day >= 1 && $day <= 7 && !in_array($day, $days, true)) {
+            $days[] = $day;
+        }
+    }
+    sort($days);
+    return $days ?: [1, 2, 3, 4, 5];
+}
+
+function dashboard_professional_has_closed_day($mysqli, $professional_id, $date)
+{
+    $tenant_id = current_tenant_id();
+    $stmt = $mysqli->prepare("SELECT id FROM closed_days WHERE tenant_id = ? AND closed_date = ? AND (is_global = 1 OR professional_id = ?) LIMIT 1");
+    if (!$stmt) {
+        return false;
+    }
+    $stmt->bind_param("isi", $tenant_id, $date, $professional_id);
+    $stmt->execute();
+    return (bool) $stmt->get_result()->fetch_assoc();
+}
+
+function dashboard_professional_day_appointments($mysqli, $professional_id, $date)
+{
+    $tenant_id = current_tenant_id();
+    $rows = [];
+    $stmt = $mysqli->prepare("
+        SELECT a.appointment_time, COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes
+        FROM appointments a
+        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id AND so.tenant_id = a.tenant_id
+        WHERE a.tenant_id = ?
+          AND a.professional_id = ?
+          AND a.appointment_date = ?
+          AND a.status = 'booked'
+    ");
+    if (!$stmt) {
+        return $rows;
+    }
+    $stmt->bind_param("iis", $tenant_id, $professional_id, $date);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    while ($row = $res->fetch_assoc()) {
+        $start = time_to_minutes($row['appointment_time'] ?? '00:00:00');
+        $rows[] = [
+            'start' => $start,
+            'end' => $start + (int) ($row['duration_minutes'] ?? 60)
+        ];
+    }
+    return $rows;
+}
+
+function dashboard_slot_overlaps_existing($slot_start, $slot_end, array $appointments)
+{
+    foreach ($appointments as $appointment) {
+        if ($slot_start < (int) $appointment['end'] && $slot_end > (int) $appointment['start']) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function dashboard_first_waiting_list_slot_for_professional($mysqli, $professional, $settings, $max_days, $duration_minutes = 60)
+{
+    $professional_id = (int) ($professional['id'] ?? 0);
+    if ($professional_id <= 0) {
+        return null;
+    }
+
+    $weekdays = dashboard_active_weekdays_from_settings($settings);
+    $start_minutes = time_to_minutes($settings['appointment_start_time'] ?? '10:00:00');
+    $end_minutes = time_to_minutes($settings['appointment_end_time'] ?? '19:00:00');
+    $break_start = !empty($settings['break_start_time']) ? time_to_minutes($settings['break_start_time']) : null;
+    $break_end = !empty($settings['break_end_time']) ? time_to_minutes($settings['break_end_time']) : null;
+    $today = new DateTimeImmutable('today');
+    $now_minutes = ((int) date('G') * 60) + (int) date('i');
+
+    for ($offset = 0; $offset <= $max_days; $offset++) {
+        $date = $today->modify('+' . $offset . ' days');
+        if (!in_array((int) $date->format('N'), $weekdays, true)) {
+            continue;
+        }
+        $date_sql = $date->format('Y-m-d');
+        if (dashboard_professional_has_closed_day($mysqli, $professional_id, $date_sql)) {
+            continue;
+        }
+
+        $day_start = $start_minutes;
+        if ($offset === 0) {
+            $day_start = max($day_start, (int) (ceil($now_minutes / 30) * 30));
+        }
+        $appointments = dashboard_professional_day_appointments($mysqli, $professional_id, $date_sql);
+        for ($slot_start = $day_start; $slot_start + $duration_minutes <= $end_minutes; $slot_start += 30) {
+            $slot_end = $slot_start + $duration_minutes;
+            if ($break_start !== null && $break_end !== null && $slot_start < $break_end && $slot_end > $break_start) {
+                continue;
+            }
+            if (dashboard_slot_overlaps_existing($slot_start, $slot_end, $appointments)) {
+                continue;
+            }
+            return [
+                'date' => $date_sql,
+                'date_label' => $date->format('d/m/Y'),
+                'time' => dashboard_time_label($slot_start),
+                'end_time' => dashboard_time_label($slot_end),
+                'professional_id' => $professional_id,
+                'professional_name' => $professional['display_name'] ?? ''
+            ];
+        }
+    }
+    return null;
+}
+
+function dashboard_waiting_list_summary_payload($mysqli, $current_professional_id)
+{
+    $visible_waiting_count = dashboard_waiting_list_count($mysqli, (int) $current_professional_id, (int) $current_professional_id > 0);
+    if ($visible_waiting_count <= 0) {
+        return [
+            'count' => 0,
+            'has_slot' => false
+        ];
+    }
+
+    $professionals = [];
+    if ((int) $current_professional_id > 0) {
+        $res = $mysqli->query("
+            SELECT p.id, p.display_name
+            FROM professionals p
+            WHERE p.tenant_id = " . current_tenant_id() . "
+              AND p.id = " . (int) $current_professional_id . "
+              AND p.is_active = 1
+            LIMIT 1
+        ");
+        $row = $res ? $res->fetch_assoc() : null;
+        if ($row) {
+            $professionals[] = $row;
+        }
+    } else {
+        $professionals = cabinet_active_professionals_for_booking($mysqli);
+    }
+
+    $best_slot = null;
+    $max_horizon_days = 40;
+    foreach ($professionals as $professional) {
+        $professional_id = (int) ($professional['id'] ?? 0);
+        if ($professional_id <= 0) {
+            continue;
+        }
+        $settings = cabinet_get_effective_professional_settings($mysqli, $professional_id);
+        $max_days = max(1, min(365, (int) ($settings['max_booking_notice_days'] ?? 40)));
+        $max_horizon_days = max($max_horizon_days, $max_days);
+        $slot = dashboard_first_waiting_list_slot_for_professional($mysqli, $professional, $settings, $max_days);
+        if ($slot && (!$best_slot || ($slot['date'] . ' ' . $slot['time']) < ($best_slot['date'] . ' ' . $best_slot['time']))) {
+            $best_slot = $slot;
+        }
+    }
+
+    if ($best_slot) {
+        return [
+            'count' => dashboard_waiting_list_count($mysqli, (int) $best_slot['professional_id'], true),
+            'has_slot' => true,
+            'slot' => $best_slot
+        ];
+    }
+
+    $until = (new DateTimeImmutable('today'))->modify('+' . ($max_horizon_days + 1) . ' days');
+    return [
+        'count' => $visible_waiting_count,
+        'has_slot' => false,
+        'no_slots_until' => $until->format('d/m/Y')
     ];
 }
 
@@ -812,19 +1157,28 @@ function admin_can_manage_appointment_payment($mysqli, $appointment_id)
         return [false, null];
     }
 
+    $session_notes_select = payment_column_exists($mysqli, 'appointments', 'session_notes')
+        ? 'a.session_notes'
+        : 'NULL AS session_notes';
     $stmt = $mysqli->prepare("
         SELECT a.id, a.user_id, a.professional_id, a.appointment_date, a.appointment_time, a.status,
-               a.consultation_type, a.service_type, a.service_option_id, a.online_session_url,
+               a.consultation_type, a.service_type, a.service_option_id, a.location_id, a.online_session_url, a.livekit_access_token,
+               a.cancel_token,
+               $session_notes_select,
                COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
                COALESCE(a.payment_status, 'pending') AS payment_status,
                a.payment_method, a.patient_bonus_id, a.paid_at, a.payment_updated_at, a.payment_updated_by,
-               s.name AS service_name,
+               so.price AS service_price, s.name AS service_name,
                u.name AS patient_name, u.email AS patient_email, u.phone AS patient_phone,
+               pp.address AS patient_address,
+               al.name AS location_name, al.location_type,
                p.display_name AS professional_name
         FROM appointments a
         LEFT JOIN appointment_service_options so ON so.id = a.service_option_id AND so.tenant_id = a.tenant_id
         LEFT JOIN appointment_services s ON s.id = so.service_id AND s.tenant_id = a.tenant_id
         JOIN users u ON u.id = a.user_id AND u.tenant_id = a.tenant_id
+        LEFT JOIN patient_profiles pp ON pp.user_id = u.id AND pp.tenant_id = u.tenant_id
+        LEFT JOIN appointment_locations al ON al.id = a.location_id AND al.tenant_id = a.tenant_id
         LEFT JOIN professionals p ON p.id = a.professional_id AND p.tenant_id = a.tenant_id
         WHERE a.tenant_id = ?
           AND a.id = ?
@@ -844,6 +1198,131 @@ function admin_can_manage_appointment_payment($mysqli, $appointment_id)
     $current_professional_id = current_professional_id_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0));
     $can_manage = $current_professional_id > 0 && (int) ($appointment['professional_id'] ?? 0) === $current_professional_id;
     return [$can_manage, $appointment];
+}
+
+function admin_reminder_first_name($name)
+{
+    $first_name = message_template_first_name($name);
+    return $first_name !== '' ? $first_name : 'tu profesional';
+}
+
+function admin_reminder_email_body_to_html($body)
+{
+    $body = (string) $body;
+    if ($body !== strip_tags($body)) {
+        return $body;
+    }
+    return nl2br(htmlspecialchars($body, ENT_QUOTES, 'UTF-8'));
+}
+
+function admin_reminder_manage_link($mysqli, $tenant_id, array $appointment)
+{
+    $cancel_token = $appointment['cancel_token'] ?? '';
+    if ($cancel_token === '') {
+        $cancel_token = bin2hex(random_bytes(32));
+        $update_token = $mysqli->prepare("UPDATE appointments SET cancel_token = ? WHERE tenant_id = ? AND id = ?");
+        $appointment_id = (int) ($appointment['id'] ?? 0);
+        $update_token->bind_param("sii", $cancel_token, $tenant_id, $appointment_id);
+        $update_token->execute();
+    }
+
+    return urlme_shorten_url(
+        app_public_base_url() . 'cancelar_cita.php?t=' . urlencode($cancel_token),
+        'Recordatorio cita SimplyGest Praxis'
+    );
+}
+
+function admin_payment_settings_for_reminder($mysqli)
+{
+    $tenant_id = current_tenant_id();
+    $res = $mysqli->query("
+        SELECT app_name, site_phone, online_payment_enabled,
+               appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price
+        FROM payment_settings
+        WHERE tenant_id = $tenant_id
+        LIMIT 1
+    ");
+    return $res ? ($res->fetch_assoc() ?: []) : [];
+}
+
+function admin_appointment_reminder_context($mysqli, array $appointment, array $settings, $short_patient_name = false)
+{
+    $tenant_id = current_tenant_id();
+    $manage_link = admin_reminder_manage_link($mysqli, $tenant_id, $appointment);
+    $date = date('d/m/Y', strtotime($appointment['appointment_date']));
+    $date_short = date('d/m', strtotime($appointment['appointment_date']));
+    $time = date('H:i', strtotime($appointment['appointment_time']));
+    $end_time = date('H:i', strtotime($appointment['appointment_time'] . ' +' . (int) ($appointment['duration_minutes'] ?? 60) . ' minutes'));
+    $consultation_text = appointment_consultation_label($appointment['consultation_type'] ?? 'presencial');
+    $service_text = appointment_service_option_label($appointment);
+    $online_link = trim((string) ($appointment['online_session_url'] ?? ''));
+    if (($appointment['consultation_type'] ?? '') === 'online' && livekit_appointment_enabled($mysqli, $appointment)) {
+        $appointment['livekit_access_token'] = livekit_ensure_appointment_link_token(
+            $mysqli,
+            (int) ($appointment['id'] ?? 0),
+            (string) ($appointment['livekit_access_token'] ?? '')
+        );
+        $online_link = livekit_patient_join_url($appointment);
+    }
+    $patient_name = trim((string) ($appointment['patient_name'] ?? ''));
+    $patient_short = message_template_first_name($patient_name) ?: $patient_name;
+    $name_for_template = $short_patient_name ? $patient_short : $patient_name;
+    $place = '';
+    if (($appointment['consultation_type'] ?? 'presencial') === 'presencial') {
+        $place = trim((string) ($appointment['location_name'] ?? ''));
+        if ($place === '') {
+            $branding = get_public_branding_settings($mysqli);
+            $place = trim((string) ($branding['legal_address'] ?? ''));
+        }
+    }
+    $price = format_appointment_price(appointment_price_for_row($settings, $appointment));
+
+    return [
+        'vars' => [
+            'nombre' => $name_for_template,
+            'nombre_completo' => $short_patient_name ? $patient_short : $patient_name,
+            'profesional' => $appointment['professional_name'] ?? '',
+            'profesional_nombre' => admin_reminder_first_name($appointment['professional_name'] ?? ''),
+            'fecha' => $date,
+            'fecha_corta' => $date_short,
+            'hora' => $time,
+            'hora_fin' => $end_time,
+            'duracion' => (string) (int) ($appointment['duration_minutes'] ?? 60),
+            'modalidad' => $consultation_text,
+            'servicio' => $service_text,
+            'lugar' => $place,
+            'link' => $online_link,
+            'enlace_gestion' => $manage_link,
+            'nombre_centro' => $settings['app_name'] ?? '',
+            'telefono_centro' => $settings['site_phone'] ?? '',
+            'importe' => $price . ' EUR'
+        ],
+        'manage_link' => $manage_link,
+        'online_link' => $online_link,
+        'consultation_text' => $consultation_text,
+        'service_text' => $service_text,
+        'price' => $price
+    ];
+}
+
+function admin_log_manual_reminder($mysqli, array $appointment, $channel, $success, $message, array $metadata = [])
+{
+    app_log($mysqli, [
+        'action' => 'manual_appointment_reminder',
+        'channel' => $channel,
+        'status' => $success ? 'ok' : 'error',
+        'target_type' => 'appointment',
+        'target_id' => (int) ($appointment['id'] ?? 0),
+        'title' => 'Recordatorio manual de cita',
+        'message' => $message,
+        'metadata' => array_merge([
+            'patient_id' => (int) ($appointment['user_id'] ?? 0),
+            'patient_name' => $appointment['patient_name'] ?? '',
+            'professional_id' => (int) ($appointment['professional_id'] ?? 0),
+            'appointment_date' => $appointment['appointment_date'] ?? '',
+            'appointment_time' => $appointment['appointment_time'] ?? ''
+        ], $metadata)
+    ]);
 }
 
 function appointment_patient_knowledge_problem_payload($mysqli, $patient_id)
@@ -1053,9 +1532,6 @@ function global_search_push(&$results, $type, $title, $subtitle = '', $meta = ''
 function professional_photo_with_dashboard_fallback($row, $dashboard_photo)
 {
     $photo = $row['public_photo_path'] ?? ($row['professional_photo_path'] ?? '');
-    if (!$photo && ($row['user_role'] ?? $row['professional_user_role'] ?? '') === 'superadmin') {
-        return $dashboard_photo;
-    }
     return $photo ?: '';
 }
 
@@ -1100,7 +1576,7 @@ function send_professional_password_setup_email($mysqli, $user_id, $name, $email
 
     $reset_link = urlme_shorten_url(
         app_public_base_url() . 'reset_password.php?t=' . urlencode($token),
-        'Crear contrasena profesional SimplyGest Praxis',
+        'Crear contrasena acceso SimplyGest Praxis',
         date('Y-m-d H:i:s', strtotime('+24 hours'))
     );
 
@@ -1108,7 +1584,7 @@ function send_professional_password_setup_email($mysqli, $user_id, $name, $email
         $email,
         'Crea tu contraseña de acceso',
         '<p>Hola ' . htmlspecialchars($name) . ',</p>' .
-        '<p>Se ha creado tu acceso profesional en ' . htmlspecialchars(get_app_name($mysqli)) . '.</p>' .
+        '<p>Se ha creado tu acceso como miembro del equipo en ' . htmlspecialchars(get_app_name($mysqli)) . '.</p>' .
         '<p>Para entrar en la web, crea tu contraseña desde este enlace:</p>' .
         '<p><a href="' . htmlspecialchars($reset_link) . '">Crear contraseña de acceso</a></p>' .
         '<p>Este enlace caduca en 24 horas.</p>',
@@ -1159,11 +1635,20 @@ function ensure_payment_settings_table($mysqli)
             online_couple_appointment_price DECIMAL(10,2) NOT NULL DEFAULT 90.00,
             admin_notification_email VARCHAR(255) DEFAULT NULL,
             appointment_delivery_mode ENUM('both', 'presencial', 'online') NOT NULL DEFAULT 'both',
-            available_session_types VARCHAR(100) NOT NULL DEFAULT 'individual',
-            available_session_durations VARCHAR(50) NOT NULL DEFAULT '60',
+            available_session_types VARCHAR(255) NOT NULL DEFAULT 'individual',
+            available_session_durations VARCHAR(100) NOT NULL DEFAULT '60',
             display_effective_duration_enabled TINYINT(1) NOT NULL DEFAULT 0,
             display_duration_offset_minutes TINYINT UNSIGNED NOT NULL DEFAULT 5,
             appointment_reminder_enabled TINYINT(1) NOT NULL DEFAULT 0,
+            appointment_second_reminder_enabled TINYINT(1) NOT NULL DEFAULT 0,
+            appointment_second_reminder_hours SMALLINT UNSIGNED NOT NULL DEFAULT 48,
+            sms_provider VARCHAR(20) NOT NULL DEFAULT 'none',
+            sms_sender VARCHAR(40) DEFAULT NULL,
+            sms_username VARCHAR(120) DEFAULT NULL,
+            sms_password VARCHAR(255) DEFAULT NULL,
+            sms_api_key VARCHAR(255) DEFAULT NULL,
+            sms_reminder_enabled TINYINT(1) NOT NULL DEFAULT 0,
+            sms_reminder_hours SMALLINT UNSIGNED NOT NULL DEFAULT 24,
             min_booking_notice_days INT UNSIGNED NOT NULL DEFAULT 2,
             max_booking_notice_days INT UNSIGNED NOT NULL DEFAULT 40,
             appointment_start_time TIME NOT NULL DEFAULT '10:00:00',
@@ -1221,6 +1706,7 @@ function ensure_payment_settings_table($mysqli)
     ensure_admin_notification_email_column($mysqli);
     ensure_branding_columns($mysqli);
     ensure_appointment_services_tables($mysqli);
+    ensure_appointment_locations_table($mysqli);
     ensure_bonus_tables($mysqli);
 
     $columns = [
@@ -1245,11 +1731,20 @@ function ensure_payment_settings_table($mysqli)
         'bonuses_enabled' => "ALTER TABLE payment_settings ADD bonuses_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER show_prices_public",
         'create_compensation_bonus_on_paid_cancel' => "ALTER TABLE payment_settings ADD create_compensation_bonus_on_paid_cancel TINYINT(1) NOT NULL DEFAULT 1 AFTER bonuses_enabled",
         'appointment_delivery_mode' => "ALTER TABLE payment_settings ADD appointment_delivery_mode ENUM('both', 'presencial', 'online') NOT NULL DEFAULT 'both' AFTER admin_notification_email",
-        'available_session_types' => "ALTER TABLE payment_settings ADD available_session_types VARCHAR(100) NOT NULL DEFAULT 'individual' AFTER appointment_delivery_mode",
-        'available_session_durations' => "ALTER TABLE payment_settings ADD available_session_durations VARCHAR(50) NOT NULL DEFAULT '60' AFTER available_session_types",
+        'available_session_types' => "ALTER TABLE payment_settings ADD available_session_types VARCHAR(255) NOT NULL DEFAULT 'individual' AFTER appointment_delivery_mode",
+        'available_session_durations' => "ALTER TABLE payment_settings ADD available_session_durations VARCHAR(100) NOT NULL DEFAULT '60' AFTER available_session_types",
         'display_effective_duration_enabled' => "ALTER TABLE payment_settings ADD display_effective_duration_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER available_session_durations",
         'display_duration_offset_minutes' => "ALTER TABLE payment_settings ADD display_duration_offset_minutes TINYINT UNSIGNED NOT NULL DEFAULT 5 AFTER display_effective_duration_enabled",
         'appointment_reminder_enabled' => "ALTER TABLE payment_settings ADD appointment_reminder_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER admin_notification_email",
+        'appointment_second_reminder_enabled' => "ALTER TABLE payment_settings ADD appointment_second_reminder_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER appointment_reminder_enabled",
+        'appointment_second_reminder_hours' => "ALTER TABLE payment_settings ADD appointment_second_reminder_hours SMALLINT UNSIGNED NOT NULL DEFAULT 48 AFTER appointment_second_reminder_enabled",
+        'sms_provider' => "ALTER TABLE payment_settings ADD sms_provider VARCHAR(20) NOT NULL DEFAULT 'none' AFTER appointment_second_reminder_hours",
+        'sms_sender' => "ALTER TABLE payment_settings ADD sms_sender VARCHAR(40) DEFAULT NULL AFTER sms_provider",
+        'sms_username' => "ALTER TABLE payment_settings ADD sms_username VARCHAR(120) DEFAULT NULL AFTER sms_sender",
+        'sms_password' => "ALTER TABLE payment_settings ADD sms_password VARCHAR(255) DEFAULT NULL AFTER sms_username",
+        'sms_api_key' => "ALTER TABLE payment_settings ADD sms_api_key VARCHAR(255) DEFAULT NULL AFTER sms_password",
+        'sms_reminder_enabled' => "ALTER TABLE payment_settings ADD sms_reminder_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER sms_api_key",
+        'sms_reminder_hours' => "ALTER TABLE payment_settings ADD sms_reminder_hours SMALLINT UNSIGNED NOT NULL DEFAULT 24 AFTER sms_reminder_enabled",
         'min_booking_notice_days' => "ALTER TABLE payment_settings ADD min_booking_notice_days INT UNSIGNED NOT NULL DEFAULT 2 AFTER admin_notification_email",
         'max_booking_notice_days' => "ALTER TABLE payment_settings ADD max_booking_notice_days INT UNSIGNED NOT NULL DEFAULT 40 AFTER min_booking_notice_days",
         'appointment_start_time' => "ALTER TABLE payment_settings ADD appointment_start_time TIME NOT NULL DEFAULT '10:00:00' AFTER max_booking_notice_days",
@@ -1287,6 +1782,11 @@ function ensure_payment_settings_table($mysqli)
         'legal_professional_college' => "ALTER TABLE payment_settings ADD legal_professional_college VARCHAR(255) DEFAULT NULL",
         'legal_uses_non_technical_cookies' => "ALTER TABLE payment_settings ADD legal_uses_non_technical_cookies TINYINT NOT NULL DEFAULT 0",
         'legal_terms_notes' => "ALTER TABLE payment_settings ADD legal_terms_notes TEXT DEFAULT NULL",
+        'billing_enabled' => "ALTER TABLE payment_settings ADD billing_enabled TINYINT(1) NOT NULL DEFAULT 0",
+        'billing_country' => "ALTER TABLE payment_settings ADD billing_country VARCHAR(2) NOT NULL DEFAULT 'ES'",
+        'billing_province' => "ALTER TABLE payment_settings ADD billing_province VARCHAR(80) DEFAULT NULL",
+        'billing_session_concept' => "ALTER TABLE payment_settings ADD billing_session_concept VARCHAR(255) NOT NULL DEFAULT 'Sesion del dia {fecha} de duracion {duracion} minutos'",
+        'billing_report_concept' => "ALTER TABLE payment_settings ADD billing_report_concept VARCHAR(255) NOT NULL DEFAULT 'Informe {titulo}'",
         'dashboard_config_mode' => "ALTER TABLE payment_settings ADD dashboard_config_mode VARCHAR(16) NOT NULL DEFAULT 'simple'",
         'sector_texts_key' => "ALTER TABLE payment_settings ADD sector_texts_key VARCHAR(32) NOT NULL DEFAULT 'psicologia' AFTER dashboard_config_mode"
     ];
@@ -1369,15 +1869,28 @@ function ensure_patient_management_tables($mysqli)
     $mysqli->query("
         CREATE TABLE IF NOT EXISTS patient_profiles (
             user_id INT UNSIGNED NOT NULL PRIMARY KEY,
+            tenant_id INT UNSIGNED NOT NULL DEFAULT 1,
             patient_type VARCHAR(80) DEFAULT NULL,
+            fiscal_name VARCHAR(180) DEFAULT NULL,
+            fiscal_nif VARCHAR(50) DEFAULT NULL,
+            invoice_use_alt_data TINYINT(1) NOT NULL DEFAULT 0,
+            invoice_name VARCHAR(180) DEFAULT NULL,
+            invoice_nif VARCHAR(50) DEFAULT NULL,
+            invoice_email VARCHAR(180) DEFAULT NULL,
+            invoice_phone VARCHAR(40) DEFAULT NULL,
+            invoice_address VARCHAR(255) DEFAULT NULL,
             patient_status VARCHAR(20) NOT NULL DEFAULT 'active',
+            waiting_list TINYINT(1) NOT NULL DEFAULT 0,
             birth_date DATE DEFAULT NULL,
             referral_source VARCHAR(80) DEFAULT NULL,
             knowledge_problem_id INT UNSIGNED DEFAULT NULL,
             initial_consultation_reason TEXT DEFAULT NULL,
+            background_notes TEXT DEFAULT NULL,
+            support_network_notes TEXT DEFAULT NULL,
             emergency_contact_name VARCHAR(150) DEFAULT NULL,
             emergency_contact_phone VARCHAR(40) DEFAULT NULL,
             emergency_contact_relation VARCHAR(80) DEFAULT NULL,
+            address VARCHAR(255) DEFAULT NULL,
             admission_date DATE DEFAULT NULL,
             notes LONGTEXT DEFAULT NULL,
             physical_sex VARCHAR(12) DEFAULT NULL,
@@ -1403,19 +1916,33 @@ function ensure_patient_management_tables($mysqli)
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             INDEX idx_patient_profiles_type (patient_type),
-            INDEX idx_patient_profiles_admission (admission_date)
+            INDEX idx_patient_profiles_admission (admission_date),
+            INDEX idx_patient_profiles_waiting_list (tenant_id, waiting_list)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     ");
 
     $columns = [
+        'tenant_id' => "ALTER TABLE patient_profiles ADD tenant_id INT UNSIGNED NOT NULL DEFAULT $tenant_id AFTER user_id",
         'patient_status' => "ALTER TABLE patient_profiles ADD patient_status VARCHAR(20) NOT NULL DEFAULT 'active' AFTER patient_type",
+        'fiscal_name' => "ALTER TABLE patient_profiles ADD fiscal_name VARCHAR(180) DEFAULT NULL AFTER patient_type",
+        'fiscal_nif' => "ALTER TABLE patient_profiles ADD fiscal_nif VARCHAR(50) DEFAULT NULL AFTER fiscal_name",
+        'invoice_use_alt_data' => "ALTER TABLE patient_profiles ADD invoice_use_alt_data TINYINT(1) NOT NULL DEFAULT 0 AFTER fiscal_nif",
+        'invoice_name' => "ALTER TABLE patient_profiles ADD invoice_name VARCHAR(180) DEFAULT NULL AFTER invoice_use_alt_data",
+        'invoice_nif' => "ALTER TABLE patient_profiles ADD invoice_nif VARCHAR(50) DEFAULT NULL AFTER invoice_name",
+        'invoice_email' => "ALTER TABLE patient_profiles ADD invoice_email VARCHAR(180) DEFAULT NULL AFTER invoice_nif",
+        'invoice_phone' => "ALTER TABLE patient_profiles ADD invoice_phone VARCHAR(40) DEFAULT NULL AFTER invoice_email",
+        'invoice_address' => "ALTER TABLE patient_profiles ADD invoice_address VARCHAR(255) DEFAULT NULL AFTER invoice_phone",
+        'waiting_list' => "ALTER TABLE patient_profiles ADD waiting_list TINYINT(1) NOT NULL DEFAULT 0 AFTER patient_status",
         'birth_date' => "ALTER TABLE patient_profiles ADD birth_date DATE DEFAULT NULL AFTER patient_status",
         'referral_source' => "ALTER TABLE patient_profiles ADD referral_source VARCHAR(80) DEFAULT NULL AFTER birth_date",
         'knowledge_problem_id' => "ALTER TABLE patient_profiles ADD knowledge_problem_id INT UNSIGNED DEFAULT NULL AFTER referral_source",
         'initial_consultation_reason' => "ALTER TABLE patient_profiles ADD initial_consultation_reason TEXT DEFAULT NULL AFTER referral_source",
+        'background_notes' => "ALTER TABLE patient_profiles ADD background_notes TEXT DEFAULT NULL AFTER initial_consultation_reason",
+        'support_network_notes' => "ALTER TABLE patient_profiles ADD support_network_notes TEXT DEFAULT NULL AFTER background_notes",
         'emergency_contact_name' => "ALTER TABLE patient_profiles ADD emergency_contact_name VARCHAR(150) DEFAULT NULL AFTER initial_consultation_reason",
         'emergency_contact_phone' => "ALTER TABLE patient_profiles ADD emergency_contact_phone VARCHAR(40) DEFAULT NULL AFTER emergency_contact_name",
         'emergency_contact_relation' => "ALTER TABLE patient_profiles ADD emergency_contact_relation VARCHAR(80) DEFAULT NULL AFTER emergency_contact_phone",
+        'address' => "ALTER TABLE patient_profiles ADD address VARCHAR(255) DEFAULT NULL AFTER emergency_contact_relation",
         'physical_sex' => "ALTER TABLE patient_profiles ADD physical_sex VARCHAR(12) DEFAULT NULL AFTER notes",
         'weight_kg' => "ALTER TABLE patient_profiles ADD weight_kg DECIMAL(6,2) DEFAULT NULL AFTER physical_sex",
         'height_cm' => "ALTER TABLE patient_profiles ADD height_cm DECIMAL(6,2) DEFAULT NULL AFTER weight_kg",
@@ -1445,6 +1972,10 @@ function ensure_patient_management_tables($mysqli)
     $index_res = $mysqli->query("SHOW INDEX FROM patient_profiles WHERE Key_name = 'idx_patient_profiles_knowledge_problem'");
     if ($index_res && $index_res->num_rows === 0) {
         $mysqli->query("ALTER TABLE patient_profiles ADD INDEX idx_patient_profiles_knowledge_problem (knowledge_problem_id)");
+    }
+    $index_res = $mysqli->query("SHOW INDEX FROM patient_profiles WHERE Key_name = 'idx_patient_profiles_waiting_list'");
+    if ($index_res && $index_res->num_rows === 0) {
+        $mysqli->query("ALTER TABLE patient_profiles ADD INDEX idx_patient_profiles_waiting_list (tenant_id, waiting_list)");
     }
 }
 
@@ -2247,9 +2778,20 @@ function normalize_available_weekdays($value)
 
 function normalize_available_session_types($value, $mysqli = null)
 {
-    $sector_texts = $mysqli ? sector_texts_for_db($mysqli) : sector_texts_builtin_psychology();
-    $allowed = array_column(sector_appointment_services_from_texts($sector_texts), 'key');
-    $defaults = sector_default_appointment_service_keys($sector_texts);
+    $allowed = [];
+    if ($mysqli) {
+        ensure_appointment_services_tables($mysqli);
+        $tenant_id = current_tenant_id();
+        $res = $mysqli->query("SELECT service_key FROM appointment_services WHERE tenant_id = $tenant_id");
+        while ($res && ($row = $res->fetch_assoc())) {
+            $allowed[] = $row['service_key'];
+        }
+    }
+    if (!$allowed) {
+        $sector_texts = $mysqli ? sector_texts_for_db($mysqli) : sector_texts_builtin_psychology();
+        $allowed = array_column(sector_appointment_services_from_texts($sector_texts), 'key');
+    }
+    $defaults = array_slice($allowed, 0, 1) ?: sector_default_appointment_service_keys($mysqli ? sector_texts_for_db($mysqli) : sector_texts_builtin_psychology());
     $selected = [];
     foreach ((array) $value as $type) {
         $type = trim((string) $type);
@@ -2263,13 +2805,11 @@ function normalize_available_session_types($value, $mysqli = null)
 
 function normalize_available_session_durations($value, $mysqli = null)
 {
-    $sector_texts = $mysqli ? sector_texts_for_db($mysqli) : sector_texts_builtin_psychology();
-    $allowed = array_map(fn($item) => (int) $item['minutes'], sector_appointment_durations_from_texts($sector_texts));
-    $defaults = sector_default_appointment_duration_minutes($sector_texts);
+    $defaults = sector_default_appointment_duration_minutes($mysqli ? sector_texts_for_db($mysqli) : sector_texts_builtin_psychology());
     $selected = [];
     foreach ((array) $value as $duration) {
         $duration = (int) $duration;
-        if (in_array($duration, $allowed, true) && !in_array($duration, $selected, true)) {
+        if ($duration > 0 && $duration <= 480 && !in_array($duration, $selected, true)) {
             $selected[] = $duration;
         }
     }
@@ -2302,6 +2842,40 @@ function sync_service_availability($mysqli, $available_session_types, $available
     $active_durations = array_map('intval', explode(',', $available_session_durations ?: '60'));
     $services = fetch_appointment_services($mysqli);
     foreach ($services as $service) {
+        foreach ($active_durations as $duration) {
+            if ($duration <= 0 || $duration > 480) {
+                continue;
+            }
+            foreach (['presencial', 'online'] as $consultation_type) {
+                $exists = false;
+                foreach ($service['options'] as $option) {
+                    if ((int) $option['duration_minutes'] === (int) $duration && $option['consultation_type'] === $consultation_type) {
+                        $exists = true;
+                        break;
+                    }
+                }
+                if (!$exists) {
+                    $price = appointment_default_option_price([], $service['service_key'], $consultation_type, $duration);
+                    $sort = ($duration * 10) + ($consultation_type === 'online' ? 1 : 0);
+                    $stmt = $mysqli->prepare("
+                        INSERT IGNORE INTO appointment_service_options (tenant_id, service_id, duration_minutes, consultation_type, price, is_active, sort_order)
+                        VALUES (?, ?, ?, ?, ?, 0, ?)
+                    ");
+                    $stmt->bind_param("iiisdi", $tenant_id, $service['id'], $duration, $consultation_type, $price, $sort);
+                    $stmt->execute();
+                }
+            }
+        }
+        $service['options'] = [];
+        $option_res = $mysqli->query("SELECT id, duration_minutes, consultation_type FROM appointment_service_options WHERE tenant_id = $tenant_id AND service_id = " . (int) $service['id']);
+        while ($option_res && ($option_row = $option_res->fetch_assoc())) {
+            $service['options'][] = [
+                'id' => (int) $option_row['id'],
+                'duration_minutes' => (int) $option_row['duration_minutes'],
+                'consultation_type' => $option_row['consultation_type']
+            ];
+        }
+
         $service_allowed = in_array($service['service_key'], $active_service_types, true);
         $service_active = $service_allowed ? 1 : 0;
         $stmt = $mysqli->prepare("UPDATE appointment_services SET is_active = ? WHERE tenant_id = ? AND id = ?");
@@ -2319,6 +2893,29 @@ function sync_service_availability($mysqli, $available_session_types, $available
             $stmt->execute();
         }
     }
+}
+
+function normalize_location_id($mysqli, $location_id, $allow_disabled = false)
+{
+    $location_id = (int) $location_id;
+    if ($location_id <= 0) {
+        return default_appointment_location_id($mysqli);
+    }
+    $location = fetch_appointment_location($mysqli, $location_id);
+    if (!$location || (!$allow_disabled && (int) ($location['is_enabled'] ?? 0) !== 1)) {
+        return default_appointment_location_id($mysqli);
+    }
+    return (int) $location['id'];
+}
+
+function csv_without_value($csv, $value, $numeric = false)
+{
+    $value = $numeric ? (string) (int) $value : (string) $value;
+    $items = array_filter(array_map('trim', explode(',', (string) $csv)));
+    $items = array_values(array_filter($items, static function ($item) use ($value, $numeric) {
+        return ($numeric ? (string) (int) $item : (string) $item) !== $value;
+    }));
+    return implode(',', array_unique($items));
 }
 
 function save_uploaded_settings_image($file, $prefix)
@@ -2483,8 +3080,11 @@ if ($action === 'generate_invite') {
     $professional_where = $professional_id > 0 ? " AND COALESCE(ppf.professional_id, pp.professional_id) = " . (int) $professional_id : ($professional_id < 0 ? " AND 1 = 0" : "");
     $res = $mysqli->query("
         SELECT u.id, u.name, u.email, u.phone, u.created_at, u.password_hash,
-               pp.patient_type, pp.patient_status, pp.birth_date, pp.referral_source, pp.knowledge_problem_id, pp.initial_consultation_reason,
-               pp.emergency_contact_name, pp.emergency_contact_phone, pp.emergency_contact_relation,
+               pp.patient_type, pp.fiscal_name, pp.fiscal_nif,
+               pp.invoice_use_alt_data, pp.invoice_name, pp.invoice_nif, pp.invoice_email, pp.invoice_phone, pp.invoice_address,
+               pp.patient_status, pp.waiting_list, pp.birth_date, pp.referral_source, pp.knowledge_problem_id, pp.initial_consultation_reason,
+               pp.background_notes, pp.support_network_notes,
+               pp.emergency_contact_name, pp.emergency_contact_phone, pp.emergency_contact_relation, pp.address,
                pp.admission_date, pp.notes, pp.physical_sex,
                COALESCE(pen_latest.weight_kg, pp.weight_kg) AS weight_kg,
                COALESCE(pen_latest.height_cm, pp.height_cm) AS height_cm,
@@ -2541,14 +3141,26 @@ if ($action === 'generate_invite') {
             'email' => $row['email'] ?? '',
             'phone' => $row['phone'] ?? '',
             'patient_type' => $row['patient_type'] ?? '',
+            'fiscal_name' => $row['fiscal_name'] ?? '',
+            'fiscal_nif' => $row['fiscal_nif'] ?? '',
+            'invoice_use_alt_data' => (int) ($row['invoice_use_alt_data'] ?? 0),
+            'invoice_name' => $row['invoice_name'] ?? '',
+            'invoice_nif' => $row['invoice_nif'] ?? '',
+            'invoice_email' => $row['invoice_email'] ?? '',
+            'invoice_phone' => $row['invoice_phone'] ?? '',
+            'invoice_address' => $row['invoice_address'] ?? '',
             'patient_status' => $row['patient_status'] ?? 'active',
+            'waiting_list' => (int) ($row['waiting_list'] ?? 0),
             'birth_date' => $row['birth_date'] ?? '',
             'referral_source' => $row['referral_source'] ?? '',
             'knowledge_problem_id' => (int) ($row['knowledge_problem_id'] ?? 0),
             'initial_consultation_reason' => $row['initial_consultation_reason'] ?? '',
+            'background_notes' => $row['background_notes'] ?? '',
+            'support_network_notes' => $row['support_network_notes'] ?? '',
             'emergency_contact_name' => $row['emergency_contact_name'] ?? '',
             'emergency_contact_phone' => $row['emergency_contact_phone'] ?? '',
             'emergency_contact_relation' => $row['emergency_contact_relation'] ?? '',
+            'address' => $row['address'] ?? '',
             'admission_date' => $row['admission_date'] ?? substr((string) $row['created_at'], 0, 10),
             'notes' => $row['notes'] ?? '',
             'physical_sex' => $row['physical_sex'] ?? '',
@@ -2582,6 +3194,35 @@ if ($action === 'generate_invite') {
         'patients' => $patients,
         'professionals' => $is_superadmin ? active_professionals_payload($mysqli) : [],
         'current_professional_id' => current_professional_id_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0))
+    ]);
+} elseif ($action === 'waiting_list_patients') {
+    ensure_patient_management_tables($mysqli);
+    $professional_id = $is_superadmin ? 0 : admin_requested_professional_filter($mysqli);
+    $professional_where = $professional_id > 0
+        ? " AND COALESCE(ppf.professional_id, pp.professional_id) = " . (int) $professional_id
+        : ($professional_id < 0 ? " AND 1 = 0" : "");
+    $res = $mysqli->query("
+        SELECT u.id, u.name
+        FROM users u
+        LEFT JOIN patient_profiles pp ON pp.user_id = u.id AND pp.tenant_id = u.tenant_id
+        LEFT JOIN patient_professionals ppf ON ppf.patient_id = u.id AND ppf.tenant_id = u.tenant_id AND ppf.is_primary = 1
+        WHERE u.tenant_id = $tenant_id
+          AND u.role = 'patient'
+          AND COALESCE(pp.waiting_list, 0) = 1
+          $professional_where
+        ORDER BY u.name ASC
+    ");
+    $patients = [];
+    while ($row = $res->fetch_assoc()) {
+        $patients[] = [
+            'id' => (int) $row['id'],
+            'name' => $row['name'] ?? ''
+        ];
+    }
+    echo json_encode([
+        'success' => true,
+        'count' => count($patients),
+        'patients' => $patients
     ]);
 } elseif ($action === 'global_search') {
     ensure_patient_management_tables($mysqli);
@@ -2783,6 +3424,60 @@ if ($action === 'generate_invite') {
     }
 
     echo json_encode(['success' => true, 'query' => $query, 'results' => $results]);
+} elseif ($action === 'list_app_logs') {
+    ensure_app_logs_table($mysqli);
+    $search = trim((string) ($_GET['search'] ?? ''));
+    $date_to = trim((string) ($_GET['date_to'] ?? ''));
+    $date_from = trim((string) ($_GET['date_from'] ?? ''));
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_to)) {
+        $date_to = date('Y-m-d');
+    }
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_from)) {
+        $date_from = date('Y-m-d', strtotime('-30 days'));
+    }
+    if ($date_from > $date_to) {
+        [$date_from, $date_to] = [$date_to, $date_from];
+    }
+
+    $params = [$tenant_id, $date_from . ' 00:00:00', $date_to . ' 23:59:59'];
+    $types = 'iss';
+    $where = "l.tenant_id = ? AND l.created_at BETWEEN ? AND ?";
+    if ($search !== '') {
+        $like = '%' . $search . '%';
+        $where .= " AND (l.action LIKE ? OR l.channel LIKE ? OR l.status LIKE ? OR l.title LIKE ? OR l.message LIKE ? OR u.name LIKE ?)";
+        array_push($params, $like, $like, $like, $like, $like, $like);
+        $types .= 'ssssss';
+    }
+
+    $stmt = $mysqli->prepare("
+        SELECT l.id, l.created_at, l.user_id, l.target_type, l.target_id, l.action, l.channel, l.status,
+               l.title, l.message, u.name AS user_name
+        FROM app_logs l
+        LEFT JOIN users u ON u.id = l.user_id AND u.tenant_id = l.tenant_id
+        WHERE $where
+        ORDER BY l.created_at DESC, l.id DESC
+        LIMIT 300
+    ");
+    bind_params_dynamic($stmt, $types, $params);
+    $stmt->execute();
+    $rows = [];
+    $res = $stmt->get_result();
+    while ($row = $res->fetch_assoc()) {
+        $rows[] = [
+            'id' => (int) $row['id'],
+            'created_at' => $row['created_at'],
+            'user_id' => (int) ($row['user_id'] ?? 0),
+            'user_name' => $row['user_name'] ?? '',
+            'target_type' => $row['target_type'] ?? '',
+            'target_id' => (int) ($row['target_id'] ?? 0),
+            'action' => $row['action'] ?? '',
+            'channel' => $row['channel'] ?? '',
+            'status' => $row['status'] ?? '',
+            'title' => $row['title'] ?? '',
+            'message' => $row['message'] ?? ''
+        ];
+    }
+    echo json_encode(['success' => true, 'logs' => $rows, 'date_from' => $date_from, 'date_to' => $date_to]);
 } elseif ($action === 'appointment_payment_detail') {
     ensure_appointment_payment_columns($mysqli);
     ensure_appointment_services_tables($mysqli);
@@ -2796,6 +3491,8 @@ if ($action === 'generate_invite') {
     $method = $appointment['payment_method'] ?? '';
     $professional_settings = cabinet_get_effective_professional_settings($mysqli, (int) ($appointment['professional_id'] ?? 0));
     $professional_delivery_mode = $professional_settings['appointment_delivery_mode'] ?? 'both';
+    $livekit_for_professional = livekit_enabled_for_professional($mysqli, (int) ($appointment['professional_id'] ?? 0));
+    $branding_settings = get_public_branding_settings($mysqli);
     $knowledge_problem = appointment_patient_knowledge_problem_payload($mysqli, (int) ($appointment['user_id'] ?? 0));
     echo json_encode([
         'success' => true,
@@ -2805,13 +3502,23 @@ if ($action === 'generate_invite') {
             'patient_name' => $appointment['patient_name'] ?? '',
             'patient_email' => $appointment['patient_email'] ?? '',
             'patient_phone' => $appointment['patient_phone'] ?? '',
+            'patient_address' => $appointment['patient_address'] ?? '',
             'professional_id' => (int) ($appointment['professional_id'] ?? 0),
             'professional_name' => $appointment['professional_name'] ?? '',
             'appointment_date' => $appointment['appointment_date'],
             'appointment_time' => substr((string) $appointment['appointment_time'], 0, 5),
             'status' => $appointment['status'] ?? '',
             'consultation_type' => $appointment['consultation_type'] ?? 'presencial',
+            'location_id' => (int) ($appointment['location_id'] ?? 0),
+            'location_name' => $appointment['location_name'] ?? '',
+            'location_type' => $appointment['location_type'] ?? '',
             'online_session_url' => $appointment['online_session_url'] ?? '',
+            'session_notes' => $appointment['session_notes'] ?? '',
+            'livekit_enabled' => $livekit_for_professional ? 1 : 0,
+            'default_appointment_location' => trim((string) ($professional_settings['default_appointment_location'] ?? '')),
+            'default_location_id' => (int) ($professional_settings['default_location_id'] ?? 0),
+            'locations' => fetch_appointment_locations($mysqli, true),
+            'center_address' => trim((string) ($branding_settings['legal_address'] ?? '')),
             'can_online_appointment' => in_array($professional_delivery_mode, ['both', 'online'], true) ? 1 : 0,
             'can_presential_appointment' => in_array($professional_delivery_mode, ['both', 'presencial'], true) ? 1 : 0,
             'duration_minutes' => (int) ($appointment['duration_minutes'] ?? 60),
@@ -2949,6 +3656,8 @@ if ($action === 'generate_invite') {
     $appointment_id = (int) ($_POST['appointment_id'] ?? 0);
     $payment_status = $_POST['payment_status'] ?? 'pending';
     $payment_method = trim($_POST['payment_method'] ?? '');
+    $session_notes_was_posted = array_key_exists('session_notes', $_POST);
+    $session_notes = trim((string) ($_POST['session_notes'] ?? ''));
     [$can_manage, $appointment] = admin_can_manage_appointment_payment($mysqli, $appointment_id);
     if (!$can_manage || !$appointment) {
         echo json_encode(['success' => false, 'error' => 'No autorizado para actualizar esta cita.']);
@@ -2968,6 +3677,35 @@ if ($action === 'generate_invite') {
     }
 
     $allowed_methods = ['card', 'bizum', 'cash', 'bank_transfer', 'other', 'manual'];
+    $current_status = $appointment['payment_status'] ?? 'pending';
+    $marking_as_paid = $payment_status === 'paid' && $current_status !== 'paid';
+    $billing_enabled = invoice_billing_enabled($mysqli);
+    if ($billing_enabled && $marking_as_paid && !invoice_manual_confirmation_received()) {
+        echo json_encode(['success' => false, 'error' => 'Confirma la emision de la factura para marcar esta cita como pagada.']);
+        exit;
+    }
+    if ($billing_enabled && $marking_as_paid) {
+        [$recipient_ok, $recipient_error] = invoice_recipient_for_user($mysqli, (int) ($appointment['user_id'] ?? 0));
+        if (!$recipient_ok) {
+            echo json_encode(['success' => false, 'error' => $recipient_error]);
+            exit;
+        }
+    }
+    $existing_invoice = invoice_existing_for_origin($mysqli, 'appointment', $appointment_id);
+    if ($existing_invoice) {
+        $current_method = $appointment['payment_method'] ?? '';
+        if ($payment_status !== $current_status || ($payment_status === 'paid' && $payment_method !== $current_method)) {
+            echo json_encode(['success' => false, 'error' => 'Esta cita ya tiene factura emitida y no se puede modificar el cobro.']);
+            exit;
+        }
+    }
+    if ($payment_status === 'paid' && !in_array($payment_method, $allowed_methods, true)) {
+        echo json_encode(['success' => false, 'error' => 'Indica una forma de pago valida.']);
+        exit;
+    }
+
+    $mysqli->begin_transaction();
+    try {
     if ($payment_status === 'paid') {
         if (!in_array($payment_method, $allowed_methods, true)) {
             echo json_encode(['success' => false, 'error' => 'Indica una forma de pago válida.']);
@@ -2999,17 +3737,149 @@ if ($action === 'generate_invite') {
     }
 
     if (!$stmt->execute()) {
-        echo json_encode(['success' => false, 'error' => 'No se pudo actualizar el pago.']);
+        throw new Exception('No se pudo actualizar el pago.');
+    }
+
+    if ($session_notes_was_posted) {
+        $stmt = $mysqli->prepare("UPDATE appointments SET session_notes = ? WHERE tenant_id = ? AND id = ?");
+        $stmt->bind_param("sii", $session_notes, $tenant_id, $appointment_id);
+        if (!$stmt->execute()) {
+            throw new Exception('No se pudieron guardar las notas de la sesion.');
+        }
+    }
+
+    $invoice_warning = '';
+    $invoice_number = '';
+    if ($payment_status === 'paid') {
+        $invoice_result = invoice_emit_for_appointment($mysqli, $appointment_id, $payment_method);
+        if (!empty($invoice_result['success'])) {
+            $invoice_number = $invoice_result['invoice_number'] ?? '';
+        } else {
+            throw new Exception($invoice_result['error'] ?? 'No se pudo emitir la factura.');
+        }
+    }
+        $mysqli->commit();
+    } catch (\Exception $e) {
+        $mysqli->rollback();
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
         exit;
     }
 
-    echo json_encode(['success' => true, 'message' => 'Pago actualizado correctamente.']);
+    $previous_method = $appointment['payment_method'] ?? '';
+    if ($payment_status !== $current_status || ($payment_status === 'paid' && $payment_method !== $previous_method)) {
+        app_log($mysqli, [
+            'action' => 'appointment_payment_updated',
+            'status' => 'ok',
+            'target_type' => 'appointment',
+            'target_id' => $appointment_id,
+            'title' => 'Pago de cita actualizado',
+            'message' => 'Pago actualizado de ' . ($current_status ?: 'pending') . ' a ' . $payment_status . '.',
+            'metadata' => [
+                'patient_id' => (int) ($appointment['user_id'] ?? 0),
+                'patient_name' => $appointment['patient_name'] ?? '',
+                'professional_id' => (int) ($appointment['professional_id'] ?? 0),
+                'appointment_date' => $appointment['appointment_date'] ?? '',
+                'appointment_time' => $appointment['appointment_time'] ?? '',
+                'previous_payment_status' => $current_status,
+                'new_payment_status' => $payment_status,
+                'previous_payment_method' => $previous_method,
+                'new_payment_method' => $payment_status === 'paid' ? $payment_method : '',
+                'invoice_number' => $invoice_number
+            ]
+        ]);
+    }
+
+    echo json_encode([
+        'success' => true,
+        'message' => $invoice_warning ? 'Cambios guardados, pero no se pudo emitir la factura: ' . $invoice_warning : 'Cambios guardados correctamente.',
+        'invoice_number' => $invoice_number,
+        'invoice_warning' => $invoice_warning,
+        'session_notes' => $session_notes_was_posted ? $session_notes : ($appointment['session_notes'] ?? '')
+    ]);
+} elseif ($action === 'update_appointment_status') {
+    ensure_appointment_payment_columns($mysqli);
+    $appointment_id = (int) ($_POST['appointment_id'] ?? 0);
+    $status = $_POST['status'] ?? 'booked';
+    [$can_manage, $appointment] = admin_can_manage_appointment_payment($mysqli, $appointment_id);
+    if (!$can_manage || !$appointment) {
+        echo json_encode(['success' => false, 'error' => 'No autorizado para actualizar esta cita.']);
+        exit;
+    }
+    if (!in_array($status, ['booked', 'completed', 'no_show'], true)) {
+        echo json_encode(['success' => false, 'error' => 'Estado de asistencia no valido.']);
+        exit;
+    }
+    if (($appointment['status'] ?? '') === 'cancelled') {
+        echo json_encode(['success' => false, 'error' => 'No se puede modificar el estado de una cita cancelada.']);
+        exit;
+    }
+    try {
+        $stmt = $mysqli->prepare("UPDATE appointments SET status = ? WHERE tenant_id = ? AND id = ?");
+        $stmt->bind_param("sii", $status, $tenant_id, $appointment_id);
+        $stmt->execute();
+    } catch (Throwable $e) {
+        echo json_encode(['success' => false, 'error' => 'No se pudo actualizar el estado de asistencia: ' . $e->getMessage()]);
+        exit;
+    }
+    $labels = [
+        'booked' => 'reservada',
+        'completed' => 'realizada',
+        'no_show' => 'no asistida'
+    ];
+    if (($appointment['status'] ?? '') !== $status) {
+        app_log($mysqli, [
+            'action' => 'appointment_attendance_updated',
+            'status' => 'ok',
+            'target_type' => 'appointment',
+            'target_id' => $appointment_id,
+            'title' => 'Estado de asistencia actualizado',
+            'message' => 'Cita marcada como ' . ($labels[$status] ?? 'actualizada') . '.',
+            'metadata' => [
+                'patient_id' => (int) ($appointment['user_id'] ?? 0),
+                'patient_name' => $appointment['patient_name'] ?? '',
+                'professional_id' => (int) ($appointment['professional_id'] ?? 0),
+                'appointment_date' => $appointment['appointment_date'] ?? '',
+                'appointment_time' => $appointment['appointment_time'] ?? '',
+                'previous_status' => $appointment['status'] ?? '',
+                'new_status' => $status
+            ]
+        ]);
+    }
+    echo json_encode([
+        'success' => true,
+        'status' => $status,
+        'message' => 'Cita marcada como ' . ($labels[$status] ?? 'actualizada') . '.'
+    ]);
+} elseif ($action === 'update_appointment_session_notes') {
+    ensure_appointment_payment_columns($mysqli);
+    $appointment_id = (int) ($_POST['appointment_id'] ?? 0);
+    $session_notes = trim((string) ($_POST['session_notes'] ?? ''));
+    [$can_manage, $appointment] = admin_can_manage_appointment_payment($mysqli, $appointment_id);
+    if (!$can_manage || !$appointment) {
+        echo json_encode(['success' => false, 'error' => 'No autorizado para actualizar esta cita.']);
+        exit;
+    }
+    try {
+        $stmt = $mysqli->prepare("UPDATE appointments SET session_notes = ? WHERE tenant_id = ? AND id = ?");
+        $stmt->bind_param("sii", $session_notes, $tenant_id, $appointment_id);
+        $stmt->execute();
+    } catch (Throwable $e) {
+        echo json_encode(['success' => false, 'error' => 'No se pudieron guardar las notas de la sesion: ' . $e->getMessage()]);
+        exit;
+    }
+    echo json_encode([
+        'success' => true,
+        'session_notes' => $session_notes,
+        'message' => 'Notas de la sesion guardadas.'
+    ]);
 } elseif ($action === 'update_appointment_online_details') {
     ensure_appointment_payment_columns($mysqli);
     ensure_appointment_services_tables($mysqli);
+    ensure_appointment_locations_table($mysqli);
     $appointment_id = (int) ($_POST['appointment_id'] ?? 0);
     $consultation_type = $_POST['consultation_type'] ?? 'presencial';
     $online_session_url = trim($_POST['online_session_url'] ?? '');
+    $location_id = (int) ($_POST['location_id'] ?? 0);
     [$can_manage, $appointment] = admin_can_manage_appointment_payment($mysqli, $appointment_id);
     if (!$can_manage || !$appointment) {
         echo json_encode(['success' => false, 'error' => 'No autorizado para actualizar esta cita.']);
@@ -3025,6 +3895,7 @@ if ($action === 'generate_invite') {
     }
     $professional_settings = cabinet_get_effective_professional_settings($mysqli, (int) ($appointment['professional_id'] ?? 0));
     $professional_delivery_mode = $professional_settings['appointment_delivery_mode'] ?? 'both';
+    $uses_livekit = $consultation_type === 'online' && livekit_enabled_for_professional($mysqli, (int) ($appointment['professional_id'] ?? 0));
     if ($consultation_type === 'online' && !in_array($professional_delivery_mode, ['both', 'online'], true)) {
         echo json_encode(['success' => false, 'error' => 'Este profesional no admite citas online.']);
         exit;
@@ -3033,25 +3904,53 @@ if ($action === 'generate_invite') {
         echo json_encode(['success' => false, 'error' => 'Este profesional no admite citas presenciales.']);
         exit;
     }
-    if ($consultation_type !== 'online') {
+    if ($uses_livekit && !livekit_is_configured()) {
+        echo json_encode(['success' => false, 'error' => 'LiveKit no está configurado en el servidor.']);
+        exit;
+    }
+    if ($uses_livekit) {
         $online_session_url = '';
-    } elseif ($online_session_url !== '' && !filter_var($online_session_url, FILTER_VALIDATE_URL)) {
+    } elseif ($consultation_type === 'online' && $online_session_url !== '' && !filter_var($online_session_url, FILTER_VALIDATE_URL)) {
         echo json_encode(['success' => false, 'error' => 'Indica un enlace valido para la videollamada.']);
         exit;
     }
+    $location = null;
+    if ($consultation_type === 'presencial') {
+        $location_id = normalize_location_id($mysqli, $location_id);
+        $location = fetch_appointment_location($mysqli, $location_id);
+        $online_session_url = appointment_location_display_name($location);
+    } else {
+        $location_id = null;
+    }
 
-    $stmt = $mysqli->prepare("UPDATE appointments SET consultation_type = ?, online_session_url = ? WHERE tenant_id = ? AND id = ?");
-    $stmt->bind_param("ssii", $consultation_type, $online_session_url, $tenant_id, $appointment_id);
+    $stmt = $mysqli->prepare("UPDATE appointments SET consultation_type = ?, location_id = ?, online_session_url = ? WHERE tenant_id = ? AND id = ?");
+    $stmt->bind_param("sisii", $consultation_type, $location_id, $online_session_url, $tenant_id, $appointment_id);
     if (!$stmt->execute()) {
         echo json_encode(['success' => false, 'error' => 'No se pudo guardar la modalidad de la cita.']);
         exit;
     }
 
+    $livekit_link_ready = false;
+    if ($uses_livekit) {
+        $livekit_link_ready = livekit_ensure_appointment_link_token(
+            $mysqli,
+            $appointment_id,
+            (string) ($appointment['livekit_access_token'] ?? '')
+        ) !== '';
+    }
+
     echo json_encode([
         'success' => true,
-        'message' => 'Modalidad de la cita actualizada.',
+        'message' => $uses_livekit && $livekit_link_ready
+            ? 'Modalidad de la cita actualizada. Enlace LiveKit preparado.'
+            : 'Modalidad de la cita actualizada.',
         'consultation_type' => $consultation_type,
-        'online_session_url' => $online_session_url
+        'location_id' => $location_id ?: 0,
+        'location_name' => $location['name'] ?? '',
+        'location_type' => $location['location_type'] ?? '',
+        'online_session_url' => $online_session_url,
+        'livekit_enabled' => livekit_enabled_for_professional($mysqli, (int) ($appointment['professional_id'] ?? 0)) ? 1 : 0,
+        'livekit_link_ready' => $livekit_link_ready ? 1 : 0
     ]);
 } elseif ($action === 'send_appointment_online_link') {
     ensure_appointment_payment_columns($mysqli);
@@ -3069,7 +3968,15 @@ if ($action === 'generate_invite') {
         echo json_encode(['success' => false, 'error' => 'La cita no esta marcada como online.']);
         exit;
     }
-    $online_session_url = trim($appointment['online_session_url'] ?? '');
+    $uses_livekit = livekit_appointment_enabled($mysqli, $appointment);
+    if ($uses_livekit) {
+        $appointment['livekit_access_token'] = livekit_ensure_appointment_link_token(
+            $mysqli,
+            $appointment_id,
+            (string) ($appointment['livekit_access_token'] ?? '')
+        );
+    }
+    $online_session_url = $uses_livekit ? livekit_patient_join_url($appointment) : trim($appointment['online_session_url'] ?? '');
     if ($online_session_url === '') {
         echo json_encode(['success' => false, 'error' => 'Guarda primero el enlace de videollamada.']);
         exit;
@@ -3100,6 +4007,136 @@ if ($action === 'generate_invite') {
     echo json_encode($sent
         ? ['success' => true, 'message' => 'Enlace enviado al paciente.']
         : ['success' => false, 'error' => 'No se pudo enviar el email al paciente.']);
+} elseif ($action === 'send_manual_appointment_reminder') {
+    ensure_appointment_payment_columns($mysqli);
+    ensure_appointment_services_tables($mysqli);
+    $appointment_id = (int) ($_POST['appointment_id'] ?? 0);
+    $channel = strtolower(trim((string) ($_POST['channel'] ?? 'email')));
+    if (!in_array($channel, ['email', 'sms'], true)) {
+        echo json_encode(['success' => false, 'error' => 'Canal de recordatorio no valido.']);
+        exit;
+    }
+    if ($channel === 'email' && !app_feature_enabled_from_db($mysqli, 'reminders.patient24h', false)) {
+        echo json_encode(['success' => false, 'error' => 'Los recordatorios por email no estan disponibles en este plan.']);
+        exit;
+    }
+    if ($channel === 'sms' && !app_feature_enabled_from_db($mysqli, 'reminders.sms', false)) {
+        echo json_encode(['success' => false, 'error' => 'Los recordatorios por SMS no estan disponibles en este plan.']);
+        exit;
+    }
+    [$can_manage, $appointment] = admin_can_manage_appointment_payment($mysqli, $appointment_id);
+    if (!$can_manage || !$appointment) {
+        echo json_encode(['success' => false, 'error' => 'No autorizado para enviar este recordatorio.']);
+        exit;
+    }
+    if (($appointment['status'] ?? '') !== 'booked') {
+        $message = 'Solo se pueden enviar recordatorios de citas reservadas.';
+        admin_log_manual_reminder($mysqli, $appointment, $channel, false, $message);
+        echo json_encode(['success' => false, 'error' => $message]);
+        exit;
+    }
+
+    $settings = admin_payment_settings_for_reminder($mysqli);
+    if ($channel === 'email') {
+        if (empty($appointment['patient_email']) || !filter_var($appointment['patient_email'], FILTER_VALIDATE_EMAIL)) {
+            $message = 'El paciente no tiene un email valido.';
+            admin_log_manual_reminder($mysqli, $appointment, 'email', false, $message);
+            echo json_encode(['success' => false, 'error' => $message]);
+            exit;
+        }
+        $template = message_template_get($mysqli, 'appointment_email_reminder');
+        $context = admin_appointment_reminder_context($mysqli, $appointment, $settings, false);
+        $vars = $context['vars'];
+        $body = admin_reminder_email_body_to_html(message_template_render($template['body'] ?? message_template_default_body('appointment_email_reminder'), $vars));
+
+        $online_link_note = '';
+        if (($appointment['consultation_type'] ?? '') === 'online' && !empty($context['online_link'])) {
+            $online_link_note =
+                '<p><b>Enlace de videollamada:</b><br>' .
+                '<a href="' . htmlspecialchars($context['online_link']) . '">Acceder a la cita online</a></p>' .
+                '<p>Si el boton no funciona, copia y pega este enlace en tu navegador:<br>' . htmlspecialchars($context['online_link']) . '</p>';
+        }
+        $payment_note = '';
+        if ((int) ($settings['online_payment_enabled'] ?? 0) === 1 && ($appointment['payment_status'] ?? '') !== 'paid') {
+            $payment_note = '<p>Si no has hecho aun el pago, puedes realizar el pago con tarjeta o Bizum desde el mismo enlace.</p>';
+        }
+        $body .=
+            '<p><b>Servicio:</b> ' . htmlspecialchars($context['service_text']) . '</p>' .
+            '<p><b>Modalidad:</b> ' . htmlspecialchars($context['consultation_text']) . '</p>' .
+            $online_link_note .
+            '<p><b>Importe:</b> ' . htmlspecialchars($context['price']) . ' &euro;</p>' .
+            '<p><a href="' . htmlspecialchars($context['manage_link']) . '">Gestionar/cancelar reserva</a></p>' .
+            $payment_note;
+        $subject = message_template_render($template['subject'] ?: message_template_default_subject('appointment_email_reminder'), $vars);
+        $sent = send_app_email($appointment['patient_email'], $subject, $body, null, $mysqli);
+        $email_error = $sent ? '' : (function_exists('get_app_email_last_error') ? get_app_email_last_error() : '');
+        $message = $sent
+            ? 'Recordatorio enviado por email a ' . $appointment['patient_email'] . '.'
+            : 'No se pudo enviar el recordatorio por email.' . ($email_error !== '' ? ' Motivo: ' . $email_error : '');
+        admin_log_manual_reminder($mysqli, $appointment, 'email', $sent, $message, [
+            'recipient' => $appointment['patient_email'] ?? '',
+            'error' => $email_error
+        ]);
+        echo json_encode($sent
+            ? ['success' => true, 'message' => 'Recordatorio enviado por email.']
+            : ['success' => false, 'error' => 'No se pudo enviar el recordatorio por email.' . ($email_error !== '' ? ' ' . $email_error : '')]);
+        exit;
+    }
+
+    if (empty($appointment['patient_phone'])) {
+        $message = 'El paciente no tiene telefono guardado.';
+        admin_log_manual_reminder($mysqli, $appointment, 'sms', false, $message);
+        echo json_encode(['success' => false, 'error' => $message]);
+        exit;
+    }
+    $sms_settings = sms_get_settings($mysqli);
+    $settings = array_merge($settings, $sms_settings);
+    $template = message_template_get($mysqli, 'appointment_sms_reminder');
+    $context = admin_appointment_reminder_context($mysqli, $appointment, $settings, true);
+    $message_body = message_template_render($template['body'] ?? message_template_default_body('appointment_sms_reminder'), $context['vars']);
+    if (strpos($message_body, $context['manage_link']) === false) {
+        $message_body .= ' Gestionar/cancelar: ' . $context['manage_link'];
+    }
+    try {
+        $sms_result = sms_send_with_settings($settings, $appointment['patient_phone'], $message_body, [
+            'custom' => 'manual-reminder-' . $tenant_id . '-' . (int) $appointment['id']
+        ]);
+    } catch (Throwable $e) {
+        $sms_result = ['success' => false, 'error' => $e->getMessage()];
+    }
+    $sent = !empty($sms_result['success']);
+    $message = $sent
+        ? 'Recordatorio enviado por SMS a ' . $appointment['patient_phone'] . '.'
+        : ('No se pudo enviar el recordatorio por SMS: ' . ($sms_result['error'] ?? 'Error desconocido.'));
+    admin_log_manual_reminder($mysqli, $appointment, 'sms', $sent, $message, [
+        'recipient' => $appointment['patient_phone'] ?? '',
+        'provider' => $sms_settings['sms_provider'] ?? '',
+        'sms_id' => $sms_result['id'] ?? ''
+    ]);
+    echo json_encode($sent
+        ? ['success' => true, 'message' => 'Recordatorio enviado por SMS.']
+        : ['success' => false, 'error' => $sms_result['error'] ?? 'No se pudo enviar el recordatorio por SMS.']);
+} elseif ($action === 'regenerate_appointment_livekit_link') {
+    ensure_appointment_payment_columns($mysqli);
+    $appointment_id = (int) ($_POST['appointment_id'] ?? 0);
+    [$can_manage, $appointment] = admin_can_manage_appointment_payment($mysqli, $appointment_id);
+    if (!$can_manage || !$appointment) {
+        echo json_encode(['success' => false, 'error' => 'No autorizado para regenerar este enlace.']);
+        exit;
+    }
+    if (($appointment['status'] ?? '') !== 'booked' || !livekit_appointment_enabled($mysqli, $appointment)) {
+        echo json_encode(['success' => false, 'error' => 'Esta cita no tiene una videollamada LiveKit activa.']);
+        exit;
+    }
+    $token = livekit_ensure_appointment_link_token($mysqli, $appointment_id, '', true);
+    if ($token === '') {
+        echo json_encode(['success' => false, 'error' => 'No se pudo regenerar el enlace de videollamada.']);
+        exit;
+    }
+    echo json_encode([
+        'success' => true,
+        'message' => 'Enlace LiveKit regenerado. El enlace anterior ya no es válido.'
+    ]);
 } elseif ($action === 'download_patient_document') {
     $patient_id = (int) ($_GET['patient_id'] ?? 0);
     if (!admin_can_access_patient($mysqli, $patient_id)) {
@@ -3387,6 +4424,13 @@ if ($action === 'generate_invite') {
         exit;
     }
 
+    $requested_payment_mode = trim((string) ($_POST['payment_mode'] ?? 'free'));
+    $requested_payment_status = trim((string) ($_POST['payment_status'] ?? 'not_required'));
+    if ($requested_payment_mode === 'paid' && $requested_payment_status === 'paid' && invoice_billing_enabled($mysqli) && !invoice_manual_confirmation_received()) {
+        echo json_encode(['success' => false, 'error' => 'Confirma la emision de la factura para marcar este informe como pagado.']);
+        exit;
+    }
+
     $uploaded = save_patient_document_file_upload($_FILES['source_document'] ?? null, $patient_id);
     if (!$uploaded) {
         echo json_encode(['success' => false, 'error' => 'Sube el archivo del informe propio.']);
@@ -3403,6 +4447,10 @@ if ($action === 'generate_invite') {
     }
     if ($payment_mode !== 'paid' && $payment_status === 'pending') {
         $payment_status = 'not_required';
+    }
+    if ($payment_mode === 'paid' && $payment_status === 'paid' && invoice_billing_enabled($mysqli) && !invoice_manual_confirmation_received()) {
+        echo json_encode(['success' => false, 'error' => 'Confirma la emision de la factura para marcar este informe como pagado.']);
+        exit;
     }
     $price_raw = str_replace(',', '.', trim((string) ($_POST['price'] ?? '')));
     $price = $payment_mode === 'paid' && $price_raw !== '' ? max(0, (float) $price_raw) : null;
@@ -3492,6 +4540,12 @@ if ($action === 'generate_invite') {
         );
         $stmt->execute();
         $report_id = (int) $stmt->insert_id;
+        if ($payment_status === 'paid') {
+            $invoice_result = invoice_emit_for_patient_report($mysqli, $report_id);
+            if (empty($invoice_result['success'])) {
+                throw new Exception($invoice_result['error'] ?? 'No se pudo emitir la factura del informe.');
+            }
+        }
         $mysqli->commit();
         echo json_encode(['success' => true, 'message' => 'Plantilla de informe subida correctamente.', 'report_id' => $report_id]);
     } catch (\Exception $e) {
@@ -3792,7 +4846,8 @@ if ($action === 'generate_invite') {
 } elseif ($action === 'update_patient_report') {
     $report_id = (int) ($_POST['report_id'] ?? 0);
     $stmt = $mysqli->prepare("
-        SELECT id, patient_id, title, source_document_id, final_document_id, official_document_id
+        SELECT id, patient_id, title, source_document_id, final_document_id, official_document_id,
+               payment_mode, payment_status, price
         FROM patient_reports
         WHERE tenant_id = ? AND id = ?
         LIMIT 1
@@ -3820,8 +4875,29 @@ if ($action === 'generate_invite') {
     if ($payment_mode !== 'paid' && $payment_status === 'pending') {
         $payment_status = 'not_required';
     }
+    $marking_report_as_paid = $payment_mode === 'paid'
+        && $payment_status === 'paid'
+        && ($report_row['payment_status'] ?? 'not_required') !== 'paid';
+    if ($marking_report_as_paid && invoice_billing_enabled($mysqli) && !invoice_manual_confirmation_received()) {
+        echo json_encode(['success' => false, 'error' => 'Confirma la emision de la factura para marcar este informe como pagado.']);
+        exit;
+    }
     $price_raw = str_replace(',', '.', trim((string) ($_POST['price'] ?? '')));
     $price = $payment_mode === 'paid' && $price_raw !== '' ? max(0, (float) $price_raw) : null;
+    $existing_invoice = invoice_existing_for_origin($mysqli, 'patient_report', $report_id);
+    if ($existing_invoice) {
+        $current_price = $report_row['price'] === null ? null : round((float) $report_row['price'], 2);
+        $new_price = $price === null ? null : round((float) $price, 2);
+        if (
+            $title !== (string) ($report_row['title'] ?: 'Informe')
+            || $payment_mode !== ($report_row['payment_mode'] ?? 'free')
+            || $payment_status !== ($report_row['payment_status'] ?? 'not_required')
+            || $new_price !== $current_price
+        ) {
+            echo json_encode(['success' => false, 'error' => 'Este informe ya tiene factura emitida y no se pueden modificar sus datos economicos.']);
+            exit;
+        }
+    }
     $portal_available = !empty($_POST['portal_available']) ? 1 : 0;
     $document_portal_visible = ($portal_available === 1 && !($payment_mode === 'paid' && $payment_status !== 'paid')) ? 1 : 0;
     $updated_by = (int) ($_SESSION['user_id'] ?? 0);
@@ -3833,7 +4909,7 @@ if ($action === 'generate_invite') {
         $uploaded = save_patient_document_file_upload($_FILES['final_document'] ?? null, (int) $report_row['patient_id']);
         if ($uploaded) {
             $document_type = 'file';
-            $title = 'Informe final - ' . ($report_row['title'] ?: 'Informe');
+            $document_title = 'Informe final - ' . ($report_row['title'] ?: 'Informe');
             $description = 'Versión final/oficial asociada al informe.';
             $document_date = date('Y-m-d');
             $score = '';
@@ -3852,7 +4928,7 @@ if ($action === 'generate_invite') {
                 $tenant_id,
                 $report_row['patient_id'],
                 $document_type,
-                $title,
+                $document_title,
                 $description,
                 $document_date,
                 $score,
@@ -3908,6 +4984,12 @@ if ($action === 'generate_invite') {
                 $stmt->execute();
             }
         }
+        if ($payment_status === 'paid') {
+            $invoice_result = invoice_emit_for_patient_report($mysqli, $report_id);
+            if (empty($invoice_result['success'])) {
+                throw new Exception($invoice_result['error'] ?? 'No se pudo emitir la factura del informe.');
+            }
+        }
         $mysqli->commit();
         echo json_encode(['success' => true, 'message' => 'Informe actualizado correctamente.']);
     } catch (\Exception $e) {
@@ -3918,6 +5000,10 @@ if ($action === 'generate_invite') {
     $patient_id = (int) ($_GET['patient_id'] ?? 0);
     $report_id = (int) ($_GET['report_id'] ?? 0);
     $report_type = (string) ($_GET['type'] ?? 'internal');
+    $report_sector_key = function_exists('current_knowledge_sector_key') ? current_knowledge_sector_key($mysqli) : 'psicologia';
+    $support_network_label = in_array($report_sector_key, ['psicologia', 'sexologia', 'psicopedagogia'], true)
+        ? 'Red de apoyo y contexto vital'
+        : 'Situación familiar, laboral, etc.';
     if (!in_array($report_type, ['internal', 'patient', 'clinical', 'evolution'], true)) {
         $report_type = 'internal';
     }
@@ -3944,6 +5030,7 @@ if ($action === 'generate_invite') {
     $stmt = $mysqli->prepare("
         SELECT u.id, u.name, u.email, u.phone, u.created_at,
                pp.patient_type, pp.patient_status, pp.birth_date, pp.referral_source, pp.knowledge_problem_id, pp.initial_consultation_reason,
+               pp.background_notes, pp.support_network_notes,
                pp.emergency_contact_name, pp.emergency_contact_phone, pp.emergency_contact_relation,
                pp.admission_date, pp.notes, pp.document_name,
                p.display_name AS professional_name, p.professional_title, p.license_number
@@ -4009,9 +5096,13 @@ if ($action === 'generate_invite') {
         }
     }
 
+    $report_session_notes_select = payment_column_exists($mysqli, 'appointments', 'session_notes')
+        ? 'a.session_notes'
+        : 'NULL AS session_notes';
     $stmt = $mysqli->prepare("
         SELECT a.id, a.appointment_date, a.appointment_time, a.status, a.cancelled_at,
-               a.consultation_type, a.service_type,
+               a.consultation_type, a.service_type, a.online_session_url,
+               $report_session_notes_select,
                COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
                COALESCE(a.payment_status, 'pending') AS payment_status,
                a.payment_method, a.paid_at,
@@ -4323,7 +5414,15 @@ if ($action === 'generate_invite') {
                 <h3>Motivo inicial de consulta</h3>
                 <div class="preline"><?= nl2br(report_h($patient['initial_consultation_reason'])) ?></div>
             <?php endif; ?>
-            <?php if (!empty($patient['notes'])): ?>
+            <?php if (!empty($patient['background_notes'])): ?>
+                <h3>Antecedentes</h3>
+                <div class="preline"><?= nl2br(report_h($patient['background_notes'])) ?></div>
+            <?php endif; ?>
+            <?php if (!empty($patient['support_network_notes'])): ?>
+                <h3><?= report_h($support_network_label) ?></h3>
+                <div class="preline"><?= nl2br(report_h($patient['support_network_notes'])) ?></div>
+            <?php endif; ?>
+            <?php if ($report_type === 'internal' && !empty($patient['notes'])): ?>
                 <h3>Notas internas</h3>
                 <div class="preline"><?= nl2br(report_h($patient['notes'])) ?></div>
             <?php endif; ?>
@@ -4421,6 +5520,15 @@ if ($action === 'generate_invite') {
                             <td><?= ($appointment['consultation_type'] ?? '') === 'online' ? 'Online' : 'Presencial' ?></td>
                             <td><?= report_h(($appointment['payment_status'] ?? 'pending') === 'paid' ? 'Pagada' : 'Pendiente') ?><?= $appointment['payment_method'] ? '<br><span class="meta">' . report_h(payment_method_label($appointment['payment_method'])) . '</span>' : '' ?></td>
                         </tr>
+                        <?php if ($report_type === 'internal' && trim((string) ($appointment['session_notes'] ?? '')) !== ''): ?>
+                            <tr>
+                                <td></td>
+                                <td colspan="5">
+                                    <strong>Notas privadas de la sesión</strong>
+                                    <div class="preline"><?= nl2br(report_h($appointment['session_notes'])) ?></div>
+                                </td>
+                            </tr>
+                        <?php endif; ?>
                     <?php endforeach; ?>
                     </tbody>
                 </table>
@@ -4743,6 +5851,11 @@ if ($action === 'generate_invite') {
     if (!in_array($filter_type, ['all', 'file', 'questionnaire'], true)) {
         $filter_type = 'all';
     }
+    $questionnaires_enabled = app_feature_enabled_from_db($mysqli, 'questionnaires.enabled', false);
+    if ($filter_type === 'questionnaire' && !$questionnaires_enabled) {
+        echo json_encode(['success' => false, 'error' => 'Los cuestionarios no estan disponibles en este plan.']);
+        exit;
+    }
     if (!admin_can_access_patient($mysqli, $patient_id)) {
         echo json_encode(['success' => false, 'error' => 'No autorizado para ver archivos.']);
         exit;
@@ -4818,6 +5931,9 @@ if ($action === 'generate_invite') {
     $res = $stmt->get_result();
     while ($row = $res->fetch_assoc()) {
         $document_type = $row['document_type'] === 'questionnaire' ? 'questionnaire' : 'file';
+        if ($document_type === 'questionnaire' && !$questionnaires_enabled) {
+            continue;
+        }
         $files[] = [
             'type' => $document_type,
             'legacy_type' => '',
@@ -4861,6 +5977,10 @@ if ($action === 'generate_invite') {
     }
     if (!in_array($document_type, ['file', 'questionnaire'], true)) {
         $document_type = 'file';
+    }
+    if ($document_type === 'questionnaire' && !app_feature_enabled_from_db($mysqli, 'questionnaires.enabled', false)) {
+        echo json_encode(['success' => false, 'error' => 'Los cuestionarios no estan disponibles en este plan.']);
+        exit;
     }
     $result_visible_to_patient = ($document_type === 'questionnaire' && !empty($_POST['result_visible_to_patient'])) ? 1 : 0;
     if (!in_array($status, ['pending', 'completed', 'reviewed'], true)) {
@@ -6481,19 +7601,34 @@ if ($action === 'generate_invite') {
     echo json_encode(['success' => true, 'appointments' => $appointments]);
 } elseif ($action === 'save_patient') {
     $patient_id = (int) ($_POST['patient_id'] ?? 0);
+    if ($patient_id <= 0) {
+        require_member_permission('create_patients', 'No tienes permiso para crear nuevos pacientes.');
+    }
     $name = trim($_POST['name'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $phone = trim($_POST['phone'] ?? '');
     $patient_type = trim($_POST['patient_type'] ?? '');
+    $fiscal_name = trim($_POST['fiscal_name'] ?? '');
+    $fiscal_nif = strtoupper(trim($_POST['fiscal_nif'] ?? ''));
+    $invoice_use_alt_data = isset($_POST['invoice_use_alt_data']) && $_POST['invoice_use_alt_data'] === '1' ? 1 : 0;
+    $invoice_name = trim($_POST['invoice_name'] ?? '');
+    $invoice_nif = strtoupper(trim($_POST['invoice_nif'] ?? ''));
+    $invoice_email = trim($_POST['invoice_email'] ?? '');
+    $invoice_phone = trim($_POST['invoice_phone'] ?? '');
+    $invoice_address = trim($_POST['invoice_address'] ?? '');
     $patient_status = trim($_POST['patient_status'] ?? 'active');
+    $waiting_list = isset($_POST['waiting_list']) && $_POST['waiting_list'] === '1' ? 1 : 0;
     $birth_date = trim($_POST['birth_date'] ?? '');
     $referral_source = trim($_POST['referral_source'] ?? '');
     $knowledge_problem_was_posted = array_key_exists('knowledge_problem_id', $_POST);
     $knowledge_problem_id = max(0, (int) ($_POST['knowledge_problem_id'] ?? 0));
     $initial_consultation_reason = trim($_POST['initial_consultation_reason'] ?? '');
+    $background_notes = trim($_POST['background_notes'] ?? '');
+    $support_network_notes = trim($_POST['support_network_notes'] ?? '');
     $emergency_contact_name = trim($_POST['emergency_contact_name'] ?? '');
     $emergency_contact_phone = trim($_POST['emergency_contact_phone'] ?? '');
     $emergency_contact_relation = trim($_POST['emergency_contact_relation'] ?? '');
+    $address = trim($_POST['address'] ?? '');
     $admission_date = trim($_POST['admission_date'] ?? '');
     $notes = trim($_POST['notes'] ?? '');
     $physical_sex = trim((string) ($_POST['physical_sex'] ?? ''));
@@ -6545,6 +7680,20 @@ if ($action === 'generate_invite') {
     $email = $email !== '' ? $email : null;
     $phone = $phone !== '' ? $phone : null;
     $patient_type = $patient_type !== '' ? $patient_type : null;
+    $fiscal_name = $fiscal_name !== '' ? $fiscal_name : null;
+    $fiscal_nif = $fiscal_nif !== '' ? $fiscal_nif : null;
+    if (!$invoice_use_alt_data) {
+        $invoice_name = '';
+        $invoice_nif = '';
+        $invoice_email = '';
+        $invoice_phone = '';
+        $invoice_address = '';
+    }
+    $invoice_name = $invoice_name !== '' ? $invoice_name : null;
+    $invoice_nif = $invoice_nif !== '' ? $invoice_nif : null;
+    $invoice_email = $invoice_email !== '' ? $invoice_email : null;
+    $invoice_phone = $invoice_phone !== '' ? $invoice_phone : null;
+    $invoice_address = $invoice_address !== '' ? $invoice_address : null;
     if (!in_array($patient_status, ['active', 'paused', 'discharged', 'inactive'], true)) {
         $patient_status = 'active';
     }
@@ -6576,9 +7725,12 @@ if ($action === 'generate_invite') {
         $knowledge_problem_id = null;
     }
     $initial_consultation_reason = $initial_consultation_reason !== '' ? $initial_consultation_reason : null;
+    $background_notes = $background_notes !== '' ? $background_notes : null;
+    $support_network_notes = $support_network_notes !== '' ? $support_network_notes : null;
     $emergency_contact_name = $emergency_contact_name !== '' ? $emergency_contact_name : null;
     $emergency_contact_phone = $emergency_contact_phone !== '' ? $emergency_contact_phone : null;
     $emergency_contact_relation = $emergency_contact_relation !== '' ? $emergency_contact_relation : null;
+    $address = $address !== '' ? $address : null;
     $admission_date = $admission_date !== '' ? $admission_date : date('Y-m-d');
     if (!in_array($physical_sex, ['male', 'female'], true)) {
         $physical_sex = null;
@@ -6590,6 +7742,10 @@ if ($action === 'generate_invite') {
     }
     if ($email !== null && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         echo json_encode(['success' => false, 'error' => 'Email no valido.']);
+        exit;
+    }
+    if ($invoice_email !== null && !filter_var($invoice_email, FILTER_VALIDATE_EMAIL)) {
+        echo json_encode(['success' => false, 'error' => 'Email de facturacion no valido.']);
         exit;
     }
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $admission_date)) {
@@ -6627,11 +7783,14 @@ if ($action === 'generate_invite') {
     $password_setup_users = [];
     try {
         $previous_physical_metrics = null;
+        $previous_waiting_list = null;
+        $previous_patient_name = '';
         if (!$creating_patient) {
             $stmt = $mysqli->prepare("
                 SELECT physical_sex, weight_kg, height_cm, body_fat_percentage, waist_cm, hip_cm, chest_cm, thigh_cm, biceps_cm, calf_cm,
                        skinfold_triceps_mm, skinfold_subscapular_mm, skinfold_suprailiac_mm,
-                       skinfold_abdominal_mm, skinfold_chest_mm, skinfold_thigh_mm
+                       skinfold_abdominal_mm, skinfold_chest_mm, skinfold_thigh_mm,
+                       waiting_list
                 FROM patient_profiles
                 WHERE tenant_id = ? AND user_id = ?
                 LIMIT 1
@@ -6639,6 +7798,12 @@ if ($action === 'generate_invite') {
             $stmt->bind_param("ii", $tenant_id, $patient_id);
             $stmt->execute();
             $previous_physical_metrics = $stmt->get_result()->fetch_assoc();
+            $previous_waiting_list = isset($previous_physical_metrics['waiting_list']) ? (int) $previous_physical_metrics['waiting_list'] : 0;
+            $stmt = $mysqli->prepare("SELECT name FROM users WHERE tenant_id = ? AND id = ? AND role = 'patient' LIMIT 1");
+            $stmt->bind_param("ii", $tenant_id, $patient_id);
+            $stmt->execute();
+            $previous_user = $stmt->get_result()->fetch_assoc();
+            $previous_patient_name = $previous_user['name'] ?? '';
         }
 
         if ($patient_id > 0) {
@@ -6661,39 +7826,64 @@ if ($action === 'generate_invite') {
         $profile_professional_id = $selected_professional_id > 0 ? $selected_professional_id : null;
         $stmt = $mysqli->prepare("
             INSERT INTO patient_profiles (
-                tenant_id, user_id, professional_id, patient_type, patient_status, birth_date, referral_source, knowledge_problem_id,
-                initial_consultation_reason, emergency_contact_name, emergency_contact_phone, emergency_contact_relation,
+                tenant_id, user_id, professional_id, patient_type, fiscal_name, fiscal_nif, patient_status, waiting_list, birth_date, referral_source, knowledge_problem_id,
+                invoice_use_alt_data, invoice_name, invoice_nif, invoice_email, invoice_phone, invoice_address,
+                initial_consultation_reason, background_notes, support_network_notes, emergency_contact_name, emergency_contact_phone, emergency_contact_relation, address,
                 admission_date, notes, created_by_admin
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
             ON DUPLICATE KEY UPDATE
                 professional_id = VALUES(professional_id),
                 patient_type = VALUES(patient_type),
+                fiscal_name = VALUES(fiscal_name),
+                fiscal_nif = VALUES(fiscal_nif),
+                invoice_use_alt_data = VALUES(invoice_use_alt_data),
+                invoice_name = VALUES(invoice_name),
+                invoice_nif = VALUES(invoice_nif),
+                invoice_email = VALUES(invoice_email),
+                invoice_phone = VALUES(invoice_phone),
+                invoice_address = VALUES(invoice_address),
                 patient_status = VALUES(patient_status),
+                waiting_list = VALUES(waiting_list),
                 birth_date = VALUES(birth_date),
                 referral_source = VALUES(referral_source),
                 knowledge_problem_id = VALUES(knowledge_problem_id),
                 initial_consultation_reason = VALUES(initial_consultation_reason),
+                background_notes = VALUES(background_notes),
+                support_network_notes = VALUES(support_network_notes),
                 emergency_contact_name = VALUES(emergency_contact_name),
                 emergency_contact_phone = VALUES(emergency_contact_phone),
                 emergency_contact_relation = VALUES(emergency_contact_relation),
+                address = VALUES(address),
                 admission_date = VALUES(admission_date),
                 notes = VALUES(notes)
         ");
         $stmt->bind_param(
-            "iiissssissssss",
+            "iiissssissiissssssssssssss",
             $tenant_id,
             $patient_id,
             $profile_professional_id,
             $patient_type,
+            $fiscal_name,
+            $fiscal_nif,
             $patient_status,
+            $waiting_list,
             $birth_date,
             $referral_source,
             $knowledge_problem_id,
+            $invoice_use_alt_data,
+            $invoice_name,
+            $invoice_nif,
+            $invoice_email,
+            $invoice_phone,
+            $invoice_address,
             $initial_consultation_reason,
+            $background_notes,
+            $support_network_notes,
             $emergency_contact_name,
             $emergency_contact_phone,
             $emergency_contact_relation,
+            $address,
             $admission_date,
             $notes
         );
@@ -6773,6 +7963,39 @@ if ($action === 'generate_invite') {
             upsert_today_patient_evolution_from_profile_metrics($mysqli, $tenant_id, $patient_id, $profile_professional_id, $physical_metrics, (int) ($_SESSION['user_id'] ?? 0));
         }
         $mysqli->commit();
+        app_log($mysqli, [
+            'action' => $creating_patient ? 'patient_created' : 'patient_updated',
+            'status' => 'ok',
+            'target_type' => 'patient',
+            'target_id' => $patient_id,
+            'title' => $creating_patient ? 'Paciente creado' : 'Paciente actualizado',
+            'message' => ($creating_patient ? 'Paciente creado: ' : 'Paciente actualizado: ') . $name . '.',
+            'metadata' => [
+                'patient_id' => $patient_id,
+                'patient_name' => $name,
+                'previous_patient_name' => $previous_patient_name,
+                'professional_id' => $profile_professional_id ? (int) $profile_professional_id : 0,
+                'patient_status' => $patient_status,
+                'waiting_list' => $waiting_list
+            ]
+        ]);
+        if (!$creating_patient && $previous_waiting_list !== null && (int) $previous_waiting_list !== (int) $waiting_list) {
+            app_log($mysqli, [
+                'action' => 'patient_waiting_list_updated',
+                'status' => 'ok',
+                'target_type' => 'patient',
+                'target_id' => $patient_id,
+                'title' => 'Lista de espera actualizada',
+                'message' => $name . ($waiting_list ? ' marcado en lista de espera.' : ' eliminado de la lista de espera.'),
+                'metadata' => [
+                    'patient_id' => $patient_id,
+                    'patient_name' => $name,
+                    'previous_waiting_list' => (int) $previous_waiting_list,
+                    'new_waiting_list' => (int) $waiting_list,
+                    'professional_id' => $profile_professional_id ? (int) $profile_professional_id : 0
+                ]
+            ]);
+        }
         echo json_encode(['success' => true, 'message' => 'Paciente guardado correctamente.', 'patient_id' => $patient_id]);
     } catch (\Exception $e) {
         $mysqli->rollback();
@@ -6965,7 +8188,7 @@ if ($action === 'generate_invite') {
 
     $base_select = "
         SELECT a.id, a.user_id, a.professional_id, a.appointment_date, a.appointment_time,
-               a.consultation_type, a.service_type,
+               a.consultation_type, a.service_type, a.online_session_url,
                COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
                COALESCE(a.payment_status, 'pending') AS payment_status,
                a.payment_method, a.patient_bonus_id,
@@ -7004,11 +8227,15 @@ if ($action === 'generate_invite') {
         LIMIT 1
     ");
     $next = $next_res ? $next_res->fetch_assoc() : null;
+    $waiting_list_payload = ($is_superadmin || !empty($member_permissions['patients']))
+        ? dashboard_waiting_list_summary_payload($mysqli, $current_professional_id)
+        : ['count' => 0, 'has_slot' => false];
 
     echo json_encode([
         'success' => true,
         'current' => quick_appointment_payload($current, $dashboard_photo),
         'next' => quick_appointment_payload($next, $dashboard_photo),
+        'waiting_list' => $waiting_list_payload,
         'current_professional_id' => $current_professional_id
     ]);
 } elseif ($action === 'upcoming_appointments') {
@@ -7050,7 +8277,7 @@ if ($action === 'generate_invite') {
     }
 
     $res = $mysqli->query("
-        SELECT a.id, a.appointment_date, a.appointment_time, a.consultation_type, a.service_type,
+        SELECT a.id, a.appointment_date, a.appointment_time, a.consultation_type, a.service_type, a.online_session_url,
                COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
                s.name AS service_name,
                COALESCE(a.payment_status, 'pending') AS payment_status,
@@ -7087,6 +8314,7 @@ if ($action === 'generate_invite') {
             'professional_name' => $row['professional_name'] ?? '',
             'professional_photo_path' => $professional_photo_path,
             'consultation_type' => $row['consultation_type'] ?? 'presencial',
+            'online_session_url' => $row['online_session_url'] ?? '',
             'service_label' => appointment_service_option_label($row),
             'payment_status' => $row['payment_status'] ?? 'pending',
             'payment_method' => $row['payment_method'],
@@ -7095,7 +8323,7 @@ if ($action === 'generate_invite') {
     }
 
     $cancelled_res = $mysqli->query("
-        SELECT a.id, a.appointment_date, a.appointment_time, a.cancelled_at, a.consultation_type, a.service_type,
+        SELECT a.id, a.appointment_date, a.appointment_time, a.cancelled_at, a.consultation_type, a.service_type, a.online_session_url,
                COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
                s.name AS service_name,
                COALESCE(a.payment_status, 'pending') AS payment_status,
@@ -7131,6 +8359,7 @@ if ($action === 'generate_invite') {
             'professional_name' => $row['professional_name'] ?? '',
             'professional_photo_path' => $professional_photo_path,
             'consultation_type' => $row['consultation_type'] ?? 'presencial',
+            'online_session_url' => $row['online_session_url'] ?? '',
             'service_label' => appointment_service_option_label($row),
             'payment_status' => $row['payment_status'] ?? 'pending',
             'payment_method' => $row['payment_method'],
@@ -7189,7 +8418,7 @@ if ($action === 'generate_invite') {
     $planning_appointments = [];
     if ($planning_professional_id > 0) {
         $planning_res = $mysqli->query("
-            SELECT a.id, a.appointment_date, a.appointment_time, a.consultation_type, a.service_type,
+            SELECT a.id, a.appointment_date, a.appointment_time, a.consultation_type, a.service_type, a.online_session_url,
                    COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
                    s.name AS service_name,
                    COALESCE(a.payment_status, 'pending') AS payment_status,
@@ -7215,6 +8444,7 @@ if ($action === 'generate_invite') {
                 'patient_email' => $row['email'],
                 'patient_phone' => $row['phone'],
                 'consultation_type' => $row['consultation_type'] ?? 'presencial',
+                'online_session_url' => $row['online_session_url'] ?? '',
                 'service_label' => appointment_service_option_label($row),
                 'duration_minutes' => (int) ($row['duration_minutes'] ?? 60),
                 'payment_status' => $row['payment_status'] ?? 'pending',
@@ -7492,6 +8722,7 @@ if ($action === 'generate_invite') {
             LEFT JOIN appointments a ON a.professional_id = p.id AND a.tenant_id = p.tenant_id
             WHERE p.tenant_id = $tenant_id
               AND p.is_active = 1
+              AND u.role IN ('superadmin', 'admin')
             GROUP BY p.id, p.display_name, p.public_photo_path, u.role
             ORDER BY CASE WHEN u.role = 'superadmin' THEN 0 ELSE 1 END ASC,
                      p.sort_order ASC,
@@ -7511,6 +8742,7 @@ if ($action === 'generate_invite') {
 
     echo json_encode(['success' => true, 'stats' => $stats]);
 } elseif ($action === 'list_closed_days') {
+    ensure_action_feature($mysqli, 'closures.enabled', 'Los cierres y vacaciones no estan disponibles en este plan.');
     ensure_cabinet_schema($mysqli);
     $branding = get_public_branding_settings($mysqli);
     $dashboard_photo = $branding['profile_image_path'] ?? '';
@@ -7539,6 +8771,7 @@ if ($action === 'generate_invite') {
     }
     echo json_encode(['success' => true, 'days' => $days, 'show_professionals' => $is_superadmin ? 1 : 0]);
 } elseif ($action === 'add_closed_day') {
+    ensure_action_feature($mysqli, 'closures.enabled', 'Los cierres y vacaciones no estan disponibles en este plan.');
     $date = $_POST['date'] ?? ($_POST['start_date'] ?? '');
     $end_date = $_POST['end_date'] ?? $date;
     $reason = $_POST['reason'] ?? 'Descanso';
@@ -7609,12 +8842,14 @@ if ($action === 'generate_invite') {
         echo json_encode(['success' => false, 'error' => 'No se pudo guardar el descanso.']);
     }
 } elseif ($action === 'delete_closed_day') {
+    ensure_action_feature($mysqli, 'closures.enabled', 'Los cierres y vacaciones no estan disponibles en este plan.');
     $id = $_POST['id'] ?? 0;
     $stmt = $mysqli->prepare("DELETE FROM closed_days WHERE tenant_id = ? AND id = ?");
     $stmt->bind_param("ii", $tenant_id, $id);
     $stmt->execute();
     echo json_encode(['success' => true]);
 } elseif ($action === 'delete_closed_range') {
+    ensure_action_feature($mysqli, 'closures.enabled', 'Los cierres y vacaciones no estan disponibles en este plan.');
     $start_date = $_POST['start_date'] ?? '';
     $end_date = $_POST['end_date'] ?? $start_date;
     $reason = $_POST['reason'] ?? '';
@@ -7660,18 +8895,21 @@ if ($action === 'generate_invite') {
     ensure_payment_settings_table($mysqli);
     ensure_cabinet_schema($mysqli);
 
-    $settings_res = $mysqli->query("SELECT show_team_public, allow_patient_transfer, new_patient_booking_mode, new_patient_fixed_professional_id, profile_image_path FROM payment_settings WHERE tenant_id = $tenant_id");
+    $settings_res = $mysqli->query("SELECT show_team_public, allow_patient_transfer, new_patient_booking_mode, new_patient_fixed_professional_id FROM payment_settings WHERE tenant_id = $tenant_id");
     $settings = $settings_res ? $settings_res->fetch_assoc() : ['show_team_public' => 0, 'allow_patient_transfer' => 0, 'new_patient_booking_mode' => 'day_first', 'new_patient_fixed_professional_id' => null];
-    $dashboard_photo_path = $settings['profile_image_path'] ?? '';
     $knowledge_columns_available = professional_knowledge_sector_columns_available($mysqli);
     $knowledge_settings_select = $knowledge_columns_available
         ? "ps.knowledge_sector_mode, ps.knowledge_sector_keys_json"
         : "'own' AS knowledge_sector_mode, NULL AS knowledge_sector_keys_json";
+    $member_permissions_select = column_exists($mysqli, 'professional_settings', 'member_permissions_json')
+        ? "ps.member_permissions_json"
+        : "NULL AS member_permissions_json";
     $res = $mysqli->query("
         SELECT p.id, p.user_id, p.display_name, p.professional_title, p.license_number, p.professional_specialty, p.public_bio,
                p.public_photo_path, p.public_email, p.public_phone, p.instagram_url, p.facebook_url, p.tiktok_url,
                p.appointment_summary_email_mode,
                p.is_active, u.email AS login_email, u.role,
+               ps.available_session_types, ps.available_session_durations, ps.default_appointment_location, ps.default_location_id, ps.livekit_enabled, $member_permissions_select,
                $knowledge_settings_select
         FROM professionals p
         LEFT JOIN users u ON u.id = p.user_id AND u.tenant_id = p.tenant_id
@@ -7683,7 +8921,6 @@ if ($action === 'generate_invite') {
     while ($row = $res->fetch_assoc()) {
         $is_current_user = (int) ($row['user_id'] ?? 0) === (int) ($_SESSION['user_id'] ?? 0) ? 1 : 0;
         $photo_path = $row['public_photo_path'] ?? '';
-        $display_photo_path = $photo_path ?: ($is_current_user && ($row['role'] ?? '') === 'superadmin' ? $dashboard_photo_path : '');
         $professionals[] = [
             'id' => (int) $row['id'],
             'user_id' => (int) ($row['user_id'] ?? 0),
@@ -7693,22 +8930,36 @@ if ($action === 'generate_invite') {
             'professional_specialty' => $row['professional_specialty'] ?? '',
             'public_bio' => $row['public_bio'] ?? '',
             'public_photo_path' => $photo_path,
-            'display_photo_path' => $display_photo_path,
+            'display_photo_path' => $photo_path,
             'email' => $row['login_email'] ?: ($row['public_email'] ?? ''),
             'public_phone' => $row['public_phone'] ?? '',
             'instagram_url' => $row['instagram_url'] ?? '',
             'facebook_url' => $row['facebook_url'] ?? '',
             'tiktok_url' => $row['tiktok_url'] ?? '',
             'appointment_summary_email_mode' => $row['appointment_summary_email_mode'] ?? 'on_booking',
+            'available_session_types' => $row['available_session_types'] ?? '',
+            'available_session_durations' => $row['available_session_durations'] ?? '',
+            'default_appointment_location' => $row['default_appointment_location'] ?? '',
+            'default_location_id' => (int) ($row['default_location_id'] ?? 0),
+            'livekit_enabled' => (int) ($row['livekit_enabled'] ?? 1),
             'knowledge_sector_mode' => in_array($row['knowledge_sector_mode'] ?? 'own', ['own', 'related', 'custom'], true) ? $row['knowledge_sector_mode'] : 'own',
             'knowledge_sector_keys' => normalize_knowledge_sector_keys($row['knowledge_sector_keys_json'] ?? ''),
-            'role' => in_array($row['role'] ?? 'admin', ['superadmin', 'admin'], true) ? $row['role'] : 'admin',
+            'role' => in_array($row['role'] ?? 'admin', ['superadmin', 'admin', 'reception', 'administration', 'technical'], true) ? $row['role'] : 'admin',
+            'member_permissions' => cabinet_normalize_member_permissions($row['member_permissions_json'] ?? null, $row['role'] ?? 'admin'),
             'is_active' => (int) ($row['is_active'] ?? 1),
             'is_current_user' => $is_current_user
         ];
     }
 
-    echo json_encode(['success' => true, 'settings' => $settings, 'professionals' => $professionals]);
+    $team_limit_config = plan_config_for_key(dashboard_config_plan_key_from_db($mysqli));
+    echo json_encode([
+        'success' => true,
+        'settings' => $settings,
+        'professionals' => $professionals,
+        'limits' => [
+            'teamMembers' => plan_config_limit_value($team_limit_config, 'teamMembers', null)
+        ]
+    ]);
 } elseif ($action === 'knowledge_sector_options') {
     if (!$is_superadmin) {
         echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede configurar el equipo.']);
@@ -7750,7 +9001,7 @@ if ($action === 'generate_invite') {
 
     $professional_id = (int) ($_POST['professional_id'] ?? 0);
     if ($professional_id <= 0) {
-        echo json_encode(['success' => false, 'error' => 'Profesional invalido.']);
+        echo json_encode(['success' => false, 'error' => 'Miembro invalido.']);
         exit;
     }
 
@@ -7759,7 +9010,7 @@ if ($action === 'generate_invite') {
     $stmt->execute();
     $professional = $stmt->get_result()->fetch_assoc();
     if (!$professional) {
-        echo json_encode(['success' => false, 'error' => 'No se encontro el profesional.']);
+        echo json_encode(['success' => false, 'error' => 'No se encontro el miembro del equipo.']);
         exit;
     }
     if ((int) ($professional['user_id'] ?? 0) === (int) ($_SESSION['user_id'] ?? 0)) {
@@ -7812,10 +9063,14 @@ if ($action === 'generate_invite') {
 
     $targets = [];
     $stmt = $mysqli->prepare("
-        SELECT id, display_name
-        FROM professionals
-        WHERE tenant_id = ? AND id <> ? AND is_active = 1
-        ORDER BY sort_order ASC, display_name ASC
+        SELECT p.id, p.display_name
+        FROM professionals p
+        LEFT JOIN users u ON u.id = p.user_id AND u.tenant_id = p.tenant_id
+        WHERE p.tenant_id = ?
+          AND p.id <> ?
+          AND p.is_active = 1
+          AND u.role IN ('superadmin', 'admin')
+        ORDER BY p.sort_order ASC, p.display_name ASC
     ");
     $stmt->bind_param("ii", $tenant_id, $professional_id);
     $stmt->execute();
@@ -7848,7 +9103,7 @@ if ($action === 'generate_invite') {
 
     $professional_id = (int) ($_POST['professional_id'] ?? 0);
     if ($professional_id <= 0) {
-        echo json_encode(['success' => false, 'error' => 'Profesional invalido.']);
+        echo json_encode(['success' => false, 'error' => 'Miembro invalido.']);
         exit;
     }
 
@@ -7864,7 +9119,7 @@ if ($action === 'generate_invite') {
     $stmt->execute();
     $professional = $stmt->get_result()->fetch_assoc();
     if (!$professional) {
-        echo json_encode(['success' => false, 'error' => 'No se encontro el profesional.']);
+        echo json_encode(['success' => false, 'error' => 'No se encontro el miembro del equipo.']);
         exit;
     }
     if ((int) ($professional['user_id'] ?? 0) === (int) ($_SESSION['user_id'] ?? 0)) {
@@ -7911,7 +9166,16 @@ if ($action === 'generate_invite') {
             echo json_encode(['success' => false, 'error' => 'Elige otro profesional para traspasar citas y registros asignados antes de borrar.']);
             exit;
         }
-        $stmt = $mysqli->prepare("SELECT id FROM professionals WHERE tenant_id = ? AND id = ? AND is_active = 1 LIMIT 1");
+        $stmt = $mysqli->prepare("
+            SELECT p.id
+            FROM professionals p
+            LEFT JOIN users u ON u.id = p.user_id AND u.tenant_id = p.tenant_id
+            WHERE p.tenant_id = ?
+              AND p.id = ?
+              AND p.is_active = 1
+              AND u.role IN ('superadmin', 'admin')
+            LIMIT 1
+        ");
         $stmt->bind_param("ii", $tenant_id, $target_professional_id);
         $stmt->execute();
         if (!$stmt->get_result()->fetch_assoc()) {
@@ -7958,20 +9222,20 @@ if ($action === 'generate_invite') {
         $stmt->execute();
 
         $linked_user_id = (int) ($professional['user_id'] ?? 0);
-        if ($linked_user_id > 0 && ($professional['user_role'] ?? '') === 'admin') {
+        if ($linked_user_id > 0 && in_array($professional['user_role'] ?? '', ['admin', 'reception', 'administration', 'technical'], true)) {
             $password_resets_exists = $mysqli->query("SHOW TABLES LIKE 'password_resets'");
             if ($password_resets_exists && $password_resets_exists->num_rows > 0) {
                 $stmt = $mysqli->prepare("DELETE FROM password_resets WHERE tenant_id = ? AND user_id = ?");
                 $stmt->bind_param("ii", $tenant_id, $linked_user_id);
                 $stmt->execute();
             }
-            $stmt = $mysqli->prepare("DELETE FROM users WHERE tenant_id = ? AND id = ? AND role = 'admin'");
+            $stmt = $mysqli->prepare("DELETE FROM users WHERE tenant_id = ? AND id = ? AND role IN ('admin', 'reception', 'administration', 'technical')");
             $stmt->bind_param("ii", $tenant_id, $linked_user_id);
             $stmt->execute();
         }
 
         $mysqli->commit();
-        echo json_encode(['success' => true, 'message' => $usage_total > 0 ? 'Traspaso realizado, profesional y cuenta de acceso borrados correctamente.' : 'Profesional y cuenta de acceso borrados correctamente.']);
+        echo json_encode(['success' => true, 'message' => $usage_total > 0 ? 'Traspaso realizado, miembro y cuenta de acceso borrados correctamente.' : 'Miembro y cuenta de acceso borrados correctamente.']);
     } catch (\Exception $e) {
         $mysqli->rollback();
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
@@ -7985,6 +9249,10 @@ if ($action === 'generate_invite') {
     ensure_payment_settings_table($mysqli);
     ensure_cabinet_schema($mysqli);
     admin_ensure_password_reset_table($mysqli);
+    $cabinet_plan_config = plan_config_for_key(dashboard_config_plan_key_from_db($mysqli));
+    $cabinet_plan_allows_livekit = plan_config_feature_enabled($cabinet_plan_config, 'livekit.enabled', false);
+    $cabinet_plan_allows_member_types = plan_config_feature_enabled($cabinet_plan_config, 'team.memberTypes', false);
+    $cabinet_plan_allows_member_permissions = plan_config_feature_enabled($cabinet_plan_config, 'team.permissions', false);
 
     $show_team_public = isset($_POST['show_team_public']) && $_POST['show_team_public'] === '1' ? 1 : 0;
     $allow_patient_transfer = isset($_POST['allow_patient_transfer']) && $_POST['allow_patient_transfer'] === '1' ? 1 : 0;
@@ -8002,7 +9270,16 @@ if ($action === 'generate_invite') {
             exit;
         }
     } else {
-        $stmt = $mysqli->prepare("SELECT id FROM professionals WHERE tenant_id = ? AND id = ? AND is_active = 1 LIMIT 1");
+        $stmt = $mysqli->prepare("
+            SELECT p.id
+            FROM professionals p
+            LEFT JOIN users u ON u.id = p.user_id AND u.tenant_id = p.tenant_id
+            WHERE p.tenant_id = ?
+              AND p.id = ?
+              AND p.is_active = 1
+              AND u.role IN ('superadmin', 'admin')
+            LIMIT 1
+        ");
         $stmt->bind_param("ii", $tenant_id, $new_patient_fixed_professional_id);
         $stmt->execute();
         if (!$stmt->get_result()->fetch_assoc()) {
@@ -8014,6 +9291,22 @@ if ($action === 'generate_invite') {
     if (!is_array($professionals)) {
         echo json_encode(['success' => false, 'error' => 'Listado de profesionales invalido.']);
         exit;
+    }
+    $team_limit_config = plan_config_for_key(dashboard_config_plan_key_from_db($mysqli));
+    $team_member_limit = plan_config_limit_value($team_limit_config, 'teamMembers', null);
+    if ($team_member_limit !== null && (int) $team_member_limit > 0) {
+        $team_member_limit = max(1, (int) $team_member_limit);
+        $team_members = 0;
+        foreach ($professionals as $professional) {
+            $team_members++;
+        }
+        if ($team_members > $team_member_limit) {
+            $limit_text = $team_member_limit === 0
+                ? 'Este plan no tiene limite de miembros del equipo.'
+                : 'Este plan permite un maximo de ' . $team_member_limit . ' miembro' . ($team_member_limit === 1 ? '' : 's') . ' del equipo.';
+            echo json_encode(['success' => false, 'error' => $limit_text]);
+            exit;
+        }
     }
 
     $photo_index = (int) ($_POST['professional_photo_index'] ?? -1);
@@ -8053,6 +9346,11 @@ if ($action === 'generate_invite') {
             if (!in_array($summary_mode, ['disabled', 'tomorrow_evening', 'today_morning', 'on_booking'], true)) {
                 $summary_mode = 'on_booking';
             }
+            $professional_session_types = normalize_available_session_types(explode(',', (string) ($professional['available_session_types'] ?? '')), $mysqli);
+            $professional_session_durations = normalize_available_session_durations(explode(',', (string) ($professional['available_session_durations'] ?? '')), $mysqli);
+            $default_appointment_location = trim((string) ($professional['default_appointment_location'] ?? ''));
+            $default_location_id = normalize_location_id($mysqli, $professional['default_location_id'] ?? 0);
+            $livekit_enabled = $cabinet_plan_allows_livekit && !empty($professional['livekit_enabled']) ? 1 : 0;
             $knowledge_sector_mode = (string) ($professional['knowledge_sector_mode'] ?? 'own');
             if (!knowledge_multi_sector_enabled($mysqli) || !in_array($knowledge_sector_mode, ['own', 'related', 'custom'], true)) {
                 $knowledge_sector_mode = 'own';
@@ -8064,14 +9362,24 @@ if ($action === 'generate_invite') {
                 return $key === $main_knowledge_sector || in_array($key, $available_knowledge_keys, true);
             })));
             $knowledge_sector_keys_json = $knowledge_sector_mode === 'custom' ? json_encode($knowledge_sector_keys, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null;
-            $role = ($professional['role'] ?? 'admin') === 'superadmin' ? 'superadmin' : 'admin';
+            $role = (string) ($professional['role'] ?? 'admin');
+            if (!in_array($role, ['superadmin', 'admin', 'reception', 'administration', 'technical'], true)) {
+                $role = 'admin';
+            }
+            if (!$cabinet_plan_allows_member_types && $role !== 'superadmin') {
+                $role = 'admin';
+            }
+            $member_permissions_source = $cabinet_plan_allows_member_permissions
+                ? ($professional['member_permissions'] ?? [])
+                : cabinet_default_member_permissions_for_role($role);
+            $member_permissions_json = cabinet_member_permissions_json($member_permissions_source, $role);
             $is_active = !empty($professional['is_active']) ? 1 : 0;
 
             if ($display_name === '') {
-                throw new \Exception('Hay un profesional sin nombre.');
+                throw new \Exception('Hay un miembro sin nombre.');
             }
             if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                throw new \Exception('Hay un profesional sin email valido.');
+                throw new \Exception('Hay un miembro sin email valido.');
             }
 
             if ($user_id <= 0) {
@@ -8130,6 +9438,13 @@ if ($action === 'generate_invite') {
             }
             if ($saved_professional_id > 0) {
                 cabinet_seed_professional_settings_from_superadmin($mysqli, $saved_professional_id);
+                $stmt = $mysqli->prepare("
+                    UPDATE professional_settings
+                    SET available_session_types = ?, available_session_durations = ?, default_appointment_location = ?, default_location_id = ?, livekit_enabled = ?, member_permissions_json = ?
+                    WHERE tenant_id = ? AND professional_id = ?
+                ");
+                $stmt->bind_param("sssiisii", $professional_session_types, $professional_session_durations, $default_appointment_location, $default_location_id, $livekit_enabled, $member_permissions_json, $tenant_id, $saved_professional_id);
+                $stmt->execute();
                 if (professional_knowledge_sector_columns_available($mysqli)) {
                     $stmt = $mysqli->prepare("
                         UPDATE professional_settings
@@ -8154,7 +9469,7 @@ if ($action === 'generate_invite') {
 
         foreach ($password_setup_users as $setup_user_id => $setup_user) {
             if (!send_professional_password_setup_email($mysqli, (int) $setup_user_id, $setup_user['name'], $setup_user['email'])) {
-                throw new \Exception('No se pudo enviar el email para crear la contraseña del profesional. Revisa la configuración de email.');
+                throw new \Exception('No se pudo enviar el email para crear la contraseña del miembro. Revisa la configuración de email.');
             }
         }
         $app_name_res = $mysqli->query("SELECT app_name FROM payment_settings WHERE tenant_id = $tenant_id");
@@ -8189,23 +9504,35 @@ if ($action === 'generate_invite') {
     ensure_cabinet_schema($mysqli);
     dashboard_config_ensure_files();
     sector_texts_ensure_payment_column($mysqli);
+    $sms_columns_available = column_exists($mysqli, 'payment_settings', 'sms_provider')
+        && column_exists($mysqli, 'payment_settings', 'sms_reminder_hours');
+    $sms_settings_select = $sms_columns_available
+        ? "sms_provider, sms_sender, sms_username, sms_reminder_enabled, sms_reminder_hours"
+        : "'none' AS sms_provider, '' AS sms_sender, '' AS sms_username, 0 AS sms_reminder_enabled, 24 AS sms_reminder_hours";
+    $sms_secret_select = $sms_columns_available
+        ? "sms_password IS NOT NULL AND sms_password != '' AS has_sms_password,
+               sms_api_key IS NOT NULL AND sms_api_key != '' AS has_sms_api_key"
+        : "0 AS has_sms_password,
+               0 AS has_sms_api_key";
 
     $res = $mysqli->query("
         SELECT app_name, site_tagline, site_phone, profile_image_path, landing_image_path, primary_color, show_profile_image_public, show_prices_public, show_contact_public, plan_key, online_booking_enabled, patient_registration_mode, patient_tasks_visible_default, work_plan_task_status_enabled, initial_calendar_view, bonuses_enabled, create_compensation_bonus_on_paid_cancel, online_payment_enabled, environment, merchant_code, terminal,
                appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price, admin_notification_email,
                appointment_delivery_mode, available_session_types, available_session_durations, display_effective_duration_enabled, display_duration_offset_minutes,
-               appointment_reminder_enabled,
+               appointment_reminder_enabled, appointment_second_reminder_enabled, appointment_second_reminder_hours,
                min_booking_notice_days, max_booking_notice_days, appointment_start_time, appointment_end_time, break_start_time, break_end_time,
                available_weekdays,
                email_provider, smtp_host, smtp_port, smtp_username, smtp_secure, smtp_from_email, smtp_from_name,
-               google_client_id, google_connected_email, google_redirect_uri, calendar_provider, google_calendar_enabled, google_calendar_id,
+               $sms_settings_select,
+               google_connected_email, google_redirect_uri, calendar_provider, google_calendar_enabled, google_calendar_id,
                icloud_calendar_email, icloud_calendar_url, send_patient_calendar_link,
                fastcron_reminder_cron_id,
                legal_owner_name, legal_nif, legal_address, legal_email, legal_license_number, legal_professional_college, legal_uses_non_technical_cookies, legal_terms_notes,
+               billing_enabled, billing_country, billing_province, billing_session_concept, billing_report_concept,
                allow_patient_transfer, dashboard_config_mode, sector_texts_key,
                merchant_key IS NOT NULL AND merchant_key != '' AS has_merchant_key,
                smtp_password IS NOT NULL AND smtp_password != '' AS has_smtp_password,
-               google_client_secret IS NOT NULL AND google_client_secret != '' AS has_google_client_secret,
+               $sms_secret_select,
                google_refresh_token IS NOT NULL AND google_refresh_token != '' AS has_google_refresh_token,
                icloud_calendar_app_password IS NOT NULL AND icloud_calendar_app_password != '' AS has_icloud_calendar_app_password,
                fastcron_api_key IS NOT NULL AND fastcron_api_key != '' AS has_fastcron_api_key
@@ -8228,13 +9555,69 @@ if ($action === 'generate_invite') {
     $settings['dashboard_config_mode'] = $dashboard_config_mode;
     $settings['dashboard_config'] = dashboard_config_for_mode($dashboard_config_mode);
     $settings['plan_config'] = plan_config_for_key($settings['plan_key']);
+    if (!plan_config_feature_enabled($settings['plan_config'], 'billing.enabled', false)) {
+        $settings['billing_enabled'] = 0;
+    }
+    $settings['livekit_plan_enabled'] = plan_config_feature_enabled($settings['plan_config'], 'livekit.enabled', false) ? 1 : 0;
+    if (!$settings['livekit_plan_enabled']) {
+        $settings['livekit_enabled'] = 0;
+    }
+    $settings['custom_domain_plan_enabled'] = plan_config_feature_enabled($settings['plan_config'], 'branding.customDomain', false) ? 1 : 0;
+    $settings['custom_domain'] = '';
+    if ($settings['custom_domain_plan_enabled']) {
+        ensure_tenant_domains_runtime_table($mysqli);
+        $stmt = $mysqli->prepare("SELECT domain FROM tenant_domains WHERE tenant_id = ? ORDER BY is_primary DESC, id ASC LIMIT 1");
+        $stmt->bind_param("i", $tenant_id);
+        $stmt->execute();
+        $settings['custom_domain'] = tenant_domain_normalize($stmt->get_result()->fetch_assoc()['domain'] ?? '');
+    }
+    $settings['google_oauth_configured'] = google_oauth_credentials_configured() ? 1 : 0;
     $sector_texts_key = sector_texts_validate_key($settings['sector_texts_key'] ?? '') ? $settings['sector_texts_key'] : sector_texts_default_key();
     $settings['sector_texts_key'] = sector_texts_read_file($sector_texts_key) ? $sector_texts_key : sector_texts_default_key();
     $settings['knowledge_base_has_sector_data'] = knowledge_base_sector_has_data($mysqli, $settings['sector_texts_key']) ? 1 : 0;
     $settings['sector_texts'] = sector_texts_for_key($settings['sector_texts_key'], $settings['dashboard_config'], $settings['plan_config']);
     $settings['sector_texts_options'] = sector_texts_available();
 
-    echo json_encode(['success' => true, 'settings' => $settings, 'services' => fetch_appointment_services($mysqli), 'bonuses' => fetch_appointment_bonuses($mysqli)]);
+    echo json_encode([
+        'success' => true,
+        'settings' => $settings,
+        'message_templates' => message_templates_get_all($mysqli),
+        'message_template_variables' => message_template_available_variables(),
+        'services' => fetch_appointment_services($mysqli),
+        'locations' => fetch_appointment_locations($mysqli),
+        'bonuses' => fetch_appointment_bonuses($mysqli)
+    ]);
+} elseif ($action === 'get_message_template') {
+    ensure_message_templates_table($mysqli);
+    $template_key = trim((string) ($_GET['template_key'] ?? ''));
+    $template = message_template_get($mysqli, $template_key);
+    if (!$template) {
+        echo json_encode(['success' => false, 'error' => 'Plantilla no valida.']);
+        exit;
+    }
+    echo json_encode([
+        'success' => true,
+        'template' => $template,
+        'variables' => message_template_available_variables()
+    ]);
+} elseif ($action === 'save_message_template') {
+    ensure_message_templates_table($mysqli);
+    try {
+        $template_key = trim((string) ($_POST['template_key'] ?? ''));
+        $subject = trim((string) ($_POST['subject'] ?? ''));
+        $body = trim((string) ($_POST['body'] ?? ''));
+        if ($template_key === 'appointment_email_reminder' && $subject === '') {
+            $subject = message_template_default_subject($template_key);
+        }
+        message_template_save($mysqli, $template_key, $subject, $body);
+        echo json_encode([
+            'success' => true,
+            'message' => 'Plantilla guardada correctamente.',
+            'template' => message_template_get($mysqli, $template_key)
+        ]);
+    } catch (\Exception $e) {
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
 } elseif ($action === 'get_dashboard_custom_config') {
     if (!$is_superadmin) {
         echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede editar la configuracion personalizada.']);
@@ -8244,6 +9627,129 @@ if ($action === 'generate_invite') {
     $files = dashboard_config_files();
     $raw = file_get_contents($files['custom']);
     echo json_encode(['success' => true, 'json' => $raw === false ? '' : $raw]);
+} elseif ($action === 'get_custom_domain') {
+    if (!$is_superadmin) {
+        echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede configurar dominios personalizados.']);
+        exit;
+    }
+    $enabled = app_feature_enabled_from_db($mysqli, 'branding.customDomain', false);
+    ensure_tenant_domains_runtime_table($mysqli);
+    $domain = '';
+    if ($enabled) {
+        $stmt = $mysqli->prepare("SELECT domain FROM tenant_domains WHERE tenant_id = ? ORDER BY is_primary DESC, id ASC LIMIT 1");
+        $stmt->bind_param("i", $tenant_id);
+        $stmt->execute();
+        $domain = tenant_domain_normalize($stmt->get_result()->fetch_assoc()['domain'] ?? '');
+    }
+    echo json_encode([
+        'success' => true,
+        'enabled' => $enabled ? 1 : 0,
+        'domain' => $domain
+    ]);
+} elseif ($action === 'save_custom_domain') {
+    if (!$is_superadmin) {
+        echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede configurar dominios personalizados.']);
+        exit;
+    }
+    if (!app_feature_enabled_from_db($mysqli, 'branding.customDomain', false)) {
+        echo json_encode(['success' => false, 'error' => 'El dominio personalizado solo esta disponible en el plan Summum.']);
+        exit;
+    }
+
+    ensure_tenant_domains_runtime_table($mysqli);
+    $error = '';
+    $domain = normalize_custom_domain_input($_POST['domain'] ?? '', $error);
+    if ($error !== '') {
+        echo json_encode(['success' => false, 'error' => $error]);
+        exit;
+    }
+
+    $mysqli->begin_transaction();
+    try {
+        $stmt = $mysqli->prepare("DELETE FROM tenant_domains WHERE tenant_id = ?");
+        $stmt->bind_param("i", $tenant_id);
+        $stmt->execute();
+
+        if ($domain !== '') {
+            $stmt = $mysqli->prepare("INSERT INTO tenant_domains (tenant_id, domain, is_primary) VALUES (?, ?, 1)");
+            $stmt->bind_param("is", $tenant_id, $domain);
+            $stmt->execute();
+        }
+
+        $mysqli->commit();
+        echo json_encode([
+            'success' => true,
+            'domain' => $domain,
+            'message' => $domain !== '' ? 'Dominio personalizado guardado.' : 'Dominio personalizado eliminado.'
+        ]);
+    } catch (\mysqli_sql_exception $e) {
+        $mysqli->rollback();
+        $message = ((int) $e->getCode() === 1062)
+            ? 'Ese dominio ya esta asignado a otro tenant.'
+            : 'No se pudo guardar el dominio personalizado.';
+        echo json_encode(['success' => false, 'error' => $message]);
+    }
+} elseif ($action === 'list_invoices') {
+    ensure_invoice_schema($mysqli);
+    if (!invoice_billing_enabled($mysqli)) {
+        echo json_encode(['success' => false, 'error' => 'La facturacion no esta activada.']);
+        exit;
+    }
+
+    $search = trim((string) ($_GET['search'] ?? ''));
+    $date_from = trim((string) ($_GET['date_from'] ?? ''));
+    $date_to = trim((string) ($_GET['date_to'] ?? ''));
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_to)) {
+        $date_to = date('Y-m-d');
+    }
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_from)) {
+        $date_from = date('Y-m-d', strtotime($date_to . ' -30 days'));
+    }
+    if ($date_from > $date_to) {
+        [$date_from, $date_to] = [$date_to, $date_from];
+    }
+
+    $where = "tenant_id = ? AND tipo_movim = 'factura' AND fecha BETWEEN ? AND ?";
+    $types = "iss";
+    $params = [$tenant_id, $date_from, $date_to];
+    if ($search !== '') {
+        $where .= " AND (numero_factura LIKE ? OR destinatario_nombre LIKE ? OR destinatario_nif LIKE ? OR concepto LIKE ?)";
+        $like = '%' . $search . '%';
+        $types .= "ssss";
+        array_push($params, $like, $like, $like, $like);
+    }
+
+    $rows = [];
+    $stmt = $mysqli->prepare("
+        SELECT id, numero_factura, fecha, destinatario_nombre, destinatario_nif, concepto,
+               base_imponible, iva_porcentaje, iva_importe, total, forma_pago, verifactu_estado, created_at
+        FROM movim
+        WHERE $where
+        ORDER BY fecha DESC, id DESC
+        LIMIT 200
+    ");
+    bind_params_dynamic($stmt, $types, $params);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    while ($row = $res->fetch_assoc()) {
+        $rows[] = [
+            'id' => (int) $row['id'],
+            'numero_factura' => $row['numero_factura'],
+            'fecha' => $row['fecha'],
+            'destinatario_nombre' => $row['destinatario_nombre'],
+            'destinatario_nif' => $row['destinatario_nif'],
+            'concepto' => $row['concepto'],
+            'base_imponible' => number_format((float) $row['base_imponible'], 2, '.', ''),
+            'iva_porcentaje' => number_format((float) $row['iva_porcentaje'], 2, '.', ''),
+            'iva_importe' => number_format((float) $row['iva_importe'], 2, '.', ''),
+            'total' => number_format((float) $row['total'], 2, '.', ''),
+            'forma_pago' => $row['forma_pago'] ?? '',
+            'verifactu_estado' => $row['verifactu_estado'] ?? '',
+            'created_at' => $row['created_at']
+        ];
+    }
+
+    echo json_encode(['success' => true, 'invoices' => $rows, 'date_from' => $date_from, 'date_to' => $date_to]);
 } elseif ($action === 'save_dashboard_custom_config') {
     if (!$is_superadmin) {
         echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede editar la configuracion personalizada.']);
@@ -8323,6 +9829,367 @@ if ($action === 'generate_invite') {
         $mysqli->rollback();
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
     }
+} elseif ($action === 'create_service_catalog_item') {
+    if (!$is_superadmin) {
+        echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede modificar servicios globales.']);
+        exit;
+    }
+    ensure_payment_settings_table($mysqli);
+    ensure_appointment_services_tables($mysqli);
+
+    $item_type = $_POST['item_type'] ?? '';
+    $enabled = isset($_POST['enabled']) && $_POST['enabled'] === '1';
+    $settings_res = $mysqli->query("SELECT available_session_types, available_session_durations, appointment_delivery_mode, appointment_price, online_appointment_price, couple_appointment_price, online_couple_appointment_price FROM payment_settings WHERE tenant_id = $tenant_id");
+    $settings_row = $settings_res ? ($settings_res->fetch_assoc() ?: []) : [];
+    $available_session_types = $settings_row['available_session_types'] ?? 'individual';
+    $available_session_durations = $settings_row['available_session_durations'] ?? '60';
+    $appointment_delivery_mode = $settings_row['appointment_delivery_mode'] ?? 'both';
+
+    $mysqli->begin_transaction();
+    try {
+        if ($item_type === 'service') {
+            $name = trim((string) ($_POST['name'] ?? ''));
+            if ($name === '') {
+                throw new \Exception('Indica el nombre del servicio.');
+            }
+            $base_key = preg_replace('/[^a-z0-9_]+/', '_', strtolower(iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $name) ?: $name));
+            $base_key = trim($base_key, '_');
+            if ($base_key === '' || strlen($base_key) < 2) {
+                $base_key = 'servicio';
+            }
+            $base_key = substr($base_key, 0, 24);
+            $service_key = $base_key;
+            $suffix = 2;
+            while (true) {
+                $stmt = $mysqli->prepare("SELECT id FROM appointment_services WHERE tenant_id = ? AND service_key = ? LIMIT 1");
+                $stmt->bind_param("is", $tenant_id, $service_key);
+                $stmt->execute();
+                if (!$stmt->get_result()->fetch_assoc()) {
+                    break;
+                }
+                $service_key = substr($base_key . '_' . $suffix++, 0, 32);
+            }
+            $sort_res = $mysqli->query("SELECT COALESCE(MAX(sort_order), 0) + 10 AS next_sort FROM appointment_services WHERE tenant_id = $tenant_id");
+            $sort_order = (int) (($sort_res ? $sort_res->fetch_assoc() : null)['next_sort'] ?? 999);
+            $is_active = $enabled ? 1 : 0;
+            $stmt = $mysqli->prepare("INSERT INTO appointment_services (tenant_id, service_key, name, is_active, sort_order) VALUES (?, ?, ?, ?, ?)");
+            $stmt->bind_param("issii", $tenant_id, $service_key, $name, $is_active, $sort_order);
+            $stmt->execute();
+            $service_id = (int) $mysqli->insert_id;
+            $durations = array_filter(array_map('intval', explode(',', $available_session_durations ?: '60')));
+            if (!$durations) {
+                $durations = [60];
+            }
+            foreach ($durations as $duration) {
+                foreach (['presencial', 'online'] as $consultation_type) {
+                    $option_active = $enabled && ($appointment_delivery_mode === 'both' || $appointment_delivery_mode === $consultation_type) ? 1 : 0;
+                    $price = appointment_default_option_price($settings_row, $service_key, $consultation_type, $duration);
+                    $sort = ($duration * 10) + ($consultation_type === 'online' ? 1 : 0);
+                    $stmt = $mysqli->prepare("INSERT INTO appointment_service_options (tenant_id, service_id, duration_minutes, consultation_type, price, is_active, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                    $stmt->bind_param("iiisdii", $tenant_id, $service_id, $duration, $consultation_type, $price, $option_active, $sort);
+                    $stmt->execute();
+                }
+            }
+            if ($enabled) {
+                $types = array_filter(array_map('trim', explode(',', $available_session_types)));
+                $types[] = $service_key;
+                $available_session_types = implode(',', array_unique($types));
+                $stmt = $mysqli->prepare("UPDATE payment_settings SET available_session_types = ? WHERE tenant_id = $tenant_id");
+                $stmt->bind_param("s", $available_session_types);
+                $stmt->execute();
+            }
+            $message = 'Servicio creado.';
+        } elseif ($item_type === 'duration') {
+            $duration = (int) ($_POST['minutes'] ?? 0);
+            if ($duration <= 0 || $duration > 480) {
+                throw new \Exception('Indica una duración válida entre 1 y 480 minutos.');
+            }
+            $exists = $mysqli->query("SELECT id FROM appointment_service_options WHERE tenant_id = $tenant_id AND duration_minutes = $duration LIMIT 1");
+            if ($exists && $exists->num_rows > 0) {
+                throw new \Exception('Esa duración ya existe.');
+            }
+            $services = fetch_appointment_services($mysqli);
+            foreach ($services as $service) {
+                foreach (['presencial', 'online'] as $consultation_type) {
+                    $service_enabled = (int) ($service['is_active'] ?? 0) === 1;
+                    $option_active = $enabled && $service_enabled && ($appointment_delivery_mode === 'both' || $appointment_delivery_mode === $consultation_type) ? 1 : 0;
+                    $price = appointment_default_option_price($settings_row, $service['service_key'], $consultation_type, $duration);
+                    $sort = ($duration * 10) + ($consultation_type === 'online' ? 1 : 0);
+                    $stmt = $mysqli->prepare("INSERT INTO appointment_service_options (tenant_id, service_id, duration_minutes, consultation_type, price, is_active, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                    $stmt->bind_param("iiisdii", $tenant_id, $service['id'], $duration, $consultation_type, $price, $option_active, $sort);
+                    $stmt->execute();
+                }
+            }
+            if ($enabled) {
+                $durations = array_filter(array_map('intval', explode(',', $available_session_durations)));
+                $durations[] = $duration;
+                $durations = array_values(array_unique($durations));
+                sort($durations);
+                $available_session_durations = implode(',', $durations);
+                $stmt = $mysqli->prepare("UPDATE payment_settings SET available_session_durations = ? WHERE tenant_id = $tenant_id");
+                $stmt->bind_param("s", $available_session_durations);
+                $stmt->execute();
+            }
+            $message = 'Duración creada.';
+        } else {
+            throw new \Exception('Elemento no válido.');
+        }
+
+        sync_service_availability($mysqli, $available_session_types, $available_session_durations, $appointment_delivery_mode);
+        $mysqli->commit();
+        app_log($mysqli, [
+            'action' => 'patient_professional_transferred',
+            'status' => 'ok',
+            'target_type' => 'patient',
+            'target_id' => $patient_id,
+            'title' => $current_professional_id > 0 ? 'Paciente traspasado' : 'Profesional asignado',
+            'message' => ($current_professional_id > 0 ? 'Paciente traspasado' : 'Profesional asignado') . ' a ' . ($target_professional['display_name'] ?? '') . '.',
+            'metadata' => [
+                'patient_id' => $patient_id,
+                'previous_professional_id' => (int) $current_professional_id,
+                'new_professional_id' => (int) $target_professional_id,
+                'new_professional_name' => $target_professional['display_name'] ?? '',
+                'moved_appointments' => (int) $moved_appointments
+            ]
+        ]);
+        echo json_encode([
+            'success' => true,
+            'message' => $message,
+            'services' => fetch_appointment_services($mysqli),
+            'available_session_types' => $available_session_types,
+            'available_session_durations' => $available_session_durations
+        ]);
+    } catch (\Exception $e) {
+        $mysqli->rollback();
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
+} elseif ($action === 'delete_service_catalog_item') {
+    if (!$is_superadmin) {
+        echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede modificar servicios globales.']);
+        exit;
+    }
+    ensure_payment_settings_table($mysqli);
+    ensure_appointment_services_tables($mysqli);
+
+    $item_type = $_POST['item_type'] ?? '';
+    $item_key = trim((string) ($_POST['item_key'] ?? ''));
+    $item_id = (int) ($_POST['item_id'] ?? 0);
+    $sector_config = sector_appointment_config_for_db($mysqli);
+    $sector_service_keys = array_column($sector_config['services'], 'key');
+    $sector_durations = array_map(fn($item) => (int) $item['minutes'], $sector_config['durations']);
+
+    $mysqli->begin_transaction();
+    try {
+        if ($item_type === 'service') {
+            if ($item_key === '' || in_array($item_key, $sector_service_keys, true)) {
+                throw new \Exception('Este servicio pertenece al sector y no se puede eliminar. Puedes desactivarlo.');
+            }
+            $stmt = $mysqli->prepare("SELECT id FROM appointment_services WHERE tenant_id = ? AND service_key = ? LIMIT 1");
+            $stmt->bind_param("is", $tenant_id, $item_key);
+            $stmt->execute();
+            $service = $stmt->get_result()->fetch_assoc();
+            if (!$service) {
+                throw new \Exception('No se encontró el servicio.');
+            }
+            $service_id = (int) $service['id'];
+            $stmt = $mysqli->prepare("
+                SELECT COUNT(*) AS total
+                FROM appointments a
+                JOIN appointment_service_options o ON o.id = a.service_option_id AND o.tenant_id = a.tenant_id
+                WHERE a.tenant_id = ? AND o.service_id = ?
+            ");
+            $stmt->bind_param("ii", $tenant_id, $service_id);
+            $stmt->execute();
+            $used = (int) ($stmt->get_result()->fetch_assoc()['total'] ?? 0);
+            if ($used > 0) {
+                $stmt = $mysqli->prepare("UPDATE appointment_services SET is_active = 0 WHERE tenant_id = ? AND id = ?");
+                $stmt->bind_param("ii", $tenant_id, $service_id);
+                $stmt->execute();
+                $stmt = $mysqli->prepare("UPDATE appointment_service_options SET is_active = 0 WHERE tenant_id = ? AND service_id = ?");
+                $stmt->bind_param("ii", $tenant_id, $service_id);
+                $stmt->execute();
+                $message = 'El servicio tiene citas asociadas, así que se ha desactivado.';
+            } else {
+                $stmt = $mysqli->prepare("DELETE FROM appointment_service_options WHERE tenant_id = ? AND service_id = ?");
+                $stmt->bind_param("ii", $tenant_id, $service_id);
+                $stmt->execute();
+                $stmt = $mysqli->prepare("DELETE FROM appointment_services WHERE tenant_id = ? AND id = ?");
+                $stmt->bind_param("ii", $tenant_id, $service_id);
+                $stmt->execute();
+                $message = 'Servicio eliminado.';
+            }
+            $settings_res = $mysqli->query("SELECT available_session_types FROM payment_settings WHERE tenant_id = $tenant_id");
+            $settings_row = $settings_res ? $settings_res->fetch_assoc() : [];
+            $available_session_types = csv_without_value($settings_row['available_session_types'] ?? '', $item_key);
+            if ($available_session_types === '') {
+                $fallback = $mysqli->query("SELECT service_key FROM appointment_services WHERE tenant_id = $tenant_id AND is_active = 1 ORDER BY sort_order ASC, id ASC LIMIT 1");
+                $fallback_row = $fallback ? $fallback->fetch_assoc() : null;
+                $available_session_types = $fallback_row['service_key'] ?? 'individual';
+            }
+            $stmt = $mysqli->prepare("UPDATE payment_settings SET available_session_types = ? WHERE tenant_id = $tenant_id");
+            $stmt->bind_param("s", $available_session_types);
+            $stmt->execute();
+            $stmt = $mysqli->prepare("UPDATE professional_settings SET available_session_types = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', available_session_types, ','), ?, ',')) WHERE tenant_id = ?");
+            $needle = ',' . $item_key . ',';
+            $stmt->bind_param("si", $needle, $tenant_id);
+            $stmt->execute();
+        } elseif ($item_type === 'duration') {
+            $duration = (int) $item_key;
+            if ($duration <= 0 || in_array($duration, $sector_durations, true)) {
+                throw new \Exception('Esta duración pertenece al sector y no se puede eliminar. Puedes desactivarla.');
+            }
+            $stmt = $mysqli->prepare("
+                SELECT COUNT(*) AS total
+                FROM appointments a
+                JOIN appointment_service_options o ON o.id = a.service_option_id AND o.tenant_id = a.tenant_id
+                WHERE a.tenant_id = ? AND o.duration_minutes = ?
+            ");
+            $stmt->bind_param("ii", $tenant_id, $duration);
+            $stmt->execute();
+            $used = (int) ($stmt->get_result()->fetch_assoc()['total'] ?? 0);
+            if ($used > 0) {
+                $stmt = $mysqli->prepare("UPDATE appointment_service_options SET is_active = 0 WHERE tenant_id = ? AND duration_minutes = ?");
+                $stmt->bind_param("ii", $tenant_id, $duration);
+                $stmt->execute();
+                $message = 'La duración tiene citas asociadas, así que se ha desactivado.';
+            } else {
+                $stmt = $mysqli->prepare("DELETE FROM appointment_service_options WHERE tenant_id = ? AND duration_minutes = ?");
+                $stmt->bind_param("ii", $tenant_id, $duration);
+                $stmt->execute();
+                $message = 'Duración eliminada.';
+            }
+            $settings_res = $mysqli->query("SELECT available_session_durations FROM payment_settings WHERE tenant_id = $tenant_id");
+            $settings_row = $settings_res ? $settings_res->fetch_assoc() : [];
+            $available_session_durations = csv_without_value($settings_row['available_session_durations'] ?? '', $duration, true);
+            if ($available_session_durations === '') {
+                $available_session_durations = '60';
+            }
+            $stmt = $mysqli->prepare("UPDATE payment_settings SET available_session_durations = ? WHERE tenant_id = $tenant_id");
+            $stmt->bind_param("s", $available_session_durations);
+            $stmt->execute();
+            $stmt = $mysqli->prepare("UPDATE professional_settings SET available_session_durations = TRIM(BOTH ',' FROM REPLACE(CONCAT(',', available_session_durations, ','), ?, ',')) WHERE tenant_id = ?");
+            $needle = ',' . $duration . ',';
+            $stmt->bind_param("si", $needle, $tenant_id);
+            $stmt->execute();
+        } else {
+            throw new \Exception('Elemento no válido.');
+        }
+
+        $settings_res = $mysqli->query("SELECT available_session_types, available_session_durations, appointment_delivery_mode FROM payment_settings WHERE tenant_id = $tenant_id");
+        $settings_row = $settings_res ? $settings_res->fetch_assoc() : [];
+        sync_service_availability($mysqli, $settings_row['available_session_types'] ?? 'individual', $settings_row['available_session_durations'] ?? '60', $settings_row['appointment_delivery_mode'] ?? 'both');
+        $mysqli->commit();
+        echo json_encode([
+            'success' => true,
+            'message' => $message,
+            'services' => fetch_appointment_services($mysqli),
+            'available_session_types' => $settings_row['available_session_types'] ?? '',
+            'available_session_durations' => $settings_row['available_session_durations'] ?? ''
+        ]);
+    } catch (\Exception $e) {
+        $mysqli->rollback();
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
+} elseif ($action === 'create_location_catalog_item') {
+    if (!$is_superadmin) {
+        echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede modificar ubicaciones globales.']);
+        exit;
+    }
+    ensure_payment_settings_table($mysqli);
+    ensure_appointment_locations_table($mysqli);
+
+    $name = trim((string) ($_POST['name'] ?? ''));
+    $enabled = isset($_POST['enabled']) && $_POST['enabled'] === '1' ? 1 : 0;
+    if ($name === '') {
+        echo json_encode(['success' => false, 'error' => 'Indica el nombre de la ubicacion.']);
+        exit;
+    }
+
+    $base_key = preg_replace('/[^a-z0-9_]+/', '_', strtolower(iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $name) ?: $name));
+    $base_key = trim($base_key, '_');
+    if ($base_key === '' || strlen($base_key) < 2) {
+        $base_key = 'ubicacion';
+    }
+    $base_key = substr($base_key, 0, 64);
+    $location_key = $base_key;
+    $suffix = 2;
+    while (true) {
+        $stmt = $mysqli->prepare("SELECT id FROM appointment_locations WHERE tenant_id = ? AND location_key = ? LIMIT 1");
+        $stmt->bind_param("is", $tenant_id, $location_key);
+        $stmt->execute();
+        if (!$stmt->get_result()->fetch_assoc()) {
+            break;
+        }
+        $location_key = substr($base_key . '_' . $suffix++, 0, 80);
+    }
+    $sort_res = $mysqli->query("SELECT COALESCE(MAX(sort_order), 0) + 10 AS next_sort FROM appointment_locations WHERE tenant_id = $tenant_id");
+    $sort_order = (int) (($sort_res ? $sort_res->fetch_assoc() : null)['next_sort'] ?? 999);
+    $stmt = $mysqli->prepare("
+        INSERT INTO appointment_locations (tenant_id, location_key, name, location_type, is_enabled, is_system, sort_order)
+        VALUES (?, ?, ?, 'custom', ?, 0, ?)
+    ");
+    $stmt->bind_param("issii", $tenant_id, $location_key, $name, $enabled, $sort_order);
+    $stmt->execute();
+
+    echo json_encode([
+        'success' => true,
+        'message' => 'Ubicacion creada.',
+        'locations' => fetch_appointment_locations($mysqli)
+    ]);
+} elseif ($action === 'delete_location_catalog_item') {
+    if (!$is_superadmin) {
+        echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede modificar ubicaciones globales.']);
+        exit;
+    }
+    ensure_payment_settings_table($mysqli);
+    ensure_appointment_locations_table($mysqli);
+
+    $location_id = (int) ($_POST['location_id'] ?? 0);
+    $stmt = $mysqli->prepare("SELECT id, name, is_system FROM appointment_locations WHERE tenant_id = ? AND id = ? LIMIT 1");
+    $stmt->bind_param("ii", $tenant_id, $location_id);
+    $stmt->execute();
+    $location = $stmt->get_result()->fetch_assoc();
+    if (!$location) {
+        echo json_encode(['success' => false, 'error' => 'No se encontro la ubicacion.']);
+        exit;
+    }
+    if ((int) ($location['is_system'] ?? 0) === 1) {
+        echo json_encode(['success' => false, 'error' => 'Esta ubicacion pertenece al sistema y no se puede eliminar. Puedes desactivarla si procede.']);
+        exit;
+    }
+
+    $mysqli->begin_transaction();
+    try {
+        $stmt = $mysqli->prepare("SELECT COUNT(*) AS total FROM appointments WHERE tenant_id = ? AND location_id = ?");
+        $stmt->bind_param("ii", $tenant_id, $location_id);
+        $stmt->execute();
+        $used_appointments = (int) ($stmt->get_result()->fetch_assoc()['total'] ?? 0);
+        $stmt = $mysqli->prepare("SELECT COUNT(*) AS total FROM professional_settings WHERE tenant_id = ? AND default_location_id = ?");
+        $stmt->bind_param("ii", $tenant_id, $location_id);
+        $stmt->execute();
+        $used_professionals = (int) ($stmt->get_result()->fetch_assoc()['total'] ?? 0);
+
+        if ($used_appointments > 0 || $used_professionals > 0) {
+            $stmt = $mysqli->prepare("UPDATE appointment_locations SET is_enabled = 0 WHERE tenant_id = ? AND id = ?");
+            $stmt->bind_param("ii", $tenant_id, $location_id);
+            $stmt->execute();
+            $message = 'La ubicacion esta en uso, asi que se ha desactivado.';
+        } else {
+            $stmt = $mysqli->prepare("DELETE FROM appointment_locations WHERE tenant_id = ? AND id = ?");
+            $stmt->bind_param("ii", $tenant_id, $location_id);
+            $stmt->execute();
+            $message = 'Ubicacion eliminada.';
+        }
+        $mysqli->commit();
+        echo json_encode([
+            'success' => true,
+            'message' => $message,
+            'locations' => fetch_appointment_locations($mysqli)
+        ]);
+    } catch (\Exception $e) {
+        $mysqli->rollback();
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
 } elseif ($action === 'save_services') {
     if (!$is_superadmin) {
         echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede modificar precios globales.']);
@@ -8335,9 +10202,6 @@ if ($action === 'generate_invite') {
     $services = json_decode($services_json, true);
     $available_session_durations = normalize_available_session_durations($_POST['available_session_durations'] ?? [], $mysqli);
     $active_durations = array_map('intval', explode(',', $available_session_durations));
-    $sector_config = sector_appointment_config_for_db($mysqli);
-    $allowed_durations = array_map(fn($item) => (int) $item['minutes'], $sector_config['durations']);
-    $allowed_service_keys = array_column($sector_config['services'], 'key');
     $appointment_delivery_mode = $_POST['appointment_delivery_mode'] ?? 'both';
     if (!in_array($appointment_delivery_mode, ['both', 'presencial', 'online'], true)) {
         $appointment_delivery_mode = 'both';
@@ -8351,16 +10215,39 @@ if ($action === 'generate_invite') {
     try {
         foreach ($services as $service) {
             $service_id = (int) ($service['id'] ?? 0);
+            $service_key = trim((string) ($service['service_key'] ?? ''));
+            if (!preg_match('/^[a-z0-9_-]{2,32}$/', $service_key)) {
+                $service_key = 'servicio_' . substr(bin2hex(random_bytes(6)), 0, 12);
+            }
             $name = trim((string) ($service['name'] ?? ''));
             $is_active = !empty($service['is_active']) ? 1 : 0;
 
-            if ($service_id <= 0 || $name === '') {
+            if ($name === '') {
                 throw new \Exception('Hay un servicio sin nombre o identificador valido.');
             }
 
-            $stmt = $mysqli->prepare("UPDATE appointment_services SET name = ?, is_active = ? WHERE tenant_id = ? AND id = ?");
-            $stmt->bind_param("siii", $name, $is_active, $tenant_id, $service_id);
-            $stmt->execute();
+            if ($service_id > 0) {
+                $stmt = $mysqli->prepare("UPDATE appointment_services SET name = ?, is_active = ? WHERE tenant_id = ? AND id = ?");
+                $stmt->bind_param("siii", $name, $is_active, $tenant_id, $service_id);
+                $stmt->execute();
+            } else {
+                $sort_order = ((int) ($service['sort_order'] ?? 0)) ?: 999;
+                $stmt = $mysqli->prepare("
+                    INSERT INTO appointment_services (tenant_id, service_key, name, is_active, sort_order)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE name = VALUES(name), is_active = VALUES(is_active)
+                ");
+                $stmt->bind_param("issii", $tenant_id, $service_key, $name, $is_active, $sort_order);
+                $stmt->execute();
+                $service_id = (int) $mysqli->insert_id;
+                if ($service_id <= 0) {
+                    $stmt = $mysqli->prepare("SELECT id FROM appointment_services WHERE tenant_id = ? AND service_key = ? LIMIT 1");
+                    $stmt->bind_param("is", $tenant_id, $service_key);
+                    $stmt->execute();
+                    $row = $stmt->get_result()->fetch_assoc();
+                    $service_id = (int) ($row['id'] ?? 0);
+                }
+            }
 
             foreach (($service['options'] ?? []) as $option) {
                 $option_id = (int) ($option['id'] ?? 0);
@@ -8369,7 +10256,7 @@ if ($action === 'generate_invite') {
                 $price = str_replace(',', '.', trim((string) ($option['price'] ?? '')));
                 $option_active = !empty($option['is_active']) ? 1 : 0;
 
-                if ($option_id <= 0 || !in_array($duration, $allowed_durations, true) || !in_array($consultation_type, ['presencial', 'online'], true)) {
+                if ($duration <= 0 || $duration > 480 || !in_array($consultation_type, ['presencial', 'online'], true)) {
                     throw new \Exception('Hay una opcion de servicio no valida.');
                 }
                 if (!is_numeric($price) || (float) $price < 0) {
@@ -8380,12 +10267,22 @@ if ($action === 'generate_invite') {
                 if (!in_array($duration, $active_durations, true) || ($appointment_delivery_mode !== 'both' && $consultation_type !== $appointment_delivery_mode)) {
                     $option_active = 0;
                 }
-                $stmt = $mysqli->prepare("
-                    UPDATE appointment_service_options
-                    SET duration_minutes = ?, consultation_type = ?, price = ?, is_active = ?
-                    WHERE tenant_id = ? AND id = ? AND service_id = ?
-                ");
-                $stmt->bind_param("isdiiii", $duration, $consultation_type, $price, $option_active, $tenant_id, $option_id, $service_id);
+                if ($option_id > 0) {
+                    $stmt = $mysqli->prepare("
+                        UPDATE appointment_service_options
+                        SET duration_minutes = ?, consultation_type = ?, price = ?, is_active = ?
+                        WHERE tenant_id = ? AND id = ? AND service_id = ?
+                    ");
+                    $stmt->bind_param("isdiiii", $duration, $consultation_type, $price, $option_active, $tenant_id, $option_id, $service_id);
+                } else {
+                    $sort_order = ($duration * 10) + ($consultation_type === 'online' ? 1 : 0);
+                    $stmt = $mysqli->prepare("
+                        INSERT INTO appointment_service_options (tenant_id, service_id, duration_minutes, consultation_type, price, is_active, sort_order)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ON DUPLICATE KEY UPDATE price = VALUES(price), is_active = VALUES(is_active)
+                    ");
+                    $stmt->bind_param("iiisdii", $tenant_id, $service_id, $duration, $consultation_type, $price, $option_active, $sort_order);
+                }
                 $stmt->execute();
             }
         }
@@ -8394,12 +10291,14 @@ if ($action === 'generate_invite') {
         $res = $mysqli->query("SELECT service_key FROM appointment_services WHERE tenant_id = $tenant_id AND is_active = 1");
         while ($row = $res->fetch_assoc()) {
             $service_key = trim((string) ($row['service_key'] ?? ''));
-            if (in_array($service_key, $allowed_service_keys, true)) {
+            if ($service_key !== '') {
                 $active_keys[] = $service_key;
             }
         }
         if (!$active_keys) {
-            $active_keys = sector_default_appointment_service_keys(sector_texts_for_db($mysqli));
+            $fallback = $mysqli->query("SELECT service_key FROM appointment_services WHERE tenant_id = $tenant_id ORDER BY sort_order ASC, id ASC LIMIT 1");
+            $fallback_row = $fallback ? $fallback->fetch_assoc() : null;
+            $active_keys = $fallback_row ? [$fallback_row['service_key']] : sector_default_appointment_service_keys(sector_texts_for_db($mysqli));
         }
         $available_session_types = implode(',', array_unique($active_keys));
         $stmt = $mysqli->prepare("UPDATE payment_settings SET available_session_types = ? WHERE tenant_id = $tenant_id");
@@ -8412,7 +10311,13 @@ if ($action === 'generate_invite') {
         sync_service_availability($mysqli, $available_session_types, $available_session_durations, $appointment_delivery_mode);
 
         $mysqli->commit();
-        echo json_encode(['success' => true, 'message' => 'Precios guardados correctamente.', 'services' => fetch_appointment_services($mysqli)]);
+        echo json_encode([
+            'success' => true,
+            'message' => 'Servicios guardados correctamente.',
+            'services' => fetch_appointment_services($mysqli),
+            'available_session_types' => $available_session_types,
+            'available_session_durations' => $available_session_durations
+        ]);
     } catch (\Exception $e) {
         $mysqli->rollback();
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
@@ -8434,6 +10339,11 @@ if ($action === 'generate_invite') {
     $legal_professional_college = trim($_POST['legal_professional_college'] ?? '');
     $legal_uses_non_technical_cookies = isset($_POST['legal_uses_non_technical_cookies']) && $_POST['legal_uses_non_technical_cookies'] === '1' ? 1 : 0;
     $legal_terms_notes = trim($_POST['legal_terms_notes'] ?? '');
+    $billing_enabled = isset($_POST['billing_enabled']) && $_POST['billing_enabled'] === '1' ? 1 : 0;
+    $billing_country = strtoupper(trim($_POST['billing_country'] ?? 'ES'));
+    $billing_province = trim($_POST['billing_province'] ?? '');
+    $billing_session_concept = trim($_POST['billing_session_concept'] ?? '');
+    $billing_report_concept = trim($_POST['billing_report_concept'] ?? '');
     $primary_color = trim($_POST['primary_color'] ?? '#4285f4');
     $dashboard_config_mode = 'advanced';
     $sector_texts_key = sector_texts_key_from_db($mysqli);
@@ -8456,12 +10366,26 @@ if ($action === 'generate_invite') {
     $appointment_delivery_mode = $_POST['appointment_delivery_mode'] ?? 'both';
     $available_session_types = normalize_available_session_types($_POST['available_session_types'] ?? [], $mysqli);
     $available_session_durations = normalize_available_session_durations($_POST['available_session_durations'] ?? [], $mysqli);
+    $locations_json = $_POST['locations_json'] ?? '';
+    $posted_locations = json_decode($locations_json, true);
+    if (!is_array($posted_locations)) {
+        $posted_locations = [];
+    }
     $display_effective_duration_enabled = isset($_POST['display_effective_duration_enabled']) && $_POST['display_effective_duration_enabled'] === '1' ? 1 : 0;
     $display_duration_offset_minutes = (int) ($_POST['display_duration_offset_minutes'] ?? 5);
     $display_duration_offset_minutes = max(0, min(30, $display_duration_offset_minutes));
     $posted_appointment_reminder_enabled = array_key_exists('appointment_reminder_enabled', $_POST)
         ? ($_POST['appointment_reminder_enabled'] === '1' ? 1 : 0)
         : null;
+    $posted_appointment_second_reminder_enabled = array_key_exists('appointment_second_reminder_enabled', $_POST)
+        ? ($_POST['appointment_second_reminder_enabled'] === '1' ? 1 : 0)
+        : null;
+    $posted_appointment_second_reminder_hours = array_key_exists('appointment_second_reminder_hours', $_POST)
+        ? (int) ($_POST['appointment_second_reminder_hours'] ?? 48)
+        : null;
+    if ($posted_appointment_second_reminder_hours !== null) {
+        $posted_appointment_second_reminder_hours = max(1, min(168, $posted_appointment_second_reminder_hours));
+    }
     $min_booking_notice_days = (int) ($_POST['min_booking_notice_days'] ?? 0);
     $max_booking_notice_days = (int) ($_POST['max_booking_notice_days'] ?? 0);
     $appointment_start_time = normalize_time_field($_POST['appointment_start_time'] ?? '', '10:00:00');
@@ -8477,11 +10401,19 @@ if ($action === 'generate_invite') {
     $smtp_secure = $_POST['smtp_secure'] ?? 'tls';
     $smtp_from_email = trim($_POST['smtp_from_email'] ?? '');
     $smtp_from_name = trim($_POST['smtp_from_name'] ?? '');
-    $google_client_id = trim($_POST['google_client_id'] ?? '');
-    $google_client_secret = trim($_POST['google_client_secret'] ?? '');
+    $sms_provider = strtolower(trim($_POST['sms_provider'] ?? 'none'));
+    if (!in_array($sms_provider, ['none', 'mundosms', 'smsup', 'smsapi'], true)) {
+        $sms_provider = 'none';
+    }
+    $sms_sender = trim($_POST['sms_sender'] ?? '');
+    $sms_username = trim($_POST['sms_username'] ?? '');
+    $sms_password = trim($_POST['sms_password'] ?? '');
+    $sms_api_key = trim($_POST['sms_api_key'] ?? '');
+    $sms_reminder_enabled = isset($_POST['sms_reminder_enabled']) && $_POST['sms_reminder_enabled'] === '1' ? 1 : 0;
+    $sms_reminder_hours = max(1, min(168, (int) ($_POST['sms_reminder_hours'] ?? 24)));
     $google_refresh_token = trim($_POST['google_refresh_token'] ?? '');
     $google_connected_email = trim($_POST['google_connected_email'] ?? '');
-    $google_redirect_uri = trim($_POST['google_redirect_uri'] ?? '');
+    $google_redirect_uri = function_exists('google_default_redirect_uri') ? google_default_redirect_uri() : trim($_POST['google_redirect_uri'] ?? '');
     $calendar_provider = $_POST['calendar_provider'] ?? 'none';
     if (!in_array($calendar_provider, ['none', 'google', 'icloud'], true)) {
         $calendar_provider = 'none';
@@ -8523,6 +10455,7 @@ if ($action === 'generate_invite') {
     $plan_allows_custom_logo = plan_config_feature_enabled($current_plan_config, 'branding.customLogo', false);
     $plan_allows_ui_customization = plan_config_feature_enabled($current_plan_config, 'ui.customization', false);
     $plan_allows_effective_duration = plan_config_feature_enabled($current_plan_config, 'appointments.effectiveDuration', false);
+    $plan_allows_billing = plan_config_feature_enabled($current_plan_config, 'billing.enabled', false);
 
     if (!$plan_allows_patient_portal) {
         $online_booking_enabled = 0;
@@ -8541,6 +10474,7 @@ if ($action === 'generate_invite') {
     }
     if (!$plan_allows_reminders) {
         $posted_appointment_reminder_enabled = 0;
+        $posted_appointment_second_reminder_enabled = 0;
     }
     if (!$plan_allows_custom_logo) {
         $show_profile_image_public = 0;
@@ -8551,6 +10485,30 @@ if ($action === 'generate_invite') {
         : 'advanced';
     if (!$plan_allows_effective_duration) {
         $display_effective_duration_enabled = 0;
+    }
+    if (!$plan_allows_billing) {
+        $billing_enabled = 0;
+    }
+
+    foreach ($posted_locations as $posted_location) {
+        $location_id = (int) ($posted_location['id'] ?? 0);
+        if ($location_id <= 0) {
+            continue;
+        }
+        $is_enabled = !empty($posted_location['is_enabled']) ? 1 : 0;
+        $stmt = $mysqli->prepare("SELECT location_key, location_type FROM appointment_locations WHERE tenant_id = ? AND id = ? LIMIT 1");
+        $stmt->bind_param("ii", $tenant_id, $location_id);
+        $stmt->execute();
+        $location_row = $stmt->get_result()->fetch_assoc();
+        if (!$location_row) {
+            continue;
+        }
+        if (($location_row['location_key'] ?? '') === 'default' || ($location_row['location_type'] ?? '') === 'default') {
+            $is_enabled = 1;
+        }
+        $stmt = $mysqli->prepare("UPDATE appointment_locations SET is_enabled = ? WHERE tenant_id = ? AND id = ?");
+        $stmt->bind_param("iii", $is_enabled, $tenant_id, $location_id);
+        $stmt->execute();
     }
 
     $uploaded_profile_image_path = null;
@@ -8566,6 +10524,16 @@ if ($action === 'generate_invite') {
         exit;
     }
     $primary_color = strtolower($primary_color);
+    if (!preg_match('/^[A-Z]{2}$/', $billing_country)) {
+        echo json_encode(['success' => false, 'error' => 'Pais de facturacion no valido']);
+        exit;
+    }
+    if ($billing_session_concept === '') {
+        $billing_session_concept = 'Sesion del dia {fecha} de duracion {duracion} minutos';
+    }
+    if ($billing_report_concept === '') {
+        $billing_report_concept = 'Informe {titulo}';
+    }
     if (!in_array($initial_calendar_view, ['week', 'month', 'patients', 'upcoming'], true)) {
         $initial_calendar_view = 'month';
     }
@@ -8649,6 +10617,11 @@ if ($action === 'generate_invite') {
         exit;
     }
 
+    $current_professional_id = current_professional_id_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0));
+    $current_professional_settings = $current_professional_id > 0
+        ? cabinet_get_effective_professional_settings($mysqli, $current_professional_id)
+        : [];
+
     $private_settings_payload = [
         'appointment_delivery_mode' => $appointment_delivery_mode,
         'available_session_types' => $available_session_types,
@@ -8658,11 +10631,13 @@ if ($action === 'generate_invite') {
         'break_start_time' => $break_start_time === '' ? null : $break_start_time,
         'break_end_time' => $break_end_time === '' ? null : $break_end_time,
         'available_weekdays' => $available_weekdays,
+        'default_appointment_location' => trim((string) ($current_professional_settings['default_appointment_location'] ?? '')),
+        'default_location_id' => !empty($current_professional_settings['default_location_id']) ? (int) $current_professional_settings['default_location_id'] : null,
+        'livekit_enabled' => !empty($current_professional_settings['livekit_enabled']) ? 1 : 0,
         'min_booking_notice_days' => $min_booking_notice_days,
         'max_booking_notice_days' => $max_booking_notice_days
     ];
 
-    $current_professional_id = current_professional_id_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0));
     if (!$is_superadmin) {
         if (!in_array($settings_section, ['general', 'booking'], true)) {
             echo json_encode(['success' => false, 'error' => 'No tienes permiso para modificar esta seccion de configuracion.']);
@@ -8711,26 +10686,49 @@ if ($action === 'generate_invite') {
         exit;
     }
 
+    $sms_columns_available = column_exists($mysqli, 'payment_settings', 'sms_provider')
+        && column_exists($mysqli, 'payment_settings', 'sms_reminder_hours');
+    $sms_secret_select = $sms_columns_available
+        ? "sms_password IS NOT NULL AND sms_password != '' AS has_sms_password,
+               sms_api_key IS NOT NULL AND sms_api_key != '' AS has_sms_api_key"
+        : "0 AS has_sms_password,
+               0 AS has_sms_api_key";
     $res = $mysqli->query("
         SELECT merchant_key IS NOT NULL AND merchant_key != '' AS has_merchant_key,
                smtp_password IS NOT NULL AND smtp_password != '' AS has_smtp_password,
-               google_client_secret IS NOT NULL AND google_client_secret != '' AS has_google_client_secret,
+               $sms_secret_select,
                google_refresh_token IS NOT NULL AND google_refresh_token != '' AS has_google_refresh_token,
                icloud_calendar_app_password IS NOT NULL AND icloud_calendar_app_password != '' AS has_icloud_calendar_app_password,
                fastcron_api_key,
-               fastcron_reminder_cron_id
+               fastcron_reminder_cron_id,
+               appointment_reminder_enabled,
+               appointment_second_reminder_enabled,
+               appointment_second_reminder_hours
         FROM payment_settings
         WHERE tenant_id = $tenant_id
     ");
     $current_settings = $res->fetch_assoc();
     $has_merchant_key = $current_settings && (int) $current_settings['has_merchant_key'] === 1;
     $has_smtp_password = $current_settings && (int) $current_settings['has_smtp_password'] === 1;
-    $has_google_client_secret = $current_settings && (int) $current_settings['has_google_client_secret'] === 1;
+    $has_sms_password = $current_settings && (int) $current_settings['has_sms_password'] === 1;
+    $has_sms_api_key = $current_settings && (int) $current_settings['has_sms_api_key'] === 1;
     $has_google_refresh_token = $current_settings && (int) $current_settings['has_google_refresh_token'] === 1;
     $has_icloud_calendar_app_password = $current_settings && (int) $current_settings['has_icloud_calendar_app_password'] === 1;
     $appointment_reminder_enabled = $posted_appointment_reminder_enabled !== null
         ? $posted_appointment_reminder_enabled
         : (int) ($current_settings['appointment_reminder_enabled'] ?? 0);
+    $appointment_second_reminder_enabled = $posted_appointment_second_reminder_enabled !== null
+        ? $posted_appointment_second_reminder_enabled
+        : (int) ($current_settings['appointment_second_reminder_enabled'] ?? 0);
+    $appointment_second_reminder_hours = $posted_appointment_second_reminder_hours !== null
+        ? $posted_appointment_second_reminder_hours
+        : (int) ($current_settings['appointment_second_reminder_hours'] ?? 48);
+    $appointment_second_reminder_hours = max(1, min(168, $appointment_second_reminder_hours));
+    if ($appointment_second_reminder_enabled && $appointment_second_reminder_hours === 24) {
+        echo json_encode(['success' => false, 'error' => 'El segundo recordatorio debe usar un valor distinto de 24 horas para evitar duplicados.']);
+        exit;
+    }
+    $any_appointment_reminder_enabled = $appointment_reminder_enabled || $appointment_second_reminder_enabled;
 
     $requires_online_price = in_array($appointment_delivery_mode, ['both', 'online'], true);
     $requires_couple_price = strpos($available_session_types, 'couple') !== false;
@@ -8745,13 +10743,34 @@ if ($action === 'generate_invite') {
         exit;
     }
 
-    if ($email_provider === 'google' && (!$google_client_id || ($google_client_secret === '' && !$has_google_client_secret))) {
-        echo json_encode(['success' => false, 'error' => 'Client ID y Client Secret son obligatorios para usar Google.']);
+    $any_sms_reminder_enabled = $sms_reminder_enabled;
+    $any_scheduled_reminder_enabled = $any_appointment_reminder_enabled || $any_sms_reminder_enabled;
+    if ($any_sms_reminder_enabled) {
+        if (!$sms_columns_available) {
+            echo json_encode(['success' => false, 'error' => 'Antes de activar recordatorios SMS debes aplicar la migracion de campos SMS.']);
+            exit;
+        }
+        if ($sms_provider === 'none' || $sms_sender === '') {
+            echo json_encode(['success' => false, 'error' => 'Proveedor y remitente SMS son obligatorios para activar recordatorios por SMS.']);
+            exit;
+        }
+        if ($sms_provider === 'mundosms' && (!$sms_username || ($sms_password === '' && !$has_sms_password))) {
+            echo json_encode(['success' => false, 'error' => 'Usuario y contrasena de MundoSMS son obligatorios para activar recordatorios por SMS.']);
+            exit;
+        }
+        if (in_array($sms_provider, ['smsup', 'smsapi'], true) && ($sms_api_key === '' && !$has_sms_api_key)) {
+            echo json_encode(['success' => false, 'error' => 'La API Key del proveedor SMS es obligatoria para activar recordatorios por SMS.']);
+            exit;
+        }
+    }
+
+    if ($email_provider === 'google' && !google_oauth_credentials_configured()) {
+        echo json_encode(['success' => false, 'error' => 'Faltan las credenciales globales de Google OAuth en el servidor.']);
         exit;
     }
 
-    if ($google_calendar_enabled && (!$google_client_id || ($google_client_secret === '' && !$has_google_client_secret) || !$google_calendar_id)) {
-        echo json_encode(['success' => false, 'error' => 'Para sincronizar Calendario debes configurar credenciales Google y un Calendar ID.']);
+    if ($google_calendar_enabled && (!google_oauth_credentials_configured() || !$google_calendar_id)) {
+        echo json_encode(['success' => false, 'error' => 'Para sincronizar Calendario debes configurar Google OAuth global y un Calendar ID.']);
         exit;
     }
 
@@ -8763,13 +10782,13 @@ if ($action === 'generate_invite') {
     $configured_fastcron_api_key = defined('FASTCRON_API_KEY') ? trim(FASTCRON_API_KEY) : '';
     $stored_fastcron_api_key = trim($current_settings['fastcron_api_key'] ?? '');
     $effective_fastcron_api_key = $stored_fastcron_api_key !== '' ? $stored_fastcron_api_key : $configured_fastcron_api_key;
-    if ($appointment_reminder_enabled && $effective_fastcron_api_key === '') {
+    if ($any_scheduled_reminder_enabled && $effective_fastcron_api_key === '') {
         echo json_encode(['success' => false, 'error' => 'No se pudo habilitar la opcion de recordatorio de cita por un motivo externo: falta configurar el token API de Fastcron.']);
         exit;
     }
 
     $current_cron_id = trim($current_settings['fastcron_reminder_cron_id'] ?? '');
-    if (!$appointment_reminder_enabled && $current_cron_id !== '' && $effective_fastcron_api_key === '') {
+    if (!$any_scheduled_reminder_enabled && $current_cron_id !== '' && $effective_fastcron_api_key === '') {
         echo json_encode(['success' => false, 'error' => 'No se pudo deshabilitar la opcion de recordatorio de cita por un motivo externo: falta configurar el token API de Fastcron para borrar el cron existente.']);
         exit;
     }
@@ -8779,16 +10798,16 @@ if ($action === 'generate_invite') {
     $cron_message = '';
 
     try {
-        if ($appointment_reminder_enabled && $current_cron_id === '') {
+        if ($any_scheduled_reminder_enabled && $current_cron_id === '') {
             $new_cron_id = fastcron_create_reminder_cron($effective_fastcron_api_key, reminder_cron_url(), $app_name);
             $cron_message = ' Cron de Fastcron creado.';
-        } elseif (!$appointment_reminder_enabled && $current_cron_id !== '') {
+        } elseif (!$any_scheduled_reminder_enabled && $current_cron_id !== '') {
             fastcron_delete_cron($effective_fastcron_api_key, $current_cron_id);
             $clear_cron_id = true;
             $cron_message = ' Cron de Fastcron eliminado.';
         }
     } catch (\Exception $e) {
-        $action_error = $appointment_reminder_enabled ? 'habilitar' : 'deshabilitar';
+        $action_error = $any_scheduled_reminder_enabled ? 'habilitar' : 'deshabilitar';
         echo json_encode(['success' => false, 'error' => 'No se pudo ' . $action_error . ' la opcion de recordatorio de cita por un motivo externo: ' . $e->getMessage()]);
         exit;
     }
@@ -8812,23 +10831,48 @@ if ($action === 'generate_invite') {
             SET app_name = ?, site_tagline = ?, site_phone = ?, online_payment_enabled = ?, environment = ?, merchant_code = ?, merchant_key = ?, terminal = ?, appointment_price = ?, online_appointment_price = ?, couple_appointment_price = ?, online_couple_appointment_price = ?, admin_notification_email = ?,
                 appointment_reminder_enabled = ?, min_booking_notice_days = ?, max_booking_notice_days = ?,
                 email_provider = ?, smtp_host = ?, smtp_port = ?, smtp_username = ?, smtp_secure = ?, smtp_from_email = ?, smtp_from_name = ?,
-                google_client_id = ?, google_connected_email = ?, google_redirect_uri = ?, google_calendar_enabled = ?, google_calendar_id = ?
+                google_connected_email = ?, google_redirect_uri = ?, google_calendar_enabled = ?, google_calendar_id = ?
             WHERE tenant_id = $tenant_id
         ");
-        bind_params_dynamic($stmt, "sssissssddddsiiississsssssis", [$app_name, $site_tagline, $site_phone, $enabled, $environment, $merchant_code, $merchant_key, $terminal, $appointment_price, $online_appointment_price, $couple_appointment_price, $online_couple_appointment_price, $admin_notification_email, $appointment_reminder_enabled, $min_booking_notice_days, $max_booking_notice_days, $email_provider, $smtp_host, $smtp_port, $smtp_username, $smtp_secure, $smtp_from_email, $smtp_from_name, $google_client_id, $google_connected_email, $google_redirect_uri, $google_calendar_enabled, $google_calendar_id]);
+        bind_params_dynamic($stmt, "sssissssddddsiiississssssis", [$app_name, $site_tagline, $site_phone, $enabled, $environment, $merchant_code, $merchant_key, $terminal, $appointment_price, $online_appointment_price, $couple_appointment_price, $online_couple_appointment_price, $admin_notification_email, $appointment_reminder_enabled, $min_booking_notice_days, $max_booking_notice_days, $email_provider, $smtp_host, $smtp_port, $smtp_username, $smtp_secure, $smtp_from_email, $smtp_from_name, $google_connected_email, $google_redirect_uri, $google_calendar_enabled, $google_calendar_id]);
     } else {
         $stmt = $mysqli->prepare("
             UPDATE payment_settings
             SET app_name = ?, site_tagline = ?, site_phone = ?, online_payment_enabled = ?, environment = ?, merchant_code = ?, terminal = ?, appointment_price = ?, online_appointment_price = ?, couple_appointment_price = ?, online_couple_appointment_price = ?, admin_notification_email = ?,
                 appointment_reminder_enabled = ?, min_booking_notice_days = ?, max_booking_notice_days = ?,
                 email_provider = ?, smtp_host = ?, smtp_port = ?, smtp_username = ?, smtp_secure = ?, smtp_from_email = ?, smtp_from_name = ?,
-                google_client_id = ?, google_connected_email = ?, google_redirect_uri = ?, google_calendar_enabled = ?, google_calendar_id = ?
+                google_connected_email = ?, google_redirect_uri = ?, google_calendar_enabled = ?, google_calendar_id = ?
             WHERE tenant_id = $tenant_id
         ");
-        bind_params_dynamic($stmt, "sssisssddddsiiississsssssis", [$app_name, $site_tagline, $site_phone, $enabled, $environment, $merchant_code, $terminal, $appointment_price, $online_appointment_price, $couple_appointment_price, $online_couple_appointment_price, $admin_notification_email, $appointment_reminder_enabled, $min_booking_notice_days, $max_booking_notice_days, $email_provider, $smtp_host, $smtp_port, $smtp_username, $smtp_secure, $smtp_from_email, $smtp_from_name, $google_client_id, $google_connected_email, $google_redirect_uri, $google_calendar_enabled, $google_calendar_id]);
+        bind_params_dynamic($stmt, "sssisssddddsiiississssssis", [$app_name, $site_tagline, $site_phone, $enabled, $environment, $merchant_code, $terminal, $appointment_price, $online_appointment_price, $couple_appointment_price, $online_couple_appointment_price, $admin_notification_email, $appointment_reminder_enabled, $min_booking_notice_days, $max_booking_notice_days, $email_provider, $smtp_host, $smtp_port, $smtp_username, $smtp_secure, $smtp_from_email, $smtp_from_name, $google_connected_email, $google_redirect_uri, $google_calendar_enabled, $google_calendar_id]);
     }
 
     $stmt->execute();
+
+    $stmt = $mysqli->prepare("UPDATE payment_settings SET appointment_second_reminder_enabled = ?, appointment_second_reminder_hours = ? WHERE tenant_id = $tenant_id");
+    $stmt->bind_param("ii", $appointment_second_reminder_enabled, $appointment_second_reminder_hours);
+    $stmt->execute();
+
+    if ($sms_columns_available) {
+        $stmt = $mysqli->prepare("
+            UPDATE payment_settings
+            SET sms_provider = ?, sms_sender = ?, sms_username = ?, sms_reminder_enabled = ?, sms_reminder_hours = ?
+            WHERE tenant_id = $tenant_id
+        ");
+        $stmt->bind_param("sssii", $sms_provider, $sms_sender, $sms_username, $sms_reminder_enabled, $sms_reminder_hours);
+        $stmt->execute();
+
+        if ($sms_password !== '') {
+            $stmt = $mysqli->prepare("UPDATE payment_settings SET sms_password = ? WHERE tenant_id = $tenant_id");
+            $stmt->bind_param("s", $sms_password);
+            $stmt->execute();
+        }
+        if ($sms_api_key !== '') {
+            $stmt = $mysqli->prepare("UPDATE payment_settings SET sms_api_key = ? WHERE tenant_id = $tenant_id");
+            $stmt->bind_param("s", $sms_api_key);
+            $stmt->execute();
+        }
+    }
 
     $stmt = $mysqli->prepare("UPDATE payment_settings SET calendar_provider = ?, google_calendar_enabled = ?, google_calendar_id = ?, icloud_calendar_email = ?, icloud_calendar_url = ?, send_patient_calendar_link = ? WHERE tenant_id = $tenant_id");
     $stmt->bind_param("sisssi", $calendar_provider, $google_calendar_enabled, $google_calendar_id, $icloud_calendar_email, $icloud_calendar_url, $send_patient_calendar_link);
@@ -8848,6 +10892,14 @@ if ($action === 'generate_invite') {
         WHERE tenant_id = $tenant_id
     ");
     $stmt->bind_param("ssssssis", $legal_owner_name, $legal_nif, $legal_address, $legal_email, $legal_license_number, $legal_professional_college, $legal_uses_non_technical_cookies, $legal_terms_notes);
+    $stmt->execute();
+
+    $stmt = $mysqli->prepare("
+        UPDATE payment_settings
+        SET billing_enabled = ?, billing_country = ?, billing_province = ?, billing_session_concept = ?, billing_report_concept = ?
+        WHERE tenant_id = $tenant_id
+    ");
+    $stmt->bind_param("issss", $billing_enabled, $billing_country, $billing_province, $billing_session_concept, $billing_report_concept);
     $stmt->execute();
 
     $stmt = $mysqli->prepare("UPDATE payment_settings SET appointment_delivery_mode = ? WHERE tenant_id = $tenant_id");
@@ -8909,12 +10961,6 @@ if ($action === 'generate_invite') {
         $stmt->execute();
     }
 
-    if ($google_client_secret !== '') {
-        $stmt = $mysqli->prepare("UPDATE payment_settings SET google_client_secret = ? WHERE tenant_id = $tenant_id");
-        $stmt->bind_param("s", $google_client_secret);
-        $stmt->execute();
-    }
-
     if ($google_refresh_token !== '') {
         $stmt = $mysqli->prepare("UPDATE payment_settings SET google_refresh_token = ? WHERE tenant_id = $tenant_id");
         $stmt->bind_param("s", $google_refresh_token);
@@ -8942,7 +10988,11 @@ if ($action === 'generate_invite') {
         $stmt->execute();
     }
 
-    echo json_encode(['success' => true, 'message' => trim('Configuracion guardada correctamente.' . $cron_message)]);
+    echo json_encode([
+        'success' => true,
+        'message' => trim('Configuracion guardada correctamente.' . $cron_message),
+        'locations' => fetch_appointment_locations($mysqli)
+    ]);
 } else {
     echo json_encode(['success' => false, 'error' => 'Acción inválida']);
 }

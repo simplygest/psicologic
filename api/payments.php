@@ -9,7 +9,7 @@ header('Content-Type: application/json');
 $action = $_GET['action'] ?? '';
 $user_id = $_SESSION['user_id'] ?? null;
 $tenant_id = current_tenant_id();
-$is_admin = in_array(($_SESSION['role'] ?? ''), ['admin', 'superadmin'], true);
+$is_admin = in_array(($_SESSION['role'] ?? ''), ['admin', 'superadmin', 'reception', 'administration', 'technical'], true);
 
 function app_base_url()
 {

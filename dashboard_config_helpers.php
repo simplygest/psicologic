@@ -56,6 +56,7 @@ function dashboard_config_advanced_defaults()
             'patients.transfer' => true,
             'knowledgeBase.enabled' => true,
             'knowledgeBase.importTasks' => true,
+            'knowledgeBase.multiSector' => true,
             'questionnaires.enabled' => true,
             'reports.globalReports' => true,
             'patientPortal.enabled' => true,
@@ -124,6 +125,7 @@ function dashboard_config_simple_disabled_features()
         'appointments.sessionTasks',
         'knowledgeBase.enabled',
         'knowledgeBase.importTasks',
+        'knowledgeBase.multiSector',
         'questionnaires.enabled'
     ];
 }
@@ -161,6 +163,7 @@ function plan_config_defaults()
                 'tasks.enabled' => false,
                 'closures.enabled' => false,
                 'bonuses.enabled' => false,
+                'billing.enabled' => false,
                 'reports.globalReports' => false,
                 'upcomingAppointments.planning' => false,
                 'appointments.effectiveDuration' => false,
@@ -169,6 +172,7 @@ function plan_config_defaults()
                 'payments.online' => false,
                 'knowledgeBase.enabled' => false,
                 'knowledgeBase.importTasks' => false,
+                'knowledgeBase.multiSector' => false,
                 'questionnaires.enabled' => false,
                 'reminders.patient24h' => false,
                 'calendarSync.enabled' => false,
@@ -177,6 +181,7 @@ function plan_config_defaults()
                 'ui.customization' => false
             ],
             'limits' => [
+                'teamMembers' => 1,
                 'appointmentDurations' => [60, 90, 120]
             ]
         ]
@@ -205,6 +210,11 @@ function dashboard_config_feature_enabled($config, $feature, $default = false)
 function plan_config_feature_enabled($config, $feature, $default = false)
 {
     return isset($config['plan']['features'][$feature]) ? (bool) $config['plan']['features'][$feature] : (bool) $default;
+}
+
+function plan_config_limit_value($config, $limit, $default = null)
+{
+    return array_key_exists($limit, $config['plan']['limits'] ?? []) ? $config['plan']['limits'][$limit] : $default;
 }
 
 function app_feature_enabled($dashboard_config, $plan_config, $feature, $default = false)

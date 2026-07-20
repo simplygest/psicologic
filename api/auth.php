@@ -5,6 +5,7 @@ require_once '../mail_helpers.php';
 require_once '../payment_helpers.php';
 require_once '../urlme_helpers.php';
 require_once '../settings_helpers.php';
+require_once '../invoice_helpers.php';
 header('Content-Type: application/json');
 
 $action = $_GET['action'] ?? '';
@@ -125,6 +126,14 @@ function ensure_patient_registration_schema($mysqli)
             user_id INT UNSIGNED NOT NULL PRIMARY KEY,
             tenant_id INT UNSIGNED NOT NULL DEFAULT 1,
             patient_type VARCHAR(80) DEFAULT NULL,
+            fiscal_name VARCHAR(180) DEFAULT NULL,
+            fiscal_nif VARCHAR(50) DEFAULT NULL,
+            invoice_use_alt_data TINYINT(1) NOT NULL DEFAULT 0,
+            invoice_name VARCHAR(180) DEFAULT NULL,
+            invoice_nif VARCHAR(50) DEFAULT NULL,
+            invoice_email VARCHAR(180) DEFAULT NULL,
+            invoice_phone VARCHAR(40) DEFAULT NULL,
+            invoice_address VARCHAR(255) DEFAULT NULL,
             patient_status VARCHAR(20) NOT NULL DEFAULT 'active',
             birth_date DATE DEFAULT NULL,
             referral_source VARCHAR(80) DEFAULT NULL,
@@ -145,6 +154,14 @@ function ensure_patient_registration_schema($mysqli)
     auth_add_column_if_missing($mysqli, 'patient_profiles', 'tenant_id', "INT UNSIGNED NOT NULL DEFAULT 1 AFTER user_id");
 
     $columns = [
+        'fiscal_name' => "ALTER TABLE patient_profiles ADD fiscal_name VARCHAR(180) DEFAULT NULL AFTER patient_type",
+        'fiscal_nif' => "ALTER TABLE patient_profiles ADD fiscal_nif VARCHAR(50) DEFAULT NULL AFTER fiscal_name",
+        'invoice_use_alt_data' => "ALTER TABLE patient_profiles ADD invoice_use_alt_data TINYINT(1) NOT NULL DEFAULT 0 AFTER fiscal_nif",
+        'invoice_name' => "ALTER TABLE patient_profiles ADD invoice_name VARCHAR(180) DEFAULT NULL AFTER invoice_use_alt_data",
+        'invoice_nif' => "ALTER TABLE patient_profiles ADD invoice_nif VARCHAR(50) DEFAULT NULL AFTER invoice_name",
+        'invoice_email' => "ALTER TABLE patient_profiles ADD invoice_email VARCHAR(180) DEFAULT NULL AFTER invoice_nif",
+        'invoice_phone' => "ALTER TABLE patient_profiles ADD invoice_phone VARCHAR(40) DEFAULT NULL AFTER invoice_email",
+        'invoice_address' => "ALTER TABLE patient_profiles ADD invoice_address VARCHAR(255) DEFAULT NULL AFTER invoice_phone",
         'patient_status' => "ALTER TABLE patient_profiles ADD patient_status VARCHAR(20) NOT NULL DEFAULT 'active' AFTER patient_type",
         'birth_date' => "ALTER TABLE patient_profiles ADD birth_date DATE DEFAULT NULL AFTER patient_status",
         'referral_source' => "ALTER TABLE patient_profiles ADD referral_source VARCHAR(80) DEFAULT NULL AFTER birth_date",
@@ -221,7 +238,7 @@ if ($action === 'login') {
     $user = $res->fetch_assoc();
 
     if ($user && !empty($user['password_hash']) && password_verify($password, $user['password_hash'])) {
-        if (!in_array(($user['role'] ?? ''), ['admin', 'superadmin'], true) && !online_booking_enabled($mysqli)) {
+        if (!in_array(($user['role'] ?? ''), ['admin', 'superadmin', 'reception', 'administration', 'technical'], true) && !online_booking_enabled($mysqli)) {
             echo json_encode(['success' => false, 'error' => 'El área de pacientes no está disponible en este momento.']);
             exit;
         }
@@ -459,8 +476,11 @@ if ($action === 'login') {
 
     $tenant_id = current_tenant_id();
     $user_id = (int) $_SESSION['user_id'];
+    $billing_enabled = invoice_billing_enabled($mysqli);
     $stmt = $mysqli->prepare("
-        SELECT u.name, u.email, u.phone, pp.photo_path
+        SELECT u.name, u.email, u.phone, pp.photo_path,
+               pp.fiscal_name, pp.fiscal_nif, pp.address,
+               pp.invoice_use_alt_data, pp.invoice_name, pp.invoice_nif, pp.invoice_email, pp.invoice_phone, pp.invoice_address
         FROM users u
         LEFT JOIN patient_profiles pp ON pp.user_id = u.id AND pp.tenant_id = u.tenant_id
         WHERE u.tenant_id = ? AND u.id = ? AND u.role = 'patient'
@@ -480,8 +500,18 @@ if ($action === 'login') {
             'name' => $profile['name'] ?? '',
             'email' => $profile['email'] ?? '',
             'phone' => $profile['phone'] ?? '',
-            'photo_path' => $profile['photo_path'] ?? ''
-        ]
+            'photo_path' => $profile['photo_path'] ?? '',
+            'fiscal_name' => $profile['fiscal_name'] ?? '',
+            'fiscal_nif' => $profile['fiscal_nif'] ?? '',
+            'address' => $profile['address'] ?? '',
+            'invoice_use_alt_data' => (int) ($profile['invoice_use_alt_data'] ?? 0),
+            'invoice_name' => $profile['invoice_name'] ?? '',
+            'invoice_nif' => $profile['invoice_nif'] ?? '',
+            'invoice_email' => $profile['invoice_email'] ?? '',
+            'invoice_phone' => $profile['invoice_phone'] ?? '',
+            'invoice_address' => $profile['invoice_address'] ?? ''
+        ],
+        'billing_enabled' => $billing_enabled ? 1 : 0
     ]);
 } elseif ($action === 'save_my_profile') {
     if (!isset($_SESSION['user_id']) || ($_SESSION['role'] ?? '') !== 'patient') {
@@ -491,13 +521,38 @@ if ($action === 'login') {
 
     $tenant_id = current_tenant_id();
     $user_id = (int) $_SESSION['user_id'];
+    $billing_enabled = invoice_billing_enabled($mysqli);
     $email = trim($_POST['email'] ?? '');
     $phone = trim($_POST['phone'] ?? '');
+    $fiscal_name = trim((string) ($_POST['fiscal_name'] ?? ''));
+    $fiscal_nif = strtoupper(trim((string) ($_POST['fiscal_nif'] ?? '')));
+    $address = trim((string) ($_POST['address'] ?? ''));
+    $invoice_use_alt_data = isset($_POST['invoice_use_alt_data']) && $_POST['invoice_use_alt_data'] === '1' ? 1 : 0;
+    $invoice_name = trim((string) ($_POST['invoice_name'] ?? ''));
+    $invoice_nif = strtoupper(trim((string) ($_POST['invoice_nif'] ?? '')));
+    $invoice_email = trim((string) ($_POST['invoice_email'] ?? ''));
+    $invoice_phone = trim((string) ($_POST['invoice_phone'] ?? ''));
+    $invoice_address = trim((string) ($_POST['invoice_address'] ?? ''));
     if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         echo json_encode(['success' => false, 'error' => 'Indica un email valido.']);
         exit;
     }
     $phone = $phone !== '' ? $phone : null;
+    if (!$billing_enabled) {
+        $fiscal_name = '';
+        $fiscal_nif = '';
+        $address = '';
+        $invoice_use_alt_data = 0;
+        $invoice_name = '';
+        $invoice_nif = '';
+        $invoice_email = '';
+        $invoice_phone = '';
+        $invoice_address = '';
+    }
+    if ($invoice_email !== '' && !filter_var($invoice_email, FILTER_VALIDATE_EMAIL)) {
+        echo json_encode(['success' => false, 'error' => 'Email de facturacion no valido.']);
+        exit;
+    }
 
     $stmt = $mysqli->prepare("SELECT id FROM users WHERE tenant_id = ? AND email = ? AND id <> ? LIMIT 1");
     $stmt->bind_param("isi", $tenant_id, $email, $user_id);
@@ -526,16 +581,71 @@ if ($action === 'login') {
 
     $mysqli->begin_transaction();
     try {
+        $stmt = $mysqli->prepare("
+            SELECT fiscal_name, fiscal_nif, address, invoice_use_alt_data, invoice_name, invoice_nif, invoice_email, invoice_phone, invoice_address
+            FROM patient_profiles
+            WHERE tenant_id = ? AND user_id = ?
+            LIMIT 1
+        ");
+        $stmt->bind_param("ii", $tenant_id, $user_id);
+        $stmt->execute();
+        $existing_profile = $stmt->get_result()->fetch_assoc() ?: [];
+
+        $save_fiscal_name = trim((string) ($existing_profile['fiscal_name'] ?? '')) === '' ? ($fiscal_name !== '' ? $fiscal_name : null) : $existing_profile['fiscal_name'];
+        $save_fiscal_nif = trim((string) ($existing_profile['fiscal_nif'] ?? '')) === '' ? ($fiscal_nif !== '' ? $fiscal_nif : null) : $existing_profile['fiscal_nif'];
+        $save_address = trim((string) ($existing_profile['address'] ?? '')) === '' ? ($address !== '' ? $address : null) : $existing_profile['address'];
+        $existing_invoice_use_alt_data = (int) ($existing_profile['invoice_use_alt_data'] ?? 0);
+        $save_invoice_use_alt_data = $existing_invoice_use_alt_data === 1 ? 1 : $invoice_use_alt_data;
+        if (!$save_invoice_use_alt_data) {
+            $invoice_name = '';
+            $invoice_nif = '';
+            $invoice_email = '';
+            $invoice_phone = '';
+            $invoice_address = '';
+        }
+        $save_invoice_name = trim((string) ($existing_profile['invoice_name'] ?? '')) === '' ? ($invoice_name !== '' ? $invoice_name : null) : $existing_profile['invoice_name'];
+        $save_invoice_nif = trim((string) ($existing_profile['invoice_nif'] ?? '')) === '' ? ($invoice_nif !== '' ? $invoice_nif : null) : $existing_profile['invoice_nif'];
+        $save_invoice_email = trim((string) ($existing_profile['invoice_email'] ?? '')) === '' ? ($invoice_email !== '' ? $invoice_email : null) : $existing_profile['invoice_email'];
+        $save_invoice_phone = trim((string) ($existing_profile['invoice_phone'] ?? '')) === '' ? ($invoice_phone !== '' ? $invoice_phone : null) : $existing_profile['invoice_phone'];
+        $save_invoice_address = trim((string) ($existing_profile['invoice_address'] ?? '')) === '' ? ($invoice_address !== '' ? $invoice_address : null) : $existing_profile['invoice_address'];
+
         $stmt = $mysqli->prepare("UPDATE users SET email = ?, phone = ? WHERE tenant_id = ? AND id = ? AND role = 'patient'");
         $stmt->bind_param("ssii", $email, $phone, $tenant_id, $user_id);
         $stmt->execute();
 
         $stmt = $mysqli->prepare("
-            INSERT INTO patient_profiles (user_id, tenant_id, photo_path)
-            VALUES (?, ?, ?)
-            ON DUPLICATE KEY UPDATE photo_path = COALESCE(VALUES(photo_path), photo_path)
+            INSERT INTO patient_profiles (
+                user_id, tenant_id, photo_path, fiscal_name, fiscal_nif, address,
+                invoice_use_alt_data, invoice_name, invoice_nif, invoice_email, invoice_phone, invoice_address
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                photo_path = COALESCE(VALUES(photo_path), photo_path),
+                fiscal_name = VALUES(fiscal_name),
+                fiscal_nif = VALUES(fiscal_nif),
+                address = VALUES(address),
+                invoice_use_alt_data = VALUES(invoice_use_alt_data),
+                invoice_name = VALUES(invoice_name),
+                invoice_nif = VALUES(invoice_nif),
+                invoice_email = VALUES(invoice_email),
+                invoice_phone = VALUES(invoice_phone),
+                invoice_address = VALUES(invoice_address)
         ");
-        $stmt->bind_param("iis", $user_id, $tenant_id, $uploaded_photo_path);
+        $stmt->bind_param(
+            "iissssisssss",
+            $user_id,
+            $tenant_id,
+            $uploaded_photo_path,
+            $save_fiscal_name,
+            $save_fiscal_nif,
+            $save_address,
+            $save_invoice_use_alt_data,
+            $save_invoice_name,
+            $save_invoice_nif,
+            $save_invoice_email,
+            $save_invoice_phone,
+            $save_invoice_address
+        );
         $stmt->execute();
 
         $mysqli->commit();
@@ -545,7 +655,16 @@ if ($action === 'login') {
             'profile' => [
                 'email' => $email,
                 'phone' => $phone ?? '',
-                'photo_path' => $uploaded_photo_path ?? ''
+                'photo_path' => $uploaded_photo_path ?? '',
+                'fiscal_name' => $save_fiscal_name ?? '',
+                'fiscal_nif' => $save_fiscal_nif ?? '',
+                'address' => $save_address ?? '',
+                'invoice_use_alt_data' => $save_invoice_use_alt_data,
+                'invoice_name' => $save_invoice_name ?? '',
+                'invoice_nif' => $save_invoice_nif ?? '',
+                'invoice_email' => $save_invoice_email ?? '',
+                'invoice_phone' => $save_invoice_phone ?? '',
+                'invoice_address' => $save_invoice_address ?? ''
             ]
         ]);
     } catch (\Exception $e) {

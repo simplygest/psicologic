@@ -332,10 +332,12 @@ function fastcron_sync_professional_planning_cron($mysqli, $app_name = '', $fail
 
 function reminder_cron_url()
 {
-    return app_public_base_url() . 'cron_reminders.php?token=' . urlencode(CRON_WEBHOOK_TOKEN);
+    $base_url = function_exists('tenant_canonical_base_url') ? tenant_canonical_base_url() : app_public_base_url();
+    return $base_url . 'cron_reminders.php?token=' . urlencode(CRON_WEBHOOK_TOKEN);
 }
 
 function professional_planning_cron_url()
 {
-    return app_public_base_url() . 'cron_professional_planning.php?token=' . urlencode(CRON_WEBHOOK_TOKEN);
+    $base_url = function_exists('tenant_canonical_base_url') ? tenant_canonical_base_url() : app_public_base_url();
+    return $base_url . 'cron_professional_planning.php?token=' . urlencode(CRON_WEBHOOK_TOKEN);
 }

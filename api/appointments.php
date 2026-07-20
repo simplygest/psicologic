@@ -3,12 +3,14 @@ session_start();
 require_once '../db.php';
 require_once '../settings_helpers.php';
 require_once '../payment_helpers.php';
+require_once '../livekit_helpers.php';
 require_once '../mail_helpers.php';
 require_once '../google_helpers.php';
 require_once '../caldav_helpers.php';
 require_once '../urlme_helpers.php';
 require_once '../cabinet_helpers.php';
 require_once '../workoutx_helpers.php';
+require_once '../app_log_helpers.php';
 header('Content-Type: application/json');
 
 if (!isset($_SESSION['user_id'])) {
@@ -19,7 +21,19 @@ if (!isset($_SESSION['user_id'])) {
 $action = $_GET['action'] ?? '';
 $user_id = $_SESSION['user_id'];
 $tenant_id = current_tenant_id();
-$is_admin = in_array(($_SESSION['role'] ?? ''), ['admin', 'superadmin'], true);
+$is_admin = in_array(($_SESSION['role'] ?? ''), ['admin', 'superadmin', 'reception', 'administration', 'technical'], true);
+$is_superadmin = ($_SESSION['role'] ?? '') === 'superadmin';
+$member_permissions = $is_admin ? cabinet_member_permissions_for_user($mysqli, (int) $user_id, $_SESSION['role'] ?? '') : [];
+
+function appointments_require_member_permission($permission, $error = 'No tienes permiso para realizar esta accion.')
+{
+    global $is_admin, $is_superadmin, $member_permissions;
+    if (!$is_admin || $is_superadmin || !empty($member_permissions[$permission])) {
+        return;
+    }
+    echo json_encode(['success' => false, 'error' => $error]);
+    exit;
+}
 
 if (!$is_admin && !online_booking_enabled($mysqli)) {
     echo json_encode(['success' => false, 'error' => 'El área de pacientes no está disponible en este momento.']);
@@ -28,8 +42,19 @@ if (!$is_admin && !online_booking_enabled($mysqli)) {
 
 ensure_appointment_payment_columns($mysqli);
 ensure_appointment_services_tables($mysqli);
+ensure_appointment_locations_table($mysqli);
 ensure_bonus_tables($mysqli);
 ensure_cabinet_schema($mysqli);
+
+if ($is_admin && in_array($action, ['booking_context', 'available_professionals_for_slot', 'get_month', 'get_week'], true)) {
+    appointments_require_member_permission('agenda', 'No tienes permiso para acceder a la agenda.');
+}
+if ($is_admin && $action === 'book') {
+    appointments_require_member_permission('create_appointments', 'No tienes permiso para crear citas.');
+}
+if ($is_admin && $action === 'cancel') {
+    appointments_require_member_permission('cancel_appointments', 'No tienes permiso para cancelar citas.');
+}
 
 function ensure_patient_portal_work_plan_schema($mysqli)
 {
@@ -283,12 +308,12 @@ function ensure_session_setting_column($mysqli)
 
     $column_res = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'available_session_types'");
     if ($column_res && $column_res->num_rows === 0) {
-        $mysqli->query("ALTER TABLE payment_settings ADD available_session_types VARCHAR(100) NOT NULL DEFAULT 'individual' AFTER appointment_delivery_mode");
+        $mysqli->query("ALTER TABLE payment_settings ADD available_session_types VARCHAR(255) NOT NULL DEFAULT 'individual' AFTER appointment_delivery_mode");
     }
 
     $column_res = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'available_session_durations'");
     if ($column_res && $column_res->num_rows === 0) {
-        $mysqli->query("ALTER TABLE payment_settings ADD available_session_durations VARCHAR(50) NOT NULL DEFAULT '60' AFTER available_session_types");
+        $mysqli->query("ALTER TABLE payment_settings ADD available_session_durations VARCHAR(100) NOT NULL DEFAULT '60' AFTER available_session_types");
     }
 
     $column_res = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'display_effective_duration_enabled'");
@@ -767,7 +792,7 @@ if ($action === 'patient_portal_download_document') {
     ensure_patient_portal_documents_schema($mysqli);
 
     $stmt = $mysqli->prepare("
-        SELECT a.id, a.appointment_date, a.appointment_time, a.status, a.cancelled_at,
+        SELECT a.id, a.professional_id, a.appointment_date, a.appointment_time, a.status, a.cancelled_at,
                a.consultation_type, a.online_session_url,
                COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
                COALESCE(a.payment_status, 'pending') AS payment_status,
@@ -799,6 +824,7 @@ if ($action === 'patient_portal_download_document') {
             'cancelled_at' => $row['cancelled_at'] ?? '',
             'consultation_type' => $row['consultation_type'] ?? 'presencial',
             'online_session_url' => $row['online_session_url'] ?? '',
+            'livekit_enabled' => livekit_enabled_for_professional($mysqli, (int) ($row['professional_id'] ?? 0)) ? 1 : 0,
             'duration_minutes' => (int) ($row['duration_minutes'] ?? 60),
             'payment_status' => $row['payment_status'] ?? 'pending',
             'payment_method' => $row['payment_method'] ?? '',
@@ -1072,7 +1098,7 @@ if ($action === 'patient_portal_download_document') {
     $appointments = [];
     if (!$is_day_first_unassigned) {
         $stmt = $mysqli->prepare("
-            SELECT a.id, a.appointment_date, a.appointment_time, a.user_id,
+            SELECT a.id, a.appointment_date, a.appointment_time, a.user_id, a.status,
                    COALESCE(a.payment_status, 'pending') AS payment_status,
                    a.payment_method, a.paid_at, a.patient_bonus_id, a.consultation_type, a.service_type,
                    COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
@@ -1082,7 +1108,7 @@ if ($action === 'patient_portal_download_document') {
             LEFT JOIN appointment_service_options so ON so.id = a.service_option_id AND so.tenant_id = a.tenant_id
             LEFT JOIN appointment_services s ON s.id = so.service_id AND s.tenant_id = a.tenant_id
             JOIN users u ON a.user_id = u.id AND u.tenant_id = a.tenant_id
-            WHERE a.tenant_id = ? AND a.appointment_date BETWEEN ? AND ? AND a.status = 'booked'
+            WHERE a.tenant_id = ? AND a.appointment_date BETWEEN ? AND ? AND a.status IN ('booked', 'completed', 'no_show')
               AND a.professional_id = ?
         ");
         $stmt->bind_param("issi", $tenant_id, $start_date, $end_date, $context_professional_id);
@@ -1115,6 +1141,7 @@ if ($action === 'patient_portal_download_document') {
         $apps_map[$date][$time] = [
             'id' => $app['id'],
             'user_id' => $app['user_id'],
+            'status' => $app['status'] ?? 'booked',
             'name' => $app['name'],
             'email' => $app['email'] ?? 'Sin email',
             'phone' => $app['phone'] ?? 'Sin tel',
@@ -1237,7 +1264,7 @@ if ($action === 'patient_portal_download_document') {
     $appointments = [];
     if (!$is_day_first_unassigned) {
         $stmt = $mysqli->prepare("
-            SELECT a.id, a.appointment_date, a.appointment_time, a.user_id,
+            SELECT a.id, a.appointment_date, a.appointment_time, a.user_id, a.status,
                    COALESCE(a.payment_status, 'pending') AS payment_status,
                    a.payment_method, a.paid_at, a.patient_bonus_id, a.consultation_type, a.service_type,
                    COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
@@ -1247,7 +1274,7 @@ if ($action === 'patient_portal_download_document') {
             LEFT JOIN appointment_service_options so ON so.id = a.service_option_id AND so.tenant_id = a.tenant_id
             LEFT JOIN appointment_services s ON s.id = so.service_id AND s.tenant_id = a.tenant_id
             JOIN users u ON a.user_id = u.id AND u.tenant_id = a.tenant_id
-            WHERE a.tenant_id = ? AND a.appointment_date BETWEEN ? AND ? AND a.status = 'booked'
+            WHERE a.tenant_id = ? AND a.appointment_date BETWEEN ? AND ? AND a.status IN ('booked', 'completed', 'no_show')
               AND a.professional_id = ?
         ");
         $stmt->bind_param("issi", $tenant_id, $start_date, $end_date, $context_professional_id);
@@ -1283,6 +1310,7 @@ if ($action === 'patient_portal_download_document') {
         $apps_map[$date][$time] = [
             'id' => $app['id'],
             'user_id' => $app['user_id'],
+            'status' => $app['status'] ?? 'booked',
             'name' => $app['name'],
             'email' => $app['email'] ?? 'Sin email',
             'phone' => $app['phone'] ?? 'Sin tel',
@@ -1539,11 +1567,26 @@ if ($action === 'patient_portal_download_document') {
     try {
         $professional_id = $booking_professional_id;
         $professional = cabinet_fetch_professional($mysqli, $professional_id);
-        $stmt = $mysqli->prepare("INSERT INTO appointments (tenant_id, user_id, professional_id, appointment_date, appointment_time, consultation_type, service_type, service_option_id, duration_minutes, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'booked')");
+        $location_id = null;
+        $default_appointment_location = '';
+        if ($consultation_type === 'presencial') {
+            $location_id = !empty($settings['default_location_id']) ? (int) $settings['default_location_id'] : default_appointment_location_id($mysqli);
+            $location = fetch_appointment_location($mysqli, $location_id);
+            if (!$location || (int) ($location['is_enabled'] ?? 0) !== 1) {
+                $location_id = default_appointment_location_id($mysqli);
+                $location = fetch_appointment_location($mysqli, $location_id);
+            }
+            $default_appointment_location = appointment_location_display_name($location);
+        }
+        $stmt = $mysqli->prepare("INSERT INTO appointments (tenant_id, user_id, professional_id, appointment_date, appointment_time, consultation_type, service_type, service_option_id, duration_minutes, location_id, online_session_url, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'booked')");
         $nullable_service_option_id = $service_option ? $service_option_id : null;
-        $stmt->bind_param("iiissssii", $tenant_id, $target_user_id, $professional_id, $date, $time, $consultation_type, $service_type, $nullable_service_option_id, $duration_minutes);
+        $stmt->bind_param("iiissssiiis", $tenant_id, $target_user_id, $professional_id, $date, $time, $consultation_type, $service_type, $nullable_service_option_id, $duration_minutes, $location_id, $default_appointment_location);
         $stmt->execute();
         $appointment_id = $mysqli->insert_id;
+        $livekit_access_token = '';
+        if ($consultation_type === 'online' && livekit_enabled_for_professional($mysqli, $professional_id)) {
+            $livekit_access_token = livekit_ensure_appointment_link_token($mysqli, $appointment_id);
+        }
         if (!$is_admin) {
             cabinet_assign_patient_to_professional_if_missing($mysqli, (int) $target_user_id, (int) $professional_id);
         }
@@ -1601,6 +1644,25 @@ if ($action === 'patient_portal_download_document') {
             ? '<p><b>Duraci&oacute;n:</b> ' . (int) appointment_display_duration_minutes($duration_minutes, $price_settings) . ' minutos</p>'
             : '';
         $display_service_text = appointment_display_service_label($service_text, $duration_minutes, $price_settings ?: []);
+        $branding_settings = get_public_branding_settings($mysqli);
+        $center_address = trim((string) ($branding_settings['legal_address'] ?? ''));
+        $patient_location_line = appointment_location_email_html([
+            'consultation_type' => $consultation_type,
+            'online_session_url' => $default_appointment_location
+        ], $center_address, true);
+        $livekit_patient_link = $consultation_type === 'online' && livekit_enabled_for_professional($mysqli, $professional_id)
+            ? livekit_patient_join_url([
+                'id' => $appointment_id,
+                'user_id' => $target_user_id,
+                'appointment_date' => $date,
+                'appointment_time' => $time,
+                'duration_minutes' => $duration_minutes,
+                'livekit_access_token' => $livekit_access_token
+            ])
+            : '';
+        $online_call_line = $livekit_patient_link !== ''
+            ? '<p><a href="' . htmlspecialchars($livekit_patient_link) . '">Acceder a la videollamada</a></p>'
+            : '';
 
         if (app_feature_enabled_from_db($mysqli, 'calendarSync.enabled', false)) {
             try {
@@ -1615,6 +1677,30 @@ if ($action === 'patient_portal_download_document') {
                 error_log('No se pudo crear evento en iCloud Calendar: ' . $e->getMessage());
             }
         }
+
+        app_log($mysqli, [
+            'action' => 'appointment_created',
+            'status' => 'ok',
+            'target_type' => 'appointment',
+            'target_id' => (int) $appointment_id,
+            'title' => 'Cita reservada',
+            'message' => 'Cita reservada para ' . ($patient['name'] ?? '') . ' el ' . $appointment_text . '.',
+            'metadata' => [
+                'origin' => $is_admin ? 'staff' : 'patient_portal',
+                'patient_id' => (int) $target_user_id,
+                'patient_name' => $patient['name'] ?? '',
+                'professional_id' => (int) $professional_id,
+                'professional_name' => $professional['display_name'] ?? '',
+                'appointment_date' => $date,
+                'appointment_time' => $time,
+                'consultation_type' => $consultation_type,
+                'service' => $service_text,
+                'duration_minutes' => (int) $duration_minutes,
+                'location_id' => $location_id ? (int) $location_id : 0,
+                'bonus_applied' => $bonus_claim ? 1 : 0,
+                'livekit_prepared' => $livekit_access_token !== '' ? 1 : 0
+            ]
+        ]);
 
         $appointment_for_notification = [
             'professional_id' => $professional_id
@@ -1660,6 +1746,8 @@ if ($action === 'patient_portal_download_document') {
                 '<p>Tu cita ' . htmlspecialchars(strtolower($display_service_text)) . ' ' . htmlspecialchars(strtolower($consultation_text)) . ' para el ' . htmlspecialchars($appointment_text) . ' ha quedado reservada correctamente.</p>' .
                 '<p><b>Servicio:</b> ' . htmlspecialchars($display_service_text) . '</p>' .
                 '<p><b>Modalidad:</b> ' . htmlspecialchars($consultation_text) . '</p>' .
+                ($patient_location_line ? '<p>' . preg_replace('/^<br>/', '', $patient_location_line) . '</p>' : '') .
+                $online_call_line .
                 $display_duration_note .
                 ($appointment_price_text !== null ? '<p><b>Importe:</b> ' . htmlspecialchars($appointment_price_text) . ' &euro;</p>' : '') .
                 $payment_note .
@@ -1713,7 +1801,7 @@ if ($action === 'patient_portal_download_document') {
     $context_professional_id = appointment_context_professional_id($mysqli, $user_id, $is_admin);
 
     $lookup_sql = "
-        SELECT a.id, a.appointment_date, a.appointment_time, a.consultation_type, a.service_type,
+        SELECT a.id, a.appointment_date, a.appointment_time, a.consultation_type, a.service_type, a.online_session_url,
                COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
                s.name AS service_name,
                COALESCE(a.payment_status, 'pending') AS payment_status,
@@ -1800,6 +1888,26 @@ if ($action === 'patient_portal_download_document') {
             }
         }
         notify_appointment_cancelled($mysqli, $appointment_to_cancel);
+        app_log($mysqli, [
+            'action' => 'appointment_cancelled',
+            'status' => 'ok',
+            'target_type' => 'appointment',
+            'target_id' => (int) $appointment_to_cancel['id'],
+            'title' => 'Cita cancelada',
+            'message' => 'Cita cancelada para ' . ($appointment_to_cancel['name'] ?? '') . ' el ' . appointment_label($appointment_to_cancel['appointment_date'], $appointment_to_cancel['appointment_time']) . '.',
+            'metadata' => [
+                'origin' => $is_admin ? 'staff' : 'patient_portal',
+                'patient_id' => (int) ($appointment_to_cancel['user_id'] ?? 0),
+                'patient_name' => $appointment_to_cancel['name'] ?? '',
+                'professional_id' => (int) ($appointment_to_cancel['professional_id'] ?? 0),
+                'appointment_date' => $appointment_to_cancel['appointment_date'] ?? '',
+                'appointment_time' => $appointment_to_cancel['appointment_time'] ?? '',
+                'payment_status' => $appointment_to_cancel['payment_status'] ?? '',
+                'payment_method' => $appointment_to_cancel['payment_method'] ?? '',
+                'bonus_session_restored' => (int) ($appointment_to_cancel['bonus_session_restored'] ?? 0),
+                'compensation_bonus_created' => (int) ($appointment_to_cancel['compensation_bonus_created'] ?? 0)
+            ]
+        ]);
         echo json_encode(['success' => true]);
     } else {
         echo json_encode(['success' => false, 'error' => 'No se pudo cancelar o no tienes permiso']);

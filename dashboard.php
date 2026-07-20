@@ -10,18 +10,41 @@ require_once 'settings_helpers.php';
 require_once 'cabinet_helpers.php';
 require_once 'dashboard_config_helpers.php';
 $is_superadmin = ($_SESSION['role'] === 'superadmin');
-$is_admin = in_array($_SESSION['role'], ['admin', 'superadmin'], true);
+$is_admin = in_array($_SESSION['role'], ['admin', 'superadmin', 'reception', 'administration', 'technical'], true);
 if ($is_admin) {
   ensure_cabinet_schema($mysqli);
 }
+$member_permissions = $is_admin ? cabinet_member_permissions_for_user($mysqli, (int) $_SESSION['user_id'], $_SESSION['role'] ?? '') : [];
+$can_access_settings = $is_superadmin || !empty($member_permissions['settings']);
+$can_access_agenda = $is_superadmin || !empty($member_permissions['agenda']);
+$can_access_patients = $is_superadmin || !empty($member_permissions['patients']);
+$can_access_appointments = $is_superadmin || !empty($member_permissions['appointments']);
+$can_access_statistics = $is_superadmin || !empty($member_permissions['statistics']);
+$can_access_private_patient_data = $is_superadmin || !empty($member_permissions['private_patient_data']);
+$can_create_patients = $is_superadmin || !empty($member_permissions['create_patients']);
+$can_create_appointments = $is_superadmin || !empty($member_permissions['create_appointments']);
+$can_cancel_appointments = $is_superadmin || !empty($member_permissions['cancel_appointments']);
 $branding = get_public_branding_settings($mysqli);
+$plan_config = plan_config_for_key($branding['plan_key'] ?? 'default');
+$billing_plan_enabled = plan_config_feature_enabled($plan_config, 'billing.enabled', false);
+$initial_billing_settings = [
+  'billing_enabled' => 0
+];
+if ($billing_plan_enabled) {
+  $billing_column_res = $mysqli->query("SHOW COLUMNS FROM payment_settings LIKE 'billing_enabled'");
+  if ($billing_column_res && $billing_column_res->num_rows > 0) {
+    $billing_res = $mysqli->query("SELECT billing_enabled FROM payment_settings WHERE tenant_id = " . current_tenant_id() . " LIMIT 1");
+    if ($billing_res && ($billing_row = $billing_res->fetch_assoc())) {
+      $initial_billing_settings['billing_enabled'] = (int) ($billing_row['billing_enabled'] ?? 0);
+    }
+  }
+}
 if (!$is_admin && !online_booking_enabled($mysqli)) {
   header('Location: index.php');
   exit;
 }
 $dashboard_config_mode = $is_admin ? dashboard_config_effective_mode_from_db($mysqli, $branding['plan_key'] ?? 'default') : 'simple';
 $dashboard_config = dashboard_config_for_mode($dashboard_config_mode);
-$plan_config = plan_config_for_key($branding['plan_key'] ?? 'default');
 $sector_key = $branding['sector_texts_key'] ?? sector_texts_default_key();
 $knowledge_base_enabled = $is_admin
   && app_feature_enabled($dashboard_config, $plan_config, 'knowledgeBase.enabled', false)
@@ -31,21 +54,27 @@ $physical_metrics_sector_keys = array_merge($body_map_sector_keys, ['nutricion']
 $physical_metrics_available = in_array($sector_key, $physical_metrics_sector_keys, true);
 $physical_metrics_enabled = $is_admin && $physical_metrics_available;
 $body_map_enabled = $knowledge_base_enabled && in_array($sector_key, $body_map_sector_keys, true);
+$google_oauth_flash = $_SESSION['google_oauth_flash'] ?? null;
+unset($_SESSION['google_oauth_flash']);
 $knowledge_disclaimer = 'Las recomendaciones mostradas son material de apoyo documental. No constituyen diagnóstico, prescripción clínica automática ni sustituyen el criterio profesional.';
 if ($sector_key === 'fitness') {
   $knowledge_disclaimer = 'Las recomendaciones mostradas son material de apoyo para la planificación del entrenamiento. No sustituyen la valoración del profesional ni deben interpretarse como una rutina automática.';
 } elseif (in_array($sector_key, ['fisioterapia', 'osteopatia', 'quiropractica'], true)) {
   $knowledge_disclaimer = 'Las recomendaciones mostradas son material de apoyo documental. No constituyen valoración clínica, tratamiento automático ni sustituyen el criterio profesional.';
 }
-$custom_dashboard_logo_enabled = app_feature_enabled($dashboard_config, $plan_config, 'branding.customLogo', false);
 $sector_texts = sector_texts_for_key($sector_key, $dashboard_config, $plan_config);
 $sector_texts_options = sector_texts_available();
 $patient_label_singular = $sector_texts['labels']['patient']['singular'] ?? 'paciente';
 $patient_label_plural = $sector_texts['labels']['patient']['plural'] ?? 'pacientes';
 $patient_label_title_singular = $sector_texts['labels']['patient']['titleSingular'] ?? 'Paciente';
 $patient_label_title_plural = $sector_texts['labels']['patient']['titlePlural'] ?? 'Pacientes';
+$appointment_label_plural = $sector_texts['labels']['appointment']['plural'] ?? 'citas';
 $work_plan_title_singular = $sector_texts['labels']['workPlan']['titleSingular'] ?? 'Plan de trabajo';
 $is_psychology_sector = $sector_key === 'psicologia';
+$therapeutic_context_sectors = ['psicologia', 'sexologia', 'psicopedagogia'];
+$support_network_label = in_array($sector_key, $therapeutic_context_sectors, true)
+  ? 'Red de apoyo y contexto vital'
+  : 'Situaci&oacute;n familiar, laboral, etc.';
 $patient_type_placeholder = $is_psychology_sector ? 'Adulto, pareja, derivado...' : '';
 $patient_referral_placeholder = $is_psychology_sector ? 'Web, Doctoralia, recomendaci&oacute;n, m&eacute;dico...' : '';
 $professional_title_placeholder = $is_psychology_sector ? 'Psic&oacute;loga sanitaria, Psic&oacute;logo cl&iacute;nico...' : '';
@@ -80,13 +109,26 @@ $sector_help_files = [
 ];
 $sector_help_file = $sector_help_files[$sector_key] ?? '';
 $tenant_url_key = function_exists('current_tenant_key') ? current_tenant_key() : '';
-$help_base_url = '/' . trim(function_exists('tenant_app_base_path') ? tenant_app_base_path() : 'sgpraxis', '/') . '/' . rawurlencode($tenant_url_key) . '/ayuda/';
+$tenant_base_path = trim(function_exists('tenant_app_base_path') ? tenant_app_base_path() : '', '/');
+$help_base_url = function_exists('tenant_public_base_url')
+  ? tenant_public_base_url() . 'ayuda/'
+  : '/' . ($tenant_base_path !== '' ? $tenant_base_path . '/' : '') . rawurlencode($tenant_url_key) . '/ayuda/';
 $sector_help_url = ($sector_help_file !== '' && file_exists(__DIR__ . '/ayuda/' . $sector_help_file))
   ? $help_base_url . '?sector=' . rawurlencode($sector_key)
   : $help_base_url;
 $official_brand_logo_url = app_official_brand_logo_url();
-$profile_image_path = $custom_dashboard_logo_enabled ? $branding['profile_image_path'] : '';
-$navbar_image_path = $profile_image_path;
+$tenant_logo_path = trim((string) ($branding['profile_image_path'] ?? ''));
+$tenant_logo_url = $tenant_logo_path !== '' ? app_upload_asset_url($tenant_logo_path) : '';
+$plan_key = plan_config_normalize_key($branding['plan_key'] ?? 'novus', 'novus');
+$brand_logo_url = '';
+if ($is_admin) {
+  $brand_logo_url = ($plan_key === 'novus' || $tenant_logo_url === '')
+    ? $official_brand_logo_url
+    : $tenant_logo_url;
+} else {
+  $brand_logo_url = $tenant_logo_url;
+}
+$navbar_image_path = '';
 $has_team_members = false;
 if (!$is_admin) {
   $stmt = $mysqli->prepare("
@@ -143,10 +185,12 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
 
 <body class="<?= $is_admin ? 'is-admin' : 'is-patient' ?>">
 
-  <nav class="navbar navbar-expand-lg py-3">
+  <nav class="navbar navbar-expand-lg">
     <div class="container">
       <a class="navbar-brand d-flex align-items-center gap-2" id="app-brand-link" href="#">
-        <img src="<?= htmlspecialchars($official_brand_logo_url) ?>" alt="SimplyGest Praxis" class="brand-avatar" id="app-brand-image">
+        <?php if ($brand_logo_url !== ''): ?>
+          <img src="<?= htmlspecialchars($brand_logo_url) ?>" alt="<?= htmlspecialchars($is_admin ? 'SimplyGest Praxis' : $app_name) ?>" class="brand-avatar app-brand-image" id="app-brand-image" data-official-src="<?= htmlspecialchars($official_brand_logo_url) ?>" data-tenant-src="<?= htmlspecialchars($tenant_logo_url) ?>">
+        <?php endif; ?>
         <span id="app-brand" class="dashboard-user-greeting">Hola, <?= htmlspecialchars($_SESSION['name']) ?></span>
       </a>
       <div class="d-flex align-items-center gap-2">
@@ -154,11 +198,6 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
           <button class="btn btn-light btn-sm" type="button" id="btn-global-search" title="Buscar">
             <i class="bi bi-search"></i>
           </button>
-        <?php endif; ?>
-        <?php if ($navbar_image_url): ?>
-          <img src="<?= htmlspecialchars($navbar_image_url) ?>" alt="" class="navbar-user-avatar" id="navbar-user-image">
-        <?php else: ?>
-          <img src="" alt="" class="navbar-user-avatar d-none" id="navbar-user-image">
         <?php endif; ?>
         <div class="dropdown">
           <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="dashboard-options-menu" data-bs-toggle="dropdown" aria-expanded="false">
@@ -177,12 +216,14 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                 <i class="bi bi-key me-2"></i>Cambiar contrase&ntilde;a
               </button>
             </li>
-            <?php if ($is_admin): ?>
+            <?php if ($is_admin && $can_access_settings): ?>
               <li>
                 <button class="dropdown-item" id="btn-open-settings" type="button">
                   <i class="bi bi-gear me-2"></i>Configuraci&oacute;n
                 </button>
               </li>
+            <?php endif; ?>
+            <?php if ($is_admin): ?>
               <li>
                 <a class="dropdown-item" href="<?= htmlspecialchars($sector_help_url) ?>">
                   <i class="bi bi-question-circle me-2"></i>Ayuda
@@ -197,6 +238,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
             </li>
           </ul>
         </div>
+        <img src="<?= htmlspecialchars($navbar_image_url) ?>" alt="" class="navbar-user-avatar<?= $navbar_image_url ? '' : ' d-none' ?>" id="navbar-user-image">
       </div>
     </div>
   </nav>
@@ -206,58 +248,88 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
       <div class="dashboard-shell">
         <aside class="dashboard-side-nav" aria-label="Navegaci&oacute;n del dashboard">
           <div class="dashboard-side-nav-section">
-            <button class="dashboard-side-nav-item btn-dashboard-main-view" type="button" data-dashboard-main-view="agenda">
+            <button class="dashboard-side-nav-item btn-dashboard-main-view <?= $can_access_agenda ? '' : 'd-none' ?>" type="button" data-dashboard-main-view="agenda">
               <i class="bi bi-calendar3"></i><span>Agenda</span>
             </button>
-            <button class="dashboard-side-nav-item btn-dashboard-main-view" type="button" data-dashboard-main-view="patients">
+            <button class="dashboard-side-nav-item btn-dashboard-main-view <?= $can_access_patients ? '' : 'd-none' ?>" type="button" data-dashboard-main-view="patients">
               <i class="bi bi-people"></i><span><?= htmlspecialchars($patient_label_title_plural, ENT_QUOTES, 'UTF-8') ?></span>
             </button>
-            <button class="dashboard-side-nav-item btn-dashboard-main-view" type="button" data-dashboard-main-view="upcoming">
+            <button class="dashboard-side-nav-item btn-dashboard-main-view <?= $can_access_appointments ? '' : 'd-none' ?>" type="button" data-dashboard-main-view="upcoming">
               <i class="bi bi-list-check"></i><span>Citas</span>
             </button>
           </div>
           <div class="dashboard-side-nav-section">
             <div class="dashboard-side-nav-label">Herramientas</div>
-            <button class="dashboard-side-nav-item" id="btn-sidebar-generate-invite" type="button" data-dashboard-action="invite">
+            <button class="dashboard-side-nav-item <?= $can_create_patients ? '' : 'd-none' ?>" id="btn-sidebar-generate-invite" type="button" data-dashboard-action="invite">
               <i class="bi bi-link-45deg"></i><span>Invitaci&oacute;n</span>
             </button>
-            <button class="dashboard-side-nav-item" id="btn-sidebar-admin-stats" type="button" data-dashboard-action="stats">
+            <button class="dashboard-side-nav-item <?= $can_access_statistics ? '' : 'd-none' ?>" id="btn-sidebar-admin-stats" type="button" data-dashboard-action="stats">
               <i class="bi bi-bar-chart"></i><span>Estad&iacute;sticas</span>
             </button>
             <button class="dashboard-side-nav-item" id="btn-sidebar-admin-bonuses" type="button" data-dashboard-action="bonuses">
               <i class="bi bi-card-list"></i><span>Bonos</span>
             </button>
+            <button class="dashboard-side-nav-item" id="btn-sidebar-admin-invoices" type="button" data-dashboard-action="invoices" data-bs-toggle="modal" data-bs-target="#invoicesModal">
+              <i class="bi bi-receipt"></i><span>Facturas</span>
+            </button>
+            <?php if ($is_superadmin): ?>
+              <button class="dashboard-side-nav-item" id="btn-sidebar-admin-log" type="button" data-dashboard-action="app-log">
+                <i class="bi bi-activity"></i><span>Log</span>
+              </button>
+            <?php endif; ?>
           </div>
         </aside>
         <main class="dashboard-shell-main">
     <?php endif; ?>
 
+    <?php if ($is_admin && is_array($google_oauth_flash)): ?>
+      <?php
+        $google_oauth_status = ($google_oauth_flash['status'] ?? '') === 'success' ? 'success' : 'danger';
+        $google_oauth_message = trim((string) ($google_oauth_flash['message'] ?? ''));
+      ?>
+      <div class="alert alert-<?= htmlspecialchars($google_oauth_status, ENT_QUOTES, 'UTF-8') ?> mb-3 google-oauth-flash-alert">
+        <?= htmlspecialchars($google_oauth_message !== '' ? $google_oauth_message : 'Google ha devuelto una respuesta sin detalle.', ENT_QUOTES, 'UTF-8') ?>
+      </div>
+      <script>
+        setTimeout(function () {
+          document.querySelectorAll('.google-oauth-flash-alert').forEach(function (alert) {
+            alert.style.transition = 'opacity .2s ease';
+            alert.style.opacity = '0';
+            setTimeout(function () { alert.remove(); }, 220);
+          });
+        }, 3000);
+      </script>
+    <?php endif; ?>
+
     <?php if ($is_admin): ?>
       <div class="mb-4 d-flex gap-2 flex-wrap align-items-center dashboard-actions-bar dashboard-actions-admin">
         <div class="dashboard-action-buttons d-flex gap-2 flex-wrap align-items-center">
-        <button class="btn btn-primary" id="btn-generate-invite"><i class="bi bi-link-45deg"></i> Generar
+        <button class="btn btn-primary <?= $can_create_patients ? '' : 'd-none' ?>" id="btn-generate-invite"><i class="bi bi-link-45deg"></i> Generar
           Invitación</button>
-        <button class="btn btn-primary" id="btn-upcoming-appointments" type="button"><i class="bi bi-list-check"></i> Pr&oacute;ximas citas</button>
-        <button class="btn btn-primary" id="btn-admin-stats" type="button"><i class="bi bi-bar-chart"></i> Estad&iacute;sticas</button>
+        <button class="btn btn-primary <?= $can_access_appointments ? '' : 'd-none' ?>" id="btn-upcoming-appointments" type="button"><i class="bi bi-list-check"></i> Pr&oacute;ximas citas</button>
+          <button class="btn btn-primary <?= $can_access_statistics ? '' : 'd-none' ?>" id="btn-admin-stats" type="button"><i class="bi bi-bar-chart"></i> Estad&iacute;sticas</button>
           <button class="btn btn-primary" id="btn-admin-bonuses" type="button"><i class="bi bi-card-list"></i> Bonos</button>
-        <button class="btn btn-primary" id="btn-admin-patients" type="button"><i class="bi bi-people"></i> <?= $is_superadmin ? htmlspecialchars($patient_label_title_plural, ENT_QUOTES, 'UTF-8') : 'Mis ' . htmlspecialchars($patient_label_plural, ENT_QUOTES, 'UTF-8') ?></button>
+          <button class="btn btn-primary" id="btn-admin-invoices" type="button" data-bs-toggle="modal" data-bs-target="#invoicesModal"><i class="bi bi-receipt"></i> Facturas</button>
+        <button class="btn btn-primary <?= $can_access_patients ? '' : 'd-none' ?>" id="btn-admin-patients" type="button"><i class="bi bi-people"></i> <?= $is_superadmin ? htmlspecialchars($patient_label_title_plural, ENT_QUOTES, 'UTF-8') : 'Mis ' . htmlspecialchars($patient_label_plural, ENT_QUOTES, 'UTF-8') ?></button>
         </div>
         <div class="dropdown dashboard-mobile-menu">
           <button class="btn btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
             <i class="bi bi-list"></i> Men&uacute;
           </button>
           <ul class="dropdown-menu">
-            <li><button class="dropdown-item" type="button" id="btn-mobile-generate-invite"><i class="bi bi-link-45deg me-2"></i>Generar invitaci&oacute;n</button></li>
-            <li><button class="dropdown-item" type="button" id="btn-mobile-upcoming-appointments"><i class="bi bi-list-check me-2"></i>Pr&oacute;ximas citas</button></li>
-            <li><button class="dropdown-item" type="button" id="btn-mobile-admin-stats"><i class="bi bi-bar-chart me-2"></i>Estad&iacute;sticas</button></li>
+            <li class="<?= $can_create_patients ? '' : 'd-none' ?>"><button class="dropdown-item" type="button" id="btn-mobile-generate-invite"><i class="bi bi-link-45deg me-2"></i>Generar invitaci&oacute;n</button></li>
+            <li class="<?= $can_access_appointments ? '' : 'd-none' ?>"><button class="dropdown-item" type="button" id="btn-mobile-upcoming-appointments"><i class="bi bi-list-check me-2"></i>Pr&oacute;ximas citas</button></li>
+            <li class="<?= $can_access_statistics ? '' : 'd-none' ?>"><button class="dropdown-item" type="button" id="btn-mobile-admin-stats"><i class="bi bi-bar-chart me-2"></i>Estad&iacute;sticas</button></li>
             <li><button class="dropdown-item" type="button" id="btn-mobile-admin-bonuses"><i class="bi bi-card-list me-2"></i>Bonos</button></li>
-            <li><button class="dropdown-item" type="button" id="btn-mobile-admin-patients"><i class="bi bi-people me-2"></i><?= $is_superadmin ? htmlspecialchars($patient_label_title_plural, ENT_QUOTES, 'UTF-8') : 'Mis ' . htmlspecialchars($patient_label_plural, ENT_QUOTES, 'UTF-8') ?></button></li>
+            <li><button class="dropdown-item" type="button" id="btn-mobile-admin-invoices" data-bs-toggle="modal" data-bs-target="#invoicesModal"><i class="bi bi-receipt me-2"></i>Facturas</button></li>
+            <li class="<?= $can_access_patients ? '' : 'd-none' ?>"><button class="dropdown-item" type="button" id="btn-mobile-admin-patients"><i class="bi bi-people me-2"></i><?= $is_superadmin ? htmlspecialchars($patient_label_title_plural, ENT_QUOTES, 'UTF-8') : 'Mis ' . htmlspecialchars($patient_label_plural, ENT_QUOTES, 'UTF-8') ?></button></li>
           </ul>
         </div>
         <span id="admin-actions-msg" class="align-self-center ms-2 text-success" style="display: none;"></span>
         <div class="btn-group ms-auto dashboard-view-switcher" id="admin-dashboard-view-switcher" role="group" aria-label="Vista del dashboard">
-          <button class="btn btn-outline-primary btn-dashboard-view" type="button" data-dashboard-view="month"><i class="bi bi-calendar3"></i> Mes</button>
-          <button class="btn btn-outline-primary btn-dashboard-view" type="button" data-dashboard-view="week"><i class="bi bi-calendar-week"></i> Semana</button>
+          <button class="btn btn-outline-primary btn-dashboard-view <?= $can_access_agenda ? '' : 'd-none' ?>" type="button" data-dashboard-view="month"><i class="bi bi-calendar3"></i> Mes</button>
+          <button class="btn btn-outline-primary btn-dashboard-view <?= $can_access_agenda ? '' : 'd-none' ?>" type="button" data-dashboard-view="week"><i class="bi bi-calendar-week"></i> Semana</button>
+          <button class="btn btn-outline-primary btn-dashboard-view d-none <?= $can_access_agenda ? 'd-lg-inline-flex' : '' ?>" type="button" data-dashboard-view="agenda"><i class="bi bi-layout-three-columns"></i> Agenda</button>
         </div>
       </div>
     <?php else: ?>
@@ -303,7 +375,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
 
     <div id="calendar-container">
       <div class="text-center text-muted py-5">
-        <div class="spinner-border text-secondary" role="status"></div><br>Cargando calendario...
+        <div class="spinner-border text-secondary" role="status"></div><br>Cargando. Espera...
       </div>
     </div>
     <?php if ($is_admin): ?>
@@ -413,6 +485,9 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                 <button class="nav-link" id="appointment-session-tab" data-bs-toggle="tab" data-bs-target="#appointment-session-panel" type="button" role="tab">Tareas</button>
               </li>
               <li class="nav-item" role="presentation">
+                <button class="nav-link" id="appointment-private-notes-tab" data-bs-toggle="tab" data-bs-target="#appointment-private-notes-panel" type="button" role="tab">Notas de la sesi&oacute;n</button>
+              </li>
+              <li class="nav-item" role="presentation">
                 <button class="nav-link" id="appointment-files-tab" data-bs-toggle="tab" data-bs-target="#appointment-files-panel" type="button" role="tab">Archivos</button>
               </li>
             </ul>
@@ -421,20 +496,32 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                 <div id="appointment-payment-summary" class="appointment-payment-summary mb-4">
                   <div class="text-center text-muted py-4">Cargando cita...</div>
                 </div>
+                <div id="appointment-status-editor" class="appointment-status-editor mb-4 d-none">
+                  <label class="form-label">Estado de asistencia</label>
+                  <div class="btn-group appointment-status-group" role="group" aria-label="Estado de asistencia">
+                    <button type="button" class="btn btn-outline-primary appointment-status-btn" data-appointment-status="booked">
+                      <i class="bi bi-calendar-check"></i> Reservada
+                    </button>
+                    <button type="button" class="btn btn-outline-primary appointment-status-btn" data-appointment-status="completed">
+                      <i class="bi bi-check2-circle"></i> Realizada
+                    </button>
+                    <button type="button" class="btn btn-outline-warning appointment-status-btn" data-appointment-status="no_show">
+                      <i class="bi bi-person-x"></i> No asisti&oacute;
+                    </button>
+                  </div>
+                </div>
                 <div id="appointment-payment-editor" class="appointment-payment-editor">
                   <div class="row g-3">
                     <div class="col-md-6">
                       <button type="button" class="payment-state-card" data-payment-status="pending">
                         <span class="payment-state-icon payment-state-pending"><i class="bi bi-hourglass-split"></i></span>
                         <strong>Pendiente</strong>
-                        <small>La cita queda marcada como no pagada.</small>
                       </button>
                     </div>
                     <div class="col-md-6">
                       <button type="button" class="payment-state-card" data-payment-status="paid">
                         <span class="payment-state-icon payment-state-paid"><i class="bi bi-check2-circle"></i></span>
                         <strong>Pagada</strong>
-                        <small>Registra un cobro manual u offline.</small>
                       </button>
                     </div>
                   </div>
@@ -457,6 +544,14 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   <div class="text-center text-muted py-4">Cargando sesi&oacute;n...</div>
                 </div>
               </div>
+              <div class="tab-pane fade" id="appointment-private-notes-panel" role="tabpanel" aria-labelledby="appointment-private-notes-tab">
+                <div id="appointment-private-notes-alert" class="alert d-none"></div>
+                <div class="alert alert-info small mb-3">
+                  Nota privada, no visible por el paciente. Disponible solo en los informes internos.
+                </div>
+                <label class="form-label" for="appointment-private-session-notes">Notas de la sesi&oacute;n</label>
+                <textarea class="form-control" id="appointment-private-session-notes" rows="10" placeholder="Notas, apuntes o informaci&oacute;n interna de esta cita..."></textarea>
+              </div>
               <div class="tab-pane fade" id="appointment-files-panel" role="tabpanel" aria-labelledby="appointment-files-tab">
                 <div id="appointment-files-alert" class="alert d-none"></div>
                 <div id="appointment-files-content">
@@ -467,6 +562,15 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-outline-danger me-auto" id="btn-cancel-appointment-from-detail">Cancelar cita</button>
+            <div class="dropdown" id="appointment-reminder-dropdown">
+              <button class="btn btn-outline-primary dropdown-toggle" type="button" id="btn-appointment-reminder-menu" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-send"></i> Enviar recordatorio
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="btn-appointment-reminder-menu">
+                <li><button class="dropdown-item btn-send-manual-appointment-reminder" type="button" data-channel="email"><i class="bi bi-envelope me-2"></i>Email</button></li>
+                <li><button class="dropdown-item btn-send-manual-appointment-reminder" type="button" data-channel="sms"><i class="bi bi-chat-left-text me-2"></i>SMS</button></li>
+              </ul>
+            </div>
             <button type="button" class="btn btn-outline-secondary" id="btn-open-patient-from-appointment-detail">
               <i class="bi bi-person-lines-fill"></i> Ver ficha del <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?>
             </button>
@@ -511,6 +615,29 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
               </button>
             </div>
           </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="manualInvoiceConfirmModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Emitir factura</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <div class="modal-body">
+            <div class="alert alert-warning small mb-3">
+              Al confirmar este cobro se emitir&aacute; la factura correspondiente. Una vez emitida, no se podr&aacute;n modificar los datos econ&oacute;micos de este registro.
+            </div>
+            <p class="mb-0" id="manual-invoice-confirm-text">
+              Si cancelas, no se marcar&aacute; como pagado y quedar&aacute; pendiente.
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="btn-confirm-manual-invoice">Emitir factura y marcar como pagado</button>
+          </div>
         </div>
       </div>
     </div>
@@ -577,7 +704,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
           <div class="modal-body">
             <div id="admin-patients-alert" class="alert d-none"></div>
             <div class="d-flex justify-content-end align-items-center gap-2 mb-3 flex-wrap">
-              <button class="btn btn-primary btn-sm" type="button" id="btn-new-patient"><i class="bi bi-person-plus"></i> Nuevo <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?></button>
+              <button class="btn btn-primary btn-sm <?= $can_create_patients ? '' : 'd-none' ?>" type="button" id="btn-new-patient"><i class="bi bi-person-plus"></i> Nuevo <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?></button>
             </div>
             <div class="row g-2 mb-3">
               <div class="<?= $is_superadmin ? 'col-md-5' : 'col-md-8' ?>">
@@ -610,13 +737,14 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                     <th>Contacto</th>
                     <th>Tipo</th>
                     <th>Alta</th>
-                    <th>Portal</th>
+                    <th class="text-center">Portal</th>
                     <th>Documento</th>
+                    <th class="text-center">Obs.</th>
                     <th class="text-end no-export">Acciones</th>
                   </tr>
                 </thead>
                 <tbody id="admin-patients-body">
-                  <tr><td colspan="<?= $is_superadmin ? 8 : 7 ?>" class="text-center text-muted py-4">Cargando...</td></tr>
+                  <tr><td colspan="<?= $is_superadmin ? 9 : 8 ?>" class="text-center text-muted py-4">Cargando...</td></tr>
                 </tbody>
               </table>
             </div>
@@ -652,32 +780,35 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
               <li class="nav-item" role="presentation">
                 <button class="nav-link active" id="patient-data-tab" data-bs-toggle="tab" data-bs-target="#patient-data-panel" type="button" role="tab">Datos del <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?></button>
               </li>
-              <li class="nav-item" role="presentation">
+              <li class="nav-item <?= $can_access_private_patient_data ? '' : 'd-none' ?>" role="presentation">
                 <button class="nav-link" id="patient-more-data-tab" data-bs-toggle="tab" data-bs-target="#patient-more-data-panel" type="button" role="tab">M&aacute;s datos</button>
               </li>
+              <li class="nav-item <?= !empty($initial_billing_settings['billing_enabled']) ? '' : 'd-none' ?>" role="presentation" id="patient-billing-tab-item">
+                <button class="nav-link" id="patient-billing-data-tab" data-bs-toggle="tab" data-bs-target="#patient-billing-data-panel" type="button" role="tab">Datos Facturaci&oacute;n</button>
+              </li>
               <?php if ($physical_metrics_enabled): ?>
-                <li class="nav-item" role="presentation">
+                <li class="nav-item <?= $can_access_private_patient_data ? '' : 'd-none' ?>" role="presentation">
                   <button class="nav-link" id="patient-physical-tab" data-bs-toggle="tab" data-bs-target="#patient-physical-panel" type="button" role="tab">Composici&oacute;n</button>
                 </li>
               <?php endif; ?>
               <?php if ($knowledge_base_enabled): ?>
-                <li class="nav-item" role="presentation">
+                <li class="nav-item <?= $can_access_private_patient_data ? '' : 'd-none' ?>" role="presentation">
                   <button class="nav-link" id="patient-diagnosis-tab" data-bs-toggle="tab" data-bs-target="#patient-diagnosis-panel" type="button" role="tab"><?= htmlspecialchars(ucfirst($sector_texts['clinicalTerms']['diagnosis'] ?? 'Diagnóstico')) ?></button>
                 </li>
               <?php endif; ?>
-              <li class="nav-item" role="presentation">
+              <li class="nav-item <?= $can_access_private_patient_data ? '' : 'd-none' ?>" role="presentation">
                 <button class="nav-link" id="patient-history-tab" data-bs-toggle="tab" data-bs-target="#patient-history-panel" type="button" role="tab">Historial de citas</button>
               </li>
-              <li class="nav-item" role="presentation">
+              <li class="nav-item <?= $can_access_private_patient_data ? '' : 'd-none' ?>" role="presentation">
                 <button class="nav-link" id="patient-work-plan-tab" data-bs-toggle="tab" data-bs-target="#patient-work-plan-panel" type="button" role="tab">Plan de trabajo</button>
               </li>
-              <li class="nav-item" role="presentation">
+              <li class="nav-item <?= $can_access_private_patient_data ? '' : 'd-none' ?>" role="presentation">
                 <button class="nav-link" id="patient-evolution-tab" data-bs-toggle="tab" data-bs-target="#patient-evolution-panel" type="button" role="tab">Evoluci&oacute;n</button>
               </li>
-              <li class="nav-item" role="presentation">
+              <li class="nav-item <?= $can_access_private_patient_data ? '' : 'd-none' ?>" role="presentation">
                 <button class="nav-link" id="patient-files-tab" data-bs-toggle="tab" data-bs-target="#patient-files-panel" type="button" role="tab">Documentaci&oacute;n</button>
               </li>
-              <li class="nav-item" role="presentation">
+              <li class="nav-item <?= $can_access_private_patient_data ? '' : 'd-none' ?>" role="presentation">
                 <button class="nav-link" id="patient-reports-tab" data-bs-toggle="tab" data-bs-target="#patient-reports-panel" type="button" role="tab">Informes</button>
               </li>
               <li class="nav-item" role="presentation">
@@ -696,6 +827,14 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                     <div class="col-md-6">
                       <label class="form-label" for="patient-editor-type">Tipo</label>
                       <input type="text" class="form-control" id="patient-editor-type" name="patient_type" placeholder="<?= $patient_type_placeholder ?>">
+                    </div>
+                    <div class="col-md-6">
+                      <label class="form-label" for="patient-editor-fiscal-name">Nombre fiscal</label>
+                      <input type="text" class="form-control" id="patient-editor-fiscal-name" name="fiscal_name" maxlength="180" placeholder="Nombre para facturas">
+                    </div>
+                    <div class="col-md-6">
+                      <label class="form-label" for="patient-editor-fiscal-nif">NIF / CIF</label>
+                      <input type="text" class="form-control" id="patient-editor-fiscal-nif" name="fiscal_nif" maxlength="50" placeholder="NIF del destinatario">
                     </div>
                     <div class="col-md-6">
                       <label class="form-label" for="patient-editor-email">Email</label>
@@ -752,6 +891,12 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                       <input type="file" class="form-control" id="patient-editor-document" name="patient_document" accept=".pdf,.xls,.xlsx">
                       <div class="form-text" id="patient-editor-document-status"></div>
                     </div>
+                    <div class="col-12">
+                      <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="patient-editor-waiting-list" name="waiting_list" value="1" form="patient-editor-form">
+                        <label class="form-check-label" for="patient-editor-waiting-list"><?= htmlspecialchars($patient_label_title_singular, ENT_QUOTES, 'UTF-8') ?> en lista de espera</label>
+                      </div>
+                    </div>
                   </div>
                 </form>
               </div>
@@ -779,6 +924,10 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                     <input type="text" class="form-control" id="patient-editor-referral-source" name="referral_source" form="patient-editor-form" placeholder="<?= $patient_referral_placeholder ?>">
                   </div>
                   <div class="col-md-6">
+                    <label class="form-label" for="patient-editor-address">Domicilio</label>
+                    <input type="text" class="form-control" id="patient-editor-address" name="address" form="patient-editor-form" maxlength="255" placeholder="Direcci&oacute;n para citas a domicilio">
+                  </div>
+                  <div class="col-md-6">
                     <label class="form-label" for="patient-editor-emergency-name">Contacto de emergencia / tutor</label>
                     <input type="text" class="form-control" id="patient-editor-emergency-name" name="emergency_contact_name" form="patient-editor-form">
                   </div>
@@ -790,13 +939,52 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                     <label class="form-label" for="patient-editor-emergency-relation">Relaci&oacute;n</label>
                     <input type="text" class="form-control" id="patient-editor-emergency-relation" name="emergency_contact_relation" form="patient-editor-form" placeholder="Madre, padre, pareja, familiar...">
                   </div>
-                  <div class="col-12">
+                  <div class="w-100"></div>
+                  <div class="col-12 col-lg-6">
                     <label class="form-label" for="patient-editor-initial-reason">Motivo inicial de consulta</label>
                     <textarea class="form-control" id="patient-editor-initial-reason" name="initial_consultation_reason" rows="3" form="patient-editor-form"></textarea>
                   </div>
-                  <div class="col-12">
+                  <div class="col-12 col-lg-6">
+                    <label class="form-label" for="patient-editor-background">Antecedentes</label>
+                    <textarea class="form-control" id="patient-editor-background" name="background_notes" rows="3" form="patient-editor-form"></textarea>
+                  </div>
+                  <div class="col-12 col-lg-6">
+                    <label class="form-label" for="patient-editor-support-network"><?= $support_network_label ?></label>
+                    <textarea class="form-control" id="patient-editor-support-network" name="support_network_notes" rows="3" form="patient-editor-form"></textarea>
+                  </div>
+                  <div class="col-12 col-lg-6">
                     <label class="form-label" for="patient-editor-notes">Notas internas</label>
                     <textarea class="form-control" id="patient-editor-notes" name="notes" rows="3" form="patient-editor-form"></textarea>
+                  </div>
+                </div>
+              </div>
+              <div class="tab-pane fade <?= !empty($initial_billing_settings['billing_enabled']) ? '' : 'd-none' ?>" id="patient-billing-data-panel" role="tabpanel" aria-labelledby="patient-billing-data-tab">
+                <div class="row g-3">
+                  <div class="col-12">
+                    <div class="form-check form-switch">
+                      <input class="form-check-input" type="checkbox" id="patient-editor-invoice-use-alt-data" name="invoice_use_alt_data" value="1" form="patient-editor-form">
+                      <label class="form-check-label" for="patient-editor-invoice-use-alt-data">Usar datos fiscales diferentes para las facturas</label>
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label" for="patient-editor-invoice-name">Nombre</label>
+                    <input type="text" class="form-control patient-invoice-alt-field" id="patient-editor-invoice-name" name="invoice_name" form="patient-editor-form" maxlength="180" disabled>
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label" for="patient-editor-invoice-nif">NIF / CIF</label>
+                    <input type="text" class="form-control patient-invoice-alt-field" id="patient-editor-invoice-nif" name="invoice_nif" form="patient-editor-form" maxlength="50" disabled>
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label" for="patient-editor-invoice-email">Email</label>
+                    <input type="email" class="form-control patient-invoice-alt-field" id="patient-editor-invoice-email" name="invoice_email" form="patient-editor-form" maxlength="180" disabled>
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label" for="patient-editor-invoice-phone">Tel&eacute;fono</label>
+                    <input type="text" class="form-control patient-invoice-alt-field" id="patient-editor-invoice-phone" name="invoice_phone" form="patient-editor-form" maxlength="40" disabled>
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label" for="patient-editor-invoice-address">Direcci&oacute;n</label>
+                    <input type="text" class="form-control patient-invoice-alt-field" id="patient-editor-invoice-address" name="invoice_address" form="patient-editor-form" maxlength="255" disabled>
                   </div>
                 </div>
               </div>
@@ -1225,7 +1413,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                         <th>Documento</th>
                         <th>Tipo / origen</th>
                         <th>Fecha</th>
-                        <th>Portal</th>
+                        <th class="text-center">Portal</th>
                         <th class="text-end">Acciones</th>
                       </tr>
                     </thead>
@@ -1907,7 +2095,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
     </div>
   <?php endif; ?>
 
-  <div class="modal fade" id="bonusesModal" tabindex="-1" aria-hidden="true">
+    <div class="modal fade" id="bonusesModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
       <div class="modal-content">
         <div class="modal-header">
@@ -2031,6 +2219,98 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
       </div>
     </div>
 
+    <div class="modal fade" id="invoicesModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Facturas emitidas</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div id="invoices-modal-alert" class="alert d-none"></div>
+            <div class="row g-2 mb-3">
+              <div class="col-md-6">
+                <div class="input-group">
+                  <span class="input-group-text"><i class="bi bi-search"></i></span>
+                  <input type="search" class="form-control" id="invoices-search" placeholder="Buscar por factura, destinatario, NIF o concepto">
+                </div>
+              </div>
+              <div class="col-md-3">
+                <input type="date" class="form-control" id="invoices-date-from" aria-label="Fecha desde">
+              </div>
+              <div class="col-md-3">
+                <input type="date" class="form-control" id="invoices-date-to" aria-label="Fecha hasta">
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="table align-middle">
+                <thead>
+                  <tr>
+                    <th>Factura</th>
+                    <th>Fecha</th>
+                    <th>Destinatario</th>
+                    <th>Concepto</th>
+                    <th class="text-end">Total</th>
+                    <th>VeriFactu</th>
+                  </tr>
+                </thead>
+                <tbody id="invoices-list-body">
+                  <tr><td colspan="6" class="text-center text-muted py-4">Cargando facturas...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <?php if ($is_superadmin): ?>
+      <div class="modal fade" id="appLogModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">Log de actividad</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+              <div id="app-log-alert" class="alert d-none"></div>
+              <div class="row g-2 mb-3">
+                <div class="col-md-6">
+                  <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="search" class="form-control" id="app-log-search" placeholder="Buscar por acci&oacute;n, usuario, canal o detalle">
+                  </div>
+                </div>
+                <div class="col-md-3">
+                  <input type="date" class="form-control" id="app-log-date-from" aria-label="Fecha desde">
+                </div>
+                <div class="col-md-3">
+                  <input type="date" class="form-control" id="app-log-date-to" aria-label="Fecha hasta">
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="table align-middle">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Usuario</th>
+                      <th>Acci&oacute;n</th>
+                      <th>Canal</th>
+                      <th>Estado</th>
+                      <th>Detalle</th>
+                    </tr>
+                  </thead>
+                  <tbody id="app-log-list-body">
+                    <tr><td colspan="6" class="text-center text-muted py-4">Cargando log...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    <?php endif; ?>
+
     <div class="modal fade" id="settingsModal" tabindex="-1" aria-hidden="true">
       <div class="modal-dialog modal-xl">
         <div class="modal-content settings-modal-content">
@@ -2054,7 +2334,11 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
               </li>
               <li class="nav-item" role="presentation">
                 <button class="nav-link" id="booking-settings-tab" data-bs-toggle="tab" data-bs-target="#booking-settings-panel"
-                  type="button" role="tab">Reservas</button>
+                  type="button" role="tab">Horarios</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="closures-settings-tab" data-bs-toggle="tab" data-bs-target="#closures-settings-panel"
+                  type="button" role="tab">Vacaciones y cierres</button>
               </li>
               <li class="nav-item" role="presentation">
                 <button class="nav-link" id="task-templates-settings-tab" data-bs-toggle="tab" data-bs-target="#task-templates-settings-panel"
@@ -2067,6 +2351,10 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
               <li class="nav-item <?= $is_superadmin ? '' : 'd-none' ?>" role="presentation">
                 <button class="nav-link" id="email-settings-tab" data-bs-toggle="tab" data-bs-target="#email-settings-panel"
                   type="button" role="tab">Envío de emails</button>
+              </li>
+              <li class="nav-item <?= $is_superadmin ? '' : 'd-none' ?>" role="presentation">
+                <button class="nav-link" id="sms-settings-tab" data-bs-toggle="tab" data-bs-target="#sms-settings-panel"
+                  type="button" role="tab">SMS</button>
               </li>
               <li class="nav-item <?= $is_superadmin ? '' : 'd-none' ?>" role="presentation">
                 <button class="nav-link" id="calendar-settings-tab" data-bs-toggle="tab" data-bs-target="#calendar-settings-panel"
@@ -2086,6 +2374,10 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                     type="button" role="tab">Equipo</button>
                 </li>
               <?php endif; ?>
+              <li class="nav-item <?= ($is_superadmin && $billing_plan_enabled) ? '' : 'd-none' ?>" role="presentation">
+                <button class="nav-link" id="billing-settings-tab" data-bs-toggle="tab" data-bs-target="#billing-settings-panel"
+                  type="button" role="tab">Facturaci&oacute;n</button>
+              </li>
             </ul>
 
             <div id="settings-save-alert" class="alert d-none"></div>
@@ -2117,7 +2409,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                       <input class="form-check-input" type="checkbox" id="patient-tasks-visible-default">
                       <label class="form-check-label" for="patient-tasks-visible-default">Publicar las tareas del <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?> en su Portal</label>
                     </div>
-                    <div class="form-text">Indica si quieres que, por defecto, las tareas que asignes a tus <?= htmlspecialchars($patient_label_plural, ENT_QUOTES, 'UTF-8') ?> est&eacute;n visibles en su portal.</div>
+                    <div class="form-text">Indica si quieres que, por defecto, las tareas que asignes a tus <?= htmlspecialchars($patient_label_plural, ENT_QUOTES, 'UTF-8') ?> est&eacute;n visibles en su portal. Tambi&eacute;n puedes hacerlo de manera individual con cada tarea/<?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?> sobre la marcha.</div>
                   </div>
                 </div>
                 <div class="row g-3 align-items-start mb-4">
@@ -2147,6 +2439,21 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   <label class="col-lg-2 col-form-label">Servicios</label>
                   <div class="col-lg-10">
                     <div class="row g-2" id="available-session-types-list"></div>
+                    <button type="button" class="btn btn-outline-primary btn-sm mt-3" id="btn-add-session-service">
+                      <i class="bi bi-plus-lg"></i> Nuevo servicio
+                    </button>
+                  </div>
+                </div>
+
+                <hr class="my-4">
+                <div class="row g-3 align-items-start mb-4">
+                  <label class="col-lg-2 col-form-label">Salas / ubicaciones</label>
+                  <div class="col-lg-10">
+                    <div class="row g-2" id="appointment-locations-list"></div>
+                    <button type="button" class="btn btn-outline-primary btn-sm mt-3" id="btn-add-appointment-location">
+                      <i class="bi bi-plus-lg"></i> Nueva ubicaci&oacute;n
+                    </button>
+                    <div class="form-text">Crea diferentes salas/ubicaciones para las citas. La ubicaci&oacute;n "Predeterminada" se refiere a la direcci&oacute;n de tu centro/despacho.</div>
                   </div>
                 </div>
 
@@ -2155,6 +2462,9 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   <label class="col-lg-2 col-form-label">Duraciones</label>
                   <div class="col-lg-10">
                     <div class="row g-2" id="available-session-durations-list"></div>
+                    <button type="button" class="btn btn-outline-primary btn-sm mt-3" id="btn-add-session-duration">
+                      <i class="bi bi-plus-lg"></i> Nueva duraci&oacute;n
+                    </button>
                     <div class="mt-3">
                       <div class="form-check mb-2">
                         <input class="form-check-input" type="checkbox" id="display-effective-duration-enabled">
@@ -2210,14 +2520,6 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
 
                 </div>
 
-                <hr class="my-4">
-                <div class="d-flex justify-content-between align-items-center gap-2 mb-3 flex-wrap">
-                  <h6 class="mb-0">Vacaciones y cierres</h6>
-                  <button type="button" class="btn btn-primary btn-sm" id="btn-open-closed-modal">
-                    <i class="bi bi-plus-lg"></i> Añadir
-                  </button>
-                </div>
-                <ul class="list-group" id="closed-days-list"></ul>
               </div>
 
               <div class="tab-pane fade" id="services-settings-panel" role="tabpanel" aria-labelledby="services-settings-tab">
@@ -2329,21 +2631,33 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   </div>
                   <div class="row g-3 align-items-start mb-3">
                     <label class="col-lg-2 col-form-label" for="profile-image">Logotipo</label>
-                    <div class="col-lg-10">
+                    <div class="col-lg-4">
                       <input type="file" class="form-control" id="profile-image" accept="image/jpeg,image/png,image/webp,image/gif">
-                      <div class="form-text">Formatos permitidos: JPG, PNG, WEBP o GIF. Máximo 2 MB.</div>
                       <div class="d-flex align-items-center gap-3 mt-3" id="profile-image-preview-row" style="display: none !important;">
                         <img src="" alt="" class="settings-image-preview" id="profile-image-preview">
                         <div class="small text-muted" id="profile-image-status"></div>
                       </div>
                     </div>
+                    <label class="col-lg-2 col-form-label" for="landing-image">Imagen principal</label>
+                    <div class="col-lg-4">
+                      <input type="file" class="form-control" id="landing-image" accept="image/jpeg,image/png,image/webp,image/gif">
+                      <div class="d-flex align-items-center gap-3 mt-3" id="landing-image-preview-row" style="display: none !important;">
+                        <img src="" alt="" class="settings-image-preview" id="landing-image-preview">
+                        <div class="small text-muted" id="landing-image-status"></div>
+                      </div>
+                    </div>
                   </div>
                   <div class="row g-3 align-items-start mb-4">
                     <div class="col-lg-10 offset-lg-2">
-                      <div class="form-check form-switch mb-3">
+                      <div class="form-check form-switch">
                         <input class="form-check-input" type="checkbox" id="show-profile-image-public">
                         <label class="form-check-label" for="show-profile-image-public">Mostrar también esta imagen en login y registro</label>
                       </div>
+                    </div>
+                  </div>
+                  <div class="row g-3 align-items-start mb-4">
+                    <label class="col-lg-2 col-form-label">Páginas secundarias</label>
+                    <div class="col-lg-10">
                       <div class="form-check form-switch">
                         <input class="form-check-input" type="checkbox" id="show-prices-public">
                         <label class="form-check-label" for="show-prices-public">Mostrar precios en la página principal/comercial</label>
@@ -2370,7 +2684,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                 <hr class="my-4">
                 <div class="row g-3 align-items-start mb-4 d-none" id="dashboard-config-row">
                   <label class="col-lg-2 col-form-label" for="dashboard-config-mode">Dashboard</label>
-                  <div class="col-lg-10">
+                  <div class="col-lg-4">
                     <div class="d-flex gap-2 flex-wrap align-items-start">
                       <select class="form-select d-none" id="dashboard-config-mode" style="max-width: 260px;">
                         <option value="simple">Simple</option>
@@ -2382,16 +2696,12 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                       </button>
                     </div>
                   </div>
-                </div>
-                <hr class="my-4">
-                <div class="row g-3 align-items-start">
-                  <label class="col-lg-2 col-form-label" for="landing-image">Imagen principal</label>
-                  <div class="col-lg-10">
-                    <input type="file" class="form-control" id="landing-image" accept="image/jpeg,image/png,image/webp,image/gif">
-                    <div class="form-text">Se usa como imagen principal en la web comercial. Si no se sube, se mostrará un placeholder.</div>
-                    <div class="d-flex align-items-center gap-3 mt-3" id="landing-image-preview-row" style="display: none !important;">
-                      <img src="" alt="" class="settings-image-preview" id="landing-image-preview">
-                      <div class="small text-muted" id="landing-image-status"></div>
+                  <label class="col-lg-2 col-form-label" for="btn-open-custom-domain-config">Dominio personalizado</label>
+                  <div class="col-lg-4">
+                    <div class="d-flex gap-2 flex-wrap align-items-center">
+                      <button type="button" class="btn btn-outline-primary text-truncate" id="btn-open-custom-domain-config" style="max-width: 100%;">
+                        <i class="bi bi-globe2"></i> Configurar
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -2478,6 +2788,19 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                 </div>
               </div>
 
+              <div class="tab-pane fade plan-closures-section" id="closures-settings-panel" role="tabpanel" aria-labelledby="closures-settings-tab">
+                <div class="d-flex justify-content-between align-items-center gap-2 mb-3 flex-wrap">
+                  <div>
+                    <h6 class="mb-1">Vacaciones y cierres</h6>
+                    <div class="text-muted small">Bloquea días completos para vacaciones, festivos o cierres puntuales.</div>
+                  </div>
+                  <button type="button" class="btn btn-primary btn-sm" id="btn-open-closed-modal">
+                    <i class="bi bi-plus-lg"></i> Añadir
+                  </button>
+                </div>
+                <ul class="list-group" id="closed-days-list"></ul>
+              </div>
+
               <div class="tab-pane fade" id="payment-settings-panel" role="tabpanel" aria-labelledby="payment-settings-tab">
                 <form id="payment-settings-form">
                   <div id="payment-settings-alert" class="alert d-none"></div>
@@ -2528,11 +2851,15 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
 
               <div class="tab-pane fade" id="email-settings-panel" role="tabpanel" aria-labelledby="email-settings-tab">
                 <div id="email-settings-alert" class="alert d-none"></div>
+                <div class="alert alert-info small py-2 mb-4" role="alert">
+                  <i class="bi bi-info-circle me-2"></i>
+                  Habilita el envío automático de emails, recordatorios de <?= htmlspecialchars($appointment_label_plural, ENT_QUOTES, 'UTF-8') ?>, etc. al profesional/<?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?>.
+                </div>
 
                 <div class="row g-3 align-items-center mb-3">
                   <label class="col-lg-2 col-form-label" for="smtp-from-name">Remitente</label>
                   <div class="col-lg-10">
-                    <input type="text" class="form-control" id="smtp-from-name" placeholder="SimplyGest Praxis">
+                    <input type="text" class="form-control" id="smtp-from-name">
                   </div>
                 </div>
 
@@ -2592,20 +2919,6 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   <input type="hidden" id="google-connected-email">
                   <input type="hidden" id="google-redirect-uri">
                   <input type="hidden" id="google-refresh-token">
-                  <div class="row g-3 align-items-center mb-3">
-                    <label class="col-lg-2 col-form-label" for="google-client-id">Client ID</label>
-                    <div class="col-lg-10">
-                      <input type="text" class="form-control" id="google-client-id">
-                    </div>
-                  </div>
-                  <div class="row g-3 align-items-start mb-3">
-                    <label class="col-lg-2 col-form-label" for="google-client-secret">Client Secret</label>
-                    <div class="col-lg-10">
-                      <input type="password" class="form-control" id="google-client-secret" autocomplete="new-password"
-                        placeholder="Déjalo en blanco para conservar el actual">
-                      <div class="form-text" id="google-client-secret-status"></div>
-                    </div>
-                  </div>
                   <div class="row g-3 align-items-start mb-3">
                     <div class="col-lg-10 offset-lg-2">
                       <div class="small text-muted mb-3" id="google-connected-status"></div>
@@ -2619,19 +2932,116 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                 </div>
 
                 <hr class="my-4">
-                <div class="row g-3 align-items-start mb-3">
-                  <div class="col-lg-10 offset-lg-2">
+                <div class="row g-3 align-items-start mb-3 settings-check-row">
+                  <label class="col-lg-2 col-form-label">Recordatorios</label>
+                  <div class="col-lg-10">
+                    <div class="mb-3">
+                      <button type="button" class="btn btn-outline-primary btn-sm btn-message-template" data-template-key="appointment_email_reminder">
+                        <i class="bi bi-pencil-square"></i> Personalizar recordatorio
+                      </button>
+                    </div>
                     <div class="form-check form-switch">
                       <input class="form-check-input" type="checkbox" id="appointment-reminder-enabled" name="appointment_reminder_enabled">
                       <label class="form-check-label" for="appointment-reminder-enabled">Enviar email de recordatorio al <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?> 24 horas antes de la cita</label>
                     </div>
                   </div>
                 </div>
+                <div class="row g-3 align-items-start mb-3 settings-check-row" id="appointment-second-reminder-row">
+                  <div class="col-lg-10 offset-lg-2">
+                    <div class="form-check form-switch mb-2">
+                      <input class="form-check-input" type="checkbox" id="appointment-second-reminder-enabled" name="appointment_second_reminder_enabled">
+                      <label class="form-check-label" for="appointment-second-reminder-enabled">Enviar un segundo email de recordatorio</label>
+                    </div>
+                    <div class="input-group input-group-sm" style="max-width: 220px;">
+                      <input type="number" class="form-control" id="appointment-second-reminder-hours" name="appointment_second_reminder_hours" min="1" max="168" step="1" value="48" disabled>
+                      <span class="input-group-text">horas antes</span>
+                    </div>
+                    <div class="form-text">Usa un valor distinto de 24 horas para evitar duplicar el recordatorio fijo.</div>
+                  </div>
+                </div>
 
+              </div>
+
+              <div class="tab-pane fade" id="sms-settings-panel" role="tabpanel" aria-labelledby="sms-settings-tab">
+                <div id="sms-settings-alert" class="alert d-none"></div>
+                <div class="alert alert-info small py-2 mb-4" role="alert">
+                  <i class="bi bi-info-circle me-2"></i>
+                  Configura el proveedor SMS para enviar recordatorios de <?= htmlspecialchars($appointment_label_plural, ENT_QUOTES, 'UTF-8') ?> al <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?>.
+                </div>
+
+                <div class="row g-3 align-items-center mb-3">
+                  <label class="col-lg-2 col-form-label" for="sms-sender">Remitente</label>
+                  <div class="col-lg-10">
+                    <input type="text" class="form-control" id="sms-sender" maxlength="40">
+                  </div>
+                </div>
+
+                <div class="row g-3 align-items-center mb-3">
+                  <label class="col-lg-2 col-form-label" for="sms-provider">Proveedor</label>
+                  <div class="col-lg-10">
+                    <select class="form-select" id="sms-provider">
+                      <option value="none">Sin proveedor</option>
+                      <option value="mundosms">MundoSMS</option>
+                      <option value="smsup">SMSUp</option>
+                      <option value="smsapi">SMSAPI</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div id="sms-mundosms-settings-block">
+                  <div class="row g-3 align-items-center mb-3">
+                    <label class="col-lg-2 col-form-label" for="sms-username">Usuario</label>
+                    <div class="col-lg-10">
+                      <input type="text" class="form-control" id="sms-username" autocomplete="username">
+                    </div>
+                  </div>
+                  <div class="row g-3 align-items-start mb-3">
+                    <label class="col-lg-2 col-form-label" for="sms-password">Contrase&ntilde;a</label>
+                    <div class="col-lg-10">
+                      <input type="password" class="form-control" id="sms-password" autocomplete="new-password" placeholder="D&eacute;jala en blanco para conservar la actual">
+                      <div class="form-text" id="sms-password-status"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div id="sms-api-key-settings-block">
+                  <div class="row g-3 align-items-start mb-3">
+                    <label class="col-lg-2 col-form-label" for="sms-api-key">API Key</label>
+                    <div class="col-lg-10">
+                      <input type="password" class="form-control" id="sms-api-key" autocomplete="new-password" placeholder="D&eacute;jala en blanco para conservar la actual">
+                      <div class="form-text" id="sms-api-key-status"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <hr class="my-4">
+                <div class="row g-3 align-items-start mb-3 settings-check-row">
+                  <label class="col-lg-2 col-form-label">Recordatorios</label>
+                  <div class="col-lg-10">
+                    <div class="mb-3">
+                      <button type="button" class="btn btn-outline-primary btn-sm btn-message-template" data-template-key="appointment_sms_reminder">
+                        <i class="bi bi-pencil-square"></i> Personalizar recordatorio
+                      </button>
+                    </div>
+                    <div class="form-check form-switch mb-2">
+                      <input class="form-check-input" type="checkbox" id="sms-reminder-enabled" name="sms_reminder_enabled">
+                      <label class="form-check-label" for="sms-reminder-enabled">Enviar SMS de recordatorio al <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?></label>
+                    </div>
+                    <div class="input-group input-group-sm" style="max-width: 220px;">
+                      <input type="number" class="form-control" id="sms-reminder-hours" name="sms_reminder_hours" min="1" max="168" step="1" value="24" disabled>
+                      <span class="input-group-text">horas antes</span>
+                    </div>
+                    <div class="form-text">Te recomendamos tener en cuenta la hora de envío del SMS para que el <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?> no lo reciba en horario nocturno.</div>
+                  </div>
+                </div>
               </div>
 
               <div class="tab-pane fade" id="calendar-settings-panel" role="tabpanel" aria-labelledby="calendar-settings-tab">
                 <div id="calendar-settings-alert" class="alert d-none"></div>
+                <div class="alert alert-info small py-2 mb-4" role="alert">
+                  <i class="bi bi-info-circle me-2"></i>
+                  Permite sincronizar las <?= htmlspecialchars($appointment_label_plural, ENT_QUOTES, 'UTF-8') ?> con tu calendario online de forma automática.
+                </div>
                 <div class="row g-3 align-items-center mb-3">
                   <label class="col-lg-2 col-form-label" for="calendar-provider">Sincronización</label>
                   <div class="col-lg-10">
@@ -2657,8 +3067,9 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   <div class="row g-3 align-items-start mb-3">
                     <div class="col-lg-10 offset-lg-2">
                       <div class="text-muted mb-3">
-                        Usa las mismas credenciales Google configuradas en la pestaña Envío de emails.
+                        Usa la misma cuenta Google autorizada para Gmail.
                       </div>
+                      <div class="small text-muted mb-3" id="google-calendar-connected-status"></div>
                       <div class="d-flex gap-2 flex-wrap">
                         <button type="button" class="btn btn-outline-primary" id="btn-google-connect-calendar">
                           Conectar/Reautorizar Google
@@ -2789,7 +3200,8 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   <div class="d-flex justify-content-between align-items-center gap-2 mb-3 flex-wrap">
                     <div>
                       <h6 class="mb-1">Equipo</h6>
-                      <div class="text-muted small">Alta y permisos b&aacute;sicos de los miembros del equipo.</div>
+                      <div class="text-muted small"><?= plan_config_feature_enabled($plan_config, 'team.permissions', false) ? 'Alta y permisos b&aacute;sicos de los miembros del equipo.' : 'Alta de profesionales del equipo.' ?></div>
+                      <div class="text-muted small" id="team-member-limit-note"></div>
                     </div>
                     <button class="btn btn-primary btn-sm" type="button" id="btn-new-professional">
                       <i class="bi bi-person-plus"></i> Nuevo miembro
@@ -2799,9 +3211,9 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                     <table class="table align-middle">
                       <thead>
                         <tr>
-                          <th>Profesional</th>
+                          <th>Miembro</th>
                           <th>Email</th>
-                          <th>Permiso</th>
+                          <th>Tipo</th>
                           <th>Estado</th>
                           <th class="text-end">Acciones</th>
                         </tr>
@@ -2813,6 +3225,54 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   </div>
                 </div>
               <?php endif; ?>
+              <div class="tab-pane fade <?= ($is_superadmin && $billing_plan_enabled) ? '' : 'd-none' ?>" id="billing-settings-panel" role="tabpanel" aria-labelledby="billing-settings-tab">
+                <div id="billing-settings-alert" class="alert d-none"></div>
+                <div class="alert alert-info py-2 small mb-3">
+                  Al habilitar la facturaci&oacute;n, se emitir&aacute;n autom&aacute;ticamente las facturas cada vez que se reciba un pago online o se marque una reserva, bono o informe como &quot;pagado&quot;.
+                </div>
+                <div class="form-check form-switch mb-4">
+                  <input class="form-check-input" type="checkbox" id="billing-enabled">
+                  <label class="form-check-label" for="billing-enabled">Activar emisi&oacute;n de facturas</label>
+                </div>
+                <div class="row g-3 mb-3">
+                  <div class="col-md-4">
+                    <label class="form-label" for="billing-country">Pa&iacute;s</label>
+                    <select class="form-select" id="billing-country">
+                      <option value="ES">Espa&ntilde;a</option>
+                      <option value="AD">Andorra</option>
+                      <option value="PT">Portugal</option>
+                      <option value="FR">Francia</option>
+                      <option value="OT">Otro</option>
+                    </select>
+                  </div>
+                  <div class="col-md-8">
+                    <label class="form-label" for="billing-province">Provincia / territorio fiscal</label>
+                    <select class="form-select" id="billing-province">
+                      <option value="">Selecciona provincia</option>
+                      <option value="Alava">Alava / Araba</option>
+                      <option value="Guipuzcoa">Guipuzcoa / Gipuzkoa</option>
+                      <option value="Vizcaya">Vizcaya / Bizkaia</option>
+                      <option value="Navarra">Navarra</option>
+                      <option value="Las Palmas">Las Palmas</option>
+                      <option value="Santa Cruz de Tenerife">Santa Cruz de Tenerife</option>
+                      <option value="Resto de Espana">Resto de Espa&ntilde;a</option>
+                    </select>
+                    <div class="form-text">Pa&iacute;s y provincia permiten decidir despu&eacute;s entre VeriFactu, TicketBAI o normativa foral.</div>
+                  </div>
+                </div>
+                <div class="row g-3 mb-3">
+                  <div class="col-md-6">
+                    <label class="form-label" for="billing-session-concept">Concepto para citas/sesiones</label>
+                    <input type="text" class="form-control" id="billing-session-concept" maxlength="255" placeholder="Sesion del dia {fecha} de duracion {duracion} minutos">
+                    <div class="form-text">Variables: {fecha}, {hora}, {duracion}</div>
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label" for="billing-report-concept">Concepto para informes de pago</label>
+                    <input type="text" class="form-control" id="billing-report-concept" maxlength="255" placeholder="Informe {titulo}">
+                    <div class="form-text">Variable: {titulo}</div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
           <div class="modal-footer">
@@ -2840,6 +3300,38 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
           <div class="modal-footer">
             <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
             <button type="button" class="btn btn-primary" id="btn-save-dashboard-custom-config">Guardar JSON</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="customDomainModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-md">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Dominio personalizado</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div id="custom-domain-alert" class="alert d-none"></div>
+            <div class="alert alert-info small">
+              Un dominio personalizado permite que tus pacientes/clientes accedan a tu web usando tu propio dominio, por ejemplo <strong>tudominio.es</strong>, manteniendo visible esa dirección en el navegador.
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="custom-domain-input">Dominio</label>
+              <input type="text" class="form-control" id="custom-domain-input" placeholder="tudominio.es" autocomplete="off">
+              <div class="form-text">Introduce solo el dominio. Puedes pegar una URL con https://, pero se guardará únicamente el dominio seguro.</div>
+            </div>
+            <a class="btn btn-outline-secondary btn-sm" id="custom-domain-help-link" href="<?= htmlspecialchars($help_base_url, ENT_QUOTES, 'UTF-8') ?>#dominios-personalizados" target="_blank" rel="noopener">
+              <i class="bi bi-question-circle"></i> Ayuda
+            </a>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-danger me-auto" id="btn-delete-custom-domain">
+              <i class="bi bi-trash"></i> Quitar dominio
+            </button>
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="btn-save-custom-domain">Guardar</button>
           </div>
         </div>
       </div>
@@ -2986,6 +3478,19 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
               <input type="hidden" id="professional-editor-index" value="-1">
               <input type="hidden" id="professional-editor-id" value="0">
               <input type="hidden" id="professional-editor-user-id" value="0">
+              <ul class="nav nav-tabs mb-3" id="professional-editor-tabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link active" id="professional-editor-data-tab" data-bs-toggle="tab" data-bs-target="#professional-editor-data-panel" type="button" role="tab">Datos</button>
+                </li>
+                <li class="nav-item professional-profile-tab" role="presentation">
+                  <button class="nav-link" id="professional-editor-extra-tab" data-bs-toggle="tab" data-bs-target="#professional-editor-extra-panel" type="button" role="tab">M&aacute;s datos</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link" id="professional-editor-permissions-tab" data-bs-toggle="tab" data-bs-target="#professional-editor-permissions-panel" type="button" role="tab">Permisos</button>
+                </li>
+              </ul>
+              <div class="tab-content">
+                <div class="tab-pane fade show active" id="professional-editor-data-panel" role="tabpanel" aria-labelledby="professional-editor-data-tab">
               <div class="professional-editor-compact">
                 <div class="row g-3 align-items-start mb-3">
                   <label class="col-lg-2 col-form-label" for="professional-editor-name">Nombre</label>
@@ -3000,20 +3505,19 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
 
                 <div class="row g-3 align-items-start mb-3">
                   <label class="col-lg-2 col-form-label" for="professional-editor-title-field">Cargo</label>
-                  <div class="col-lg-4">
+                  <div class="col-lg-10">
                     <input type="text" class="form-control" id="professional-editor-title-field" placeholder="<?= $professional_title_placeholder ?>">
-                  </div>
-                  <label class="col-lg-2 col-form-label" for="professional-editor-license">N&ordm; de colegiado</label>
-                  <div class="col-lg-4">
-                    <input type="text" class="form-control" id="professional-editor-license" placeholder="Ej. T-00000">
                   </div>
                 </div>
 
                 <div class="row g-3 align-items-start mb-3">
-                  <label class="col-lg-2 col-form-label professional-editor-permission-wrap" for="professional-editor-role">Permiso</label>
+                  <label class="col-lg-2 col-form-label professional-editor-permission-wrap" for="professional-editor-role">Tipo de miembro</label>
                   <div class="col-lg-4 professional-editor-permission-wrap">
                     <select class="form-select" id="professional-editor-role">
-                      <option value="admin">Admin</option>
+                      <option value="admin">Profesional</option>
+                      <option value="reception">Recepci&oacute;n</option>
+                      <option value="administration">Administraci&oacute;n</option>
+                      <option value="technical">T&eacute;cnico</option>
                       <option value="superadmin">Superadmin</option>
                     </select>
                   </div>
@@ -3023,21 +3527,28 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   </div>
                 </div>
 
-                <div class="row g-3 align-items-start mb-3">
+                <div class="row g-3 align-items-start mb-3 professional-extra-field">
+                  <label class="col-lg-2 col-form-label" for="professional-editor-license">N&ordm; de colegiado</label>
+                  <div class="col-lg-10">
+                    <input type="text" class="form-control" id="professional-editor-license" placeholder="Ej. T-00000">
+                  </div>
+                </div>
+
+                <div class="row g-3 align-items-start mb-3 professional-extra-field">
                   <label class="col-lg-2 col-form-label" for="professional-editor-specialty">Especialidad</label>
                   <div class="col-lg-10">
                     <textarea class="form-control" id="professional-editor-specialty" rows="2" placeholder="<?= $professional_specialty_placeholder ?>"></textarea>
                   </div>
                 </div>
 
-                <div class="row g-3 align-items-start mb-3">
+                <div class="row g-3 align-items-start mb-3 professional-extra-field">
                   <label class="col-lg-2 col-form-label" for="professional-editor-bio">Informaci&oacute;n sobre m&iacute;</label>
                   <div class="col-lg-10">
                     <textarea class="form-control" id="professional-editor-bio" rows="3" placeholder="Presentaci&oacute;n breve del profesional, enfoque de trabajo, experiencia o forma de acompa&ntilde;ar al <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?>..."></textarea>
                   </div>
                 </div>
 
-                <div class="row g-3 align-items-start mb-3">
+                <div class="row g-3 align-items-start mb-3 professional-extra-field">
                   <label class="col-lg-2 col-form-label" for="professional-editor-instagram">Instagram</label>
                   <div class="col-lg-4">
                     <input type="text" class="form-control" id="professional-editor-instagram" placeholder="https://instagram.com/...">
@@ -3048,14 +3559,14 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   </div>
                 </div>
 
-                <div class="row g-3 align-items-start mb-3">
+                <div class="row g-3 align-items-start mb-3 professional-extra-field">
                   <label class="col-lg-2 col-form-label" for="professional-editor-tiktok">TikTok</label>
                   <div class="col-lg-4">
                     <input type="text" class="form-control" id="professional-editor-tiktok" placeholder="https://tiktok.com/@...">
                   </div>
                 </div>
 
-                <div class="row g-3 align-items-start mb-3">
+                <div class="row g-3 align-items-start mb-3 professional-extra-field">
                   <label class="col-lg-2 col-form-label" for="professional-editor-summary-mode">Resumen de citas</label>
                   <div class="col-lg-10">
                     <select class="form-select" id="professional-editor-summary-mode">
@@ -3068,7 +3579,43 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   </div>
                 </div>
 
-                <div class="row g-3 align-items-start mb-3" id="professional-editor-knowledge-row">
+                <div class="row g-3 align-items-start mb-3 professional-bookable-field">
+                  <label class="col-lg-2 col-form-label">Servicios</label>
+                  <div class="col-lg-10">
+                    <div class="row g-2" id="professional-editor-session-types"></div>
+                    <div class="form-text">Elige qu&eacute; servicios ofrece este profesional de entre los servicios globales.</div>
+                  </div>
+                </div>
+
+                <div class="row g-3 align-items-start mb-3 professional-bookable-field">
+                  <label class="col-lg-2 col-form-label">Duraciones</label>
+                  <div class="col-lg-10">
+                    <div class="row g-2" id="professional-editor-session-durations"></div>
+                    <div class="form-text">Elige qu&eacute; duraciones ofrece este profesional de entre las duraciones globales.</div>
+                  </div>
+                </div>
+
+                <div class="row g-3 align-items-start mb-3 professional-bookable-field">
+                  <label class="col-lg-2 col-form-label" for="professional-editor-default-location-id">Ubicaci&oacute;n predeterminada</label>
+                  <div class="col-lg-10">
+                    <select class="form-select" id="professional-editor-default-location-id"></select>
+                    <input type="hidden" id="professional-editor-default-location" value="">
+                    <div class="form-text">Si no se especifica, se entender&aacute; que la cita es en el centro de trabajo.</div>
+                  </div>
+                </div>
+
+                <div class="row g-3 align-items-start mb-3 professional-bookable-field">
+                  <label class="col-lg-2 col-form-label">Videollamadas</label>
+                  <div class="col-lg-10">
+                    <div class="form-check form-switch">
+                      <input class="form-check-input" type="checkbox" id="professional-editor-livekit-enabled" checked>
+                      <label class="form-check-label" for="professional-editor-livekit-enabled">Usar LiveKit para las videollamadas</label>
+                    </div>
+                    <div class="form-text" id="professional-editor-livekit-help">Si se desactiva, este profesional podrá indicar manualmente el enlace de Zoom, Teams u otro proveedor.</div>
+                  </div>
+                </div>
+
+                <div class="row g-3 align-items-start mb-3 professional-bookable-field" id="professional-editor-knowledge-row">
                   <label class="col-lg-2 col-form-label" for="professional-editor-knowledge-mode">Base de conocimiento</label>
                   <div class="col-lg-10">
                     <div class="d-flex flex-column flex-md-row gap-2">
@@ -3086,7 +3633,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                 </div>
 
                 <div class="row g-3 align-items-start mb-3">
-                  <label class="col-lg-2 col-form-label" for="professional-editor-photo">Foto del profesional</label>
+                  <label class="col-lg-2 col-form-label" for="professional-editor-photo">Foto</label>
                   <div class="col-lg-10">
                     <input type="file" class="form-control" id="professional-editor-photo" accept="image/jpeg,image/png,image/webp,image/gif">
                     <div class="d-flex align-items-center gap-3 mt-2">
@@ -3100,15 +3647,87 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   <div class="offset-lg-2 col-lg-10 professional-editor-status-wrap">
                     <div class="form-check form-switch">
                       <input class="form-check-input" type="checkbox" id="professional-editor-active" checked>
-                      <label class="form-check-label" for="professional-editor-active">Profesional activo</label>
+                      <label class="form-check-label" for="professional-editor-active">Miembro activo</label>
                     </div>
-                    <div class="form-text">Si est&aacute; desactivado, no aparecer&aacute; como profesional disponible del equipo.</div>
+                    <div class="form-text">Si est&aacute; desactivado, no podr&aacute; usarse como miembro activo del equipo.</div>
+                  </div>
+                </div>
+              </div>
+                </div>
+                <div class="tab-pane fade" id="professional-editor-extra-panel" role="tabpanel" aria-labelledby="professional-editor-extra-tab">
+                  <div id="professional-editor-extra-fields"></div>
+                </div>
+                <div class="tab-pane fade" id="professional-editor-permissions-panel" role="tabpanel" aria-labelledby="professional-editor-permissions-tab">
+                  <div class="alert alert-info small py-2">
+                    El tipo de miembro aplica una plantilla inicial de permisos. Despu&eacute;s puedes ajustar cada permiso de forma individual.
+                  </div>
+                  <div class="row g-3">
+                    <div class="col-md-6">
+                      <div class="form-check form-switch">
+                        <input class="form-check-input professional-permission-check" type="checkbox" id="professional-permission-bookable" data-permission="bookable">
+                        <label class="form-check-label" for="professional-permission-bookable">Disponible como profesional</label>
+                      </div>
+                    </div>
+                    <div class="col-md-6">
+                      <div class="form-check form-switch">
+                        <input class="form-check-input professional-permission-check" type="checkbox" id="professional-permission-settings" data-permission="settings">
+                        <label class="form-check-label" for="professional-permission-settings">Acceso a Configuraci&oacute;n</label>
+                      </div>
+                    </div>
+                    <div class="col-md-6">
+                      <div class="form-check form-switch">
+                        <input class="form-check-input professional-permission-check" type="checkbox" id="professional-permission-agenda" data-permission="agenda">
+                        <label class="form-check-label" for="professional-permission-agenda">Acceso a la Agenda</label>
+                      </div>
+                    </div>
+                    <div class="col-md-6">
+                      <div class="form-check form-switch">
+                        <input class="form-check-input professional-permission-check" type="checkbox" id="professional-permission-patients" data-permission="patients">
+                        <label class="form-check-label" for="professional-permission-patients">Acceso a Pacientes</label>
+                      </div>
+                    </div>
+                    <div class="col-md-6">
+                      <div class="form-check form-switch">
+                        <input class="form-check-input professional-permission-check" type="checkbox" id="professional-permission-appointments" data-permission="appointments">
+                        <label class="form-check-label" for="professional-permission-appointments">Acceso a Citas</label>
+                      </div>
+                    </div>
+                    <div class="col-md-6">
+                      <div class="form-check form-switch">
+                        <input class="form-check-input professional-permission-check" type="checkbox" id="professional-permission-statistics" data-permission="statistics">
+                        <label class="form-check-label" for="professional-permission-statistics">Acceso a Estad&iacute;sticas</label>
+                      </div>
+                    </div>
+                    <div class="col-md-6">
+                      <div class="form-check form-switch">
+                        <input class="form-check-input professional-permission-check" type="checkbox" id="professional-permission-private-patient-data" data-permission="private_patient_data">
+                        <label class="form-check-label" for="professional-permission-private-patient-data">Acceso a datos privados del paciente</label>
+                      </div>
+                    </div>
+                    <div class="col-md-6">
+                      <div class="form-check form-switch">
+                        <input class="form-check-input professional-permission-check" type="checkbox" id="professional-permission-create-appointments" data-permission="create_appointments">
+                        <label class="form-check-label" for="professional-permission-create-appointments">Crear citas</label>
+                      </div>
+                    </div>
+                    <div class="col-md-6">
+                      <div class="form-check form-switch">
+                        <input class="form-check-input professional-permission-check" type="checkbox" id="professional-permission-cancel-appointments" data-permission="cancel_appointments">
+                        <label class="form-check-label" for="professional-permission-cancel-appointments">Cancelar citas</label>
+                      </div>
+                    </div>
+                    <div class="col-md-6">
+                      <div class="form-check form-switch">
+                        <input class="form-check-input professional-permission-check" type="checkbox" id="professional-permission-create-patients" data-permission="create_patients">
+                        <label class="form-check-label" for="professional-permission-create-patients">Crear nuevos pacientes</label>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
             <div class="modal-footer">
-              <button class="btn btn-primary" type="submit" id="btn-save-professional-editor">Guardar profesional</button>
+              <button class="btn btn-primary" type="submit" id="btn-save-professional-editor">Guardar miembro</button>
             </div>
           </form>
         </div>
@@ -3140,7 +3759,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
       <div class="modal-dialog modal-md">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title" id="professional-delete-title">Borrar profesional</h5>
+            <h5 class="modal-title" id="professional-delete-title">Borrar miembro</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body">
@@ -3163,11 +3782,119 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
         </div>
       </div>
     </div>
+
+    <div class="modal fade" id="serviceCatalogItemModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+      <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="service-catalog-item-title">Nuevo servicio</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div class="alert alert-info small py-2" id="service-catalog-item-info">
+              Crea un nuevo servicio. Los profesionales podr&aacute;n elegir qu&eacute; servicios ofrecen entre los que hayas habilitado.
+            </div>
+            <div id="service-catalog-item-alert" class="alert alert-danger d-none small py-2"></div>
+            <input type="hidden" id="service-catalog-item-type" value="service">
+            <div class="mb-3" id="service-catalog-name-wrap">
+              <label class="form-label" for="service-catalog-name">Nombre</label>
+              <input type="text" class="form-control" id="service-catalog-name" maxlength="120">
+            </div>
+            <div class="mb-3 d-none" id="service-catalog-duration-wrap">
+              <label class="form-label" for="service-catalog-duration">Duraci&oacute;n</label>
+              <div class="input-group">
+                <input type="number" class="form-control" id="service-catalog-duration" min="5" max="480" step="5">
+                <span class="input-group-text">min</span>
+              </div>
+            </div>
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="service-catalog-enabled" checked>
+              <label class="form-check-label" for="service-catalog-enabled">Habilitado</label>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="btn-save-service-catalog-item">Guardar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="serviceCatalogDeleteModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+      <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Eliminar</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div id="service-catalog-delete-alert" class="alert alert-warning small py-2 mb-0"></div>
+            <input type="hidden" id="service-catalog-delete-type" value="">
+            <input type="hidden" id="service-catalog-delete-key" value="">
+            <input type="hidden" id="service-catalog-delete-id" value="0">
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-danger" id="btn-confirm-service-catalog-delete">
+              <i class="bi bi-trash"></i> Eliminar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="appointmentLocationItemModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+      <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Nueva ubicaci&oacute;n</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div class="alert alert-info small py-2">Crea una nueva sala o ubicaci&oacute;n. Los profesionales podr&aacute;n usarla como ubicaci&oacute;n predeterminada si est&aacute; habilitada. Por ejemplo: Sala 1, Box 3, etc.</div>
+            <div id="appointment-location-item-alert" class="alert alert-danger d-none small py-2"></div>
+            <div class="mb-3">
+              <label class="form-label" for="appointment-location-name">Nombre</label>
+              <input type="text" class="form-control" id="appointment-location-name" maxlength="120" placeholder="Sala 2, Consulta norte...">
+            </div>
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="appointment-location-enabled" checked>
+              <label class="form-check-label" for="appointment-location-enabled">Habilitada</label>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="btn-save-appointment-location">Guardar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="appointmentLocationDeleteModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+      <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Eliminar ubicaci&oacute;n</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div id="appointment-location-delete-alert" class="alert alert-warning small py-2 mb-0"></div>
+            <input type="hidden" id="appointment-location-delete-id" value="0">
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-danger" id="btn-confirm-appointment-location-delete">
+              <i class="bi bi-trash"></i> Eliminar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   <?php endif; ?>
 
   <?php if (!$is_admin): ?>
     <div class="modal fade" id="patientSelfDataModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-md">
+      <div class="modal-dialog modal-lg">
         <div class="modal-content">
           <div class="modal-header">
             <h5 class="modal-title">Mis datos</h5>
@@ -3176,21 +3903,82 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
           <form id="patient-self-data-form">
             <div class="modal-body">
               <div id="patient-self-data-alert" class="alert d-none"></div>
-              <div class="mb-3">
-                <label class="form-label" for="patient-self-email">Email</label>
-                <input type="email" class="form-control" id="patient-self-email" name="email" required>
-              </div>
-              <div class="mb-3">
-                <label class="form-label" for="patient-self-phone">Tel&eacute;fono</label>
-                <input type="text" class="form-control" id="patient-self-phone" name="phone">
-              </div>
-              <div>
-                <label class="form-label" for="patient-self-photo">Foto de perfil</label>
-                <input type="file" class="form-control" id="patient-self-photo" name="patient_photo" accept="image/jpeg,image/png,image/webp,image/gif">
-                <div class="d-flex align-items-center gap-3 mt-2">
-                  <img src="" alt="" id="patient-self-photo-preview" class="d-none" style="width: 56px; height: 56px; border-radius: 50%; object-fit: cover;">
-                  <div class="form-text" id="patient-self-photo-status">Formatos permitidos: JPG, PNG, WEBP o GIF. M&aacute;ximo 2 MB.</div>
+              <ul class="nav nav-tabs mb-4" id="patient-self-data-tabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link active" id="patient-self-contact-tab" data-bs-toggle="tab" data-bs-target="#patient-self-contact-panel" type="button" role="tab">Mis datos</button>
+                </li>
+                <?php if (!empty($initial_billing_settings['billing_enabled'])): ?>
+                  <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="patient-self-billing-tab" data-bs-toggle="tab" data-bs-target="#patient-self-billing-panel" type="button" role="tab">Datos facturaci&oacute;n</button>
+                  </li>
+                <?php endif; ?>
+              </ul>
+              <div class="tab-content">
+                <div class="tab-pane fade show active" id="patient-self-contact-panel" role="tabpanel" aria-labelledby="patient-self-contact-tab">
+                  <div class="mb-3">
+                    <label class="form-label" for="patient-self-email">Email</label>
+                    <input type="email" class="form-control" id="patient-self-email" name="email" required>
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label" for="patient-self-phone">Tel&eacute;fono</label>
+                    <input type="text" class="form-control" id="patient-self-phone" name="phone">
+                  </div>
+                  <div>
+                    <label class="form-label" for="patient-self-photo">Foto de perfil</label>
+                    <input type="file" class="form-control" id="patient-self-photo" name="patient_photo" accept="image/jpeg,image/png,image/webp,image/gif">
+                    <div class="d-flex align-items-center gap-3 mt-2">
+                      <img src="" alt="" id="patient-self-photo-preview" class="d-none" style="width: 56px; height: 56px; border-radius: 50%; object-fit: cover;">
+                      <div class="form-text" id="patient-self-photo-status">Formatos permitidos: JPG, PNG, WEBP o GIF. M&aacute;ximo 2 MB.</div>
+                    </div>
+                  </div>
                 </div>
+                <?php if (!empty($initial_billing_settings['billing_enabled'])): ?>
+                  <div class="tab-pane fade" id="patient-self-billing-panel" role="tabpanel" aria-labelledby="patient-self-billing-tab">
+                    <div id="patient-self-billing-locked-alert" class="alert alert-info small d-none">
+                      Si necesitas modificar alg&uacute;n dato existente, contacta con nosotros.
+                    </div>
+                    <div class="row g-3">
+                      <div class="col-md-6">
+                        <label class="form-label" for="patient-self-fiscal-name">Nombre fiscal</label>
+                        <input type="text" class="form-control patient-self-lockable-billing-field" id="patient-self-fiscal-name" name="fiscal_name" maxlength="180">
+                      </div>
+                      <div class="col-md-6">
+                        <label class="form-label" for="patient-self-fiscal-nif">NIF / CIF</label>
+                        <input type="text" class="form-control patient-self-lockable-billing-field" id="patient-self-fiscal-nif" name="fiscal_nif" maxlength="50">
+                      </div>
+                      <div class="col-12">
+                        <label class="form-label" for="patient-self-address">Direcci&oacute;n</label>
+                        <input type="text" class="form-control patient-self-lockable-billing-field" id="patient-self-address" name="address" maxlength="255">
+                      </div>
+                      <div class="col-12">
+                        <div class="form-check form-switch">
+                          <input class="form-check-input" type="checkbox" id="patient-self-invoice-use-alt-data" name="invoice_use_alt_data" value="1">
+                          <label class="form-check-label" for="patient-self-invoice-use-alt-data">La factura ir&aacute; a nombre de otra persona</label>
+                        </div>
+                      </div>
+                      <div class="col-md-6 patient-self-alt-billing-wrap d-none">
+                        <label class="form-label" for="patient-self-invoice-name">Nombre</label>
+                        <input type="text" class="form-control patient-self-alt-billing-field patient-self-lockable-billing-field" id="patient-self-invoice-name" name="invoice_name" maxlength="180">
+                      </div>
+                      <div class="col-md-6 patient-self-alt-billing-wrap d-none">
+                        <label class="form-label" for="patient-self-invoice-nif">NIF / CIF</label>
+                        <input type="text" class="form-control patient-self-alt-billing-field patient-self-lockable-billing-field" id="patient-self-invoice-nif" name="invoice_nif" maxlength="50">
+                      </div>
+                      <div class="col-md-6 patient-self-alt-billing-wrap d-none">
+                        <label class="form-label" for="patient-self-invoice-email">Email</label>
+                        <input type="email" class="form-control patient-self-alt-billing-field patient-self-lockable-billing-field" id="patient-self-invoice-email" name="invoice_email" maxlength="180">
+                      </div>
+                      <div class="col-md-6 patient-self-alt-billing-wrap d-none">
+                        <label class="form-label" for="patient-self-invoice-phone">Tel&eacute;fono</label>
+                        <input type="text" class="form-control patient-self-alt-billing-field patient-self-lockable-billing-field" id="patient-self-invoice-phone" name="invoice_phone" maxlength="40">
+                      </div>
+                      <div class="col-12 patient-self-alt-billing-wrap d-none">
+                        <label class="form-label" for="patient-self-invoice-address">Direcci&oacute;n</label>
+                        <input type="text" class="form-control patient-self-alt-billing-field patient-self-lockable-billing-field" id="patient-self-invoice-address" name="invoice_address" maxlength="255">
+                      </div>
+                    </div>
+                  </div>
+                <?php endif; ?>
               </div>
             </div>
             <div class="modal-footer">
@@ -3349,6 +4137,48 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
     </div>
   </div>
 
+  <div class="modal fade" id="messageTemplateModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="message-template-title">Personalizar recordatorio</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div id="message-template-alert" class="alert d-none"></div>
+          <input type="hidden" id="message-template-key">
+          <div class="alert alert-info small py-2" role="alert">
+            <i class="bi bi-info-circle me-2"></i>
+            Puedes personalizar el texto principal del recordatorio. La app a&ntilde;adir&aacute; autom&aacute;ticamente informaci&oacute;n importante como enlace online, ubicaci&oacute;n, gesti&oacute;n/cancelaci&oacute;n o avisos de pago cuando corresponda.
+          </div>
+          <div class="mb-3" id="message-template-subject-wrap">
+            <label class="form-label" for="message-template-subject">Asunto</label>
+            <input type="text" class="form-control" id="message-template-subject" maxlength="255">
+          </div>
+          <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+            <label class="form-label mb-0" for="message-template-body">Texto</label>
+            <div class="dropdown">
+              <button class="btn btn-outline-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                Variables
+              </button>
+              <div class="dropdown-menu dropdown-menu-end message-template-vars-menu" id="message-template-vars-menu"></div>
+            </div>
+          </div>
+          <textarea class="form-control" id="message-template-body" rows="10"></textarea>
+          <div class="d-flex justify-content-between gap-2 mt-2">
+            <div class="form-text" id="message-template-help"></div>
+            <div class="form-text text-nowrap" id="message-template-counter"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-outline-primary" id="btn-reset-message-template">Restaurar por defecto</button>
+          <button type="button" class="btn btn-primary" id="btn-save-message-template">Guardar plantilla</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <footer class="dashboard-legal-footer">
     <span class="legal-brand-line">
       <img src="<?= htmlspecialchars($official_brand_logo_url) ?>" alt="" class="legal-brand-mark">
@@ -3360,6 +4190,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
     const IS_ADMIN = <?= $is_admin ? 'true' : 'false' ?>;
     const IS_SUPERADMIN = <?= $is_superadmin ? 'true' : 'false' ?>;
     const CURRENT_USER_ID = <?= (int) $_SESSION['user_id'] ?>;
+    const MEMBER_PERMISSIONS = <?= json_encode($member_permissions, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
     const INITIAL_CALENDAR_VIEW = <?= json_encode(in_array(($branding['initial_calendar_view'] ?? 'month'), ['week', 'month', 'patients', 'upcoming'], true) ? $branding['initial_calendar_view'] : 'month') ?>;
     const DASHBOARD_CONFIG_MODE = <?= json_encode($dashboard_config_mode) ?>;
     const DASHBOARD_CONFIG = <?= json_encode($dashboard_config, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
@@ -3370,6 +4201,10 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
     const SECTOR_TEXTS = <?= json_encode($sector_texts, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
     const SECTOR_TEXT_OPTIONS = <?= json_encode($sector_texts_options, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
     const INITIAL_NAVBAR_IMAGE_URL = <?= json_encode($navbar_image_url) ?>;
+    const INITIAL_BRAND_LOGO_URL = <?= json_encode($brand_logo_url) ?>;
+    const OFFICIAL_BRAND_LOGO_URL = <?= json_encode($official_brand_logo_url) ?>;
+    const APP_BASE_PATH = <?= json_encode(trim(function_exists('tenant_app_base_path') ? tenant_app_base_path() : (defined('APP_BASE_PATH') ? APP_BASE_PATH : ''), '/')) ?>;
+    const INITIAL_BILLING_SETTINGS = <?= json_encode($initial_billing_settings, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
   </script>
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -3380,7 +4215,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
   <?php if ($body_map_enabled): ?>
     <script src="https://unpkg.com/body-muscles/dist/umd/body-muscles.umd.min.js"></script>
   <?php endif; ?>
-  <script src="js/app.js?v=<?= filemtime(__DIR__ . '/js/app.js') ?>"></script>
+  <script src="js/app.js?v=<?= filemtime(__DIR__ . '/js/app.js') ?>" charset="UTF-8"></script>
 </body>
 
 </html>

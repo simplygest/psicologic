@@ -1,6 +1,7 @@
 <?php
 require_once 'db.php';
 require_once 'payment_helpers.php';
+require_once 'invoice_helpers.php';
 require_once 'mail_helpers.php';
 require_once 'settings_helpers.php';
 
@@ -74,6 +75,11 @@ if ($token) {
                 ");
                 $stmt->bind_param("siii", $payment['payment_method'], $payment['id'], $tenant_id, $payment['appointment_id']);
                 $stmt->execute();
+            }
+
+            $invoice_result = invoice_emit_for_payment_attempt($mysqli, (int) $payment['id']);
+            if (empty($invoice_result['success'])) {
+                error_log('No se pudo emitir factura automatica para el pago ' . $payment['id'] . ': ' . ($invoice_result['error'] ?? 'error desconocido'));
             }
 
             $mysqli->commit();

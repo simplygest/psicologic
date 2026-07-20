@@ -6,7 +6,7 @@ require_once __DIR__ . '/workoutx_helpers.php';
 $is_cli = PHP_SAPI === 'cli';
 if (!$is_cli) {
     header('Content-Type: text/html; charset=utf-8');
-    if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['admin', 'superadmin'], true)) {
+if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['admin', 'superadmin', 'reception', 'administration', 'technical'], true)) {
         http_response_code(403);
         echo 'No autorizado';
         exit;
