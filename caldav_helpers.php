@@ -302,7 +302,8 @@ function icloud_create_calendar_event($mysqli, $appointment_id)
         return null;
     }
 
-    $start = new DateTimeImmutable($appointment['appointment_date'] . ' ' . $appointment['appointment_time'], new DateTimeZone(date_default_timezone_get()));
+    $timezone = tenant_timezone();
+    $start = appointment_datetime_in_timezone($appointment['appointment_date'], $appointment['appointment_time'], $timezone);
     $end = $start->modify('+' . (int) ($appointment['duration_minutes'] ?? 60) . ' minutes');
     $consultation_text = appointment_consultation_label($appointment['consultation_type'] ?? 'presencial');
     $service_text = appointment_service_option_label($appointment);
@@ -323,7 +324,7 @@ function icloud_create_calendar_event($mysqli, $appointment_id)
         $description,
         $start->format('Y-m-d H:i:s'),
         $end->format('Y-m-d H:i:s'),
-        date_default_timezone_get()
+        $timezone
     );
 
     $stmt = $mysqli->prepare("UPDATE appointments SET icloud_calendar_event_url = ? WHERE tenant_id = ? AND id = ?");

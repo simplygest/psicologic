@@ -84,6 +84,15 @@ try {
     $errors[] = 'No se pudo leer la configuracion del tenant: ' . $e->getMessage();
 }
 
+$signupInstall = is_array($_SESSION['signup_install'] ?? null) ? $_SESSION['signup_install'] : [];
+$signupFlow = $installTenant
+    && (int) ($signupInstall['tenant_id'] ?? 0) === (int) ($installTenant['id'] ?? 0)
+    && tenant_normalize_key($signupInstall['tenant_key'] ?? '') === tenant_normalize_key($installTenant['tenant_key'] ?? '')
+    && (int) ($signupInstall['created_at'] ?? 0) >= time() - 3600;
+if (!$signupFlow) {
+    $signupInstall = [];
+}
+
 function install_tenant_config_paths($rootDir)
 {
     $tenantKey = function_exists('tenant_key_from_request') ? tenant_key_from_request() : basename($rootDir);
@@ -120,19 +129,20 @@ $tenantConfig = install_read_tenant_config($rootDir, $tenantConfigError);
 $tenantDatabaseConfig = is_array($tenantConfig['database'] ?? null) ? $tenantConfig['database'] : [];
 $tenantInstallerConfig = is_array($tenantConfig['installation'] ?? null) ? $tenantConfig['installation'] : [];
 $hasTenantConfig = true;
-$configuredSectorTextsKey = trim((string) ($tenantInstallerConfig['sector_texts_key'] ?? ($installTenant['sector_texts_key'] ?? '')));
+$configuredSectorTextsKey = trim((string) ($signupInstall['sector_key'] ?? ($tenantInstallerConfig['sector_texts_key'] ?? ($installTenant['sector_texts_key'] ?? ''))));
 $sectorIsPreconfigured = $configuredSectorTextsKey !== '';
 $defaultSectorTextsKey = $sectorIsPreconfigured ? $configuredSectorTextsKey : sector_texts_default_key();
 $configuredDbName = trim((string) ($tenantDatabaseConfig['name'] ?? ''));
 $defaultDbName = $configuredDbName !== '' ? $configuredDbName : install_default_database_name($rootDir, $defaultSectorTextsKey);
 $tenantDefaultAppName = trim((string) ($installTenant['app_name'] ?? ''));
 $tenantDefaultTimezone = trim((string) ($installTenant['timezone'] ?? ''));
+$installerDefaultTimezone = trim((string) ($tenantInstallerConfig['timezone'] ?? ''));
 
 $defaults = [
-    'app_name' => $tenantInstallerConfig['app_name'] ?? ($tenantDefaultAppName !== '' ? $tenantDefaultAppName : (defined('DEFAULT_APP_NAME') ? DEFAULT_APP_NAME : 'SimplyGest Praxis')),
-    'timezone' => $tenantInstallerConfig['timezone'] ?? ($tenantDefaultTimezone !== '' ? $tenantDefaultTimezone : (defined('APP_TIMEZONE') ? APP_TIMEZONE : 'Atlantic/Canary')),
-    'admin_name' => 'Administrador',
-    'admin_email' => '',
+    'app_name' => $signupInstall['company_name'] ?? ($tenantInstallerConfig['app_name'] ?? ($tenantDefaultAppName !== '' ? $tenantDefaultAppName : (defined('DEFAULT_APP_NAME') ? DEFAULT_APP_NAME : 'SimplyGest Praxis'))),
+    'timezone' => $installerDefaultTimezone !== '' ? $installerDefaultTimezone : ($tenantDefaultTimezone !== '' ? $tenantDefaultTimezone : (defined('APP_TIMEZONE') ? APP_TIMEZONE : 'Europe/Madrid')),
+    'admin_name' => $signupInstall['contact_name'] ?? 'Administrador',
+    'admin_email' => $signupInstall['email'] ?? '',
     'admin_password' => '',
     'db_host' => $tenantDatabaseConfig['host'] ?? (defined('DB_HOST') ? DB_HOST : 'localhost'),
     'db_port' => (string) ($tenantDatabaseConfig['port'] ?? (defined('DB_PORT') ? DB_PORT : '3306')),
@@ -274,11 +284,16 @@ function install_base_tables($mysqli)
         invoice_email VARCHAR(180) DEFAULT NULL,
         invoice_phone VARCHAR(40) DEFAULT NULL,
         invoice_address VARCHAR(255) DEFAULT NULL,
+        timezone VARCHAR(64) DEFAULT NULL,
         patient_status VARCHAR(20) NOT NULL DEFAULT 'active',
         birth_date DATE DEFAULT NULL,
         referral_source VARCHAR(80) DEFAULT NULL,
         initial_consultation_reason TEXT DEFAULT NULL,
+        background_notes TEXT DEFAULT NULL,
+        support_network_notes TEXT DEFAULT NULL,
+        habits TEXT DEFAULT NULL,
         emergency_contact_name VARCHAR(150) DEFAULT NULL,
+        emergency_contact_nif VARCHAR(50) DEFAULT NULL,
         emergency_contact_phone VARCHAR(40) DEFAULT NULL,
         emergency_contact_relation VARCHAR(80) DEFAULT NULL,
         address VARCHAR(255) DEFAULT NULL,
@@ -449,7 +464,6 @@ function install_base_tables($mysqli)
         public_site_enabled TINYINT(1) NOT NULL DEFAULT 0,
         show_contact_public TINYINT(1) NOT NULL DEFAULT 0,
         allow_patient_transfer TINYINT(1) NOT NULL DEFAULT 0,
-        plan_key VARCHAR(32) NOT NULL DEFAULT 'novus',
         online_booking_enabled TINYINT(1) NOT NULL DEFAULT 1,
         patient_registration_mode VARCHAR(16) NOT NULL DEFAULT 'invite',
         patient_tasks_visible_default TINYINT(1) NOT NULL DEFAULT 0,
@@ -458,7 +472,11 @@ function install_base_tables($mysqli)
         legal_owner_name VARCHAR(255) NULL,
         legal_nif VARCHAR(50) NULL,
         legal_address VARCHAR(500) NULL,
+        legal_province VARCHAR(120) NULL,
+        legal_city VARCHAR(120) NULL,
+        legal_postal_code VARCHAR(20) NULL,
         legal_email VARCHAR(255) NULL,
+        legal_health_registry_number VARCHAR(120) NULL,
         legal_license_number VARCHAR(100) NULL,
         legal_professional_college VARCHAR(255) NULL,
         legal_uses_non_technical_cookies TINYINT NOT NULL DEFAULT 0,
@@ -476,6 +494,61 @@ function install_base_tables($mysqli)
         appointment_price DECIMAL(10,2) NOT NULL DEFAULT 70.00,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $mysqli->query("CREATE TABLE IF NOT EXISTS tenant_subscriptions (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, tenant_id INT UNSIGNED NOT NULL,
+        provider VARCHAR(24) NOT NULL DEFAULT 'braintree', environment VARCHAR(16) NOT NULL DEFAULT 'sandbox',
+        provider_customer_id VARCHAR(100) DEFAULT NULL, provider_subscription_id VARCHAR(100) NOT NULL,
+        provider_plan_id VARCHAR(100) NOT NULL, plan_key VARCHAR(32) NOT NULL,
+        billing_interval VARCHAR(16) NOT NULL DEFAULT 'monthly', status VARCHAR(24) NOT NULL DEFAULT 'pending',
+        currency CHAR(3) NOT NULL DEFAULT 'EUR', amount DECIMAL(12,2) DEFAULT NULL,
+        payment_method_type VARCHAR(32) DEFAULT NULL, payment_method_last4 VARCHAR(8) DEFAULT NULL,
+        payment_method_expiry VARCHAR(7) DEFAULT NULL, trial_ends_at DATETIME DEFAULT NULL,
+        current_period_starts_at DATETIME DEFAULT NULL, current_period_ends_at DATETIME DEFAULT NULL,
+        next_billing_at DATETIME DEFAULT NULL, cancel_at_period_end TINYINT(1) NOT NULL DEFAULT 0,
+        canceled_at DATETIME DEFAULT NULL, failure_count SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+        last_webhook_at DATETIME DEFAULT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_tenant_subscriptions_provider_id (provider, environment, provider_subscription_id),
+        KEY idx_tenant_subscriptions_tenant (tenant_id, status),
+        KEY idx_tenant_subscriptions_customer (provider, environment, provider_customer_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $mysqli->query("CREATE TABLE IF NOT EXISTS subscription_transactions (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, tenant_id INT UNSIGNED NOT NULL,
+        subscription_id BIGINT UNSIGNED NOT NULL, provider VARCHAR(24) NOT NULL DEFAULT 'braintree',
+        environment VARCHAR(16) NOT NULL DEFAULT 'sandbox', provider_transaction_id VARCHAR(100) NOT NULL,
+        status VARCHAR(32) NOT NULL, amount DECIMAL(12,2) NOT NULL, currency CHAR(3) NOT NULL DEFAULT 'EUR',
+        processed_at DATETIME DEFAULT NULL, invoice_id BIGINT UNSIGNED DEFAULT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_subscription_transactions_provider_id (provider, environment, provider_transaction_id),
+        KEY idx_subscription_transactions_subscription (subscription_id, processed_at),
+        KEY idx_subscription_transactions_tenant (tenant_id, processed_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $mysqli->query("CREATE TABLE IF NOT EXISTS subscription_webhook_events (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, provider VARCHAR(24) NOT NULL DEFAULT 'braintree',
+        environment VARCHAR(16) NOT NULL DEFAULT 'sandbox', event_key CHAR(64) NOT NULL,
+        event_kind VARCHAR(80) NOT NULL, provider_subscription_id VARCHAR(100) DEFAULT NULL,
+        occurred_at DATETIME DEFAULT NULL, payload_hash CHAR(64) NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'received', attempts SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+        error_message TEXT DEFAULT NULL, processed_at DATETIME DEFAULT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_subscription_webhook_event (provider, environment, event_key),
+        KEY idx_subscription_webhook_status (status, created_at),
+        KEY idx_subscription_webhook_subscription (provider_subscription_id, occurred_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $mysqli->query("CREATE TABLE IF NOT EXISTS subscription_notifications (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, tenant_id INT UNSIGNED NOT NULL,
+        subscription_id BIGINT UNSIGNED DEFAULT NULL, environment VARCHAR(16) NOT NULL DEFAULT 'sandbox',
+        event_type VARCHAR(80) NOT NULL, notification_key CHAR(64) NOT NULL,
+        tenant_email VARCHAR(190) DEFAULT NULL, tenant_status VARCHAR(16) NOT NULL DEFAULT 'pending',
+        internal_email VARCHAR(190) DEFAULT NULL, internal_status VARCHAR(16) NOT NULL DEFAULT 'pending',
+        attempts SMALLINT UNSIGNED NOT NULL DEFAULT 0, last_error TEXT DEFAULT NULL, sent_at DATETIME DEFAULT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_subscription_notification (environment, notification_key),
+        KEY idx_subscription_notification_tenant (tenant_id, created_at),
+        KEY idx_subscription_notification_status (tenant_status, internal_status, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     $mysqli->query("INSERT IGNORE INTO payment_settings (id, app_name, site_tagline, appointment_price) VALUES (1, 'SimplyGest Praxis', '', 70.00)");
@@ -499,6 +572,7 @@ function install_ensure_payment_settings_columns($mysqli)
     install_add_column_if_missing($mysqli, 'patient_profiles', 'invoice_email', 'VARCHAR(180) DEFAULT NULL AFTER invoice_nif');
     install_add_column_if_missing($mysqli, 'patient_profiles', 'invoice_phone', 'VARCHAR(40) DEFAULT NULL AFTER invoice_email');
     install_add_column_if_missing($mysqli, 'patient_profiles', 'invoice_address', 'VARCHAR(255) DEFAULT NULL AFTER invoice_phone');
+    install_add_column_if_missing($mysqli, 'patient_profiles', 'timezone', 'VARCHAR(64) DEFAULT NULL AFTER invoice_address');
     install_add_column_if_missing($mysqli, 'patient_profiles', 'birth_date', 'DATE DEFAULT NULL AFTER patient_status');
     install_add_column_if_missing($mysqli, 'patient_profiles', 'referral_source', 'VARCHAR(80) DEFAULT NULL AFTER birth_date');
     install_add_column_if_missing($mysqli, 'patient_profiles', 'knowledge_problem_id', 'INT UNSIGNED DEFAULT NULL AFTER referral_source');
@@ -517,7 +591,6 @@ function install_ensure_payment_settings_columns($mysqli)
     install_add_column_if_missing($mysqli, 'payment_settings', 'public_site_enabled', 'TINYINT(1) NOT NULL DEFAULT 0 AFTER show_team_public');
     install_add_column_if_missing($mysqli, 'payment_settings', 'show_contact_public', 'TINYINT(1) NOT NULL DEFAULT 0');
     install_add_column_if_missing($mysqli, 'payment_settings', 'allow_patient_transfer', 'TINYINT(1) NOT NULL DEFAULT 0');
-    install_add_column_if_missing($mysqli, 'payment_settings', 'plan_key', 'VARCHAR(32) NOT NULL DEFAULT "novus" AFTER allow_patient_transfer');
     install_add_column_if_missing($mysqli, 'payment_settings', 'dashboard_config_mode', 'VARCHAR(16) NOT NULL DEFAULT "simple"');
     install_add_column_if_missing($mysqli, 'payment_settings', 'sector_texts_key', 'VARCHAR(32) NOT NULL DEFAULT "psicologia" AFTER dashboard_config_mode');
     install_add_column_if_missing($mysqli, 'payment_settings', 'site_tagline', 'VARCHAR(255) NULL AFTER app_name');
@@ -527,7 +600,11 @@ function install_ensure_payment_settings_columns($mysqli)
     install_add_column_if_missing($mysqli, 'payment_settings', 'legal_owner_name', 'VARCHAR(255) NULL');
     install_add_column_if_missing($mysqli, 'payment_settings', 'legal_nif', 'VARCHAR(50) NULL');
     install_add_column_if_missing($mysqli, 'payment_settings', 'legal_address', 'VARCHAR(500) NULL');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'legal_province', 'VARCHAR(120) NULL');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'legal_city', 'VARCHAR(120) NULL');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'legal_postal_code', 'VARCHAR(20) NULL');
     install_add_column_if_missing($mysqli, 'payment_settings', 'legal_email', 'VARCHAR(255) NULL');
+    install_add_column_if_missing($mysqli, 'payment_settings', 'legal_health_registry_number', 'VARCHAR(120) NULL');
     install_add_column_if_missing($mysqli, 'payment_settings', 'legal_license_number', 'VARCHAR(100) NULL');
     install_add_column_if_missing($mysqli, 'payment_settings', 'legal_professional_college', 'VARCHAR(255) NULL');
     install_add_column_if_missing($mysqli, 'payment_settings', 'legal_uses_non_technical_cookies', 'TINYINT NOT NULL DEFAULT 0');
@@ -616,17 +693,18 @@ if ($requestMethod === 'POST') {
         'db_name' => $resolvedDbName,
         'db_ssl' => $hasTenantConfig ? $defaults['db_ssl'] === '1' : !empty($_POST['db_ssl']),
         'db_ssl_cert' => $tenantDatabaseConfig['ssl_cert'] ?? (defined('DB_SSL_CERT') ? DB_SSL_CERT : 'mysql.pem'),
-        'timezone' => trim($_POST['timezone'] ?? 'Atlantic/Canary'),
+        'timezone' => trim($_POST['timezone'] ?? 'Europe/Madrid'),
         'max_booking_days' => defined('MAX_BOOKING_DAYS') ? MAX_BOOKING_DAYS : 40,
         'cron_webhook_token' => defined('CRON_WEBHOOK_TOKEN') && CRON_WEBHOOK_TOKEN !== '' ? CRON_WEBHOOK_TOKEN : bin2hex(random_bytes(32)),
         'fastcron_api_key' => defined('FASTCRON_API_KEY') ? FASTCRON_API_KEY : '',
         'workoutx_api_key' => defined('WORKOUTX_API_KEY') ? WORKOUTX_API_KEY : '',
     ];
 
-    $appName = trim($_POST['app_name'] ?? '');
-    $adminName = trim($_POST['admin_name'] ?? '');
-    $adminEmail = trim($_POST['admin_email'] ?? '');
+    $appName = trim((string) ($signupFlow ? ($signupInstall['company_name'] ?? '') : ($_POST['app_name'] ?? '')));
+    $adminName = trim((string) ($signupFlow ? ($signupInstall['contact_name'] ?? '') : ($_POST['admin_name'] ?? '')));
+    $adminEmail = trim((string) ($signupFlow ? ($signupInstall['email'] ?? '') : ($_POST['admin_email'] ?? '')));
     $adminPassword = (string) ($_POST['admin_password'] ?? '');
+    $signupPasswordHash = $signupFlow ? trim((string) ($signupInstall['password_hash'] ?? '')) : '';
 
     if ($appName === '') {
         $errors[] = 'Indica el nombre o título del sitio.';
@@ -637,7 +715,7 @@ if ($requestMethod === 'POST') {
     if (!filter_var($adminEmail, FILTER_VALIDATE_EMAIL)) {
         $errors[] = 'Indica un email válido para el administrador.';
     }
-    if (strlen($adminPassword) < 6) {
+    if ($signupPasswordHash === '' && strlen($adminPassword) < 6) {
         $errors[] = 'La contraseña del administrador debe tener al menos 6 caracteres.';
     }
     if (!sector_texts_validate_key($sectorTextsKey) || !sector_texts_read_file($sectorTextsKey)) {
@@ -680,7 +758,7 @@ if ($requestMethod === 'POST') {
             $stmt->close();
             seed_default_appointment_services($test);
 
-            $passwordHash = password_hash($adminPassword, PASSWORD_DEFAULT);
+            $passwordHash = $signupPasswordHash !== '' ? $signupPasswordHash : password_hash($adminPassword, PASSWORD_DEFAULT);
             $role = 'superadmin';
             $stmt = $test->prepare("SELECT id FROM users WHERE tenant_id = ? AND email = ? LIMIT 1");
             $stmt->bind_param('is', $tenantId, $adminEmail);
@@ -723,6 +801,9 @@ if ($requestMethod === 'POST') {
 
             $success = true;
             $installed = true;
+            if ($signupFlow) {
+                unset($_SESSION['signup_install']);
+            }
         } catch (Throwable $e) {
             $errors[] = 'No se pudo completar la instalación: ' . $e->getMessage();
         }
@@ -870,6 +951,14 @@ if ($requestMethod === 'POST') {
                 <form method="post" id="installForm">
                     <section class="install-step-panel" data-step-panel="1">
                         <div class="row g-3">
+                            <?php if ($signupFlow): ?>
+                                <div class="col-12">
+                                    <div class="alert alert-info mb-0">
+                                        Tu espacio <strong><?php echo htmlspecialchars($defaults['app_name'], ENT_QUOTES, 'UTF-8'); ?></strong>
+                                        está reservado. Confirma la zona horaria para terminar la instalación.
+                                    </div>
+                                </div>
+                            <?php endif; ?>
                             <?php if ($hasTenantConfig): ?>
                                 <div class="col-12">
                                     <div class="alert alert-info mb-0">
@@ -877,7 +966,7 @@ if ($requestMethod === 'POST') {
                                     </div>
                                 </div>
                             <?php endif; ?>
-                            <div class="col-12">
+                            <div class="col-12 <?php echo $signupFlow ? 'd-none' : ''; ?>">
                                 <label class="form-label" for="app_name">Título de la web</label>
                                 <input class="form-control" type="text" id="app_name" name="app_name" value="<?php echo install_value('app_name', $defaults); ?>" required>
                             </div>
@@ -901,27 +990,34 @@ if ($requestMethod === 'POST') {
                             <?php endif; ?>
                             <div class="col-md-6">
                                 <label class="form-label" for="timezone">Zona horaria</label>
-                                <select class="form-select" id="timezone" name="timezone" required>
+                                <select class="form-select" id="timezone" name="timezone" data-browser-detect="<?php echo ($requestMethod !== 'POST' && !$installed && $installerDefaultTimezone === '' && ($tenantDefaultTimezone === '' || $tenantDefaultTimezone === 'Europe/Madrid')) ? '1' : '0'; ?>" required>
                                     <?php
-                                    $timezones = ['Atlantic/Canary', 'Europe/Madrid', 'UTC'];
+                                    $timezones = [
+                                        'Europe/Madrid' => 'Pen&iacute;nsula y Baleares',
+                                        'Atlantic/Canary' => 'Islas Canarias',
+                                        'UTC' => 'UTC'
+                                    ];
                                     $selectedTimezone = $_POST['timezone'] ?? $defaults['timezone'];
-                                    foreach ($timezones as $timezone):
+                                    if (!array_key_exists($selectedTimezone, $timezones)) {
+                                        $selectedTimezone = 'Europe/Madrid';
+                                    }
+                                    foreach ($timezones as $timezone => $timezoneLabel):
                                     ?>
-                                        <option value="<?php echo $timezone; ?>" <?php echo $selectedTimezone === $timezone ? 'selected' : ''; ?>><?php echo $timezone; ?></option>
+                                        <option value="<?php echo $timezone; ?>" <?php echo $selectedTimezone === $timezone ? 'selected' : ''; ?>><?php echo $timezoneLabel; ?></option>
                                     <?php endforeach; ?>
                                 </select>
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-6 <?php echo $signupFlow ? 'd-none' : ''; ?>">
                                 <label class="form-label" for="admin_name">Nombre del administrador</label>
                                 <input class="form-control" type="text" id="admin_name" name="admin_name" value="<?php echo install_value('admin_name', $defaults); ?>" required>
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-6 <?php echo $signupFlow ? 'd-none' : ''; ?>">
                                 <label class="form-label" for="admin_email">Email del administrador</label>
                                 <input class="form-control" type="email" id="admin_email" name="admin_email" value="<?php echo install_value('admin_email', $defaults); ?>" required>
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-6 <?php echo $signupFlow ? 'd-none' : ''; ?>">
                                 <label class="form-label" for="admin_password">Contraseña del administrador</label>
-                                <input class="form-control" type="password" id="admin_password" name="admin_password" minlength="6" required>
+                                <input class="form-control" type="password" id="admin_password" name="admin_password" minlength="6" <?php echo $signupFlow ? '' : 'required'; ?>>
                             </div>
                         </div>
                         <div class="install-actions justify-content-end">
@@ -998,6 +1094,7 @@ if ($requestMethod === 'POST') {
             const dbNameInput = document.getElementById('db_name');
             const installForm = document.getElementById('installForm');
             const installOverlay = document.getElementById('installProgressOverlay');
+            const timezoneSelect = document.getElementById('timezone');
             const tenantKey = <?php echo json_encode(install_slug_part(basename($rootDir), 'tenant')); ?>;
 
             function slugPart(value, fallback) {
@@ -1037,6 +1134,12 @@ if ($requestMethod === 'POST') {
 
             prevButton?.addEventListener('click', () => showStep(1));
             sectorSelect?.addEventListener('change', updateDerivedDbName);
+            if (timezoneSelect?.dataset.browserDetect === '1') {
+                const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+                if ([...timezoneSelect.options].some(option => option.value === browserTimezone)) {
+                    timezoneSelect.value = browserTimezone;
+                }
+            }
             installForm?.addEventListener('submit', () => {
                 const submitButton = installForm.querySelector('button[type="submit"]');
                 if (submitButton) {

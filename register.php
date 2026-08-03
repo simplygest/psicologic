@@ -156,9 +156,16 @@ if (!$can_register) {
                     success: function (res) {
                         if (res.success) {
                             $('#register-form').hide();
-                            $('#register-login-cta').removeClass('d-none');
-                            $('#login-link').text('Iniciar sesión');
-                            $('#register-alert').removeClass('d-none alert-danger').addClass('alert-success').text("Registro completado con éxito. Ya puedes iniciar sesión.");
+                            if (res.requires_email_verification) {
+                                $('#register-login-cta').addClass('d-none');
+                                $('#register-alert').removeClass('d-none alert-danger').addClass('alert-success').text(
+                                    res.message || 'Te hemos enviado un enlace para verificar tu email y crear la contraseña.'
+                                );
+                            } else {
+                                $('#register-login-cta').removeClass('d-none');
+                                $('#login-link').text('Iniciar sesión');
+                                $('#register-alert').removeClass('d-none alert-danger').addClass('alert-success').text("Registro completado con éxito. Ya puedes iniciar sesión.");
+                            }
                         } else {
                             $('#register-alert').removeClass('d-none alert-success').addClass('alert-danger').text(res.error);
                             resetRegisterButton();

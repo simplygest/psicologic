@@ -3,6 +3,8 @@ require_once 'db.php';
 require_once 'payment_helpers.php';
 require_once 'mail_helpers.php';
 require_once 'google_helpers.php';
+require_once 'microsoft_helpers.php';
+require_once 'caldav_helpers.php';
 require_once 'settings_helpers.php';
 require_once 'app_log_helpers.php';
 
@@ -17,6 +19,7 @@ $message = '';
 $message_type = 'danger';
 $appointment = null;
 $cancelled = false;
+$confirmed = false;
 
 if ($token) {
     $stmt = $mysqli->prepare("
@@ -24,7 +27,7 @@ if ($token) {
                COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
                so.price AS service_price, s.name AS service_name,
                COALESCE(a.payment_status, 'pending') AS payment_status,
-               a.payment_method, a.payment_attempt_id, a.patient_bonus_id, a.user_id, u.name, u.email
+               a.payment_method, a.payment_attempt_id, a.patient_bonus_id, a.patient_confirmed_at, a.user_id, u.name, u.email
         FROM appointments a
         LEFT JOIN appointment_service_options so ON so.id = a.service_option_id AND so.tenant_id = a.tenant_id
         LEFT JOIN appointment_services s ON s.id = so.service_id AND s.tenant_id = a.tenant_id
@@ -40,11 +43,47 @@ if ($token) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$appointment || $appointment['status'] !== 'booked') {
         $message = 'La cita no existe o ya no está activa.';
+    } elseif (($_POST['action'] ?? '') === 'confirm') {
+        $stmt = $mysqli->prepare("UPDATE appointments SET patient_confirmed_at = COALESCE(patient_confirmed_at, NOW()) WHERE tenant_id = ? AND id = ? AND cancel_token = ? AND status = 'booked'");
+        $stmt->bind_param("iis", $tenant_id, $appointment['id'], $token);
+        $stmt->execute();
+        $confirmed = $stmt->affected_rows > 0 || !empty($appointment['patient_confirmed_at']);
+        $message_type = $confirmed ? 'success' : 'danger';
+        $message = $confirmed ? 'Tu asistencia ha quedado confirmada correctamente.' : 'No se pudo confirmar la asistencia.';
+        if ($confirmed) {
+            $appointment['patient_confirmed_at'] = date('Y-m-d H:i:s');
+            app_log($mysqli, [
+                'user_id' => (int) ($appointment['user_id'] ?? 0),
+                'action' => 'appointment_confirmed_by_patient',
+                'status' => 'ok',
+                'target_type' => 'appointment',
+                'target_id' => (int) $appointment['id'],
+                'title' => 'Asistencia confirmada',
+                'message' => 'Asistencia confirmada por el paciente para la cita del ' . appointment_label($appointment['appointment_date'], $appointment['appointment_time']) . '.',
+                'metadata' => [
+                    'origin' => 'public_manage_link',
+                    'patient_id' => (int) ($appointment['user_id'] ?? 0),
+                    'patient_name' => $appointment['name'] ?? '',
+                    'appointment_date' => $appointment['appointment_date'] ?? '',
+                    'appointment_time' => $appointment['appointment_time'] ?? ''
+                ]
+            ]);
+        }
     } else {
         try {
             google_delete_calendar_event($mysqli, (int) $appointment['id']);
         } catch (\Exception $e) {
             error_log('No se pudo eliminar evento en Google Calendar: ' . $e->getMessage());
+        }
+        try {
+            icloud_delete_calendar_event($mysqli, (int) $appointment['id']);
+        } catch (\Exception $e) {
+            error_log('No se pudo eliminar evento en iCloud Calendar: ' . $e->getMessage());
+        }
+        try {
+            microsoft_delete_calendar_event($mysqli, (int) $appointment['id']);
+        } catch (\Exception $e) {
+            error_log('No se pudo eliminar evento en Microsoft Outlook Calendar: ' . $e->getMessage());
         }
 
         $stmt = $mysqli->prepare("UPDATE appointments SET status = 'cancelled', cancelled_at = NOW() WHERE tenant_id = ? AND id = ? AND cancel_token = ? AND status = 'booked'");
@@ -190,6 +229,17 @@ function current_appointment_price($settings, $appointment)
                         </ul>
 
                         <?php if ($appointment['status'] === 'booked'): ?>
+                            <?php if (!empty($appointment['patient_confirmed_at'])): ?>
+                                <div class="alert alert-success">
+                                    <strong>Asistencia confirmada.</strong> Esta reserva sigue activa.
+                                </div>
+                            <?php else: ?>
+                                <form method="post" class="mb-3">
+                                    <input type="hidden" name="token" value="<?= htmlspecialchars($token) ?>">
+                                    <input type="hidden" name="action" value="confirm">
+                                    <button type="submit" class="btn btn-primary w-100">Confirmar asistencia</button>
+                                </form>
+                            <?php endif; ?>
                             <?php if ((int) $payment_settings['online_payment_enabled'] === 1 && $appointment['payment_status'] !== 'paid'): ?>
                                 <div class="mb-4">
                                     <p class="text-muted mb-2">Puedes pagar ahora tu cita de <?= htmlspecialchars(format_appointment_price(current_appointment_price($payment_settings, $appointment))) ?> €.</p>
@@ -208,6 +258,7 @@ function current_appointment_price($settings, $appointment)
 
                             <form method="post" id="cancel-booking-form">
                                 <input type="hidden" name="token" value="<?= htmlspecialchars($token) ?>">
+                                <input type="hidden" name="action" value="cancel">
                                 <button type="submit" class="btn btn-danger w-100">Cancelar esta reserva</button>
                             </form>
                         <?php else: ?>

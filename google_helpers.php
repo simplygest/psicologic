@@ -262,7 +262,7 @@ function google_base64url($value)
     return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
 }
 
-function google_send_email($mysqli, $to, $subject, $html_body, $reply_to = null)
+function google_send_email($mysqli, $to, $subject, $html_body, $reply_to = null, array $attachments = [])
 {
     $settings = google_get_settings($mysqli);
     $from = $settings['google_connected_email'] ?? '';
@@ -276,15 +276,39 @@ function google_send_email($mysqli, $to, $subject, $html_body, $reply_to = null)
         'From: ' . $from_name . ' <' . $from . '>',
         'To: ' . $to,
         'Subject: =?UTF-8?B?' . base64_encode($subject) . '?=',
-        'MIME-Version: 1.0',
-        'Content-Type: text/html; charset=UTF-8'
+        'MIME-Version: 1.0'
     ];
 
     if ($reply_to && filter_var($reply_to, FILTER_VALIDATE_EMAIL)) {
         $headers[] = 'Reply-To: ' . $reply_to;
     }
 
-    $raw = implode("\r\n", $headers) . "\r\n\r\n" . $html_body;
+    if ($attachments) {
+        $boundary = 'sgpraxis_' . bin2hex(random_bytes(12));
+        $headers[] = 'Content-Type: multipart/mixed; boundary="' . $boundary . '"';
+        $parts = [
+            '--' . $boundary,
+            'Content-Type: text/html; charset=UTF-8',
+            'Content-Transfer-Encoding: 8bit',
+            '',
+            $html_body
+        ];
+        foreach ($attachments as $attachment) {
+            $name = str_replace(['"', "\r", "\n"], '', (string) ($attachment['name'] ?? 'documento.pdf'));
+            $mime = trim((string) ($attachment['mime'] ?? 'application/octet-stream')) ?: 'application/octet-stream';
+            $parts[] = '--' . $boundary;
+            $parts[] = 'Content-Type: ' . $mime . '; name="' . $name . '"';
+            $parts[] = 'Content-Disposition: attachment; filename="' . $name . '"';
+            $parts[] = 'Content-Transfer-Encoding: base64';
+            $parts[] = '';
+            $parts[] = chunk_split(base64_encode((string) ($attachment['content'] ?? '')));
+        }
+        $parts[] = '--' . $boundary . '--';
+        $raw = implode("\r\n", $headers) . "\r\n\r\n" . implode("\r\n", $parts);
+    } else {
+        $headers[] = 'Content-Type: text/html; charset=UTF-8';
+        $raw = implode("\r\n", $headers) . "\r\n\r\n" . $html_body;
+    }
     $access_token = google_access_token($mysqli);
     [$status, $response, $body] = google_http_json('POST', 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send', [
         'raw' => google_base64url($raw)
@@ -328,9 +352,9 @@ function google_create_calendar_event($mysqli, $appointment_id)
         return null;
     }
 
-    $start = new DateTime($appointment['appointment_date'] . ' ' . $appointment['appointment_time']);
-    $end = clone $start;
-    $end->modify('+' . (int) ($appointment['duration_minutes'] ?? 60) . ' minutes');
+    $timezone = tenant_timezone();
+    $start = appointment_datetime_in_timezone($appointment['appointment_date'], $appointment['appointment_time'], $timezone);
+    $end = $start->modify('+' . (int) ($appointment['duration_minutes'] ?? 60) . ' minutes');
 
     $consultation_text = appointment_consultation_label($appointment['consultation_type'] ?? 'presencial');
     $service_text = appointment_service_option_label($appointment);
@@ -347,11 +371,11 @@ function google_create_calendar_event($mysqli, $appointment_id)
         'description' => $description,
         'start' => [
             'dateTime' => $start->format(DateTime::RFC3339),
-            'timeZone' => date_default_timezone_get()
+            'timeZone' => $timezone
         ],
         'end' => [
             'dateTime' => $end->format(DateTime::RFC3339),
-            'timeZone' => date_default_timezone_get()
+            'timeZone' => $timezone
         ]
     ];
 

@@ -5,6 +5,7 @@ require_once '../mail_helpers.php';
 require_once '../payment_helpers.php';
 require_once '../urlme_helpers.php';
 require_once '../settings_helpers.php';
+require_once '../plan_usage_helpers.php';
 require_once '../invoice_helpers.php';
 header('Content-Type: application/json');
 
@@ -134,6 +135,7 @@ function ensure_patient_registration_schema($mysqli)
             invoice_email VARCHAR(180) DEFAULT NULL,
             invoice_phone VARCHAR(40) DEFAULT NULL,
             invoice_address VARCHAR(255) DEFAULT NULL,
+            timezone VARCHAR(64) DEFAULT NULL,
             patient_status VARCHAR(20) NOT NULL DEFAULT 'active',
             birth_date DATE DEFAULT NULL,
             referral_source VARCHAR(80) DEFAULT NULL,
@@ -162,6 +164,7 @@ function ensure_patient_registration_schema($mysqli)
         'invoice_email' => "ALTER TABLE patient_profiles ADD invoice_email VARCHAR(180) DEFAULT NULL AFTER invoice_nif",
         'invoice_phone' => "ALTER TABLE patient_profiles ADD invoice_phone VARCHAR(40) DEFAULT NULL AFTER invoice_email",
         'invoice_address' => "ALTER TABLE patient_profiles ADD invoice_address VARCHAR(255) DEFAULT NULL AFTER invoice_phone",
+        'timezone' => "ALTER TABLE patient_profiles ADD timezone VARCHAR(64) DEFAULT NULL AFTER invoice_address",
         'patient_status' => "ALTER TABLE patient_profiles ADD patient_status VARCHAR(20) NOT NULL DEFAULT 'active' AFTER patient_type",
         'birth_date' => "ALTER TABLE patient_profiles ADD birth_date DATE DEFAULT NULL AFTER patient_status",
         'referral_source' => "ALTER TABLE patient_profiles ADD referral_source VARCHAR(80) DEFAULT NULL AFTER birth_date",
@@ -289,12 +292,68 @@ if ($action === 'login') {
 
     $invite_user_id = !empty($invite['user_id']) ? (int) $invite['user_id'] : 0;
 
-    $stmt = $mysqli->prepare("SELECT id FROM users WHERE tenant_id = ? AND email = ? AND id <> ?");
+    $stmt = $mysqli->prepare("SELECT id, name, email, role, password_hash FROM users WHERE tenant_id = ? AND email = ? AND id <> ?");
     $stmt->bind_param("isi", $tenant_id, $email, $invite_user_id);
     $stmt->execute();
-    $res = $stmt->get_result();
-    if ($res->fetch_assoc()) {
-        echo json_encode(['success' => false, 'error' => 'El correo ya esta registrado.']);
+    $existing_user = $stmt->get_result()->fetch_assoc();
+    if ($existing_user) {
+        if (
+            $invite_user_id === 0
+            && ($existing_user['role'] ?? '') === 'patient'
+            && empty($existing_user['password_hash'])
+        ) {
+            $existing_user_id = (int) $existing_user['id'];
+            $stmt = $mysqli->prepare("
+                SELECT token
+                FROM invitations
+                WHERE tenant_id = ? AND user_id = ? AND used = 0
+                  AND created_at >= DATE_SUB(NOW(), INTERVAL 10 MINUTE)
+                ORDER BY id DESC
+                LIMIT 1
+            ");
+            $stmt->bind_param("ii", $tenant_id, $existing_user_id);
+            $stmt->execute();
+            $recent_invitation = $stmt->get_result()->fetch_assoc();
+            $verification_token = $recent_invitation['token'] ?? bin2hex(random_bytes(32));
+
+            if (!$recent_invitation) {
+                $stmt = $mysqli->prepare("INSERT INTO invitations (tenant_id, token, user_id) VALUES (?, ?, ?)");
+                $stmt->bind_param("isi", $tenant_id, $verification_token, $existing_user_id);
+                $stmt->execute();
+            }
+
+            $verification_link = urlme_shorten_url(
+                app_public_base_url() . 'register.php?token=' . urlencode($verification_token),
+                'Activar acceso al Portal de SimplyGest Praxis'
+            );
+            $sent = send_app_email(
+                $existing_user['email'],
+                'Activa tu acceso al Portal',
+                '<p>Hola ' . htmlspecialchars($existing_user['name'] ?: $name) . ',</p>' .
+                '<p>Ya existe una ficha asociada a este email. Para proteger tus datos, confirma que eres su titular desde el siguiente enlace.</p>' .
+                '<p><a href="' . htmlspecialchars($verification_link) . '">Crear mi contraseña y acceder al Portal</a></p>' .
+                '<p>Si no has solicitado este acceso, puedes ignorar este mensaje.</p>',
+                null,
+                $mysqli
+            );
+
+            if (!$sent) {
+                echo json_encode([
+                    'success' => false,
+                    'error' => 'No se pudo enviar el email de verificación. Contacta con el centro para solicitar una invitación.'
+                ], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+
+            echo json_encode([
+                'success' => true,
+                'requires_email_verification' => true,
+                'message' => 'Ya existe una ficha asociada a este email. Te hemos enviado un enlace para crear tu contraseña y acceder al Portal.'
+            ], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        echo json_encode(['success' => false, 'error' => 'El correo ya está registrado. Inicia sesión o recupera tu contraseña.'], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
@@ -334,6 +393,7 @@ if ($action === 'login') {
             $stmt->execute();
             $new_user_id = $invite_user_id;
         } else {
+            plan_usage_assert_patient_capacity($mysqli);
             $stmt = $mysqli->prepare("INSERT INTO users (tenant_id, name, email, phone, password_hash, role) VALUES (?, ?, ?, ?, ?, 'patient')");
             $stmt->bind_param("issss", $tenant_id, $name, $email, $phone, $hash);
             $stmt->execute();

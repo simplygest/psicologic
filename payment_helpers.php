@@ -74,6 +74,7 @@ function ensure_appointment_payment_columns($mysqli)
         'cancelled_at' => "ALTER TABLE appointments ADD cancelled_at DATETIME DEFAULT NULL",
         'reminder_sent_at' => "ALTER TABLE appointments ADD reminder_sent_at DATETIME DEFAULT NULL",
         'second_reminder_sent_at' => "ALTER TABLE appointments ADD second_reminder_sent_at DATETIME DEFAULT NULL",
+        'patient_confirmed_at' => "ALTER TABLE appointments ADD patient_confirmed_at DATETIME DEFAULT NULL",
         'online_session_url' => "ALTER TABLE appointments ADD online_session_url VARCHAR(500) DEFAULT NULL",
         'livekit_access_token' => "ALTER TABLE appointments ADD livekit_access_token CHAR(64) DEFAULT NULL",
         'session_notes' => "ALTER TABLE appointments ADD session_notes TEXT DEFAULT NULL",
@@ -241,6 +242,9 @@ function ensure_appointment_services_tables($mysqli)
             tenant_id INT UNSIGNED NOT NULL DEFAULT 1,
             service_key VARCHAR(32) NOT NULL,
             name VARCHAR(120) NOT NULL,
+            tax_mode VARCHAR(16) NOT NULL DEFAULT 'inherit',
+            tax_rate DECIMAL(5,2) DEFAULT NULL,
+            tax_exemption_reason VARCHAR(500) DEFAULT NULL,
             is_active TINYINT(1) NOT NULL DEFAULT 1,
             sort_order INT NOT NULL DEFAULT 0,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -248,6 +252,9 @@ function ensure_appointment_services_tables($mysqli)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     ");
     payment_add_column_if_missing($mysqli, 'appointment_services', 'tenant_id', "INT UNSIGNED NOT NULL DEFAULT $tenant_id AFTER id");
+    payment_add_column_if_missing($mysqli, 'appointment_services', 'tax_mode', "VARCHAR(16) NOT NULL DEFAULT 'inherit' AFTER name");
+    payment_add_column_if_missing($mysqli, 'appointment_services', 'tax_rate', "DECIMAL(5,2) DEFAULT NULL AFTER tax_mode");
+    payment_add_column_if_missing($mysqli, 'appointment_services', 'tax_exemption_reason', "VARCHAR(500) DEFAULT NULL AFTER tax_rate");
 
     $mysqli->query("
         CREATE TABLE IF NOT EXISTS appointment_service_options (
@@ -257,6 +264,7 @@ function ensure_appointment_services_tables($mysqli)
             duration_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 60,
             consultation_type ENUM('presencial', 'online') NOT NULL DEFAULT 'presencial',
             price DECIMAL(10,2) NOT NULL DEFAULT 70.00,
+            discount_percentage DECIMAL(5,2) NOT NULL DEFAULT 0.00,
             is_active TINYINT(1) NOT NULL DEFAULT 1,
             sort_order INT NOT NULL DEFAULT 0,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -266,6 +274,7 @@ function ensure_appointment_services_tables($mysqli)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     ");
     payment_add_column_if_missing($mysqli, 'appointment_service_options', 'tenant_id', "INT UNSIGNED NOT NULL DEFAULT $tenant_id AFTER id");
+    payment_add_column_if_missing($mysqli, 'appointment_service_options', 'discount_percentage', "DECIMAL(5,2) NOT NULL DEFAULT 0.00 AFTER price");
     payment_drop_single_column_unique_indexes($mysqli, 'appointment_services', 'service_key');
     if (!payment_index_exists($mysqli, 'appointment_services', 'uniq_appointment_services_tenant_key')) {
         $mysqli->query("ALTER TABLE appointment_services ADD UNIQUE uniq_appointment_services_tenant_key (tenant_id, service_key)");
@@ -717,7 +726,7 @@ function fetch_appointment_services($mysqli, $only_active_options = false)
     $services = [];
 
     $res = $mysqli->query("
-        SELECT id, service_key, name, is_active, sort_order
+        SELECT id, service_key, name, tax_mode, tax_rate, tax_exemption_reason, is_active, sort_order
         FROM appointment_services
         WHERE tenant_id = $tenant_id
         ORDER BY sort_order ASC, id ASC
@@ -725,13 +734,14 @@ function fetch_appointment_services($mysqli, $only_active_options = false)
     while ($row = $res->fetch_assoc()) {
         $row['id'] = (int) $row['id'];
         $row['is_active'] = (int) $row['is_active'];
+        $row['tax_rate'] = $row['tax_rate'] === null ? null : number_format((float) $row['tax_rate'], 2, '.', '');
         $row['options'] = [];
         $services[$row['id']] = $row;
     }
 
     $where = $only_active_options ? "AND o.is_active = 1 AND s.is_active = 1" : "";
     $res = $mysqli->query("
-        SELECT o.id, o.service_id, o.duration_minutes, o.consultation_type, o.price, o.is_active, o.sort_order
+        SELECT o.id, o.service_id, o.duration_minutes, o.consultation_type, o.price, o.discount_percentage, o.is_active, o.sort_order
         FROM appointment_service_options o
         JOIN appointment_services s ON s.id = o.service_id AND s.tenant_id = o.tenant_id
         WHERE o.tenant_id = $tenant_id
@@ -747,6 +757,7 @@ function fetch_appointment_services($mysqli, $only_active_options = false)
         $row['service_id'] = $service_id;
         $row['duration_minutes'] = (int) $row['duration_minutes'];
         $row['price'] = number_format((float) $row['price'], 2, '.', '');
+        $row['discount_percentage'] = number_format((float) ($row['discount_percentage'] ?? 0), 2, '.', '');
         $row['is_active'] = (int) $row['is_active'];
         $services[$service_id]['options'][] = $row;
     }
@@ -759,7 +770,7 @@ function fetch_service_option($mysqli, $option_id)
     ensure_appointment_services_tables($mysqli);
     $tenant_id = current_tenant_id();
     $stmt = $mysqli->prepare("
-        SELECT o.id, o.service_id, o.duration_minutes, o.consultation_type, o.price, o.is_active,
+        SELECT o.id, o.service_id, o.duration_minutes, o.consultation_type, o.price, o.discount_percentage, o.is_active,
                s.service_key, s.name AS service_name, s.is_active AS service_active
         FROM appointment_service_options o
         JOIN appointment_services s ON s.id = o.service_id AND s.tenant_id = o.tenant_id
@@ -775,6 +786,7 @@ function fetch_service_option($mysqli, $option_id)
     $option['id'] = (int) $option['id'];
     $option['duration_minutes'] = (int) $option['duration_minutes'];
     $option['price'] = (float) $option['price'];
+    $option['discount_percentage'] = (float) ($option['discount_percentage'] ?? 0);
     $option['is_active'] = (int) $option['is_active'];
     $option['service_active'] = (int) $option['service_active'];
     return $option;
@@ -792,10 +804,42 @@ function appointment_service_option_label($appointment)
 
 function appointment_price_for_row($settings, $appointment)
 {
+    if (isset($appointment['final_price_amount']) && $appointment['final_price_amount'] !== null) {
+        return (float) $appointment['final_price_amount'];
+    }
     if (isset($appointment['service_price']) && $appointment['service_price'] !== null) {
         return (float) $appointment['service_price'];
     }
     return appointment_price_for_type($settings, $appointment['consultation_type'] ?? 'presencial', $appointment['service_type'] ?? 'individual');
+}
+
+function appointment_discount_is_active(array $settings, $appointment_date)
+{
+    if ((int) ($settings['discount_period_enabled'] ?? 0) !== 1) {
+        return false;
+    }
+    $date = trim((string) $appointment_date);
+    $start = trim((string) ($settings['discount_period_start_date'] ?? ''));
+    $end = trim((string) ($settings['discount_period_end_date'] ?? ''));
+    return preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)
+        && preg_match('/^\d{4}-\d{2}-\d{2}$/', $start)
+        && preg_match('/^\d{4}-\d{2}-\d{2}$/', $end)
+        && $date >= $start
+        && $date <= $end;
+}
+
+function appointment_discount_price_snapshot(array $settings, array $service_option, $appointment_date)
+{
+    $base = round(max(0, (float) ($service_option['price'] ?? 0)), 2);
+    $percentage = appointment_discount_is_active($settings, $appointment_date)
+        ? min(100, max(0, (float) ($service_option['discount_percentage'] ?? 0)))
+        : 0.0;
+    $final = round($base * (1 - ($percentage / 100)), 2);
+    return [
+        'base' => $base,
+        'discount_percentage' => $percentage,
+        'final' => $final
+    ];
 }
 
 function app_public_base_url()

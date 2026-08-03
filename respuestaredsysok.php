@@ -79,7 +79,10 @@ if ($token) {
 
             $invoice_result = invoice_emit_for_payment_attempt($mysqli, (int) $payment['id']);
             if (empty($invoice_result['success'])) {
-                error_log('No se pudo emitir factura automatica para el pago ' . $payment['id'] . ': ' . ($invoice_result['error'] ?? 'error desconocido'));
+                throw new RuntimeException(
+                    $invoice_result['error']
+                    ?? 'No se pudo emitir la factura automática asociada al pago.'
+                );
             }
 
             $mysqli->commit();

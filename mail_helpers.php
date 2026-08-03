@@ -96,7 +96,16 @@ function default_from_email()
     return 'no-reply@' . $host;
 }
 
-function send_app_email($to, $subject, $html_body, $reply_to = null, $mysqli = null)
+function app_email_is_configured($mysqli)
+{
+    $settings = get_email_settings($mysqli);
+    if (($settings['email_provider'] ?? 'phpmailer') === 'google') {
+        return !empty($settings['google_connected_email']) && !empty($settings['google_refresh_token']);
+    }
+    return !empty($settings['smtp_from_email']);
+}
+
+function send_app_email($to, $subject, $html_body, $reply_to = null, $mysqli = null, array $attachments = [])
 {
     global $APP_EMAIL_LAST_ERROR;
     $APP_EMAIL_LAST_ERROR = '';
@@ -117,7 +126,7 @@ function send_app_email($to, $subject, $html_body, $reply_to = null, $mysqli = n
             return false;
         }
         try {
-            return google_send_email($mysqli, $to, $subject, $html_body, $reply_to);
+            return google_send_email($mysqli, $to, $subject, $html_body, $reply_to, $attachments);
         } catch (\Exception $e) {
             $APP_EMAIL_LAST_ERROR = 'Gmail API: ' . $e->getMessage();
             error_log('Error enviando email con Gmail API: ' . $e->getMessage());
@@ -170,6 +179,14 @@ function send_app_email($to, $subject, $html_body, $reply_to = null, $mysqli = n
         $mail->Subject = $subject;
         $mail->Body = $html_body;
         $mail->AltBody = trim(strip_tags(str_replace(['<br>', '<br/>', '<br />'], "\n", $html_body)));
+        foreach ($attachments as $attachment) {
+            $mail->addStringAttachment(
+                (string) ($attachment['content'] ?? ''),
+                (string) ($attachment['name'] ?? 'documento.pdf'),
+                'base64',
+                (string) ($attachment['mime'] ?? 'application/octet-stream')
+            );
+        }
 
         return $mail->send();
     } catch (\Exception $e) {
@@ -225,9 +242,13 @@ function get_appointment_professional($mysqli, $appointment)
     return $row;
 }
 
-function notify_appointment_professional($mysqli, $appointment, $subject, $html_body, $reply_to = null, $append_booking_summary = false)
+function notify_appointment_professional($mysqli, $appointment, $subject, $html_body, $reply_to = null, $append_booking_summary = false, $notification_type = '')
 {
     $professional = get_appointment_professional($mysqli, $appointment);
+    if ($notification_type !== '' && !empty($professional['id'])) {
+        if (!function_exists('cabinet_professional_notification_enabled')) require_once __DIR__ . '/cabinet_helpers.php';
+        if (!cabinet_professional_notification_enabled($mysqli, (int) $professional['id'], $notification_type)) return true;
+    }
     $professional_email = trim((string) ($professional['notification_email'] ?? ''));
     if ($professional_email && filter_var($professional_email, FILTER_VALIDATE_EMAIL)) {
         if ($append_booking_summary
@@ -515,7 +536,9 @@ function notify_appointment_cancelled($mysqli, $appointment)
         $location_line .
         '<b>Estado del pago:</b> ' . htmlspecialchars($payment_text) . '</p>' .
         $paid_warning,
-        $patient_email ?: null
+        $patient_email ?: null,
+        false,
+        'cancellations'
     );
 
     if ($patient_email) {

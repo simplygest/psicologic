@@ -133,6 +133,7 @@ function ensure_cabinet_schema($mysqli)
             public_slug VARCHAR(160) DEFAULT NULL,
             professional_title VARCHAR(180) DEFAULT NULL,
             license_number VARCHAR(80) DEFAULT NULL,
+            professional_college VARCHAR(180) DEFAULT NULL,
             professional_specialty TEXT DEFAULT NULL,
             public_bio TEXT DEFAULT NULL,
             public_photo_path VARCHAR(255) DEFAULT NULL,
@@ -156,6 +157,7 @@ function ensure_cabinet_schema($mysqli)
     cabinet_add_column_if_missing($mysqli, 'professionals', 'tenant_id', "INT UNSIGNED NOT NULL DEFAULT $tenant_id AFTER id");
     cabinet_add_column_if_missing($mysqli, 'professionals', 'professional_specialty', "TEXT DEFAULT NULL AFTER professional_title");
     cabinet_add_column_if_missing($mysqli, 'professionals', 'license_number', "VARCHAR(80) DEFAULT NULL AFTER professional_title");
+    cabinet_add_column_if_missing($mysqli, 'professionals', 'professional_college', "VARCHAR(180) DEFAULT NULL AFTER license_number");
     cabinet_add_column_if_missing($mysqli, 'professionals', 'public_bio', "TEXT DEFAULT NULL AFTER professional_specialty");
     cabinet_add_column_if_missing($mysqli, 'professionals', 'public_photo_path', "VARCHAR(255) DEFAULT NULL AFTER public_bio");
     cabinet_add_column_if_missing($mysqli, 'professionals', 'public_phone', "VARCHAR(40) DEFAULT NULL AFTER public_email");
@@ -199,6 +201,9 @@ function ensure_cabinet_schema($mysqli)
             default_appointment_location VARCHAR(255) DEFAULT NULL,
             default_location_id INT UNSIGNED DEFAULT NULL,
             livekit_enabled TINYINT(1) NOT NULL DEFAULT 1,
+            video_provider VARCHAR(20) NOT NULL DEFAULT 'livekit',
+            livekit_recording_enabled TINYINT(1) NOT NULL DEFAULT 0,
+            livekit_recording_mode VARCHAR(20) NOT NULL DEFAULT 'audio',
             member_permissions_json TEXT DEFAULT NULL,
             min_booking_notice_days INT UNSIGNED DEFAULT NULL,
             max_booking_notice_days INT UNSIGNED DEFAULT NULL,
@@ -206,6 +211,13 @@ function ensure_cabinet_schema($mysqli)
             knowledge_sector_keys_json TEXT DEFAULT NULL,
             bonuses_enabled TINYINT(1) DEFAULT NULL,
             create_compensation_bonus_on_paid_cancel TINYINT(1) DEFAULT NULL,
+            initial_calendar_view VARCHAR(12) DEFAULT NULL,
+            timezone VARCHAR(64) DEFAULT NULL,
+            notify_new_appointments TINYINT(1) DEFAULT NULL,
+            notify_cancellations TINYINT(1) DEFAULT NULL,
+            notify_payments TINYINT(1) DEFAULT NULL,
+            notify_daily_summary TINYINT(1) DEFAULT NULL,
+            notify_waiting_list TINYINT(1) DEFAULT NULL,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             UNIQUE KEY uniq_professional_settings_professional (professional_id)
@@ -219,11 +231,21 @@ function ensure_cabinet_schema($mysqli)
     cabinet_add_column_if_missing($mysqli, 'professional_settings', 'default_appointment_location', "VARCHAR(255) DEFAULT NULL AFTER available_weekdays");
     cabinet_add_column_if_missing($mysqli, 'professional_settings', 'default_location_id', "INT UNSIGNED DEFAULT NULL AFTER default_appointment_location");
     cabinet_add_column_if_missing($mysqli, 'professional_settings', 'livekit_enabled', "TINYINT(1) NOT NULL DEFAULT 1 AFTER default_appointment_location");
+    cabinet_add_column_if_missing($mysqli, 'professional_settings', 'video_provider', "VARCHAR(20) NOT NULL DEFAULT 'livekit' AFTER livekit_enabled");
+    cabinet_add_column_if_missing($mysqli, 'professional_settings', 'livekit_recording_enabled', "TINYINT(1) NOT NULL DEFAULT 0 AFTER livekit_enabled");
+    cabinet_add_column_if_missing($mysqli, 'professional_settings', 'livekit_recording_mode', "VARCHAR(20) NOT NULL DEFAULT 'audio' AFTER livekit_recording_enabled");
     cabinet_add_column_if_missing($mysqli, 'professional_settings', 'member_permissions_json', "TEXT DEFAULT NULL AFTER livekit_enabled");
     cabinet_add_column_if_missing($mysqli, 'professional_settings', 'min_booking_notice_days', "INT UNSIGNED DEFAULT NULL AFTER available_weekdays");
     cabinet_add_column_if_missing($mysqli, 'professional_settings', 'max_booking_notice_days', "INT UNSIGNED DEFAULT NULL AFTER min_booking_notice_days");
     cabinet_add_column_if_missing($mysqli, 'professional_settings', 'bonuses_enabled', "TINYINT(1) DEFAULT NULL AFTER max_booking_notice_days");
     cabinet_add_column_if_missing($mysqli, 'professional_settings', 'create_compensation_bonus_on_paid_cancel', "TINYINT(1) DEFAULT NULL AFTER bonuses_enabled");
+    cabinet_add_column_if_missing($mysqli, 'professional_settings', 'initial_calendar_view', "VARCHAR(12) DEFAULT NULL AFTER create_compensation_bonus_on_paid_cancel");
+    cabinet_add_column_if_missing($mysqli, 'professional_settings', 'timezone', "VARCHAR(64) DEFAULT NULL AFTER initial_calendar_view");
+    cabinet_add_column_if_missing($mysqli, 'professional_settings', 'notify_new_appointments', "TINYINT(1) DEFAULT NULL AFTER timezone");
+    cabinet_add_column_if_missing($mysqli, 'professional_settings', 'notify_cancellations', "TINYINT(1) DEFAULT NULL AFTER notify_new_appointments");
+    cabinet_add_column_if_missing($mysqli, 'professional_settings', 'notify_payments', "TINYINT(1) DEFAULT NULL AFTER notify_cancellations");
+    cabinet_add_column_if_missing($mysqli, 'professional_settings', 'notify_daily_summary', "TINYINT(1) DEFAULT NULL AFTER notify_payments");
+    cabinet_add_column_if_missing($mysqli, 'professional_settings', 'notify_waiting_list', "TINYINT(1) DEFAULT NULL AFTER notify_daily_summary");
 
     $tenant_column_targets = [
         'appointments' => "INT UNSIGNED NOT NULL DEFAULT $tenant_id AFTER id",
@@ -313,6 +335,9 @@ function cabinet_default_professional_settings()
         'default_appointment_location' => '',
         'default_location_id' => null,
         'livekit_enabled' => 1,
+        'video_provider' => 'livekit',
+        'livekit_recording_enabled' => 0,
+        'livekit_recording_mode' => 'audio',
         'member_permissions_json' => null,
         'min_booking_notice_days' => 2,
         'max_booking_notice_days' => 40
@@ -328,6 +353,10 @@ function cabinet_member_permission_keys()
         'patients',
         'appointments',
         'statistics',
+        'view_patient_phone',
+        'billing',
+        'billing_own_patients',
+        'reports',
         'private_patient_data',
         'create_appointments',
         'cancel_appointments',
@@ -353,6 +382,10 @@ function cabinet_default_member_permissions_for_role($role)
             'patients' => true,
             'appointments' => true,
             'statistics' => false,
+            'view_patient_phone' => true,
+            'billing' => false,
+            'billing_own_patients' => false,
+            'reports' => false,
             'private_patient_data' => false,
             'create_appointments' => true,
             'cancel_appointments' => true,
@@ -367,6 +400,10 @@ function cabinet_default_member_permissions_for_role($role)
             'patients' => true,
             'appointments' => true,
             'statistics' => true,
+            'view_patient_phone' => true,
+            'billing' => true,
+            'billing_own_patients' => false,
+            'reports' => false,
             'private_patient_data' => false,
             'create_appointments' => true,
             'cancel_appointments' => true,
@@ -381,6 +418,10 @@ function cabinet_default_member_permissions_for_role($role)
             'patients' => false,
             'appointments' => false,
             'statistics' => false,
+            'view_patient_phone' => false,
+            'billing' => false,
+            'billing_own_patients' => false,
+            'reports' => false,
             'private_patient_data' => false,
             'create_appointments' => false,
             'cancel_appointments' => false,
@@ -681,7 +722,8 @@ function cabinet_fetch_professional_settings_row($mysqli, $professional_id)
     $stmt = $mysqli->prepare("
         SELECT appointment_delivery_mode, available_session_types, available_session_durations,
                appointment_start_time, appointment_end_time, break_start_time, break_end_time,
-               available_weekdays, default_appointment_location, default_location_id, livekit_enabled, min_booking_notice_days, max_booking_notice_days
+               available_weekdays, default_appointment_location, default_location_id, livekit_enabled, video_provider,
+               livekit_recording_enabled, livekit_recording_mode, min_booking_notice_days, max_booking_notice_days
         FROM professional_settings
         WHERE tenant_id = ? AND professional_id = ?
         LIMIT 1
@@ -713,6 +755,102 @@ function cabinet_get_effective_professional_settings($mysqli, $professional_id)
     return $settings;
 }
 
+function cabinet_get_professional_preferences($mysqli, $professional_id)
+{
+    ensure_cabinet_schema($mysqli);
+    $tenant_id = current_tenant_id();
+    $professional_id = (int) $professional_id;
+    $global_res = $mysqli->query("SELECT initial_calendar_view FROM payment_settings WHERE tenant_id = $tenant_id LIMIT 1");
+    $global = $global_res ? ($global_res->fetch_assoc() ?: []) : [];
+    $defaults = [
+        'initial_calendar_view' => $global['initial_calendar_view'] ?? 'month',
+        'initial_calendar_view_override' => '',
+        'timezone' => function_exists('tenant_timezone') ? tenant_timezone() : date_default_timezone_get(),
+        'timezone_override' => '',
+        'notify_new_appointments' => 1,
+        'notify_cancellations' => 1,
+        'notify_payments' => 1,
+        'notify_daily_summary' => 1,
+        'notify_waiting_list' => 1,
+    ];
+    if ($professional_id <= 0) return $defaults;
+    $preference_columns = ['initial_calendar_view', 'timezone', 'notify_new_appointments', 'notify_cancellations', 'notify_payments', 'notify_daily_summary', 'notify_waiting_list'];
+    foreach ($preference_columns as $preference_column) {
+        if (!cabinet_column_exists($mysqli, 'professional_settings', $preference_column)) return $defaults;
+    }
+    $stmt = $mysqli->prepare("
+        SELECT initial_calendar_view, timezone, notify_new_appointments, notify_cancellations,
+               notify_payments, notify_daily_summary, notify_waiting_list
+        FROM professional_settings
+        WHERE tenant_id = ? AND professional_id = ? LIMIT 1
+    ");
+    $stmt->bind_param('ii', $tenant_id, $professional_id);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc() ?: [];
+    $allowed_views = ['dashboard', 'week', 'month', 'patients', 'upcoming'];
+    $view_override = in_array($row['initial_calendar_view'] ?? '', $allowed_views, true) ? $row['initial_calendar_view'] : '';
+    $timezone_override = function_exists('app_valid_timezone') && app_valid_timezone($row['timezone'] ?? '') ? $row['timezone'] : '';
+    $defaults['initial_calendar_view_override'] = $view_override;
+    $defaults['initial_calendar_view'] = $view_override ?: $defaults['initial_calendar_view'];
+    $defaults['timezone_override'] = $timezone_override;
+    $defaults['timezone'] = $timezone_override ?: $defaults['timezone'];
+    foreach (['notify_new_appointments', 'notify_cancellations', 'notify_payments', 'notify_daily_summary', 'notify_waiting_list'] as $key) {
+        if (array_key_exists($key, $row) && $row[$key] !== null) {
+            $defaults[$key] = (int) $row[$key] === 1 ? 1 : 0;
+        }
+    }
+    return $defaults;
+}
+
+function cabinet_professional_notification_enabled($mysqli, $professional_id, $notification)
+{
+    $allowed = ['new_appointments', 'cancellations', 'payments', 'daily_summary', 'waiting_list'];
+    $notification = (string) $notification;
+    if (!in_array($notification, $allowed, true)) return true;
+    if (function_exists('plan_feature_enabled_from_db')
+        && !plan_feature_enabled_from_db($mysqli, 'reminders.patient24h', false)) {
+        return false;
+    }
+    $preferences = cabinet_get_professional_preferences($mysqli, (int) $professional_id);
+    return !empty($preferences['notify_' . $notification]);
+}
+
+function cabinet_save_professional_preferences($mysqli, $professional_id, $preferences)
+{
+    ensure_cabinet_schema($mysqli);
+    $tenant_id = current_tenant_id();
+    $professional_id = (int) $professional_id;
+    if ($professional_id <= 0) return false;
+    foreach (['initial_calendar_view', 'timezone', 'notify_new_appointments', 'notify_cancellations', 'notify_payments', 'notify_daily_summary', 'notify_waiting_list'] as $preference_column) {
+        if (!cabinet_column_exists($mysqli, 'professional_settings', $preference_column)) return false;
+    }
+    $allowed_views = ['dashboard', 'week', 'month', 'patients', 'upcoming'];
+    $view = in_array($preferences['initial_calendar_view_override'] ?? '', $allowed_views, true) ? $preferences['initial_calendar_view_override'] : null;
+    $timezone = trim((string) ($preferences['timezone_override'] ?? ''));
+    if ($timezone === '' || !function_exists('app_valid_timezone') || !app_valid_timezone($timezone)) $timezone = null;
+    $new = !empty($preferences['notify_new_appointments']) ? 1 : 0;
+    $cancel = !empty($preferences['notify_cancellations']) ? 1 : 0;
+    $payments = !empty($preferences['notify_payments']) ? 1 : 0;
+    $daily = !empty($preferences['notify_daily_summary']) ? 1 : 0;
+    $waiting = !empty($preferences['notify_waiting_list']) ? 1 : 0;
+    if (function_exists('plan_feature_enabled_from_db')
+        && !plan_feature_enabled_from_db($mysqli, 'reminders.patient24h', false)) {
+        $new = $cancel = $payments = $daily = $waiting = 0;
+    }
+    $stmt = $mysqli->prepare("
+        INSERT INTO professional_settings
+            (tenant_id, professional_id, initial_calendar_view, timezone, notify_new_appointments,
+             notify_cancellations, notify_payments, notify_daily_summary, notify_waiting_list)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE initial_calendar_view = VALUES(initial_calendar_view), timezone = VALUES(timezone),
+            notify_new_appointments = VALUES(notify_new_appointments), notify_cancellations = VALUES(notify_cancellations),
+            notify_payments = VALUES(notify_payments), notify_daily_summary = VALUES(notify_daily_summary),
+            notify_waiting_list = VALUES(notify_waiting_list)
+    ");
+    $stmt->bind_param('iissiiiii', $tenant_id, $professional_id, $view, $timezone, $new, $cancel, $payments, $daily, $waiting);
+    return $stmt->execute();
+}
+
 function cabinet_upsert_professional_settings($mysqli, $professional_id, $settings)
 {
     $tenant_id = current_tenant_id();
@@ -735,6 +873,16 @@ function cabinet_upsert_professional_settings($mysqli, $professional_id, $settin
     $default_appointment_location = trim((string) ($settings['default_appointment_location'] ?? ''));
     $default_location_id = !empty($settings['default_location_id']) ? (int) $settings['default_location_id'] : null;
     $livekit_enabled = !empty($settings['livekit_enabled']) ? 1 : 0;
+    $video_provider = strtolower(trim((string) ($settings['video_provider'] ?? ($livekit_enabled ? 'livekit' : 'manual'))));
+    if (!in_array($video_provider, ['livekit', 'daily', 'manual'], true)) {
+        $video_provider = $livekit_enabled ? 'livekit' : 'manual';
+    }
+    $livekit_enabled = $video_provider === 'manual' ? 0 : 1;
+    $livekit_recording_enabled = !empty($settings['livekit_recording_enabled']) ? 1 : 0;
+    $livekit_recording_mode = (string) ($settings['livekit_recording_mode'] ?? 'audio');
+    if (!in_array($livekit_recording_mode, ['audio', 'audio_video'], true)) {
+        $livekit_recording_mode = 'audio';
+    }
     $min_booking_notice_days = (int) ($settings['min_booking_notice_days'] ?? 2);
     $max_booking_notice_days = (int) ($settings['max_booking_notice_days'] ?? 40);
 
@@ -753,9 +901,12 @@ function cabinet_upsert_professional_settings($mysqli, $professional_id, $settin
             default_appointment_location,
             default_location_id,
             livekit_enabled,
+            video_provider,
+            livekit_recording_enabled,
+            livekit_recording_mode,
             min_booking_notice_days,
             max_booking_notice_days
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
             appointment_delivery_mode = VALUES(appointment_delivery_mode),
             available_session_types = VALUES(available_session_types),
@@ -768,6 +919,9 @@ function cabinet_upsert_professional_settings($mysqli, $professional_id, $settin
             default_appointment_location = VALUES(default_appointment_location),
             default_location_id = VALUES(default_location_id),
             livekit_enabled = VALUES(livekit_enabled),
+            video_provider = VALUES(video_provider),
+            livekit_recording_enabled = VALUES(livekit_recording_enabled),
+            livekit_recording_mode = VALUES(livekit_recording_mode),
             min_booking_notice_days = VALUES(min_booking_notice_days),
             max_booking_notice_days = VALUES(max_booking_notice_days)
     ");
@@ -776,7 +930,7 @@ function cabinet_upsert_professional_settings($mysqli, $professional_id, $settin
     }
 
     $stmt->bind_param(
-        "iisssssssssiiii",
+        "iisssssssssiisisii",
         $tenant_id,
         $professional_id,
         $appointment_delivery_mode,
@@ -790,6 +944,9 @@ function cabinet_upsert_professional_settings($mysqli, $professional_id, $settin
         $default_appointment_location,
         $default_location_id,
         $livekit_enabled,
+        $video_provider,
+        $livekit_recording_enabled,
+        $livekit_recording_mode,
         $min_booking_notice_days,
         $max_booking_notice_days
     );
@@ -839,9 +996,12 @@ function cabinet_seed_professional_settings_from_superadmin($mysqli, $profession
             default_appointment_location,
             default_location_id,
             livekit_enabled,
+            video_provider,
+            livekit_recording_enabled,
+            livekit_recording_mode,
             min_booking_notice_days,
             max_booking_notice_days
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ");
     if (!$stmt) {
         return false;
@@ -858,11 +1018,20 @@ function cabinet_seed_professional_settings_from_superadmin($mysqli, $profession
     $default_appointment_location = trim((string) ($settings['default_appointment_location'] ?? ''));
     $default_location_id = !empty($settings['default_location_id']) ? (int) $settings['default_location_id'] : null;
     $livekit_enabled = !empty($settings['livekit_enabled']) ? 1 : 0;
+    $video_provider = strtolower(trim((string) ($settings['video_provider'] ?? ($livekit_enabled ? 'livekit' : 'manual'))));
+    if (!in_array($video_provider, ['livekit', 'daily', 'manual'], true)) {
+        $video_provider = $livekit_enabled ? 'livekit' : 'manual';
+    }
+    $livekit_recording_enabled = !empty($settings['livekit_recording_enabled']) ? 1 : 0;
+    $livekit_recording_mode = (string) ($settings['livekit_recording_mode'] ?? 'audio');
+    if (!in_array($livekit_recording_mode, ['audio', 'audio_video'], true)) {
+        $livekit_recording_mode = 'audio';
+    }
     $min_booking_notice_days = (int) ($settings['min_booking_notice_days'] ?? 2);
     $max_booking_notice_days = (int) ($settings['max_booking_notice_days'] ?? 40);
 
     $stmt->bind_param(
-        "iisssssssssiiii",
+        "iisssssssssiisisii",
         $tenant_id,
         $professional_id,
         $appointment_delivery_mode,
@@ -876,6 +1045,9 @@ function cabinet_seed_professional_settings_from_superadmin($mysqli, $profession
         $default_appointment_location,
         $default_location_id,
         $livekit_enabled,
+        $video_provider,
+        $livekit_recording_enabled,
+        $livekit_recording_mode,
         $min_booking_notice_days,
         $max_booking_notice_days
     );
@@ -909,7 +1081,7 @@ function cabinet_fetch_professional($mysqli, $professional_id)
     }
 
     $stmt = $mysqli->prepare("
-        SELECT p.id, p.user_id, p.display_name, p.professional_title, p.license_number,
+        SELECT p.id, p.user_id, p.display_name, p.professional_title, p.license_number, p.professional_college,
                p.professional_specialty, p.public_bio, p.public_photo_path, p.public_email, p.public_phone,
                p.instagram_url, p.facebook_url, p.tiktok_url, p.appointment_summary_email_mode,
                u.email AS user_email, u.role AS user_role
@@ -955,7 +1127,7 @@ function cabinet_fetch_public_team_members($mysqli)
     $tenant_id = current_tenant_id();
     $members = [];
     $stmt = $mysqli->prepare("
-        SELECT p.id, p.user_id, p.display_name, p.professional_title, p.license_number, p.professional_specialty,
+        SELECT p.id, p.user_id, p.display_name, p.professional_title, p.license_number, p.professional_college, p.professional_specialty,
                p.public_bio, p.public_photo_path, p.public_email, p.public_phone,
                p.instagram_url, p.facebook_url, p.tiktok_url,
                u.role AS user_role, ps.member_permissions_json

@@ -3,6 +3,7 @@ session_start();
 require_once '../db.php';
 require_once '../redsys/apiRedsys.php';
 require_once '../payment_helpers.php';
+require_once '../invoice_helpers.php';
 require_once '../dashboard_config_helpers.php';
 header('Content-Type: application/json');
 
@@ -111,6 +112,7 @@ if ($action === 'create_redsys_form') {
     $stmt = $mysqli->prepare("
         SELECT a.id, a.user_id, a.appointment_date, a.appointment_time, a.consultation_type, a.service_type,
                COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes,
+               a.base_price_amount, a.discount_percentage, a.final_price_amount,
                so.price AS service_price, s.name AS service_name,
                COALESCE(a.payment_status, 'pending') AS payment_status,
                u.name
@@ -173,6 +175,28 @@ if ($action === 'create_redsys_form') {
 if ((float) $amount_value <= 0) {
     echo json_encode(['success' => false, 'error' => 'El importe no es valido']);
     exit;
+}
+
+if (invoice_billing_enabled($mysqli)) {
+    if ($purchase_type === 'appointment') {
+        $invoice_precheck = invoice_emit_for_appointment($mysqli, $appointment_id, $payment_method, true);
+    } else {
+        $tax = invoice_tax_settings($mysqli, 0, (int) $attempt_user_id);
+        $invoice_precheck = invoice_precheck_for_data($mysqli, [
+            'user_id' => (int) $attempt_user_id,
+            'total' => (float) $amount_value,
+            'vat_rate' => $tax['rate'],
+            'tax_system' => $tax['system'],
+            'tax_exemption_reason' => $tax['exemption_reason'],
+        ]);
+    }
+    if (empty($invoice_precheck['success'])) {
+        echo json_encode([
+            'success' => false,
+            'error' => $invoice_precheck['error'] ?? 'No se puede iniciar el pago porque la factura no supera la validación previa.',
+        ]);
+        exit;
+    }
 }
 
 $amount = number_format((float) $amount_value, 2, '.', '');

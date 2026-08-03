@@ -28,7 +28,8 @@ function tenant_reserved_path_segments()
         'google_oauth_start-php',
         'google_oauth_callback-php',
         'testlivekit-php',
-        'livekit_call-php'
+        'livekit_call-php',
+        'migration-php'
     ];
 }
 
@@ -244,6 +245,17 @@ function tenant_request_is_install_path()
     return tenant_normalize_key($parts[0] ?? '') === 'install';
 }
 
+function tenant_request_is_migration_path()
+{
+    $parts = tenant_path_segments();
+    $base = tenant_app_base_path();
+    if ($base !== '' && tenant_normalize_key($parts[0] ?? '') === $base) {
+        array_shift($parts);
+    }
+    $last = tenant_normalize_key((string) end($parts));
+    return $last === 'migration-php';
+}
+
 function tenant_abort_request($message, $status = 404)
 {
     if (!headers_sent()) {
@@ -272,23 +284,35 @@ function tenant_ensure_table($mysqli)
             id INT UNSIGNED NOT NULL AUTO_INCREMENT,
             tenant_key VARCHAR(80) NOT NULL,
             tenant_name VARCHAR(160) NOT NULL,
+            signup_email VARCHAR(190) DEFAULT NULL,
             db_name VARCHAR(80) NOT NULL DEFAULT 'sgpraxis',
             app_name VARCHAR(160) NOT NULL DEFAULT 'SimplyGest Praxis',
             sector_texts_key VARCHAR(32) NOT NULL DEFAULT 'psicologia',
-            plan_key VARCHAR(32) NOT NULL DEFAULT 'novus',
+            plan_key VARCHAR(32) NOT NULL DEFAULT 'summum',
             dashboard_config_mode VARCHAR(16) NOT NULL DEFAULT 'advanced',
             public_site_enabled TINYINT(1) NOT NULL DEFAULT 0,
-            timezone VARCHAR(64) NOT NULL DEFAULT 'Atlantic/Canary',
+            timezone VARCHAR(64) NOT NULL DEFAULT 'Europe/Madrid',
+            onboarding_completed TINYINT(1) NOT NULL DEFAULT 0,
+            onboarding_completed_at DATETIME DEFAULT NULL,
+            onboarding_version SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+            onboarding_current_step TINYINT UNSIGNED NOT NULL DEFAULT 1,
             max_booking_days SMALLINT UNSIGNED NOT NULL DEFAULT 40,
             status ENUM('pending', 'installing', 'active', 'suspended', 'disabled') NOT NULL DEFAULT 'active',
+            registration_status TINYINT UNSIGNED NOT NULL DEFAULT 0,
+            trial_days SMALLINT UNSIGNED NOT NULL DEFAULT 15,
+            registered_at DATETIME DEFAULT NULL,
+            subscription_granted TINYINT(1) NOT NULL DEFAULT 0,
+            subscription_granted_until DATETIME DEFAULT NULL,
             installed_at DATETIME DEFAULT NULL,
             notes TEXT DEFAULT NULL,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
             UNIQUE KEY uq_tenants_tenant_key (tenant_key),
+            UNIQUE KEY uq_tenants_signup_email (signup_email),
             KEY idx_tenants_db_name (db_name),
             KEY idx_tenants_status (status),
+            KEY idx_tenants_registration_status (registration_status),
             KEY idx_tenants_plan_key (plan_key),
             KEY idx_tenants_sector_texts_key (sector_texts_key)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
@@ -306,6 +330,215 @@ function tenant_ensure_table($mysqli)
             KEY idx_tenant_domains_tenant (tenant_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     ");
+}
+
+function tenant_access_restriction_message($tenant)
+{
+    $status = strtolower((string) ($tenant['status'] ?? 'active'));
+    if ($status === 'disabled') {
+        return 'Cuenta desactivada. Contacta con SimplyGest Praxis para revisar el acceso.';
+    }
+    if ($status === 'suspended') {
+        return 'Cuenta suspendida temporalmente. Contacta con SimplyGest Praxis para revisar el acceso.';
+    }
+
+    $registration_status = (int) ($tenant['registration_status'] ?? 0);
+    if ($registration_status === 1) {
+        return '';
+    }
+    if ($registration_status === 2) {
+        return 'La suscripción de este tenant requiere revisión. Contacta con SimplyGest Praxis para reactivar el acceso.';
+    }
+    if ($registration_status === 3) {
+        return 'Cuenta cancelada. Contacta con SimplyGest Praxis si quieres reactivar el servicio.';
+    }
+
+    $trial_started_at = trim((string) ($tenant['installed_at'] ?? ''));
+    if ($trial_started_at === '') {
+        $trial_started_at = trim((string) ($tenant['created_at'] ?? ''));
+    }
+    if ($trial_started_at === '') {
+        return '';
+    }
+
+    $trial_started_ts = strtotime($trial_started_at);
+    if (!$trial_started_ts) {
+        return '';
+    }
+
+    $trial_days = (int) ($tenant['trial_days'] ?? 15);
+    if ($trial_days <= 0) {
+        $trial_days = 15;
+    }
+
+    $expires_ts = strtotime('+' . $trial_days . ' days', $trial_started_ts);
+    if ($expires_ts && time() >= $expires_ts) {
+        return 'La prueba gratuita de ' . $trial_days . ' días ha finalizado';
+    }
+
+    return '';
+}
+
+function tenant_convert_expired_trial_to_initium($mysqli, $tenant)
+{
+    if (!is_array($tenant) || (int) ($tenant['registration_status'] ?? 0) !== 0) {
+        return $tenant;
+    }
+
+    $trial_started_at = trim((string) ($tenant['installed_at'] ?? ''));
+    if ($trial_started_at === '') {
+        $trial_started_at = trim((string) ($tenant['created_at'] ?? ''));
+    }
+    $trial_started_ts = $trial_started_at !== '' ? strtotime($trial_started_at) : false;
+    $trial_days = max(1, (int) ($tenant['trial_days'] ?? 15));
+    $expires_ts = $trial_started_ts ? strtotime('+' . $trial_days . ' days', $trial_started_ts) : false;
+    if (!$expires_ts || time() < $expires_ts) {
+        return $tenant;
+    }
+
+    $tenant_id = (int) ($tenant['id'] ?? 0);
+    if ($tenant_id <= 0) {
+        return $tenant;
+    }
+
+    $mysqli->begin_transaction();
+    try {
+        $stmt = $mysqli->prepare("
+            UPDATE tenants
+            SET plan_key = 'initium',
+                registration_status = 1,
+                status = 'active'
+            WHERE id = ? AND registration_status = 0
+        ");
+        $stmt->bind_param('i', $tenant_id);
+        $stmt->execute();
+
+        $mysqli->commit();
+    } catch (Throwable $exception) {
+        $mysqli->rollback();
+        return $tenant;
+    }
+
+    $tenant['plan_key'] = 'initium';
+    $tenant['registration_status'] = 1;
+    $tenant['status'] = 'active';
+    return $tenant;
+}
+
+function tenant_convert_expired_granted_plan_to_initium($mysqli, $tenant)
+{
+    if (!is_array($tenant) || (int) ($tenant['subscription_granted'] ?? 0) !== 1) return $tenant;
+    $granted_until = trim((string) ($tenant['subscription_granted_until'] ?? ''));
+    if ($granted_until === '' || strtotime($granted_until) === false || time() < strtotime($granted_until)) return $tenant;
+
+    $tenant_id = (int) ($tenant['id'] ?? 0);
+    if ($tenant_id <= 0) return $tenant;
+    try {
+        $stmt = $mysqli->prepare("UPDATE tenants
+            SET plan_key = 'initium', subscription_granted = 0, subscription_granted_until = NULL
+            WHERE id = ? AND subscription_granted = 1");
+        $stmt->bind_param('i', $tenant_id);
+        $stmt->execute();
+        $tenant['plan_key'] = 'initium';
+        $tenant['subscription_granted'] = 0;
+        $tenant['subscription_granted_until'] = null;
+    } catch (Throwable $exception) {
+        error_log('Conversión de plan gratuito finalizado: ' . $exception->getMessage());
+    }
+    return $tenant;
+}
+
+function tenant_convert_ended_subscription_to_initium($mysqli, $tenant)
+{
+    if (!is_array($tenant) || (int) ($tenant['id'] ?? 0) <= 0) return $tenant;
+
+    try {
+        $table = $mysqli->query("SHOW TABLES LIKE 'tenant_subscriptions'");
+        if (!$table || $table->num_rows === 0) return $tenant;
+
+        $tenant_id = (int) $tenant['id'];
+        $stmt = $mysqli->prepare("SELECT id FROM tenant_subscriptions
+            WHERE tenant_id = ? AND environment = 'production' AND cancel_at_period_end = 1
+              AND current_period_ends_at IS NOT NULL AND current_period_ends_at <= NOW()
+              AND status <> 'expired'
+            ORDER BY current_period_ends_at DESC, id DESC LIMIT 1");
+        $stmt->bind_param('i', $tenant_id);
+        $stmt->execute();
+        $ended = $stmt->get_result()->fetch_assoc();
+        if (!$ended) return $tenant;
+
+        $ended_id = (int) $ended['id'];
+        $mysqli->begin_transaction();
+        $stmt = $mysqli->prepare("UPDATE tenant_subscriptions SET status = 'expired' WHERE id = ?");
+        $stmt->bind_param('i', $ended_id);
+        $stmt->execute();
+
+        $stmt = $mysqli->prepare("SELECT id FROM tenant_subscriptions
+            WHERE tenant_id = ? AND environment = 'production' AND id > ? AND cancel_at_period_end = 0
+              AND status IN ('trialing', 'pending', 'active', 'past_due')
+            ORDER BY id DESC LIMIT 1");
+        $stmt->bind_param('ii', $tenant_id, $ended_id);
+        $stmt->execute();
+        $replacement = $stmt->get_result()->fetch_assoc();
+        if (!$replacement) {
+            $stmt = $mysqli->prepare("UPDATE tenants SET plan_key = 'initium' WHERE id = ?");
+            $stmt->bind_param('i', $tenant_id);
+            $stmt->execute();
+            $tenant['plan_key'] = 'initium';
+        }
+        $mysqli->commit();
+    } catch (Throwable $exception) {
+        try { $mysqli->rollback(); } catch (Throwable $ignored) {}
+        error_log('Conversión de suscripción finalizada: ' . $exception->getMessage());
+    }
+    return $tenant;
+}
+
+function app_valid_timezone($timezone)
+{
+    $timezone = trim((string) $timezone);
+    return $timezone !== '' && in_array($timezone, timezone_identifiers_list(), true);
+}
+
+function tenant_timezone($tenant = null)
+{
+    if (!is_array($tenant)) {
+        $tenant = function_exists('current_tenant') ? current_tenant() : null;
+    }
+    $timezone = is_array($tenant) ? (string) ($tenant['timezone'] ?? '') : '';
+    if (app_valid_timezone($timezone)) {
+        return $timezone;
+    }
+    $configured = function_exists('psicologic_config_value') ? (string) psicologic_config_value('timezone', '') : '';
+    if (app_valid_timezone($configured)) {
+        return $configured;
+    }
+    return 'Europe/Madrid';
+}
+
+function app_timezone_display_label($timezone)
+{
+    $timezone = app_valid_timezone($timezone) ? $timezone : tenant_timezone();
+    $labels = [
+        'Europe/Madrid' => 'hora peninsular',
+        'Atlantic/Canary' => 'hora de Canarias',
+        'UTC' => 'UTC'
+    ];
+    return $labels[$timezone] ?? $timezone;
+}
+
+function appointment_datetime_in_timezone($date, $time, $timezone = null)
+{
+    $timezone = app_valid_timezone($timezone) ? $timezone : tenant_timezone();
+    $date = trim((string) $date);
+    $time = trim((string) $time);
+    if ($date === '') {
+        $date = date('Y-m-d');
+    }
+    if ($time === '') {
+        $time = '00:00:00';
+    }
+    return new DateTimeImmutable($date . ' ' . $time, new DateTimeZone($timezone));
 }
 
 function tenant_domain_normalize($domain)
@@ -407,7 +640,7 @@ function tenant_plan_feature_enabled($plan_key, $feature, $default = false)
         $plan_key = 'default';
     }
 
-    $allowed = ['default', 'novus', 'magister', 'summum'];
+    $allowed = ['default', 'initium', 'novus', 'magister', 'summum'];
     if (!in_array($plan_key, $allowed, true)) {
         $plan_key = 'default';
     }
@@ -515,6 +748,10 @@ function tenant_bootstrap_current($mysqli)
         tenant_abort_request('No existe ningún tenant configurado para "' . $tenant_key . '".', 404);
     }
 
+    $tenant = tenant_convert_expired_trial_to_initium($mysqli, $tenant);
+    $tenant = tenant_convert_expired_granted_plan_to_initium($mysqli, $tenant);
+    $tenant = tenant_convert_ended_subscription_to_initium($mysqli, $tenant);
+
     define('CURRENT_TENANT_ID', (int) ($tenant['id'] ?? 1));
     define('CURRENT_TENANT_KEY', tenant_normalize_key($tenant['tenant_key'] ?? $tenant_key));
     define('CURRENT_TENANT_CUSTOM_DOMAIN', $custom_domain);
@@ -534,7 +771,7 @@ function tenant_bootstrap_current($mysqli)
     }
 
     $status = strtolower((string) ($tenant['status'] ?? 'active'));
-    if (PHP_SAPI !== 'cli' && in_array($status, ['pending', 'installing'], true) && !tenant_request_is_install_path()) {
+    if (PHP_SAPI !== 'cli' && in_array($status, ['pending', 'installing'], true) && !tenant_request_is_install_path() && !tenant_request_is_migration_path()) {
         if (tenant_request_expects_json()) {
             if (!headers_sent()) {
                 http_response_code(409);
@@ -551,6 +788,14 @@ function tenant_bootstrap_current($mysqli)
             header('Location: install/index.php', true, 302);
         }
         exit;
+    }
+
+    if (PHP_SAPI !== 'cli' && !tenant_request_is_migration_path()) {
+        $restriction_message = tenant_access_restriction_message($tenant);
+        if ($restriction_message !== '') {
+            tenant_clear_authenticated_session();
+            tenant_abort_request($restriction_message, 402);
+        }
     }
 }
 

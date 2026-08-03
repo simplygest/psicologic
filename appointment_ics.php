@@ -49,13 +49,14 @@ if (($appointment['consultation_type'] ?? '') === 'online' && $online_session_ur
     $description .= "\nLugar: " . $online_session_url;
 }
 
+$timezone = tenant_timezone();
 $start = $appointment['appointment_date'] . ' ' . $appointment['appointment_time'];
-$end = (new DateTimeImmutable($start, new DateTimeZone('Atlantic/Canary')))
+$end = appointment_datetime_in_timezone($appointment['appointment_date'], $appointment['appointment_time'], $timezone)
     ->modify('+' . (int) ($appointment['duration_minutes'] ?? 60) . ' minutes')
     ->format('Y-m-d H:i:s');
 
 $uid = 'appointment-' . hash('sha256', app_current_tenant_key() . ':' . $token) . '@simplygest-praxis';
-$ics = caldav_build_ics($uid, $summary, $description, $start, $end, 'Atlantic/Canary', (($appointment['consultation_type'] ?? '') === 'online' ? $online_session_url : ''));
+$ics = caldav_build_ics($uid, $summary, $description, $start, $end, $timezone, (($appointment['consultation_type'] ?? '') === 'online' ? $online_session_url : ''));
 $filename = 'cita-' . date('Ymd-His', strtotime($start)) . '.ics';
 
 header('Content-Type: text/calendar; charset=utf-8');

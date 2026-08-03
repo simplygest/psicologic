@@ -2,3 +2,5 @@ config.local.php
 tenant-install.json
 tenant-install.php
 deploy-logs/
+docx-editor-test/node_modules/
+drawing-editor-test/node_modules/

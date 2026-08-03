@@ -1,0 +1,162 @@
+{
+  "version": 1,
+  "key": "generico",
+  "name": "Otro",
+  "description": "Configuración genérica para empresas y profesionales de otros sectores.",
+  "labels": {
+    "patient": {
+      "singular": "cliente",
+      "plural": "clientes",
+      "titleSingular": "Cliente",
+      "titlePlural": "Clientes"
+    },
+    "professional": {
+      "singular": "profesional",
+      "plural": "profesionales",
+      "titleSingular": "Profesional",
+      "titlePlural": "Profesionales"
+    },
+    "organization": {
+      "singular": "empresa",
+      "plural": "empresas",
+      "titleSingular": "Empresa",
+      "titlePlural": "Empresas"
+    },
+    "appointment": {
+      "singular": "cita",
+      "plural": "citas",
+      "titleSingular": "Cita",
+      "titlePlural": "Citas"
+    },
+    "session": {
+      "singular": "sesión",
+      "plural": "sesiones",
+      "titleSingular": "Sesión",
+      "titlePlural": "Sesiones"
+    },
+    "workPlan": {
+      "singular": "plan de trabajo",
+      "plural": "planes de trabajo",
+      "titleSingular": "Plan de trabajo",
+      "titlePlural": "Planes de trabajo"
+    },
+    "task": {
+      "singular": "tarea",
+      "plural": "tareas",
+      "titleSingular": "Tarea",
+      "titlePlural": "Tareas"
+    },
+    "evolution": {
+      "singular": "seguimiento",
+      "plural": "seguimientos",
+      "titleSingular": "Seguimiento",
+      "titlePlural": "Seguimientos"
+    },
+    "problem": {
+      "singular": "motivo",
+      "plural": "motivos",
+      "titleSingular": "Motivo",
+      "titlePlural": "Motivos"
+    },
+    "evaluation": {
+      "singular": "cuestionario",
+      "plural": "cuestionarios",
+      "titleSingular": "Cuestionario",
+      "titlePlural": "Cuestionarios"
+    },
+    "technique": {
+      "singular": "método",
+      "plural": "métodos",
+      "titleSingular": "Método",
+      "titlePlural": "Métodos"
+    },
+    "resource": {
+      "singular": "recurso",
+      "plural": "recursos",
+      "titleSingular": "Recurso",
+      "titlePlural": "Recursos"
+    },
+    "goal": {
+      "singular": "objetivo",
+      "plural": "objetivos",
+      "titleSingular": "Objetivo",
+      "titlePlural": "Objetivos"
+    }
+  },
+  "clinicalTerms": {
+    "diagnosis": "motivo",
+    "treatment": "servicio",
+    "exercise": "tarea",
+    "followUp": "seguimiento",
+    "discharge": "finalización"
+  },
+  "services": {
+    "individual": "Individual",
+    "couple": "Compartido",
+    "family": "Grupo reducido",
+    "group": "Grupo"
+  },
+  "portal": {
+    "bookingCta": "Reserva tu cita",
+    "myAppointments": "Mis citas",
+    "myTasks": "Mis tareas"
+  },
+  "reports": {
+    "internalPatientReport": "Informe interno de cliente",
+    "patientReport": "Informe para cliente"
+  },
+  "featureHints": {
+    "workPlan": true,
+    "patientPortal": true,
+    "clinicalEvolution": true,
+    "sessionFiles": true
+  },
+  "appointmentServices": [
+    {
+      "key": "consultation",
+      "label": "Consulta",
+      "name": "Consulta",
+      "enabledByDefault": true
+    },
+    {
+      "key": "advice",
+      "label": "Asesoramiento",
+      "name": "Asesoramiento",
+      "enabledByDefault": false
+    },
+    {
+      "key": "meeting",
+      "label": "Reunión",
+      "name": "Reunión",
+      "enabledByDefault": false
+    },
+    {
+      "key": "other",
+      "label": "Otro servicio",
+      "name": "Otro servicio",
+      "enabledByDefault": false
+    }
+  ],
+  "appointmentDurations": [
+    {
+      "minutes": 30,
+      "label": "30 minutos",
+      "enabledByDefault": false
+    },
+    {
+      "minutes": 45,
+      "label": "45 minutos",
+      "enabledByDefault": false
+    },
+    {
+      "minutes": 60,
+      "label": "60 minutos",
+      "enabledByDefault": true
+    },
+    {
+      "minutes": 90,
+      "label": "90 minutos",
+      "enabledByDefault": false
+    }
+  ]
+}

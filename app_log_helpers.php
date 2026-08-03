@@ -87,3 +87,53 @@ function app_log($mysqli, array $data)
     }
 }
 
+function app_log_sensitive_access($mysqli, array $data)
+{
+    $patient_id = (int) ($data['patient_id'] ?? 0);
+    if ($patient_id <= 0) {
+        return false;
+    }
+
+    $resource_type = substr(trim((string) ($data['resource_type'] ?? 'clinical_record')), 0, 40);
+    $resource_id = (int) ($data['resource_id'] ?? 0);
+    $metadata = is_array($data['metadata'] ?? null) ? $data['metadata'] : [];
+    $metadata['resource_type'] = $resource_type;
+    if ($resource_id > 0) {
+        $metadata['resource_id'] = $resource_id;
+    }
+
+    return app_log($mysqli, [
+        'action' => substr(trim((string) ($data['action'] ?? 'sensitive_resource_accessed')), 0, 80),
+        'status' => 'ok',
+        'target_type' => 'patient',
+        'target_id' => $patient_id,
+        'title' => trim((string) ($data['title'] ?? 'Acceso a información sensible')),
+        'message' => trim((string) ($data['message'] ?? '')),
+        'metadata' => $metadata
+    ]);
+}
+
+function app_log_normalize_comparable_value($value)
+{
+    if ($value === null) {
+        return '';
+    }
+    if (is_bool($value)) {
+        return $value ? '1' : '0';
+    }
+    if (is_float($value) || is_int($value)) {
+        return rtrim(rtrim(number_format((float) $value, 6, '.', ''), '0'), '.');
+    }
+    return trim((string) $value);
+}
+
+function app_log_changed_field_labels(array $previous, array $current, array $labels)
+{
+    $changed = [];
+    foreach ($labels as $field => $label) {
+        if (app_log_normalize_comparable_value($previous[$field] ?? null) !== app_log_normalize_comparable_value($current[$field] ?? null)) {
+            $changed[] = (string) $label;
+        }
+    }
+    return array_values(array_unique($changed));
+}

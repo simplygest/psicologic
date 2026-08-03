@@ -1,0 +1,25 @@
+{
+  "name": "sgpraxis-docx-editor-test",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "build": "esbuild src/main.jsx --bundle --format=esm --target=es2020 --outdir=../js/docx-editor-test --loader:.woff=file --loader:.woff2=file --loader:.ttf=file --loader:.png=file --loader:.svg=file"
+  },
+  "dependencies": {
+    "@eigenpal/docx-editor-react": "^1.9.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "prosemirror-commands": "^1.7.1",
+    "prosemirror-dropcursor": "^1.8.2",
+    "prosemirror-history": "^1.4.1",
+    "prosemirror-keymap": "^1.2.3",
+    "prosemirror-model": "^1.25.2",
+    "prosemirror-state": "^1.4.3",
+    "prosemirror-tables": "^1.8.1",
+    "prosemirror-transform": "^1.10.4",
+    "prosemirror-view": "^1.40.1"
+  },
+  "devDependencies": {
+    "esbuild": "0.17.19"
+  }
+}

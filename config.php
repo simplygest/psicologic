@@ -71,6 +71,29 @@ define('GOOGLE_OAUTH_CLIENT_ID', psicologic_config_value('google_oauth_client_id
 define('GOOGLE_OAUTH_CLIENT_SECRET', psicologic_config_value('google_oauth_client_secret', ''));
 $google_oauth_base_url = trim((string) psicologic_config_value('google_oauth_base_url', ''), " \t\n\r\0\x0B/");
 define('GOOGLE_OAUTH_BASE_URL', $google_oauth_base_url !== '' ? $google_oauth_base_url . '/' : '');
+$microsoft_oauth_base_url = trim((string) psicologic_config_value('microsoft_oauth_base_url', ''), " \t\n\r\0\x0B/");
+define('MICROSOFT_OAUTH_CLIENT_ID', psicologic_config_value('microsoft_oauth_client_id', ''));
+define('MICROSOFT_OAUTH_CLIENT_SECRET', psicologic_config_value('microsoft_oauth_client_secret', ''));
+define('MICROSOFT_OAUTH_BASE_URL', $microsoft_oauth_base_url !== '' ? $microsoft_oauth_base_url . '/' : '');
+define('AUTOFIRMA_PATIENT_SIGNING_ENABLED', (bool) psicologic_config_value('autofirma_patient_signing_enabled', true));
+define('RECAPTCHA_SITE_KEY', trim((string) psicologic_config_value('recaptcha_site_key', '')));
+define('RECAPTCHA_SECRET_KEY', trim((string) psicologic_config_value('recaptcha_secret_key', '')));
+define('BRAINTREE_ENVIRONMENT', strtolower(trim((string) psicologic_config_value('braintree_environment', 'production'))));
+define('BRAINTREE_SANDBOX_MERCHANT_ID', trim((string) psicologic_config_value('braintree_sandbox_merchant_id', getenv('BRAINTREE_SANDBOX_MERCHANT_ID') ?: '')));
+define('BRAINTREE_SANDBOX_PUBLIC_KEY', trim((string) psicologic_config_value('braintree_sandbox_public_key', getenv('BRAINTREE_SANDBOX_PUBLIC_KEY') ?: '')));
+define('BRAINTREE_SANDBOX_PRIVATE_KEY', trim((string) psicologic_config_value('braintree_sandbox_private_key', getenv('BRAINTREE_SANDBOX_PRIVATE_KEY') ?: '')));
+define('BRAINTREE_PRODUCTION_MERCHANT_ID', trim((string) psicologic_config_value('braintree_production_merchant_id', getenv('BRAINTREE_PRODUCTION_MERCHANT_ID') ?: '')));
+define('BRAINTREE_PRODUCTION_PUBLIC_KEY', trim((string) psicologic_config_value('braintree_production_public_key', getenv('BRAINTREE_PRODUCTION_PUBLIC_KEY') ?: '')));
+define('BRAINTREE_PRODUCTION_PRIVATE_KEY', trim((string) psicologic_config_value('braintree_production_private_key', getenv('BRAINTREE_PRODUCTION_PRIVATE_KEY') ?: '')));
+define('BRAINTREE_MERCHANT_ACCOUNT_ID', trim((string) psicologic_config_value('braintree_merchant_account_id', 'simplygestcloud2')));
+define('VERIFACTU_DEVELOPER_NAME', trim((string) psicologic_config_value('verifactu_developer_name', 'SimplyGest Software SLU')));
+define('VERIFACTU_DEVELOPER_NIF', trim((string) psicologic_config_value('verifactu_developer_nif', 'B76780022')));
+define('VERIFACTU_SYSTEM_ID', trim((string) psicologic_config_value('verifactu_system_id', 'SP')));
+define('VERIFACTU_SYSTEM_VERSION', trim((string) psicologic_config_value('verifactu_system_version', '1.0')));
 
-// Set timezone
-date_default_timezone_set(psicologic_config_value('timezone', 'Atlantic/Canary'));
+// Set a safe process timezone. Tenant-specific scheduling uses tenants.timezone.
+$configured_timezone = (string) psicologic_config_value('timezone', 'Europe/Madrid');
+if ($configured_timezone === '' || !in_array($configured_timezone, DateTimeZone::listIdentifiers(), true)) {
+    $configured_timezone = 'Europe/Madrid';
+}
+date_default_timezone_set($configured_timezone);

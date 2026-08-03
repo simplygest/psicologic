@@ -41,6 +41,14 @@ $showcase_cards = [
         'placeholder_text' => 'Colores, logo y ventanas adaptadas',
         'accent' => '#00b8d9',
     ],
+    [
+        'title' => 'Cuestionarios personalizados',
+        'text' => 'Diseña cuestionarios propios con preguntas abiertas, respuestas únicas o múltiples, escalas y corrección configurable. Compártelos con tu equipo y utilízalos con tus pacientes o clientes en el plan Summum.',
+        'image_path' => 'uploads/global/landing/showcase/cuestionarios.webp',
+        'placeholder_title' => 'Cuestionarios personalizados',
+        'placeholder_text' => 'Diseña preguntas, respuestas y escalas',
+        'accent' => '#7c5cbf',
+    ],
 ];
 $showcase_focus_cards = [
     'default' => [
@@ -399,6 +407,12 @@ function praxis_detail_groups($person_plural, $professional_plural, $knowledge_l
         ],
         'Documentación e informes' => [
             'Documentos, cuestionarios y archivos en una sola gestión con filtros.',
+            'Constructor de cuestionarios personalizados con distintos tipos de pregunta, privacidad por profesional y vista previa en Summum.',
+            'Editor online de documentos y pizarra de dibujo integrados en el plan Summum.',
+            'Firma online de documentos e informes con certificado.',
+            'Consentimientos y documentos legales con registro de aceptación externa en todos los planes.',
+            'Plantillas personalizables, PDF autorrellenados y firma manuscrita presencial desde Magister.',
+            'Asignación automática por servicio, firma remota desde el portal y AutoFirma en Summum.',
             'Disponibilidad individual en portal privado y control de nota/resultado visible.',
             'Informes generados por la app y plantillas propias subidas por el especialista.',
             'Coste gratuito, incluido o de pago, con estado pendiente/pagado.',
@@ -409,10 +423,12 @@ function praxis_detail_groups($person_plural, $professional_plural, $knowledge_l
             'Importación de tareas, pautas o recomendaciones de forma global, por técnica o una a una.',
         ],
         'Gestión del centro' => [
+            'Plan Initium gratuito para empezar con hasta 50 pacientes/clientes y 20 citas por semana.',
             'Personaliza tu app y el portal con tu logo y color preferido.',
-            'Dominio propio personalizado para centros con plan Summum.',
+            'Usa tu propio dominio o subdominio para acceder a la aplicación en el plan Summum.',
             'Equipo de ' . $professional_plural . ' configurable, asignación de ' . $person_plural . ' y permisos personalizados para miembros del equipo.',
             'Diferentes tipos y permisos para los miembros del personal: recepcionista, administración, profesional...',
+            'Control horario de entradas, salidas y descansos para los miembros del equipo en Summum.',
             'Bonos, pagos online, invitaciones con QR y recordatorios.',
             'Datos fiscales preparados para facturación cuando el plan lo permite.',
         ],
@@ -1041,12 +1057,17 @@ $default_detail_groups = $detail_profiles['psicologia'];
                 <img src="<?= htmlspecialchars($full_logo_url, ENT_QUOTES, 'UTF-8') ?>" alt="SimplyGest Praxis" class="sg-brand-logo">
             </a>
             <div class="d-none d-md-flex align-items-center gap-4">
-                <a class="sg-nav-link" href="#caracteristicas">Características</a>
+                <a class="sg-nav-link" href="./">Inicio</a>
                 <a class="sg-nav-link" href="#sectores">Sectores</a>
-                <a class="sg-nav-link" href="#detalle">Detalle</a>
                 <a class="sg-nav-link" href="app-plans.php">Planes</a>
+                <a class="sg-nav-link" href="acceso.php">Acceder</a>
+                <a class="btn btn-primary btn-sm" href="signup.php">Probar 15 d&iacute;as</a>
             </div>
-            <a class="sg-nav-link sg-mobile-plans-link d-md-none" href="app-plans.php">Planes</a>
+            <div class="d-flex d-md-none align-items-center gap-3">
+                <a class="sg-nav-link sg-mobile-plans-link" href="app-plans.php">Planes</a>
+                <a class="sg-nav-link" href="acceso.php" title="Acceso profesional"><i class="bi bi-person"></i></a>
+                <a class="btn btn-primary btn-sm" href="signup.php">Probar</a>
+            </div>
         </div>
     </nav>
 
@@ -1229,6 +1250,12 @@ $default_detail_groups = $detail_profiles['psicologia'];
                                 <div class="sg-feature-card">
                                     <h3>Más adaptable que una agenda clásica</h3>
                                     <p>Puede funcionar como calendario de reservas, gestor de personas atendidas, gestor documental, portal privado y soporte de conocimiento técnico.</p>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <div class="sg-feature-card">
+                                    <h3>Cuestionarios creados por ti</h3>
+                                    <p>En Summum puedes diseñar cuestionarios propios con preguntas abiertas, respuesta única o múltiple, escalas, puntuación y respuestas correctas; privados para un profesional o compartidos con todo el equipo.</p>
                                 </div>
                             </div>
                         </div>

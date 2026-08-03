@@ -485,6 +485,15 @@ git config --global --add safe.directory C:/Sete/psicologic
   - Se anaden las columnas `patient_profiles.background_notes` y `patient_profiles.support_network_notes`.
   - Los nuevos campos se incluyen en los informes generados; `Notas internas` queda limitada al informe interno.
   - La carga parcial de calendario/servicios ya no reemplaza `PAYMENT_SETTINGS`, sino que mezcla los valores recibidos, para no ocultar `Facturas` tras perder `billing_enabled`.
+- Legal/RGPD:
+  - Configuracion > Legal incorpora `Consentimientos y documentos legales` para subir plantillas PDF por tenant.
+  - Cada plantilla puede marcarse como activa y obligatoria.
+  - La ficha del paciente incorpora la pestana `Consentimientos`, separada de `Documentacion` y accesible sin permiso de datos clinicos privados.
+  - Cada consentimiento puede marcarse como aceptado/firmado fuera de SGPraxis o guardar el PDF firmado definitivo.
+  - Los consentimientos pueden asignarse opcionalmente a servicios globales desde Configuracion > Legal.
+  - El mapeo se guarda en `service_legal_documents`; si un paciente tiene una cita no cancelada del servicio, el consentimiento pasa a mostrarse y contabilizarse como requerido.
+  - La columna `Obs.` de los listados de pacientes muestra aviso si faltan consentimientos obligatorios.
+  - Nuevas tablas: `legal_documents`, `service_legal_documents` y `patient_legal_documents`.
 - Facturacion de pacientes:
   - Si la facturacion esta activa, la ficha del paciente muestra la pestana `Datos Facturacion`.
   - Permite marcar `Usar datos fiscales diferentes para las facturas` y capturar nombre, NIF, email, telefono y direccion alternativos.
@@ -497,3 +506,247 @@ git config --global --add safe.directory C:/Sete/psicologic
 2. Abrir este archivo.
 3. Pedir a Codex: "Lee NOTAS-CODEX.md y seguimos con SimplyGest Praxis".
 4. Si Git bloquea el repo por ownership, ejecutar el comando `safe.directory` indicado arriba.
+# Integracion Daily Video (22/07/2026)
+
+- Se ha anadido Daily como proveedor alternativo de videollamadas integradas junto a LiveKit.
+- Cada profesional puede elegir `LiveKit`, `Daily` o `Enlace manual` desde su ficha.
+- Daily crea salas privadas y meeting tokens en servidor; la API key no se expone al navegador.
+- Los enlaces antiguos de `livekit_call.php` siguen siendo compatibles y los nuevos enlaces para pacientes usan `video_call.php`.
+- La grabacion integrada permanece limitada a LiveKit hasta implementar y validar la API de grabacion de Daily.
+- Nueva columna: `professional_settings.video_provider` (`livekit`, `daily` o `manual`).
+- Se incluye `testdaily.php` para comparar audio, video y participantes con LiveKit sin exponer la API key.
+
+# Editores en tablet y bibliotecas Excalidraw (22/07/2026)
+
+- Los modales DOCX y dibujo usan viewport dinamico (`dvh`) y se readaptan al girar una tablet.
+- Excalidraw refresca su viewport en `resize` y `orientationchange`.
+- Se precargan las bibliotecas `.excalidrawlib` de `uploads/global/excalidraw`, compatibles con formatos v1 y v2.
+- Las bibliotecas se entregan mediante `excalidraw_library.php`, con sesion, plan Summum y nombre de archivo validados.
+
+# Firma digital PDF con StampByMe (22/07/2026)
+
+- `stampbyme_helpers.php` centraliza la firma de cualquier PDF generado o almacenado por la aplicacion.
+- El tenant importa un certificado `.pfx`/`.p12` desde la ultima pestana `Configuracion > Certificado digital`. La contrasena solo se usa durante la importacion y no se almacena.
+- SGPraxis extrae certificado publico, cadena y clave privada PEM en almacenamiento protegido fuera de la raiz web.
+- La clave privada nunca se envia a StampByMe: la API prepara el PDF, SGPraxis firma localmente con OpenSSL y devuelve solo la firma criptografica.
+- El certificado del centro esta disponible en Magister y Summum; los certificados personales de profesionales solo en Summum.
+- Cada profesional administra su certificado desde la pestana `Certificado digital` de su propia ficha. Nadie puede consultar, administrar ni usar el certificado personal de otro miembro, tampoco el superadmin.
+- Si existen certificado personal y de centro, la accion `Firmar PDF` muestra un selector. Si solo hay uno disponible, se utiliza directamente.
+- El superadmin solo puede administrar el certificado general del tenant y, si tambien es profesional, su propio certificado personal.
+- Se pueden firmar informes generados, PDFs de pacientes/citas, plantillas legales, consentimientos subidos y cualquier PDF cargado desde la herramienta de Configuracion > Legal.
+- Las firmas se registran en `document_signatures` junto al hash del original y la copia firmada protegida. Si el contenido no cambia, se reutiliza la firma y no se llama de nuevo a la API.
+- Los listados muestran el estado `Firmado`; al cambiar el PDF original, la firma anterior deja de aplicarse a la nueva version.
+- Cada firma nueva genera la accion `document_signed` en el LOG con tipo e ID del documento, hashes, titular del certificado y huella digital.
+- Configuracion permite activar firma automatica para facturas, informes y documentos. Los informes PDF ya aplican esta opcion con el certificado del centro; las facturas la reutilizaran cuando se incorpore su generador PDF.
+- Configuracion local necesaria: `stampbyme_api_url` y `stampbyme_api_key`.
+- Nueva tabla: `document_signatures`.
+- Nuevas columnas en `payment_settings`: `signature_auto_invoices`, `signature_auto_reports` y `signature_auto_documents`.
+
+# Reserva rapida desde pacientes y citas (27/07/2026)
+
+- La ficha y los listados de pacientes incluyen `Nueva cita`; el detalle de una cita incluye `Reservar otra cita`.
+- Estas acciones activan un modo cancelable para seleccionar un hueco en la vista semanal y reutilizan el modal normal de reserva.
+- El paciente queda preseleccionado. Desde una cita existente tambien se conservan profesional, modalidad y servicio cuando siguen disponibles.
+- La mejora se puede retirar cambiando `QUICK_PATIENT_BOOKING_ENABLED` a `false` en `js/app.js`.
+
+# Confirmacion voluntaria de asistencia (27/07/2026)
+
+- El enlace publico de gestion permite confirmar asistencia o cancelar la reserva.
+- Confirmar no es obligatorio y no cambia el estado `booked`: solo registra `appointments.patient_confirmed_at`.
+- La agenda y el detalle muestran la marca `Confirmada` y la accion queda registrada en el LOG.
+
+# Microsoft Outlook Calendar (27/07/2026)
+
+- Nuevo proveedor `Microsoft Outlook Calendar` para cuentas Outlook.com, Hotmail, Live y Microsoft 365.
+- OAuth usa credenciales globales de SGPraxis y guarda refresh token/cuenta conectada por tenant.
+- Microsoft Graph crea y elimina eventos; por defecto utiliza el calendario principal.
+- Configuracion local: `microsoft_oauth_client_id`, `microsoft_oauth_client_secret` y `microsoft_oauth_base_url`.
+- URI de redireccion: `https://praxis.simplygest.es/microsoft_oauth_callback.php`.
+- Consentimientos sugeridos por sector: se han añadido plantillas SGPraxis originales para fisioterapia general, punción seca, electrólisis percutánea, suelo pélvico, fisioterapia pediátrica, neuromodulación percutánea, acupuntura/MTC, osteopatía fisioterapéutica y no sanitaria, quiromasaje y terapias naturales. Solo se ofrecen en fisioterapia, quiropráctica y osteopatía.
+- Los consentimientos pueden asignarse opcionalmente a uno o varios servicios desde Configuración > Legal. Al existir citas de esos servicios, el consentimiento se considera requerido para el paciente aunque no sea obligatorio globalmente.
+- Firma manuscrita presencial de consentimientos:
+  - La ficha del paciente ofrece `Firma presencial` desde el menú de acciones de cada consentimiento.
+  - Un asistente en cuatro pasos permite leer el PDF, identificar al firmante, firmar con dedo/ratón/lápiz digital y revisar el resumen.
+  - Al finalizar se genera un nuevo PDF con el documento original y una página final de evidencia con la firma manuscrita.
+  - El consentimiento queda automáticamente aceptado y firmado, con método, firmante y hashes SHA-256 registrados.
+  - La tabla `legal_consent_audit` conserva una auditoría específica de la aceptación además del LOG general.
+
+# Consentimientos generados dinamicamente (28/07/2026)
+
+- Las nuevas plantillas legales se guardan como contenido estructurado: introduccion, apartados configurables y declaracion final.
+- El tenant puede crear apartados adaptados a cualquier sector y eliminar los que no necesite.
+- mPDF genera el documento cuando se consulta o firma, usando el color principal y los datos legales del tenant.
+- El PDF se autorrellena con nombre, NIF, fecha de nacimiento, profesional y representante del paciente; los datos ausentes muestran una linea.
+- El dashboard profesional y el portal del paciente comparten el mismo generador.
+- Las plantillas sugeridas se guardan como contenido editable en lugar de almacenar un PDF estatico.
+- Los PDF externos anteriores siguen admitidos como formato legado, pero no se pueden autorrellenar.
+- Cada consentimiento firmado conserva su PDF final y sus hashes como instantanea inmutable aunque la plantilla cambie despues.
+- Nuevas columnas de `legal_documents`: `template_type`, `content_json`, `source_key` y `template_revision`.
+
+# Fiscalidad de facturas (28/07/2026)
+
+- Facturación permite elegir IVA, IGIC u otro régimen fiscal.
+- Se configura un tratamiento predeterminado exento o sujeto a impuesto, su porcentaje y el motivo legal de exención.
+- Cada servicio puede heredar la configuración general o definir su propia fiscalidad.
+- La ficha del paciente permite forzar manualmente la exención de IVA/IGIC; esta decisión prevalece sobre el servicio y la configuración general.
+- Los precios se consideran importes finales cobrados; la factura desglosa base e impuesto sin incrementar el total.
+- La factura conserva el régimen, porcentaje y motivo aplicados al emitirla para evitar cambios retroactivos.
+
+# Firma de consentimientos con AutoFirma (28/07/2026)
+
+- El portal del paciente permite elegir entre firma manuscrita y firma con certificado digital mediante AutoFirma.
+- El asistente muestra el PDF exacto, identifica el certificado, autorrellena nombre/NIF cuando están incluidos y presenta un resumen antes de guardar.
+- El PDF PAdES firmado se conserva como documento final inmutable y queda vinculado al consentimiento aceptado.
+- La auditoría registra firmante, certificado, huellas SHA-256, `ByteRange`, IP y agente de usuario.
+- La función puede desactivarse globalmente con `autofirma_patient_signing_enabled` en `config.local.php`.
+- El asistente presencial informa de la alternativa de firma desde el portal solo cuando el plan tiene habilitado dicho portal.
+- Los consentimientos no ofrecen firma con el certificado del centro o profesional: la aceptación corresponde al paciente mediante firma presencial o AutoFirma desde su portal.
+- StampByMe queda reservado para PDF emitidos por el centro o profesional, como informes, facturas, justificantes y otros documentos propios.
+
+# Consentimientos diferenciados por plan (28/07/2026)
+
+- Novus mantiene un flujo manual: registrar aceptaciones externas y subir el PDF firmado fuera de SGPraxis.
+- Magister añade plantillas personalizables, generación de PDF autorrellenados y firma manuscrita presencial.
+- Summum añade asignación automática de consentimientos por servicio, firma remota desde el portal, AutoFirma y auditoría avanzada.
+- La firma remota ya no depende implícitamente de `patientPortal.enabled`; utiliza las capacidades independientes `legalConsents.*`.
+- Las restricciones se aplican en la interfaz y también en las API para impedir accesos directos a funciones no incluidas en el plan.
+# Identidad del firmante en consentimientos
+
+- La ficha del paciente incluye el NIF del tutor o representante legal.
+- Si el paciente es menor de edad, los consentimientos deben firmarse con el nombre y NIF del tutor guardados en la ficha.
+- Si el paciente es adulto, se utiliza su nombre y NIF.
+- Los datos existentes quedan bloqueados en el asistente de firma y AutoFirma comprueba que el NIF del certificado coincide con el NIF esperado.
+
+# Datos legales y hábitos
+
+- Los datos legales del tenant separan domicilio, provincia, localidad y código postal.
+- Se incorpora el número de registro sanitario para documentos, consentimientos e información legal.
+- La ficha del paciente incluye un campo libre de hábitos en la pestaña Más datos y en los informes internos.
+## Permisos de miembros
+
+- Se añaden permisos independientes para mostrar el teléfono del paciente, acceder a Facturación y acceder/descargar/generar informes.
+- El teléfono se filtra también en las respuestas de pacientes, agenda, cards, estadísticas y búsqueda global; guardar una ficha sin este permiso conserva el teléfono existente.
+- Las descargas de documentos vinculados a informes requieren el permiso de informes.
+- Valores iniciales: profesionales con los tres permisos; recepción con teléfono; administración con teléfono y facturación; técnicos sin ninguno.
+
+# Control horario
+
+- Disponible exclusivamente en el plan Summum y activable por el superadmin.
+- Cada miembro puede registrar entrada, inicio y fin de descanso y salida.
+- Puede avisar visualmente si falta fichar la entrada, exigir el fichaje antes de usar el dashboard y cerrar la sesión al registrar la salida.
+- El acceso rápido para fichar está disponible en el navbar superior y refleja visualmente los avisos pendientes.
+- El fichaje rápido usa un modal compacto que se cierra tras registrar la entrada o un descanso; el histórico del equipo se consulta por separado desde el sidenav o el menú.
+- El histórico ofrece filtros por periodo y miembro, impresión y exportación JSON, Excel o PDF.
+- Informes disponibles: resumen de trabajo/descansos, entradas y salidas, horas por día y empleado, media diaria y horas extra diarias o semanales.
+- Las horas se calculan exclusivamente desde los fichajes. El superadmin puede configurar una jornada contractual diaria o semanal por miembro; si queda en blanco, las horas extra toman como referencia 8 horas diarias y 40 semanales.
+- Los eventos se guardan de forma inmutable en UTC, conservando también la hora local y zona horaria del tenant.
+- La API impide secuencias incoherentes, como dos entradas consecutivas o finalizar un descanso inexistente.
+- El superadmin puede consultar los registros de todo el equipo por periodo.
+- Cada fichaje y cada cambio de configuración quedan registrados en el LOG.
+
+# Dashboard operativo
+
+- Se añade una vista principal `Dashboard`, disponible desde el sidenav, el menú móvil y como vista inicial configurable.
+- Su contenido se consulta únicamente al abrir esta vista para evitar consultas SQL y retrasos innecesarios al usar Agenda, Pacientes o Citas.
+- Muestra actividad de hoy, resumen de 7, 30 o 90 días, asuntos pendientes y los bloques permitidos para cada miembro.
+- Los profesionales ven exclusivamente sus datos; el superadmin puede consultar el resumen del equipo y la información financiera solo se muestra con permiso de facturación.
+- La impresión de Control horario incluye el nombre del informe seleccionado y el intervalo de fechas.
+
+# Plan Initium
+
+- Se incorpora `Initium`, un plan gratuito y permanente basado en las funciones esenciales de Novus.
+- Límites iniciales: 50 pacientes/clientes totales y 20 citas por semana natural del tenant.
+- Initium no permite subir adjuntos ni crear documentos o dibujos online; las fotos de perfil y recursos de identidad siguen disponibles.
+- Los límites se validan en servidor al crear pacientes o citas, no solo en la interfaz.
+- Las funciones de planes superiores permanecen visibles en los puntos principales de la interfaz, pero bloqueadas y con indicación de disponibilidad en un plan superior.
+- Las cuentas de prueba se crean con Summum. Al finalizar sus 15 días, se convierten automáticamente en Initium y continúan activas sin mostrar avisos de prueba.
+- Los nuevos tenants usan Summum como plan inicial predeterminado para que el futuro formulario de prueba entregue todas las funciones durante el periodo de evaluación.
+
+# Alta pública de tenants
+
+- `signup.php` permite crear una cuenta de prueba indicando empresa/centro, sector, persona de contacto, email y contraseña.
+- El alta valida CSRF y Google reCAPTCHA v3 antes de reservar el tenant.
+- La URL se deriva del nombre del centro y se hace única con sufijos numéricos cuando sea necesario.
+- El alta deja el tenant operativo en un solo paso, con Summum y 15 días de prueba: crea el superadmin, su ficha profesional y la configuración inicial.
+- La zona horaria inicial se detecta desde el navegador. `/install` queda reservado para instalaciones manuales o técnicas; la configuración funcional se completará mediante el asistente inicial del dashboard.
+- La contraseña se convierte en hash y nunca se incluye en la URL ni en archivos temporales.
+- Un email que ya pertenezca a un miembro profesional no puede abrir otra cuenta; los emails usados únicamente como pacientes en otros tenants no bloquean el alta.
+- Configuración necesaria en `config.local.php`: `recaptcha_site_key` y `recaptcha_secret_key`.
+- `acceso.php` ofrece un login global exclusivo para superadmins y miembros del equipo, localiza su tenant y redirige al dashboard correspondiente.
+- Los pacientes continúan accediendo exclusivamente desde la URL o dominio del tenant para evitar cualquier ambigüedad entre portales.
+- Tras completar un alta, el correo SMTP interno de la plataforma envía una bienvenida al nuevo tenant y una notificación a SimplyGest Praxis. Un fallo SMTP no revierte la cuenta ya creada.
+- El alta ofrece, en orden, Psicología, Psicopedagogía, Sexología, Logopedia, Fisioterapia, Fitness, Entrenamiento personal, Nutrición, Terapia ocupacional, Osteopatía, Quiropráctica y Otro. Los demás JSON se conservan por compatibilidad, pero no se ofrecen a nuevos registros.
+## VeriFactu
+
+- El entorno tecnico se guarda exclusivamente en BD como `0` (pruebas) o `1` (real), sin depender de `config.local.php`.
+- Cada tenant puede iniciar en la fecha oficial (empresas: 01/01/2027; autonomos: 01/07/2027) o voluntariamente antes.
+- La fecha oficial es siempre la opcion predeterminada; no existe una opcion para omitir indefinidamente la activacion.
+- Al alcanzar la fecha elegida, el entorno pasa automaticamente a `1` una sola vez y la configuracion no puede modificarse ni desactivarse desde la app.
+- `verifactu_activated_at` evita repetir esa transicion y permite bajar manualmente un tenant a entorno `0` desde Workbench para pruebas tecnicas.
+- La facturación dispone de activación independiente para VeriFactu y entornos de pruebas/producción.
+- Antes de emitir se validan los datos fiscales del emisor y destinatario, la fiscalidad y el certificado general del centro.
+- `verifactu_records` conserva una instantánea inmutable, la huella, el encadenamiento, los intentos y la respuesta de cada factura.
+- `verifactu_chains` serializa la cadena por tenant y entorno. Factura, numeración, huella y alta en cola se confirman en una única transacción.
+- `verifactu_auto_launcher.php` es el punto de entrada estable para el WebJob. El transporte final a AEAT se mantiene desacoplado de `movim`.
+- El launcher arranca en contexto global (`CURRENT_TENANT_ID=0`) y no resuelve ningun tenant desde la URL; los lotes seleccionan su tenant explicitamente.
+- Cada alta genera inmediatamente su fragmento XML y queda en estado `generated`, sin enviarse.
+- Los bloques se forman por tenant y entorno, con un máximo futuro de 1.000 registros. La incidencia se calcula al formar el bloque: si algún registro supera 240 segundos desde su generación, toda la remisión llevará `Incidencia=S`.
+- Antes de iniciar cualquier cobro manual u online se ejecuta el mismo precheck fiscal que utilizará la emisión.
+- Si faltan datos del emisor o destinatario, fiscalidad, domicilio o certificado, no se abre la pasarela y no se marca el origen como pagado.
+- La emisión, numeración, factura, XML, huella y actualización del origen forman una única operación transaccional.
+- Se guarda la URL oficial de cotejo del QR para pruebas o producción y la factura PDF incorpora el QR obligatorio.
+# Periodos de descuento
+
+- La pestaña `Precios` permite activar una campaña entre dos fechas y decidir si se publica en la web comercial.
+- Cada combinación de servicio, duración y modalidad conserva su propio porcentaje de descuento.
+- Las citas nuevas guardan precio base, porcentaje aplicado e importe final para evitar que cambios posteriores alteren cobros o facturas.
+- La página pública de precios muestra el precio original tachado, el promocional y la fecha final cuando la campaña está vigente.
+# Plantillas de tareas con archivos
+
+- Cada tarea de una plantilla puede incluir opcionalmente un PDF, un DOCX o una imagen de hasta 12 MB.
+- Al aplicar una plantilla, el adjunto se copia al expediente del paciente. Cada paciente obtiene su propia copia y los cambios no afectan a la plantilla ni a otros pacientes.
+- Los adjuntos se muestran tanto en la plantilla como en las tareas de la ficha y, cuando la tarea es visible, en el portal del paciente.
+- En Preparar sesion, las tareas con adjunto muestran el nombre del archivo y un acceso directo que abre la pestana Archivos y resalta el documento correspondiente.
+- Los DOCX copiados pueden abrirse con el editor online y guardarse sobre el mismo documento, sin crear versiones.
+- Al eliminar una tarea importada o una tarea de plantilla se elimina tambien su archivo asociado.
+# Email de bienvenida
+
+- El alta mediante signup envia el asunto "Te damos la bienvenida a SimplyGest Praxis".
+- El correo conserva su contenido alineado a la izquierda e incorpora el logotipo oficial centrado en la cabecera.
+# Contactos asociados a pacientes
+
+- La ficha del paciente permite gestionar varios contactos asociados: pareja, progenitores, tutores, familiares y contactos de emergencia.
+- Cada contacto puede marcarse como representante legal, contacto de emergencia, receptor de comunicaciones y autorizado para una futura invitación al portal.
+- El contacto principal marcado como tutor o emergencia mantiene sincronizados los campos heredados usados por informes y firmas de menores.
+- La migración crea `patient_contacts` e importa los contactos antiguos existentes sin duplicarlos.
+
+# Asistente inicial
+
+- El superadmin dispone de un asistente inicial opcional de cinco pasos para completar los datos esenciales del espacio.
+- Permite revisar sector, zona horaria, país, provincia, datos fiscales, identidad visual, web, portal y recordatorios.
+- Cada paso se guarda por separado para poder continuar más adelante sin perder los datos ya introducidos.
+- Al finalizar se aplica la configuración y se recarga el dashboard para usar inmediatamente los nuevos valores.
+- El asistente puede abrirse de nuevo desde el menú `Opciones`.
+
+# PDF y código QR
+
+- Las facturas generan el código QR obligatorio mediante el soporte nativo de mPDF.
+- El servidor debe incluir el paquete `mpdf/qrcode`, instalable con `composer require mpdf/qrcode`.
+- Si falta esa dependencia, la API devuelve un mensaje explicativo y registra el error en el log en lugar de provocar un error 500 sin contexto.
+
+# Supresión y eliminación de pacientes
+
+- Solo el superadmin puede retirar o eliminar un expediente.
+- Una solicitud de supresión retira al paciente de la operativa, revoca su acceso al Portal, cancela las citas futuras y conserva bloqueada la documentación sujeta a plazos legales.
+- Los expedientes bloqueados solo aparecen para el superadmin, identificados en gris y sin acciones operativas.
+- Los registros de prueba, duplicados o creados por error pueden eliminarse permanentemente tras escribir `ELIMINAR`.
+- El borrado permanente se bloquea cuando existe alguna factura emitida y ambas operaciones quedan registradas en el log.
+
+# Diagnósticos y tareas
+
+- Los diagnósticos de la base de conocimiento pueden asignarse sin importar pautas o tareas obligatoriamente.
+- Cada diagnóstico asignado incluye una consulta informativa con su descripción, pautas y tareas disponibles.
+- En el Plan de Trabajo y en la sesión actual se separan claramente tres flujos: crear una tarea manual, usar `Mis Tareas` o importar desde la base de conocimiento.
+- Si existen diagnósticos de la base asignados, la importación propone primero sus tareas. Si no existen, permite buscar en toda la base y decidir si el diagnóstico elegido también debe asignarse al paciente.
+- Las tareas importadas conservan el vínculo con el diagnóstico cuando este está asignado y, cuando procede, con la cita actual.
+- La pestaña de configuración antes llamada `Plantillas de Tareas` pasa a llamarse `Mis Tareas`.

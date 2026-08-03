@@ -1,7 +1,7 @@
 {
   "version": 1,
   "key": "terapia_ocupacional",
-  "name": "Terapia Ocupacional",
+  "name": "Terapia ocupacional",
   "description": "Configuracion de textos para consultas y centros de terapia ocupacional.",
   "labels": {
     "patient": {

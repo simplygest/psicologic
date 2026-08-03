@@ -30,6 +30,16 @@ function sms_get_settings($mysqli)
     return $settings;
 }
 
+function sms_is_configured($mysqli)
+{
+    $settings = sms_get_settings($mysqli);
+    $provider = $settings['sms_provider'] ?? 'none';
+    if (empty($settings['sms_sender'])) return false;
+    if ($provider === 'mundosms') return !empty($settings['sms_username']) && !empty($settings['sms_password']);
+    if (in_array($provider, ['smsup', 'smsapi'], true)) return !empty($settings['sms_api_key']);
+    return false;
+}
+
 function sms_provider_label($provider)
 {
     $labels = [

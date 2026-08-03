@@ -17,6 +17,9 @@ $action = $_GET['action'] ?? '';
 $user_id = (int) $_SESSION['user_id'];
 $is_admin = in_array(($_SESSION['role'] ?? ''), ['admin', 'superadmin', 'reception', 'administration', 'technical'], true);
 $is_superadmin = ($_SESSION['role'] ?? '') === 'superadmin';
+$member_permissions = $is_admin
+    ? cabinet_member_permissions_for_user($mysqli, $user_id, $_SESSION['role'] ?? '')
+    : [];
 
 if (!$is_admin && !online_booking_enabled($mysqli)) {
     echo json_encode(['success' => false, 'error' => 'El área de pacientes no está disponible en este momento.']);
@@ -102,6 +105,10 @@ function bonus_active_professionals_payload($mysqli)
 
 function format_bonus_row($row)
 {
+    global $is_admin, $is_superadmin, $member_permissions;
+    if ($is_admin && !$is_superadmin && empty($member_permissions['view_patient_phone'])) {
+        $row['patient_phone'] = '';
+    }
     $row['id'] = (int) $row['id'];
     $row['user_id'] = (int) $row['user_id'];
     $row['bonus_id'] = (int) $row['bonus_id'];
@@ -255,13 +262,27 @@ if ($action === 'create_patient_bonus') {
         exit;
     }
 
-    $stmt = $mysqli->prepare("SELECT id, session_count FROM appointment_bonuses WHERE tenant_id = ? AND id = ? AND is_active = 1 LIMIT 1");
+    $stmt = $mysqli->prepare("SELECT id, session_count, price FROM appointment_bonuses WHERE tenant_id = ? AND id = ? AND is_active = 1 LIMIT 1");
     $stmt->bind_param("ii", $tenant_id, $bonus_id);
     $stmt->execute();
     $bonus = $stmt->get_result()->fetch_assoc();
     if (!$bonus) {
         echo json_encode(['success' => false, 'error' => 'El bono seleccionado no esta disponible.']);
         exit;
+    }
+    if (invoice_billing_enabled($mysqli)) {
+        $tax = invoice_tax_settings($mysqli, 0, $patient_id);
+        $invoice_precheck = invoice_precheck_for_data($mysqli, [
+            'user_id' => $patient_id,
+            'total' => (float) ($bonus['price'] ?? 0),
+            'vat_rate' => $tax['rate'],
+            'tax_system' => $tax['system'],
+            'tax_exemption_reason' => $tax['exemption_reason'],
+        ]);
+        if (empty($invoice_precheck['success'])) {
+            echo json_encode(['success' => false, 'error' => $invoice_precheck['error'] ?? 'La factura no supera la validación previa.']);
+            exit;
+        }
     }
 
     if ($total_sessions <= 0) {

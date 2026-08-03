@@ -18,8 +18,14 @@ $show_patient_area = $online_booking_enabled || $is_admin;
 
 $legal_owner = trim($branding['legal_owner_name'] ?? '') ?: $app_name;
 $legal_nif = trim($branding['legal_nif'] ?? '');
-$legal_address = trim($branding['legal_address'] ?? '');
+$legal_address = implode(', ', array_filter([
+    trim($branding['legal_address'] ?? ''),
+    trim($branding['legal_postal_code'] ?? ''),
+    trim($branding['legal_city'] ?? ''),
+    trim($branding['legal_province'] ?? ''),
+]));
 $legal_email = trim($branding['legal_email'] ?? '');
+$legal_health_registry = trim($branding['legal_health_registry_number'] ?? '');
 $legal_license = trim($branding['legal_license_number'] ?? '');
 $legal_college = trim($branding['legal_professional_college'] ?? '');
 $uses_non_technical_cookies = (int) ($branding['legal_uses_non_technical_cookies'] ?? 0) === 1;
@@ -163,6 +169,7 @@ function legal_delivery_text($mode)
                                 <div><strong>NIF/CIF</strong><span><?= legal_value($legal_nif) ?></span></div>
                                 <div><strong>Domicilio</strong><span><?= legal_value($legal_address) ?></span></div>
                                 <div><strong>Email</strong><span><?= legal_value($legal_email, 'Configura un email legal') ?></span></div>
+                                <div><strong>N.&ordm; de registro sanitario</strong><span><?= legal_value($legal_health_registry) ?></span></div>
                                 <div><strong>Nº colegiado</strong><span><?= legal_value($legal_license) ?></span></div>
                                 <div><strong>Colegio profesional</strong><span><?= legal_value($legal_college) ?></span></div>
                             </div>

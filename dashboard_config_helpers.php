@@ -138,7 +138,7 @@ function plan_config_dir()
 function plan_config_normalize_key($plan_key = 'default', $fallback = 'default')
 {
     $key = strtolower(trim((string) $plan_key));
-    return in_array($key, ['novus', 'magister', 'summum'], true) ? $key : $fallback;
+    return in_array($key, ['initium', 'novus', 'magister', 'summum'], true) ? $key : $fallback;
 }
 
 function plan_config_file($plan_key = 'default')
@@ -232,6 +232,12 @@ function app_feature_enabled_from_db($mysqli, $feature, $default = false)
         $feature,
         $default
     );
+}
+
+function plan_feature_enabled_from_db($mysqli, $feature, $default = false)
+{
+    $plan_key = dashboard_config_plan_key_from_db($mysqli);
+    return plan_config_feature_enabled(plan_config_for_key($plan_key), $feature, $default);
 }
 
 function dashboard_config_plan_key_from_db($mysqli)

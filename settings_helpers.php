@@ -26,7 +26,6 @@ function ensure_branding_columns($mysqli)
         'public_site_enabled' => "ALTER TABLE payment_settings ADD public_site_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER show_profile_image_public",
         'show_prices_public' => "ALTER TABLE payment_settings ADD show_prices_public TINYINT(1) NOT NULL DEFAULT 0 AFTER show_profile_image_public",
         'show_contact_public' => "ALTER TABLE payment_settings ADD show_contact_public TINYINT(1) NOT NULL DEFAULT 0 AFTER show_prices_public",
-        'plan_key' => "ALTER TABLE payment_settings ADD plan_key VARCHAR(32) NOT NULL DEFAULT 'novus' AFTER show_contact_public",
         'dashboard_config_mode' => "ALTER TABLE payment_settings ADD dashboard_config_mode VARCHAR(16) NOT NULL DEFAULT 'simple'",
         'sector_texts_key' => "ALTER TABLE payment_settings ADD sector_texts_key VARCHAR(32) NOT NULL DEFAULT 'psicologia' AFTER dashboard_config_mode",
         'online_booking_enabled' => "ALTER TABLE payment_settings ADD online_booking_enabled TINYINT(1) NOT NULL DEFAULT 1 AFTER show_contact_public",
@@ -35,7 +34,11 @@ function ensure_branding_columns($mysqli)
         'legal_owner_name' => "ALTER TABLE payment_settings ADD legal_owner_name VARCHAR(255) DEFAULT NULL",
         'legal_nif' => "ALTER TABLE payment_settings ADD legal_nif VARCHAR(50) DEFAULT NULL",
         'legal_address' => "ALTER TABLE payment_settings ADD legal_address VARCHAR(500) DEFAULT NULL",
+        'legal_province' => "ALTER TABLE payment_settings ADD legal_province VARCHAR(120) DEFAULT NULL AFTER legal_address",
+        'legal_city' => "ALTER TABLE payment_settings ADD legal_city VARCHAR(120) DEFAULT NULL AFTER legal_province",
+        'legal_postal_code' => "ALTER TABLE payment_settings ADD legal_postal_code VARCHAR(20) DEFAULT NULL AFTER legal_city",
         'legal_email' => "ALTER TABLE payment_settings ADD legal_email VARCHAR(255) DEFAULT NULL",
+        'legal_health_registry_number' => "ALTER TABLE payment_settings ADD legal_health_registry_number VARCHAR(120) DEFAULT NULL AFTER legal_email",
         'legal_license_number' => "ALTER TABLE payment_settings ADD legal_license_number VARCHAR(100) DEFAULT NULL",
         'legal_professional_college' => "ALTER TABLE payment_settings ADD legal_professional_college VARCHAR(255) DEFAULT NULL",
         'legal_uses_non_technical_cookies' => "ALTER TABLE payment_settings ADD legal_uses_non_technical_cookies TINYINT NOT NULL DEFAULT 0",
@@ -87,6 +90,10 @@ function get_public_branding_settings($mysqli)
         'show_profile_image_public' => 0,
         'public_site_enabled' => 0,
         'show_prices_public' => 0,
+        'discount_period_enabled' => 0,
+        'discount_period_start_date' => '',
+        'discount_period_end_date' => '',
+        'discount_show_public' => 0,
         'show_contact_public' => 0,
         'plan_key' => 'novus',
         'online_booking_enabled' => 1,
@@ -96,7 +103,11 @@ function get_public_branding_settings($mysqli)
         'legal_owner_name' => '',
         'legal_nif' => '',
         'legal_address' => '',
+        'legal_province' => '',
+        'legal_city' => '',
+        'legal_postal_code' => '',
         'legal_email' => '',
+        'legal_health_registry_number' => '',
         'legal_license_number' => '',
         'legal_professional_college' => '',
         'legal_uses_non_technical_cookies' => 0,
@@ -115,8 +126,9 @@ function get_public_branding_settings($mysqli)
 
     $tenant_id = current_tenant_id();
     $stmt = $mysqli->prepare("
-        SELECT app_name, site_tagline, site_phone, profile_image_path, landing_image_path, favicon_path, primary_color, show_profile_image_public, public_site_enabled, show_prices_public, show_contact_public, plan_key, online_booking_enabled, patient_registration_mode, initial_calendar_view, sector_texts_key,
-               legal_owner_name, legal_nif, legal_address, legal_email, legal_license_number, legal_professional_college, legal_uses_non_technical_cookies, legal_terms_notes
+        SELECT app_name, site_tagline, site_phone, profile_image_path, landing_image_path, favicon_path, primary_color, show_profile_image_public, public_site_enabled, show_prices_public, show_contact_public, discount_period_enabled, discount_period_start_date, discount_period_end_date, discount_show_public, online_booking_enabled, patient_registration_mode, initial_calendar_view, sector_texts_key,
+               legal_owner_name, legal_nif, legal_address, legal_province, legal_city, legal_postal_code,
+               legal_email, legal_health_registry_number, legal_license_number, legal_professional_college, legal_uses_non_technical_cookies, legal_terms_notes
         FROM payment_settings
         WHERE tenant_id = ?
     ");
@@ -135,18 +147,26 @@ function get_public_branding_settings($mysqli)
         $settings['show_profile_image_public'] = (int) ($row['show_profile_image_public'] ?? 0);
         $settings['public_site_enabled'] = (int) ($row['public_site_enabled'] ?? 0);
         $settings['show_prices_public'] = (int) ($row['show_prices_public'] ?? 0);
+        $settings['discount_period_enabled'] = (int) ($row['discount_period_enabled'] ?? 0);
+        $settings['discount_period_start_date'] = $row['discount_period_start_date'] ?? '';
+        $settings['discount_period_end_date'] = $row['discount_period_end_date'] ?? '';
+        $settings['discount_show_public'] = (int) ($row['discount_show_public'] ?? 0);
         $settings['show_contact_public'] = (int) ($row['show_contact_public'] ?? 0);
         $tenant = function_exists('current_tenant') ? current_tenant() : null;
         $tenant_plan_key = plan_config_normalize_key(is_array($tenant) ? ($tenant['plan_key'] ?? '') : '', '');
         $settings['plan_key'] = $tenant_plan_key !== '' ? $tenant_plan_key : 'novus';
         $settings['online_booking_enabled'] = (int) ($row['online_booking_enabled'] ?? 1);
         $settings['patient_registration_mode'] = in_array(($row['patient_registration_mode'] ?? ''), ['invite', 'open'], true) ? $row['patient_registration_mode'] : 'invite';
-        $settings['initial_calendar_view'] = in_array(($row['initial_calendar_view'] ?? ''), ['week', 'month', 'patients', 'upcoming'], true) ? $row['initial_calendar_view'] : 'month';
+        $settings['initial_calendar_view'] = in_array(($row['initial_calendar_view'] ?? ''), ['dashboard', 'week', 'month', 'patients', 'upcoming'], true) ? $row['initial_calendar_view'] : 'month';
         $settings['sector_texts_key'] = sector_texts_validate_key($row['sector_texts_key'] ?? '') ? $row['sector_texts_key'] : sector_texts_default_key();
         $settings['legal_owner_name'] = trim($row['legal_owner_name'] ?? '');
         $settings['legal_nif'] = trim($row['legal_nif'] ?? '');
         $settings['legal_address'] = trim($row['legal_address'] ?? '');
+        $settings['legal_province'] = trim($row['legal_province'] ?? '');
+        $settings['legal_city'] = trim($row['legal_city'] ?? '');
+        $settings['legal_postal_code'] = trim($row['legal_postal_code'] ?? '');
         $settings['legal_email'] = trim($row['legal_email'] ?? '');
+        $settings['legal_health_registry_number'] = trim($row['legal_health_registry_number'] ?? '');
         $settings['legal_license_number'] = trim($row['legal_license_number'] ?? '');
         $settings['legal_professional_college'] = trim($row['legal_professional_college'] ?? '');
         $settings['legal_uses_non_technical_cookies'] = (int) ($row['legal_uses_non_technical_cookies'] ?? 0);

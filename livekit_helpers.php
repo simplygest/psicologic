@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/daily_helpers.php';
+
 function livekit_config_value($key, $fallback = '')
 {
     return function_exists('psicologic_config_value')
@@ -53,9 +55,30 @@ function livekit_room_name($tenant_id, $appointment_id)
     return 'praxis-t' . max(1, (int) $tenant_id) . '-c' . max(1, (int) $appointment_id);
 }
 
+function video_provider_for_professional($mysqli, $professional_id)
+{
+    if (!$mysqli || (int) $professional_id <= 0 || !function_exists('cabinet_get_effective_professional_settings')) {
+        return 'manual';
+    }
+    $settings = cabinet_get_effective_professional_settings($mysqli, (int) $professional_id);
+    $provider = strtolower(trim((string) ($settings['video_provider'] ?? '')));
+    if (!in_array($provider, ['livekit', 'daily', 'manual'], true)) {
+        $provider = !empty($settings['livekit_enabled']) ? 'livekit' : 'manual';
+    }
+    return $provider;
+}
+
+function video_provider_is_configured($provider)
+{
+    if ($provider === 'daily') {
+        return daily_is_configured();
+    }
+    return $provider === 'livekit' && livekit_is_configured();
+}
+
 function livekit_enabled_for_professional($mysqli, $professional_id)
 {
-    if (!livekit_is_configured() || !$mysqli || (int) $professional_id <= 0 || !function_exists('cabinet_get_effective_professional_settings')) {
+    if (!$mysqli || (int) $professional_id <= 0 || !function_exists('cabinet_get_effective_professional_settings')) {
         return false;
     }
     if (!function_exists('dashboard_config_plan_key_from_db') || !function_exists('plan_config_for_key') || !function_exists('plan_config_feature_enabled')) {
@@ -65,8 +88,8 @@ function livekit_enabled_for_professional($mysqli, $professional_id)
     if (!plan_config_feature_enabled($plan_config, 'livekit.enabled', false)) {
         return false;
     }
-    $settings = cabinet_get_effective_professional_settings($mysqli, (int) $professional_id);
-    return (int) ($settings['livekit_enabled'] ?? 1) === 1;
+    $provider = video_provider_for_professional($mysqli, $professional_id);
+    return $provider !== 'manual' && video_provider_is_configured($provider);
 }
 
 function livekit_appointment_enabled($mysqli, array $appointment)
@@ -104,7 +127,11 @@ function livekit_ensure_appointment_link_token($mysqli, $appointment_id, $curren
 function livekit_patient_link_signature($tenant_id, $appointment_id, $patient_id, $expires, $access_token)
 {
     $payload = implode('|', [max(1, (int) $tenant_id), max(1, (int) $appointment_id), max(1, (int) $patient_id), (int) $expires, $access_token]);
-    return hash_hmac('sha256', $payload, livekit_config_value('livekit_api_secret'));
+    $secret = livekit_config_value('livekit_api_secret');
+    if ($secret === '') {
+        $secret = daily_config_value('daily_api_key');
+    }
+    return hash_hmac('sha256', $payload, $secret);
 }
 
 function livekit_tenant_base_url()
@@ -118,10 +145,6 @@ function livekit_tenant_base_url()
 
 function livekit_patient_join_url(array $appointment)
 {
-    if (!livekit_is_configured()) {
-        return '';
-    }
-
     $tenant_id = current_tenant_id();
     $appointment_id = (int) ($appointment['id'] ?? 0);
     $patient_id = (int) ($appointment['user_id'] ?? 0);
@@ -136,13 +159,13 @@ function livekit_patient_join_url(array $appointment)
     if ($base_url === '') {
         return '';
     }
-    return $base_url . 'livekit_call.php?appointment_id=' . $appointment_id
+    return $base_url . 'video_call.php?appointment_id=' . $appointment_id
         . '&access=patient&expires=' . $expires . '&token=' . $access_token . '&signature=' . $signature;
 }
 
 function livekit_patient_link_is_valid($tenant_id, $appointment_id, $patient_id, $expires, $access_token, $signature)
 {
-    if (!livekit_is_configured() || $expires < time() || !preg_match('/^[a-f0-9]{64}$/', (string) $access_token)) {
+    if ($expires < time() || !preg_match('/^[a-f0-9]{64}$/', (string) $access_token)) {
         return false;
     }
     $expected = livekit_patient_link_signature($tenant_id, $appointment_id, $patient_id, $expires, $access_token);

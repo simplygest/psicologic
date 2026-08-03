@@ -115,6 +115,7 @@ function praxis_plans_team_limit_badge_value($plan)
 $brand_logo_url = praxis_plans_asset_data_uri($brand_logo_path);
 $brand_icon_url = praxis_plans_asset_data_uri($brand_icon_path);
 $plans = [
+    'initium' => praxis_plans_read_config('initium'),
     'novus' => praxis_plans_read_config('novus'),
     'magister' => praxis_plans_read_config('magister'),
     'summum' => praxis_plans_read_config('summum'),
@@ -124,29 +125,37 @@ $common_features = [
     'Agenda visual con vistas mensual y semanal.',
     'Reserva y gestión interna de citas.',
     'Ficha completa de pacientes, clientes o usuarios.',
-    'Historial de citas y documentación asociada.',
+    'Historial de citas.',
     'Dashboard profesional adaptable a cada sector.',
     'Configuración básica de servicios, horarios y disponibilidad.',
 ];
 
 $plan_summaries = [
+    'initium' => [
+        'tagline' => 'La base de Novus, gratis para siempre, con hasta 50 pacientes y 20 citas por semana.',
+        'tone' => 'Gratuito',
+        'price' => 'Gratis',
+    ],
     'novus' => [
         'tagline' => 'Para empezar con una agenda profesional sencilla.',
         'tone' => 'Base operativa',
+        'price' => '9,90 € / mes',
     ],
     'magister' => [
         'tagline' => 'Para centros que necesitan crecer con módulos avanzados.',
         'tone' => 'Crecimiento',
+        'price' => '29,90 € / mes',
     ],
     'summum' => [
         'tagline' => 'La experiencia completa, con conocimiento, portal y personalización.',
         'tone' => 'Completo',
+        'price' => '59,90 € / mes',
     ],
 ];
 
 $plan_summaries['novus']['tagline'] = 'Para profesionales que necesitan agenda, pacientes y seguimiento básico sin portal ni módulos avanzados.';
 $plan_summaries['magister']['tagline'] = 'Para centros que necesitan portal, equipo, bonos, conocimiento sectorial y sincronización, sin pagos online ni facturación.';
-$plan_summaries['summum']['tagline'] = 'La experiencia completa: pagos online, facturación, videollamada integrada, base multisectorial y personalización avanzada.';
+$plan_summaries['summum']['tagline'] = 'La experiencia completa: pagos online, facturación, cuestionarios personalizados, videollamada integrada, base multisectorial y personalización avanzada.';
 
 $feature_labels = [
     'patientPortal.enabled' => 'Portal privado para pacientes o clientes',
@@ -165,16 +174,29 @@ $feature_labels = [
     'knowledgeBase.enabled' => 'Base de conocimiento por sector',
     'knowledgeBase.importTasks' => 'Importación de recomendaciones al plan de trabajo',
     'knowledgeBase.multiSector' => 'Consulta de bases de conocimiento relacionadas',
-    'questionnaires.enabled' => 'Cuestionarios y documentación de seguimiento',
+    'questionnaires.enabled' => 'Constructor de cuestionarios personalizados',
+    'documents.uploads' => 'Subida de archivos y adjuntos',
+    'documents.onlineEditor' => 'Editor online de documentos',
+    'documents.drawingBoard' => 'Pizarra online de dibujo',
+    'digitalSignature.tenant' => 'Firma de documentos con certificado del centro',
+    'digitalSignature.professional' => 'Firma de documentos con certificado del profesional',
+    'legalConsents.templates' => 'Plantillas de consentimientos personalizables',
+    'legalConsents.generatedPdf' => 'Consentimientos PDF autorrellenados',
+    'legalConsents.handwrittenSignature' => 'Firma manuscrita presencial de consentimientos',
+    'legalConsents.serviceMapping' => 'Consentimientos asignados automáticamente por servicio',
+    'legalConsents.portalSignature' => 'Firma remota de consentimientos desde el portal',
+    'legalConsents.autofirma' => 'Firma del paciente con certificado mediante AutoFirma',
+    'legalConsents.advancedAudit' => 'Auditoría avanzada de consentimientos',
     'reminders.patient24h' => 'Recordatorios de cita por email',
     'reminders.sms' => 'Recordatorios de cita por SMS',
     'calendarSync.enabled' => 'Sincronización con calendarios online',
-    'livekit.enabled' => 'Videollamada integrada con LiveKit',
+    'livekit.enabled' => 'Videollamada integrada con grabaci&oacute;n de audio/video opcional',
     'branding.customLogo' => 'Logotipo propio en dashboard y portal',
-    'branding.customDomain' => 'Dominio propio personalizado',
+    'branding.customDomain' => 'Usa tu propio dominio o subdominio para acceder a la aplicación',
     'team.enabled' => 'Equipo de trabajo con varios profesionales',
     'team.memberTypes' => 'Tipos de miembro: recepción, administración y técnico',
     'team.permissions' => 'Permisos personalizados por miembro',
+    'timeTracking.enabled' => 'Control horario de entradas, salidas y descansos',
     'catalog.customServices' => 'Servicios ofrecidos personalizables',
     'catalog.customDurations' => 'Duraciones de cita personalizables',
     'catalog.customLocations' => 'Salas y ubicaciones personalizables',
@@ -184,6 +206,10 @@ $feature_labels = [
 ];
 
 $plan_highlight_features = [
+    'initium' => [
+        'tasks.enabled',
+        'taskTemplates.enabled',
+    ],
     'novus' => [
         'tasks.enabled',
         'taskTemplates.enabled',
@@ -197,13 +223,22 @@ $plan_highlight_features = [
         'calendarSync.enabled',
         'reminders.sms',
         'catalog.customServices',
+        'digitalSignature.tenant',
+        'legalConsents.handwrittenSignature',
     ],
     'summum' => [
+        'questionnaires.enabled',
         'billing.enabled',
         'billing.fiscalData',
         ['onlinePayments.enabled', 'payments.online'],
         'livekit.enabled',
+        'documents.onlineEditor',
+        'documents.drawingBoard',
+        'digitalSignature.professional',
+        'legalConsents.portalSignature',
+        'legalConsents.autofirma',
         'team.permissions',
+        'timeTracking.enabled',
         'branding.customDomain',
         'knowledgeBase.multiSector',
         'ui.customization',
@@ -215,10 +250,15 @@ $comparison_groups = [
         ['label' => 'Agenda visual con vistas mensual y semanal', 'common' => true],
         ['label' => 'Reserva y gestión interna de citas', 'common' => true],
         ['label' => 'Ficha completa de pacientes, clientes o usuarios', 'common' => true],
-        ['label' => 'Historial de citas y documentación asociada', 'common' => true],
+        ['label' => 'Historial de citas', 'common' => true],
         ['label' => 'Dashboard profesional adaptable a cada sector', 'common' => true],
         ['label' => 'Configuración básica de servicios, horarios y disponibilidad', 'common' => true],
         ['label' => 'Estados de cita: reservada, realizada, no asistió, pagada o pendiente', 'feature' => 'appointments.attendanceStatus'],
+    ],
+    'Capacidad del plan' => [
+        ['label' => 'Pacientes o clientes', 'limit' => 'maxPatients'],
+        ['label' => 'Citas por semana', 'limit' => 'maxAppointmentsPerWeek'],
+        ['label' => 'Subida de archivos y adjuntos', 'feature' => 'documents.uploads'],
     ],
     'Portal y reservas online' => [
         ['label' => 'Portal privado para pacientes o clientes', 'feature' => 'patientPortal.enabled'],
@@ -235,19 +275,33 @@ $comparison_groups = [
         ['label' => 'Duraciones de cita personalizables', 'feature' => 'catalog.customDurations'],
         ['label' => 'Salas y ubicaciones personalizables', 'feature' => 'catalog.customLocations'],
         ['label' => 'Sincronización con calendarios online', 'feature' => 'calendarSync.enabled'],
-        ['label' => 'Videollamada integrada con LiveKit', 'feature' => 'livekit.enabled'],
+        ['label' => 'Videollamada integrada con grabaci&oacute;n de audio/video opcional', 'feature' => 'livekit.enabled'],
     ],
     'Seguimiento profesional' => [
         ['label' => 'Tareas, pautas o ejercicios asignables', 'feature' => 'tasks.enabled'],
         ['label' => 'Plantillas reutilizables de tareas o rutinas', 'feature' => 'taskTemplates.enabled'],
-        ['label' => 'Cuestionarios y documentación de seguimiento', 'feature' => 'questionnaires.enabled'],
+        ['label' => 'Creaci&oacute;n de cuestionarios personalizados', 'feature' => 'questionnaires.enabled'],
         ['label' => 'Bonos y sesiones prepagadas', 'feature' => 'bonuses.enabled'],
     ],
     'Base de conocimiento e informes' => [
+        ['label' => 'Editor online de documentos', 'feature' => 'documents.onlineEditor'],
+        ['label' => 'Pizarra online de dibujo', 'feature' => 'documents.drawingBoard'],
+        ['label' => 'Firma de documentos con certificado del centro', 'feature' => 'digitalSignature.tenant'],
+        ['label' => 'Firma de documentos con certificado del profesional', 'feature' => 'digitalSignature.professional'],
         ['label' => 'Base de conocimiento por sector', 'feature' => 'knowledgeBase.enabled'],
         ['label' => 'Importar recomendaciones al plan de trabajo', 'feature' => 'knowledgeBase.importTasks'],
         ['label' => 'Consulta de bases de conocimiento relacionadas', 'feature' => 'knowledgeBase.multiSector'],
         ['label' => 'Estadísticas, listados e informes globales', 'feature' => 'reports.globalReports'],
+    ],
+    'Consentimientos y cumplimiento' => [
+        ['label' => 'Registrar aceptación externa y subir PDF firmado', 'common' => true],
+        ['label' => 'Plantillas de consentimientos personalizables', 'feature' => 'legalConsents.templates'],
+        ['label' => 'Generación de consentimientos PDF autorrellenados', 'feature' => 'legalConsents.generatedPdf'],
+        ['label' => 'Firma manuscrita presencial', 'feature' => 'legalConsents.handwrittenSignature'],
+        ['label' => 'Consentimientos asignados automáticamente por servicio', 'feature' => 'legalConsents.serviceMapping'],
+        ['label' => 'Firma remota desde el Portal de pacientes/clientes', 'feature' => 'legalConsents.portalSignature'],
+        ['label' => 'Firma con certificado del paciente mediante AutoFirma', 'feature' => 'legalConsents.autofirma'],
+        ['label' => 'Auditoría avanzada de consentimientos', 'feature' => 'legalConsents.advancedAudit'],
     ],
     'Pagos y facturación' => [
         ['label' => 'Compatibilidad con pago online', 'feature' => ['onlinePayments.enabled', 'payments.online']],
@@ -256,21 +310,24 @@ $comparison_groups = [
     ],
     'Equipo, marca y personalización' => [
         ['label' => 'Equipo de trabajo con varios profesionales', 'feature' => 'team.enabled'],
-        ['label' => 'Miembros adicionales del equipo', 'limit' => 'teamMembers'],
+        ['label' => 'Miembros del equipo', 'limit' => 'teamMembers'],
         ['label' => 'Tipos de miembro no profesional: recepción, administración y técnico', 'feature' => 'team.memberTypes'],
         ['label' => 'Permisos personalizados para miembros del equipo', 'feature' => 'team.permissions'],
+        ['label' => 'Control horario de entradas, salidas y descansos', 'feature' => 'timeTracking.enabled'],
         ['label' => 'Logotipo propio en dashboard y portal', 'feature' => 'branding.customLogo'],
-        ['label' => 'Dominio propio personalizado', 'feature' => 'branding.customDomain'],
+        ['label' => 'Usa tu propio dominio o subdominio para acceder a la aplicación', 'feature' => 'branding.customDomain'],
         ['label' => 'Personalización avanzada de opciones visibles', 'feature' => 'ui.customization'],
     ],
 ];
 
 $comparison_group_order = [
     'Incluido en todos los planes',
+    'Capacidad del plan',
     'Seguimiento profesional',
     'Portal y reservas online',
     'Agenda y gestión diaria',
     'Base de conocimiento e informes',
+    'Consentimientos y cumplimiento',
     'Equipo, marca y personalización',
     'Pagos y facturación',
 ];
@@ -482,6 +539,8 @@ foreach ($comparison_groups as $group_title => $features) {
         .sg-plan-card {
             position: relative;
             height: 100%;
+            display: flex;
+            flex-direction: column;
             border-radius: 24px;
             background: rgba(255, 255, 255, .9);
             border: 1px solid var(--sg-border);
@@ -681,9 +740,8 @@ foreach ($comparison_groups as $group_title => $features) {
                 <img src="<?= htmlspecialchars($brand_logo_url, ENT_QUOTES, 'UTF-8') ?>" alt="SimplyGest Praxis" class="sg-brand-logo">
             </a>
             <div class="d-none d-md-flex align-items-center gap-4">
-                <a class="sg-nav-link" href="./#caracteristicas">Características</a>
+                <a class="sg-nav-link" href="./">Inicio</a>
                 <a class="sg-nav-link" href="./#sectores">Sectores</a>
-                <a class="sg-nav-link" href="./#detalle">Detalle</a>
                 <a class="sg-nav-link is-active" href="app-plans.php">Planes</a>
             </div>
         </div>
@@ -738,7 +796,7 @@ foreach ($comparison_groups as $group_title => $features) {
         <section class="sg-section">
             <div class="container">
                 <div class="sg-section-title">
-                    <h2>Tres planes para crecer</h2>
+                    <h2>Cuatro planes para crecer</h2>
                     <p>Empieza por lo básico y cambia de plan cuando necesites más opciones o personalización avanzada.</p>
                 </div>
                 <div class="row g-4">
@@ -757,7 +815,7 @@ foreach ($comparison_groups as $group_title => $features) {
                             }
                         }
                         ?>
-                        <div class="col-lg-4">
+                        <div class="col-xl-3 col-md-6">
                             <article class="sg-plan-card <?= $plan_key === 'summum' ? 'is-featured' : '' ?>">
                                 <div class="sg-plan-label">
                                     <h3><?= htmlspecialchars($plan['label'], ENT_QUOTES, 'UTF-8') ?></h3>
@@ -765,18 +823,21 @@ foreach ($comparison_groups as $group_title => $features) {
                                 </div>
                                 <p><?= htmlspecialchars($summary['tagline'], ENT_QUOTES, 'UTF-8') ?></p>
                                 <div class="sg-plan-price">
-                                    <strong>Precio a definir</strong>
-                                    <span>Configuración comercial pendiente</span>
+                                    <strong><?= htmlspecialchars($summary['price'] ?? 'Precio a definir', ENT_QUOTES, 'UTF-8') ?></strong>
+                                    <span><?= $plan_key === 'initium' ? 'Sin tarjeta y sin caducidad' : 'Impuestos no incluidos' ?></span>
                                 </div>
                                 <ul class="sg-plan-list">
                                     <li><i class="bi bi-check-circle-fill"></i><span>Base común de agenda y gestión diaria.</span></li>
                                     <?php foreach ($highlight_features as $highlight): ?>
                                         <li><i class="bi bi-check-circle-fill"></i><span><?= htmlspecialchars($highlight, ENT_QUOTES, 'UTF-8') ?></span></li>
                                     <?php endforeach; ?>
-                                    <li><i class="bi bi-check-circle-fill"></i><span>Miembros adicionales: <?= htmlspecialchars(praxis_plans_team_limit_label($plan), ENT_QUOTES, 'UTF-8') ?>.</span></li>
+                                    <li><i class="bi bi-check-circle-fill"></i><span>Miembros del equipo: <?= htmlspecialchars(praxis_plans_team_limit_label($plan), ENT_QUOTES, 'UTF-8') ?>.</span></li>
                                     <li><i class="bi bi-check-circle-fill"></i><span><?= (int) $enabled_count ?> funciones configurables incluidas.</span></li>
                                     <li><i class="bi bi-check-circle-fill"></i><span>Duraciones disponibles: <?= htmlspecialchars(implode(', ', $plan['limits']['appointmentDurations'] ?? [60, 90, 120]), ENT_QUOTES, 'UTF-8') ?> min.</span></li>
                                 </ul>
+                                <div class="mt-auto pt-4">
+                                    <a class="btn btn-primary w-100" href="signup.php">Probar Summum 15 d&iacute;as</a>
+                                </div>
                             </article>
                         </div>
                     <?php endforeach; ?>
@@ -811,13 +872,18 @@ foreach ($comparison_groups as $group_title => $features) {
                                             <?php foreach ($plans as $plan): ?>
                                                 <?php $enabled = !empty($feature['common']) || praxis_plans_feature_enabled($plan, $feature['feature'] ?? ''); ?>
                                                 <td class="text-center">
-                                                    <?php if (isset($feature['limit']) && $feature['limit'] === 'teamMembers'): ?>
-                                                        <?php $team_limit_badge = praxis_plans_team_limit_badge_value($plan); ?>
-                                                        <span class="sg-check" title="<?= $team_limit_badge === null ? 'Sin limite' : ((string) $team_limit_badge) ?>">
-                                                            <?php if ($team_limit_badge === null): ?>
+                                                    <?php if (isset($feature['limit'])): ?>
+                                                        <?php
+                                                        $limit_value = praxis_plans_limit_value($plan, $feature['limit'], null);
+                                                        $limit_badge = ($limit_value === null || $limit_value === '' || (int) $limit_value === 0)
+                                                            ? null
+                                                            : max(1, (int) $limit_value);
+                                                        ?>
+                                                        <span class="sg-check" title="<?= $limit_badge === null ? 'Sin límite' : ((string) $limit_badge) ?>">
+                                                            <?php if ($limit_badge === null): ?>
                                                                 <i class="bi bi-check-lg"></i>
                                                             <?php else: ?>
-                                                                <?= (int) $team_limit_badge ?>
+                                                                <?= (int) $limit_badge ?>
                                                             <?php endif; ?>
                                                         </span>
                                                     <?php else: ?>

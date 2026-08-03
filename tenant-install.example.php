@@ -7,8 +7,8 @@ return [
     // terapia_ocupacional, preparacion_oposiciones, psicopedagogia.
     // Si database.name queda vacío, el instalador genera <subcarpeta>_<sector>.
     // Si installation.sector_texts_key queda vacío, el instalador mostrará el selector de sector.
-    // Si installation.plan_key se omite o queda vacío, se usará "novus".
-    // Valores aceptados: novus, magister, summum.
+    // Si installation.plan_key se omite o queda vacío, se usará "summum" durante la prueba.
+    // Valores aceptados: initium, novus, magister, summum.
     // Temporalmente se mantiene dashboard_config_mode, pero más adelante el plan gobernará estas opciones.
     // Si installation.dashboard_config_mode se omite o queda vacío, se usará "advanced".
     // Si installation.public_site_enabled es false u omitido, index.php redirigirá directamente al login.
@@ -25,7 +25,7 @@ return [
         'app_name' => 'SimplyGest Praxis',
         'timezone' => 'Atlantic/Canary',
         'sector_texts_key' => 'psicologia',
-        'plan_key' => 'novus',
+        'plan_key' => 'summum',
         // Valores aceptados: simple, advanced, custom. También admite: sencillo, avanzado, completo, personalizado.
         'dashboard_config_mode' => 'advanced',
         'public_site_enabled' => false,

@@ -1,0 +1,16 @@
+{
+  "name": "sgpraxis-drawing-editor-test",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "build": "esbuild src/main.jsx --bundle --format=esm --target=es2020 --conditions=production --outdir=../js/drawing-editor-test --loader:.woff=file --loader:.woff2=file --loader:.ttf=file --loader:.png=file --loader:.svg=file"
+  },
+  "dependencies": {
+    "@excalidraw/excalidraw": "^0.18.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.17.19"
+  }
+}

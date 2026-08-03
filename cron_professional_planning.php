@@ -78,8 +78,9 @@ $target_date = $target->format('Y-m-d');
 $stmt = $mysqli->prepare("
     SELECT p.id, p.display_name, p.public_email, u.email AS user_email
     FROM professionals p
-    LEFT JOIN users u ON u.id = p.user_id
-    WHERE p.is_active = 1
+    LEFT JOIN users u ON u.id = p.user_id AND u.tenant_id = p.tenant_id
+    WHERE p.tenant_id = ?
+      AND p.is_active = 1
       AND p.appointment_summary_email_mode = ?
     ORDER BY p.sort_order ASC, p.display_name ASC
 ");
@@ -87,7 +88,8 @@ if (!$stmt) {
     echo json_encode(['success' => false, 'error' => 'No se pudo preparar la consulta de profesionales']);
     exit;
 }
-$stmt->bind_param('s', $mode);
+$tenant_id = current_tenant_id();
+$stmt->bind_param('is', $tenant_id, $mode);
 $stmt->execute();
 $professionals = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
@@ -96,13 +98,25 @@ $failed = 0;
 $skipped = 0;
 
 foreach ($professionals as $professional) {
+    if (!cabinet_professional_notification_enabled($mysqli, (int) $professional['id'], 'daily_summary')) {
+        $skipped++;
+        continue;
+    }
+    $professional_preferences = cabinet_get_professional_preferences($mysqli, (int) $professional['id']);
+    try {
+        $professional_now = new DateTimeImmutable('now', new DateTimeZone($professional_preferences['timezone']));
+        $professional_target = $mode === 'tomorrow_evening' ? $professional_now->modify('+1 day') : $professional_now;
+        $professional_target_date = $professional_target->format('Y-m-d');
+    } catch (Throwable $e) {
+        $professional_target_date = $target_date;
+    }
     $email = trim($professional['public_email'] ?: ($professional['user_email'] ?? ''));
     if (!$email || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $skipped++;
         continue;
     }
 
-    $summary = professional_appointments_summary_table($mysqli, (int) $professional['id'], $target_date, 1);
+    $summary = professional_appointments_summary_table($mysqli, (int) $professional['id'], $professional_target_date, 1);
     $body =
         '<p>Hola ' . htmlspecialchars($professional['display_name'] ?? '') . ',</p>' .
         '<p>Te enviamos el resumen de tus citas para ' . $period_label_html . '.</p>' .

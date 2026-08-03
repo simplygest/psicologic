@@ -20,6 +20,9 @@ $online_booking_enabled = online_booking_enabled($mysqli);
 $show_patient_area = $online_booking_enabled || $is_admin;
 $show_team_public = cabinet_public_team_enabled($mysqli);
 $show_contact_public = (int) ($branding['show_contact_public'] ?? 0) === 1;
+$public_discount_active = (int) ($branding['discount_show_public'] ?? 0) === 1
+    && appointment_discount_is_active($branding, date('Y-m-d'));
+$public_discount_end = trim((string) ($branding['discount_period_end_date'] ?? ''));
 $services = fetch_appointment_services($mysqli, true);
 $bonuses = [];
 $public_delivery_mode = 'both';
@@ -107,6 +110,11 @@ function public_consultation_label($type)
                     <span>Precios</span>
                     <h1>Servicios disponibles</h1>
                 </div>
+                <?php if ($public_discount_active && $public_discount_end !== ''): ?>
+                    <div class="alert alert-info py-2 small">
+                        Precios promocionales disponibles hasta el <?= htmlspecialchars(date('d/m/Y', strtotime($public_discount_end))) ?>.
+                    </div>
+                <?php endif; ?>
 
                 <div class="table-responsive prices-public-table">
                     <?php $visible_prices = 0; ?>
@@ -129,7 +137,20 @@ function public_consultation_label($type)
                                         <td><?= htmlspecialchars($service['name']) ?></td>
                                         <td><?= (int) $option['duration_minutes'] ?> minutos</td>
                                         <td><?= htmlspecialchars(public_consultation_label($option['consultation_type'])) ?></td>
-                                        <td class="text-end"><?= htmlspecialchars(format_appointment_price($option['price'])) ?> €</td>
+                                        <td class="text-end">
+                                            <?php
+                                            $discount = $public_discount_active ? (float) ($option['discount_percentage'] ?? 0) : 0;
+                                            $base_price = (float) $option['price'];
+                                            $discounted_price = round($base_price * (1 - min(100, max(0, $discount)) / 100), 2);
+                                            ?>
+                                            <?php if ($discount > 0): ?>
+                                                <span class="text-muted text-decoration-line-through me-2"><?= htmlspecialchars(format_appointment_price($base_price)) ?> &euro;</span>
+                                                <strong class="text-success"><?= htmlspecialchars(format_appointment_price($discounted_price)) ?> &euro;</strong>
+                                                <span class="badge bg-success ms-2">-<?= htmlspecialchars(format_appointment_price($discount)) ?>%</span>
+                                            <?php else: ?>
+                                                <?= htmlspecialchars(format_appointment_price($base_price)) ?> &euro;
+                                            <?php endif; ?>
+                                        </td>
                                     </tr>
                                 <?php endforeach; ?>
                             <?php endforeach; ?>

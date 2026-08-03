@@ -39,7 +39,11 @@ function praxis_direct_script_from_request()
         'google_oauth_start.php',
         'google_oauth_callback.php',
         'testlivekit.php',
-        'livekit_call.php'
+        'testdaily.php',
+        'excalidraw_library.php',
+        'livekit_call.php',
+        'video_call.php',
+        'migration.php'
     ];
 
     $last = strtolower((string) end($parts));

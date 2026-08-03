@@ -17,7 +17,7 @@ function message_template_default_body($template_key)
     }
 
     return "<p>Hola {nombre},</p>\n" .
-        "<p>Te recordamos tu cita con {profesional_nombre} el {fecha} a las {hora}.</p>\n" .
+        "<p>Te recordamos tu cita con {profesional_nombre} el {fecha} a las {hora} ({zona_horaria}).</p>\n" .
         "<p>Un saludo,<br>{nombre_centro}</p>";
 }
 
@@ -32,6 +32,7 @@ function message_template_available_variables()
         'fecha_corta' => 'Fecha corta',
         'hora' => 'Hora',
         'hora_fin' => 'Hora fin',
+        'zona_horaria' => 'Zona horaria',
         'duracion' => 'Duracion',
         'modalidad' => 'Modalidad',
         'servicio' => 'Servicio',

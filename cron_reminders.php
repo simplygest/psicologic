@@ -126,12 +126,31 @@ function reminder_email_body_to_html($body)
     return nl2br(htmlspecialchars($body, ENT_QUOTES, 'UTF-8'));
 }
 
+function reminder_candidate_date_range($window_end_hours)
+{
+    $timezone = tenant_timezone();
+    $now = new DateTimeImmutable('now', new DateTimeZone($timezone));
+    $end = $now->modify('+' . max(1, (int) $window_end_hours) . ' hours');
+    return [$now->format('Y-m-d'), $end->format('Y-m-d'), $timezone, $now];
+}
+
+function reminder_hours_until_appointment(array $appointment, DateTimeImmutable $now, $timezone)
+{
+    $appointment_start = appointment_datetime_in_timezone(
+        $appointment['appointment_date'] ?? '',
+        $appointment['appointment_time'] ?? '',
+        $timezone
+    );
+    return ($appointment_start->getTimestamp() - $now->getTimestamp()) / 3600;
+}
+
 function send_appointment_reminders_for_window($mysqli, $tenant_id, $settings, $hours_before, $sent_column)
 {
     $sent_column = $sent_column === 'second_reminder_sent_at' ? 'second_reminder_sent_at' : 'reminder_sent_at';
     $hours_before = max(1, min(168, (int) $hours_before));
     $window_start = max(0, $hours_before - 1);
     $window_end = $hours_before + 1;
+    [$date_from, $date_to, $timezone, $now] = reminder_candidate_date_range($window_end);
 
     $template = message_template_get($mysqli, 'appointment_email_reminder');
     $stmt = $mysqli->prepare("
@@ -151,17 +170,25 @@ function send_appointment_reminders_for_window($mysqli, $tenant_id, $settings, $
           AND a.$sent_column IS NULL
           AND u.email IS NOT NULL
           AND u.email != ''
-          AND TIMESTAMP(a.appointment_date, a.appointment_time) BETWEEN DATE_ADD(NOW(), INTERVAL $window_start HOUR) AND DATE_ADD(NOW(), INTERVAL $window_end HOUR)
+          AND a.appointment_date BETWEEN ? AND ?
         ORDER BY a.appointment_date ASC, a.appointment_time ASC
     ");
-    $stmt->bind_param("i", $tenant_id);
+    $stmt->bind_param("iss", $tenant_id, $date_from, $date_to);
     $stmt->execute();
-    $appointments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $candidate_appointments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $appointments = [];
+    foreach ($candidate_appointments as $appointment) {
+        $hours_until = reminder_hours_until_appointment($appointment, $now, $timezone);
+        if ($hours_until >= $window_start && $hours_until <= $window_end) {
+            $appointments[] = $appointment;
+        }
+    }
 
     $sent = 0;
     $failed = 0;
     $base_url = app_public_base_url();
     $payment_enabled = (int) ($settings['online_payment_enabled'] ?? 0) === 1;
+    $timezone_label = app_timezone_display_label($timezone);
 
     foreach ($appointments as $appointment) {
         $manage_link = reminder_manage_link($mysqli, $tenant_id, $appointment);
@@ -193,6 +220,7 @@ function send_appointment_reminders_for_window($mysqli, $tenant_id, $settings, $
             'fecha_corta' => $date_short,
             'hora' => $time,
             'hora_fin' => $end_time,
+            'zona_horaria' => $timezone_label,
             'duracion' => (string) (int) ($appointment['duration_minutes'] ?? 60),
             'modalidad' => $consultation_text,
             'servicio' => $service_text,
@@ -268,6 +296,7 @@ function send_sms_appointment_reminders_for_window($mysqli, $tenant_id, $setting
     $hours_before = max(1, min(168, (int) $hours_before));
     $window_start = max(0, $hours_before - 1);
     $window_end = $hours_before + 1;
+    [$date_from, $date_to, $timezone, $now] = reminder_candidate_date_range($window_end);
 
     $template = message_template_get($mysqli, 'appointment_sms_reminder');
     $stmt = $mysqli->prepare("
@@ -282,15 +311,23 @@ function send_sms_appointment_reminders_for_window($mysqli, $tenant_id, $setting
           AND a.sms_reminder_sent_at IS NULL
           AND u.phone IS NOT NULL
           AND u.phone != ''
-          AND TIMESTAMP(a.appointment_date, a.appointment_time) BETWEEN DATE_ADD(NOW(), INTERVAL $window_start HOUR) AND DATE_ADD(NOW(), INTERVAL $window_end HOUR)
+          AND a.appointment_date BETWEEN ? AND ?
         ORDER BY a.appointment_date ASC, a.appointment_time ASC
     ");
-    $stmt->bind_param("i", $tenant_id);
+    $stmt->bind_param("iss", $tenant_id, $date_from, $date_to);
     $stmt->execute();
-    $appointments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $candidate_appointments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $appointments = [];
+    foreach ($candidate_appointments as $appointment) {
+        $hours_until = reminder_hours_until_appointment($appointment, $now, $timezone);
+        if ($hours_until >= $window_start && $hours_until <= $window_end) {
+            $appointments[] = $appointment;
+        }
+    }
 
     $sent = 0;
     $failed = 0;
+    $timezone_label = app_timezone_display_label($timezone);
 
     foreach ($appointments as $appointment) {
         $manage_link = reminder_manage_link($mysqli, $tenant_id, $appointment);
@@ -309,6 +346,7 @@ function send_sms_appointment_reminders_for_window($mysqli, $tenant_id, $setting
             'fecha_corta' => $date,
             'hora' => $time,
             'hora_fin' => $end_time,
+            'zona_horaria' => $timezone_label,
             'duracion' => (string) (int) ($appointment['duration_minutes'] ?? 60),
             'modalidad' => '',
             'servicio' => '',

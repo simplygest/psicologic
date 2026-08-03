@@ -19,7 +19,7 @@ function showAdminActionMessage(message, type = 'success') {
 }
 
 function normalizeInitialDashboardView(value) {
-    const view = ['week', 'month', 'agenda', 'patients', 'upcoming'].includes(value) ? value : 'month';
+    const view = ['dashboard', 'week', 'month', 'agenda', 'patients', 'upcoming'].includes(value) ? value : 'month';
     if (IS_ADMIN && !memberCan('agenda') && (view === 'week' || view === 'month' || view === 'agenda')) {
         if (memberCan('patients')) return 'patients';
         if (memberCan('appointments')) return 'upcoming';
@@ -65,6 +65,8 @@ let DASHBOARD_PATIENTS = [];
 let DASHBOARD_UPCOMING_APPOINTMENTS = [];
 let dashboardPatientsLoaded = false;
 let dashboardUpcomingLoaded = false;
+let dashboardSummaryCache = {};
+let dashboardSummaryPeriod = 30;
 let PAYMENT_SETTINGS = {
     online_payment_enabled: 0,
     appointment_price: '70.00',
@@ -103,8 +105,16 @@ let PAYMENT_SETTINGS = {
     billing_enabled: 0,
     billing_country: 'ES',
     billing_province: '',
-    billing_session_concept: 'Sesion del dia {fecha} de duracion {duracion} minutos',
-    billing_report_concept: 'Informe {titulo}'
+    billing_session_concept: 'Sesión {servicio} del día {fecha} ({duracion} minutos)',
+    billing_report_concept: 'Informe {titulo}',
+    billing_tax_system: 'iva',
+    billing_default_tax_mode: 'exempt',
+    discount_period_enabled: 0,
+    discount_period_start_date: '',
+    discount_period_end_date: '',
+    discount_show_public: 0,
+    billing_default_tax_rate: '0.00',
+    billing_exemption_reason: ''
 };
 if (typeof INITIAL_BILLING_SETTINGS !== 'undefined' && INITIAL_BILLING_SETTINGS) {
     PAYMENT_SETTINGS = { ...PAYMENT_SETTINGS, ...INITIAL_BILLING_SETTINGS };
@@ -168,7 +178,7 @@ function updateDashboardBrandLogo(settings = {}) {
     const planKey = APP_PLAN_CONFIG && APP_PLAN_CONFIG.plan && APP_PLAN_CONFIG.plan.key
         ? String(APP_PLAN_CONFIG.plan.key).toLowerCase()
         : '';
-    const useTenantLogo = planKey !== 'novus' && tenantLogo;
+    const useTenantLogo = !['initium', 'novus'].includes(planKey) && tenantLogo;
     const logoUrl = useTenantLogo ? tenantLogo : officialLogo;
     if (!logoUrl) return;
 
@@ -192,6 +202,7 @@ let CURRENT_CANCELLED_APPOINTMENTS = [];
 let adminStatsModal = null;
 let bonusesModal = null;
 let invoicesModal = null;
+let sendInvoiceEmailModal = null;
 let appLogModal = null;
 let invoicesSearchTimer = null;
 let messageTemplateModal = null;
@@ -214,11 +225,18 @@ let CURRENT_SLOT_PROFESSIONALS = [];
 let CURRENT_SLOT_SELECTED_PROFESSIONAL_ID = 0;
 let CURRENT_BOOKING_CONSULTATION_TYPE = '';
 let CURRENT_PATIENT_EDITOR = null;
+let CURRENT_PATIENT_DIAGNOSES = [];
+// Cambiar a false retira esta mejora sin alterar el flujo normal del calendario.
+const QUICK_PATIENT_BOOKING_ENABLED = true;
+let QUICK_BOOKING_CONTEXT = null;
+let QUICK_BOOKING_MODAL_CONTEXT = null;
 const QUICK_APPOINTMENTS_REFRESH_INTERVAL_MS = 60000;
 let quickAppointmentsRefreshTimer = null;
 let quickAppointmentsSummaryLoading = false;
 let quickAppointmentsSummaryRequest = null;
 let quickAppointmentsSummaryRendered = false;
+let quickImportantNotices = [];
+let quickImportantNoticeIndex = 0;
 let dashboardPatientsWaitingOnly = false;
 let patientPortalSummaryLoading = false;
 let bookingPatientsLoaded = false;
@@ -294,11 +312,33 @@ function bodyMapEnabled() {
     return APP_BODY_MAP_ENABLED && knowledgeBaseEnabled() && BODY_MAP_SECTORS.includes(APP_CURRENT_SECTOR_KEY);
 }
 
+function progressiveKnowledgeWizardEnabled() {
+    return !bodyMapEnabled();
+}
+
 function setFeatureVisible(selector, visible) {
     const $elements = $(selector);
     if (!$elements.length) return;
     $elements.toggleClass('d-none', !visible);
     $elements.find('input, select, textarea, button').prop('disabled', !visible);
+}
+
+function setSidebarFeatureEnabled(selector, enabled, title = 'Disponible en un plan superior') {
+    const $elements = $(selector);
+    if (!$elements.length) return;
+    $elements.prop('disabled', !enabled)
+        .attr('aria-disabled', enabled ? null : 'true')
+        .attr('title', enabled ? null : title)
+        .toggleClass('plan-locked', !enabled);
+    $elements.each(function () {
+        const $button = $(this);
+        const $lock = $button.children('.plan-lock-icon');
+        if (enabled) {
+            $lock.remove();
+        } else if (!$lock.length) {
+            $button.append('<i class="bi bi-lock-fill plan-lock-icon"></i>');
+        }
+    });
 }
 
 function ensureVisibleSettingsTab() {
@@ -324,6 +364,7 @@ function showFallbackTabIfHidden(activeSelector, fallbackSelector) {
 }
 
 function applyPlanFeatureVisibility() {
+    const canManageTenantSettings = IS_SUPERADMIN;
     const patientPortal = appFeatureEnabled('patientPortal.enabled', false);
     const patientPortalPlan = planFeatureEnabled('patientPortal.enabled', false);
     const invitations = patientPortal && appFeatureEnabled('patientPortal.invitations', false);
@@ -333,7 +374,7 @@ function applyPlanFeatureVisibility() {
     const templates = appFeatureEnabled('taskTemplates.enabled', false);
     const closures = appFeatureEnabled('closures.enabled', false);
     const questionnaires = appFeatureEnabled('questionnaires.enabled', false);
-    const reports = appFeatureEnabled('reports.globalReports', false);
+    const reports = appFeatureEnabled('reports.globalReports', false) && memberCan('reports');
     const upcomingPlanning = appFeatureEnabled('upcomingAppointments.planning', false);
     const payments = paymentPlanEnabled();
     const reminders = appFeatureEnabled('reminders.patient24h', false);
@@ -343,16 +384,20 @@ function applyPlanFeatureVisibility() {
     const uiCustomization = planFeatureEnabled('ui.customization', false);
     const effectiveDuration = appFeatureEnabled('appointments.effectiveDuration', false);
 
-    setFeatureVisible('#btn-generate-invite, #btn-mobile-generate-invite, #btn-sidebar-generate-invite', invitations);
-    setFeatureVisible('#btn-admin-bonuses, #btn-mobile-admin-bonuses, #btn-sidebar-admin-bonuses, #btn-buy-bonus, #btn-my-bonuses', bonuses);
+    setFeatureVisible('#btn-generate-invite, #btn-mobile-generate-invite', invitations);
+    setSidebarFeatureEnabled('#btn-sidebar-generate-invite', invitations);
+    setFeatureVisible('#btn-admin-bonuses, #btn-mobile-admin-bonuses, #btn-buy-bonus, #btn-my-bonuses', bonuses);
+    setSidebarFeatureEnabled('#btn-sidebar-admin-bonuses', bonuses);
     $('#btn-mobile-buy-bonus, #btn-mobile-my-bonuses').closest('li').toggleClass('d-none', !bonuses);
     $('#patient-bonuses-tab').closest('.nav-item').toggleClass('d-none', !bonuses);
     $('#patient-bonuses-panel').toggleClass('d-none', !bonuses);
 
-    setFeatureVisible('#btn-admin-stats, #btn-mobile-admin-stats, #btn-sidebar-admin-stats', reports);
+    setFeatureVisible('#btn-admin-stats, #btn-mobile-admin-stats', reports);
+    setSidebarFeatureEnabled('#btn-sidebar-admin-stats', reports);
     const billingAllowed = billingPlanEnabled();
-    const billingEnabled = IS_ADMIN && billingAllowed && PAYMENT_SETTINGS.billing_enabled == 1;
-    setFeatureVisible('#btn-admin-invoices, #btn-mobile-admin-invoices, #btn-sidebar-admin-invoices', billingEnabled);
+    const billingEnabled = IS_ADMIN && memberCan('billing') && billingAllowed && PAYMENT_SETTINGS.billing_enabled == 1;
+    setFeatureVisible('#btn-admin-invoices, #btn-mobile-admin-invoices', billingEnabled);
+    setSidebarFeatureEnabled('#btn-sidebar-admin-invoices', billingEnabled);
     $('#btn-mobile-admin-invoices').closest('li').toggleClass('d-none', !billingEnabled);
     $('#patient-reports-tab').closest('.nav-item').toggleClass('d-none', !reports);
     $('#patient-reports-panel').toggleClass('d-none', !reports);
@@ -366,30 +411,35 @@ function applyPlanFeatureVisibility() {
     $('#appointment-session-tab').closest('.nav-item').toggleClass('d-none', !tasks);
     $('#appointment-session-panel').toggleClass('d-none', !tasks);
 
-    $('#bonuses-settings-tab').closest('.nav-item').toggleClass('d-none', !bonuses);
-    $('#bonuses-settings-panel').toggleClass('d-none', !bonuses);
+    $('#bonuses-settings-tab').closest('.nav-item').toggleClass('d-none', !canManageTenantSettings || !bonuses);
+    $('#bonuses-settings-panel').toggleClass('d-none', !canManageTenantSettings || !bonuses);
     $('#closures-settings-tab').closest('.nav-item').toggleClass('d-none', !closures);
     $('#closures-settings-panel').toggleClass('d-none', !closures);
     $('#btn-open-closed-modal').prop('disabled', !closures);
     $('#task-templates-settings-tab').closest('.nav-item').toggleClass('d-none', !templates);
     $('#task-templates-settings-panel').toggleClass('d-none', !templates);
-    $('#payment-settings-tab').closest('.nav-item').toggleClass('d-none', !payments);
-    $('#payment-settings-panel').toggleClass('d-none', !payments);
-    $('#billing-settings-tab').closest('.nav-item').toggleClass('d-none', !billingAllowed);
-    $('#billing-settings-panel').toggleClass('d-none', !billingAllowed);
-    $('#calendar-settings-tab').closest('.nav-item').toggleClass('d-none', !calendarSync);
-    $('#calendar-settings-panel').toggleClass('d-none', !calendarSync);
-    $('#cabinet-settings-tab').closest('.nav-item').toggleClass('d-none', !team);
-    $('#cabinet-settings-panel').toggleClass('d-none', !team);
+    $('#payment-settings-tab').closest('.nav-item').toggleClass('d-none', !canManageTenantSettings);
+    $('#payment-settings-panel').toggleClass('d-none', !canManageTenantSettings || !payments);
+    $('#billing-settings-tab').closest('.nav-item').toggleClass('d-none', !canManageTenantSettings);
+    $('#billing-settings-panel').toggleClass('d-none', !canManageTenantSettings || !billingAllowed);
+    $('#calendar-settings-tab').closest('.nav-item').toggleClass('d-none', !canManageTenantSettings);
+    $('#calendar-settings-panel').toggleClass('d-none', !canManageTenantSettings || !calendarSync);
+    $('#cabinet-settings-tab').closest('.nav-item').toggleClass('d-none', !canManageTenantSettings || !team);
+    $('#cabinet-settings-panel').toggleClass('d-none', !canManageTenantSettings || !team);
+    $('#email-settings-tab, #sms-settings-tab, #interface-settings-tab, #legal-settings-tab, #signature-settings-tab, #time-tracking-settings-tab')
+        .closest('.nav-item')
+        .toggleClass('d-none', !canManageTenantSettings);
+    $('#email-settings-panel, #sms-settings-panel, #interface-settings-panel, #legal-settings-panel, #signature-settings-panel, #time-tracking-settings-panel')
+        .toggleClass('d-none', !canManageTenantSettings);
 
-    $('#online-booking-enabled').closest('.row').toggleClass('d-none', !patientPortal);
-    $('#patient-registration-requires-invite').closest('.row').toggleClass('d-none', !patientPortal || !invitations);
-    $('#patient-tasks-visible-default').closest('.row').toggleClass('d-none', !patientPortal || !tasks);
-    $('#display-effective-duration-enabled').closest('.mt-3').toggleClass('d-none', !effectiveDuration);
+    $('#online-booking-enabled').closest('.row').toggleClass('d-none', !canManageTenantSettings || !patientPortal);
+    $('#patient-registration-requires-invite').closest('.row').toggleClass('d-none', !canManageTenantSettings || !patientPortal || !invitations);
+    $('#patient-tasks-visible-default').closest('.row').toggleClass('d-none', !canManageTenantSettings || !patientPortal || !tasks);
+    $('#display-effective-duration-enabled').closest('.mt-3').toggleClass('d-none', !canManageTenantSettings || !effectiveDuration);
     $('#appointment-reminder-enabled').closest('.row').toggleClass('d-none', !reminders);
     $('#appointment-second-reminder-row').toggleClass('d-none', !reminders);
-    $('#profile-image').closest('.row').toggleClass('d-none', !customLogo);
-    $('#show-profile-image-public').closest('.form-check').toggleClass('d-none', !customLogo);
+    $('#profile-image').closest('.row').toggleClass('d-none', !canManageTenantSettings || !customLogo);
+    $('#show-profile-image-public').closest('.form-check').toggleClass('d-none', !canManageTenantSettings || !customLogo);
     $('.patient-files-filter[data-files-filter="questionnaire"]').toggleClass('d-none', !questionnaires);
     $('#patient-document-type option[value="questionnaire"]').prop('disabled', !questionnaires).toggleClass('d-none', !questionnaires);
     if (!questionnaires && $('#patient-document-type').val() === 'questionnaire') {
@@ -397,7 +447,7 @@ function applyPlanFeatureVisibility() {
         updatePatientDocumentTypeFields(false, true);
     }
 
-    $('#dashboard-config-row').toggleClass('d-none', !uiCustomization);
+    $('#dashboard-config-row').toggleClass('d-none', !canManageTenantSettings || !uiCustomization);
     $('#dashboard-config-mode').val(uiCustomization ? (LOADED_DASHBOARD_CONFIG_MODE || 'advanced') : 'advanced');
     $('#btn-open-dashboard-custom-config').toggleClass('d-none', !uiCustomization);
 
@@ -423,6 +473,7 @@ function applyPlanFeatureVisibility() {
         $('#billing-enabled').prop('checked', false);
     }
 
+    sortSettingsTabsByAvailability();
     ensureVisibleSettingsTab();
     showFallbackTabIfHidden('#patient-work-plan-tab', '#patient-data-tab');
     showFallbackTabIfHidden('#patient-bonuses-tab', '#patient-data-tab');
@@ -433,18 +484,27 @@ function applyPlanFeatureVisibility() {
 }
 
 function applyKnowledgeBaseVisibility() {
-    const enabled = knowledgeBaseEnabled();
     const $tab = $('#patient-diagnosis-tab');
     const $panel = $('#patient-diagnosis-panel');
     if (!$tab.length || !$panel.length) return;
-    $tab.closest('.nav-item').toggleClass('d-none', !enabled);
-    $panel.toggleClass('d-none', !enabled);
-    if (!enabled && $tab.hasClass('active')) {
-        const fallback = document.getElementById('patient-data-tab');
-        if (fallback) {
-            bootstrap.Tab.getOrCreateInstance(fallback).show();
-        }
-    }
+    $tab.closest('.nav-item').removeClass('d-none');
+    $panel.removeClass('d-none');
+}
+
+function sortSettingsTabsByAvailability() {
+    const $tabs = $('#settings-tabs');
+    if (!$tabs.length) return;
+    const subscriptionItem = $('#subscription-settings-tab').closest('.nav-item')[0] || null;
+    const enabled = [];
+    const disabled = [];
+    $tabs.children('.nav-item').each(function () {
+        if (this === subscriptionItem) return;
+        const isDisabled = $(this).find('button.nav-link').first().prop('disabled');
+        (isDisabled ? disabled : enabled).push(this);
+    });
+    enabled.forEach(item => $tabs.append(item));
+    disabled.forEach(item => $tabs.append(item));
+    if (subscriptionItem) $tabs.append(subscriptionItem);
 }
 
 function getMonday(d) {
@@ -624,6 +684,90 @@ function calculatePatientBodyFatFromSkinfolds(age, sex) {
     return (495 / density) - 450;
 }
 
+const DASHBOARD_SETTINGS_SECTIONS = [
+    { group: 'Centro y actividad', id: 'closed-days-tab', icon: 'bi-sliders', title: 'General', description: 'Datos generales y preferencias de funcionamiento.' },
+    { group: 'Centro y actividad', id: 'booking-settings-tab', icon: 'bi-clock', title: 'Horarios', description: 'Disponibilidad, reservas y duración de las citas.' },
+    { group: 'Centro y actividad', id: 'closures-settings-tab', icon: 'bi-calendar-x', title: 'Vacaciones y cierres', description: 'Días no laborables y periodos de cierre.' },
+    { group: 'Centro y actividad', id: 'services-settings-tab', icon: 'bi-tags', title: 'Precios', description: 'Servicios, tarifas y duraciones.' },
+    { group: 'Centro y actividad', id: 'bonuses-settings-tab', icon: 'bi-card-list', title: 'Bonos', description: 'Bonos y sesiones incluidas.' },
+    { group: 'Equipo y trabajo', id: 'cabinet-settings-tab', icon: 'bi-people', title: 'Equipo', description: 'Profesionales y organización del centro.' },
+    { group: 'Equipo y trabajo', id: 'task-templates-settings-tab', icon: 'bi-list-check', title: 'Mis tareas', description: 'Plantillas reutilizables para el plan de trabajo.' },
+    { group: 'Equipo y trabajo', id: 'questionnaires-settings-tab', icon: 'bi-ui-checks', title: 'Mis cuestionarios', description: 'Crea y administra cuestionarios personalizados.' },
+    { group: 'Equipo y trabajo', id: 'time-tracking-settings-tab', icon: 'bi-stopwatch', title: 'Control horario', description: 'Preferencias del registro de jornada.' },
+    { group: 'Comunicación', id: 'email-settings-tab', icon: 'bi-envelope', title: 'Correo electrónico', description: 'Recordatorios y comunicaciones por email.' },
+    { group: 'Comunicación', id: 'sms-settings-tab', icon: 'bi-chat-dots', title: 'SMS', description: 'Configura el envío de mensajes SMS.' },
+    { group: 'Comunicación', id: 'calendar-settings-tab', icon: 'bi-calendar3', title: 'Calendario online', description: 'Sincronización y preferencias de calendario.' },
+    { group: 'Gestión y seguridad', id: 'payment-settings-tab', icon: 'bi-credit-card', title: 'Pagos online', description: 'Cobros y configuración del pago online.' },
+    { group: 'Gestión y seguridad', id: 'billing-settings-tab', icon: 'bi-receipt', title: 'Facturación', description: 'Datos fiscales, numeración y VeriFactu.' },
+    { group: 'Gestión y seguridad', id: 'legal-settings-tab', icon: 'bi-shield-check', title: 'Legal', description: 'Datos legales y documentación del centro.' },
+    { group: 'Gestión y seguridad', id: 'signature-settings-tab', icon: 'bi-patch-check', title: 'Certificado digital', description: 'Firma de documentos, informes y facturas.' },
+    { group: 'Personalización', id: 'interface-settings-tab', icon: 'bi-palette', title: 'Interfaz', description: 'Aspecto y experiencia visual de la aplicación.' },
+    { group: 'Tu cuenta', id: 'subscription-settings-tab', icon: 'bi-gem', title: 'Suscripción', description: 'Plan actual, cobros y forma de pago.' }
+];
+
+function dashboardSettingAvailable(item) {
+    const tab = document.getElementById(item.id);
+    if (!tab || tab.disabled || tab.classList.contains('plan-locked') || tab.classList.contains('d-none')) return false;
+    const navItem = tab.closest('.nav-item');
+    return !navItem || (!navItem.classList.contains('d-none') && window.getComputedStyle(navItem).display !== 'none');
+}
+
+function resetFocusedSettingsMode() {
+    $('#settingsModal').removeClass('settings-single-tab-mode');
+    $('#settings-modal-title').text('Configuración');
+    $('#settings-modal-breadcrumb, #btn-settings-back-to-hub').addClass('d-none');
+}
+
+function openFocusedSettingsTab(tabId, label) {
+    const tab = document.getElementById(tabId);
+    if (!settingsModal || !tab || !dashboardSettingAvailable({ id: tabId })) return;
+    loadClosedDays();
+    loadPaymentSettings();
+    loadSignatureSettings();
+    $('#settingsModal').addClass('settings-single-tab-mode');
+    $('#settings-modal-title').text(label || $(tab).text().trim());
+    $('#settings-modal-breadcrumb').removeClass('d-none').text('Configuración');
+    $('#btn-settings-back-to-hub').removeClass('d-none');
+    bootstrap.Tab.getOrCreateInstance(tab).show();
+    settingsModal.show();
+}
+
+function renderDashboardConfigurationView() {
+    const available = DASHBOARD_SETTINGS_SECTIONS.filter(dashboardSettingAvailable);
+    const groups = [...new Set(available.map(item => item.group))];
+    $('#calendar-container').html(`
+        <section class="dashboard-inline-page dashboard-settings-hub">
+            <div class="dashboard-inline-page-header">
+                <div><h2>Configuración</h2><p>Elige qué parte de la aplicación quieres configurar.</p></div>
+                <div class="dashboard-hub-search"><i class="bi bi-search"></i><input class="form-control form-control-sm" id="dashboard-settings-search" placeholder="Buscar configuración..."></div>
+            </div>
+            <div id="dashboard-settings-groups">
+                ${groups.map(group => `<section class="dashboard-settings-group" data-settings-group><h3>${escapeHtml(group)}</h3><div class="dashboard-settings-grid">${available.filter(item => item.group === group).map(item => `
+                    <button class="dashboard-settings-card" type="button" data-settings-tab="${item.id}" data-settings-label="${escapeHtml(item.title)}" data-settings-search="${escapeHtml(`${item.title} ${item.description} ${group}`.toLowerCase())}">
+                        <span class="dashboard-settings-icon"><i class="bi ${item.icon}"></i></span><span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.description)}</small></span><i class="bi bi-chevron-right ms-auto"></i>
+                    </button>`).join('')}</div></section>`).join('')}
+            </div>
+        </section>`);
+}
+
+function ensureQuestionnaireAssets(callback) {
+    if (window.SGPraxisQuestionnaires) { callback?.(); return; }
+    const asset = window.SGPRAxisQuestionnaireAssets && window.SGPRAxisQuestionnaireAssets.script;
+    if (!asset) return;
+    const existing = document.querySelector('script[data-questionnaires-script]');
+    if (existing) { existing.addEventListener('load', () => callback?.(), { once: true }); return; }
+    const script = document.createElement('script');
+    script.src = asset; script.dataset.questionnairesScript = '1';
+    script.onload = () => callback?.();
+    script.onerror = () => $('#questionnaires-dashboard-alert').removeClass('d-none').addClass('alert-danger').text('No se pudo cargar el editor de cuestionarios.');
+    document.body.appendChild(script);
+}
+
+function renderDashboardQuestionnairesView() {
+    $('#calendar-container').html(`<section class="dashboard-inline-page"><div class="dashboard-inline-page-header"><div><h2>Mis cuestionarios</h2><p>Crea, consulta y administra tus cuestionarios personalizados.</p></div><button class="btn btn-primary btn-sm" id="btn-dashboard-new-questionnaire"><i class="bi bi-plus-lg me-1"></i>Nuevo cuestionario</button></div><div class="alert d-none" id="questionnaires-dashboard-alert"></div><div id="questionnaires-dashboard-list"><div class="text-center text-muted py-5"><span class="spinner-border spinner-border-sm me-2"></span>Cargando cuestionarios...</div></div></section>`);
+    ensureQuestionnaireAssets(() => window.SGPraxisQuestionnaires?.loadList());
+}
+
 function renderWeekInfo() {
     if (currentCalendarView === 'agenda' && !supportsDetailedAgendaView()) {
         currentCalendarView = 'week';
@@ -632,11 +776,20 @@ function renderWeekInfo() {
     if (IS_ADMIN && !isCalendarDashboardView()) {
         $('#calendar-container').html('<div class="text-center text-muted py-5"><div class="spinner-border text-secondary" role="status"></div><br>Cargando. Espera...</div>');
         const quickPromise = loadQuickAppointmentsSummary(!quickAppointmentsSummaryRendered);
+        if (currentCalendarView === 'dashboard') {
+            return renderDashboardSummaryView();
+        }
         if (currentCalendarView === 'patients') {
             return $.when(quickPromise).always(renderDashboardPatientsView);
         }
         if (currentCalendarView === 'upcoming') {
             return $.when(quickPromise).always(renderDashboardUpcomingView);
+        }
+        if (currentCalendarView === 'configuration') {
+            return renderDashboardConfigurationView();
+        }
+        if (currentCalendarView === 'questionnaires') {
+            return renderDashboardQuestionnairesView();
         }
     }
     const quickPromise = IS_ADMIN
@@ -1768,7 +1921,13 @@ function loadQuickAppointmentsSummary(animate = !quickAppointmentsSummaryRendere
                 $wrap.addClass('d-none').empty();
                 return;
             }
-            renderQuickAppointmentsSummary(res.current || null, res.next || null, res.waiting_list || null, animate);
+            renderQuickAppointmentsSummary(
+                res.current || null,
+                res.next || null,
+                res.waiting_list || null,
+                res.important_notices || [],
+                animate
+            );
         },
         error: function () {
             $wrap.addClass('d-none').empty();
@@ -1800,7 +1959,7 @@ function startQuickAppointmentsAutoRefresh() {
     quickAppointmentsRefreshTimer = setInterval(refreshQuickAppointmentSummaries, QUICK_APPOINTMENTS_REFRESH_INTERVAL_MS);
 }
 
-function renderQuickAppointmentsSummary(current, next, waitingList = null, animate = false) {
+function renderQuickAppointmentsSummary(current, next, waitingList = null, importantNotices = [], animate = false) {
     const $wrap = $('#quick-appointments-summary');
     if (!$wrap.length) {
         return;
@@ -1808,6 +1967,11 @@ function renderQuickAppointmentsSummary(current, next, waitingList = null, anima
     const normalized = normalizeQuickAppointmentsForNow(current, next);
     current = normalized.current;
     next = normalized.next;
+    importantNotices = Array.isArray(importantNotices) ? importantNotices.slice() : [];
+    const timezoneNotice = professionalTimezoneMismatchNotice();
+    if (timezoneNotice && !importantNotices.some(notice => notice.type === timezoneNotice.type)) {
+        importantNotices.push(timezoneNotice);
+    }
     const cards = [];
     if (current) {
         cards.push(quickAppointmentCardHtml(current, 'Cita en curso', 'current'));
@@ -1816,7 +1980,15 @@ function renderQuickAppointmentsSummary(current, next, waitingList = null, anima
         cards.push(quickAppointmentCardHtml(next, current ? 'Siguiente cita' : 'Próxima cita', 'next'));
     }
     if (waitingList && parseInt(waitingList.count || 0, 10) > 0) {
-        cards.push(waitingListQuickCardHtml(waitingList));
+        importantNotices.push(waitingListImportantNotice(waitingList));
+    }
+    if (importantNotices.length) {
+        quickImportantNotices = importantNotices;
+        quickImportantNoticeIndex = Math.min(quickImportantNoticeIndex, importantNotices.length - 1);
+        cards.push(importantNoticesQuickCardHtml(importantNotices, quickImportantNoticeIndex));
+    } else {
+        quickImportantNotices = [];
+        quickImportantNoticeIndex = 0;
     }
     if (!cards.length) {
         $wrap.addClass('d-none').empty();
@@ -1878,6 +2050,64 @@ function quickAppointmentCardHtml(app, title, type) {
     `;
 }
 
+function timezoneOffsetMinutes(timeZone, date) {
+    try {
+        const parts = new Intl.DateTimeFormat('en-CA', {
+            timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+        }).formatToParts(date).reduce((values, part) => {
+            if (part.type !== 'literal') values[part.type] = parseInt(part.value, 10);
+            return values;
+        }, {});
+        return Math.round((Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second) - date.getTime()) / 60000);
+    } catch (error) {
+        return null;
+    }
+}
+
+function professionalTimezoneMismatchNotice() {
+    if (!IS_ADMIN || typeof EFFECTIVE_PROFESSIONAL_TIMEZONE === 'undefined' || !EFFECTIVE_PROFESSIONAL_TIMEZONE) return null;
+    const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    if (!browserTimezone || browserTimezone === EFFECTIVE_PROFESSIONAL_TIMEZONE) return null;
+    const now = new Date();
+    const later = new Date(now.getTime() + 183 * 86400000);
+    const browserOffsets = [timezoneOffsetMinutes(browserTimezone, now), timezoneOffsetMinutes(browserTimezone, later)];
+    const configuredOffsets = [timezoneOffsetMinutes(EFFECTIVE_PROFESSIONAL_TIMEZONE, now), timezoneOffsetMinutes(EFFECTIVE_PROFESSIONAL_TIMEZONE, later)];
+    if (browserOffsets.includes(null) || configuredOffsets.includes(null) || browserOffsets.every((value, index) => value === configuredOffsets[index])) return null;
+    return {
+        type: 'professional_timezone_mismatch', level: 'warning', title: '¿Estás de viaje?',
+        message: 'La zona horaria de este dispositivo no coincide con la configurada. Revísala para evitar problemas con los horarios.',
+        action: 'professional_profile', action_label: 'Revisar zona horaria'
+    };
+}
+
+function waitingListImportantNotice(waitingList) {
+    const count = parseInt(waitingList.count || 0, 10);
+    const patientLabel = count === 1
+        ? sectorLabel('patient', 'singular', 'paciente')
+        : sectorLabel('patient', 'plural', 'pacientes');
+    let message = `Hay ${count} ${patientLabel} esperando una cita.`;
+    if (waitingList.has_slot && waitingList.slot) {
+        const slot = waitingList.slot || {};
+        const dateLabel = slot.date_label || formatQuickCardDate(slot.date || '');
+        const timeLabel = slot.time || '';
+        const professionalName = slot.professional_name ? ` con ${slot.professional_name}` : '';
+        message = `Primer hueco disponible: ${dateLabel}${timeLabel ? ` a las ${timeLabel}` : ''}${professionalName}.`;
+    } else if (waitingList.no_slots_until) {
+        message = `No hay huecos libres hasta el pr\u00f3ximo ${waitingList.no_slots_until}.`;
+    }
+    return {
+        type: 'waiting_list',
+        level: 'warning',
+        title: count === 1
+            ? `Hay 1 ${patientLabel} en lista de espera`
+            : `Hay ${count} ${patientLabel} en lista de espera`,
+        message,
+        action: 'waiting_list',
+        action_label: 'Ver pacientes'
+    };
+}
+
 function waitingListQuickCardHtml(waitingList) {
     const count = parseInt(waitingList.count || 0, 10);
     const patientLabel = count === 1
@@ -1919,6 +2149,45 @@ function waitingListQuickCardHtml(waitingList) {
                     </div>
                     <div class="quick-appointment-badges">
                         <span class="badge bg-warning text-dark">En espera</span>
+                    </div>
+                </div>
+            </article>
+        </div>
+    `;
+}
+
+function importantNoticesQuickCardHtml(notices, index = 0) {
+    index = Math.max(0, Math.min(parseInt(index || 0, 10), notices.length - 1));
+    const primary = notices[index] || {};
+    const supportedActions = ['payment_settings', 'billing_settings', 'signature_settings', 'waiting_list', 'professional_profile', 'data_export'];
+    const actionIcon = primary.action === 'waiting_list' ? 'bi-hourglass-split' : (primary.action === 'data_export' ? 'bi-download' : 'bi-gear');
+    const action = supportedActions.includes(primary.action)
+        ? `<button type="button" class="btn btn-outline-danger btn-sm btn-important-notice-action" data-notice-action="${escapeHtml(primary.action)}">
+                <i class="bi ${actionIcon}"></i> ${escapeHtml(primary.action_label || 'Revisar')}
+           </button>`
+        : '';
+    return `
+        <div class="col-12 col-lg-4">
+            <article class="quick-appointment-card quick-appointment-important">
+                <div class="quick-appointment-topline">
+                    <span class="badge bg-danger"><i class="bi bi-exclamation-triangle-fill me-1"></i> Atenci&oacute;n</span>
+                    ${action}
+                </div>
+                <div class="quick-appointment-body">
+                    <div>
+                        <h5>${escapeHtml(primary.title || 'Configuraci\u00f3n pendiente')}</h5>
+                        <div class="quick-appointment-contact">${escapeHtml(primary.message || '')}</div>
+                    </div>
+                </div>
+                <div class="quick-appointment-meta">
+                    <div class="quick-important-notice-navigation">
+                        <button type="button" class="btn btn-sm btn-outline-secondary btn-important-notice-nav" data-direction="-1" ${notices.length < 2 ? 'disabled' : ''}>
+                            <i class="bi bi-chevron-left"></i> Anterior
+                        </button>
+                        <span>${index + 1} de ${notices.length}</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary btn-important-notice-nav" data-direction="1" ${notices.length < 2 ? 'disabled' : ''}>
+                            Siguiente <i class="bi bi-chevron-right"></i>
+                        </button>
                     </div>
                 </div>
             </article>
@@ -2138,12 +2407,19 @@ function loadPatientPortalSummary() {
                 tasks: Array.isArray(res.tasks) ? res.tasks : [],
                 documents: Array.isArray(res.documents) ? res.documents : [],
                 reports: Array.isArray(res.reports) ? res.reports : [],
+                pending_consents: Array.isArray(res.pending_consents) ? res.pending_consents : [],
+                patient_name: res.patient_name || '',
+                patient_nif: res.patient_nif || '',
+                consent_signer_name: res.consent_signer_name || '',
+                consent_signer_nif: res.consent_signer_nif || '',
+                consent_signer_is_minor: parseInt(res.consent_signer_is_minor || 0, 10) === 1,
                 composition: res.composition || { enabled: false, current: null, history: [] }
             };
             if (res.payment_settings) {
                 PAYMENT_SETTINGS = { ...PAYMENT_SETTINGS, ...res.payment_settings };
             }
             renderPatientQuickAppointment(CURRENT_PATIENT_PORTAL.appointments);
+            renderPatientPendingConsents(CURRENT_PATIENT_PORTAL.pending_consents);
             renderPatientPortalSummary(CURRENT_PATIENT_PORTAL);
         },
         error: function () {
@@ -2271,6 +2547,9 @@ function renderPatientPortalAppointments(appointments) {
             no_show: 'No asistida'
         }[app.status] || app.status || '';
         const paymentStatus = patientPortalAppointmentPaymentHtml(app);
+        const recordingAction = app.recording_count > 0 && app.recording_url
+            ? `<a class="btn btn-outline-danger btn-sm" href="${escapeHtml(app.recording_url)}" target="_blank" rel="noopener"><i class="bi bi-record-circle"></i> Grabación</a>`
+            : '';
         return `
             <div class="patient-portal-item">
                 <div class="patient-portal-item-main">
@@ -2280,6 +2559,7 @@ function renderPatientPortalAppointments(appointments) {
                 </div>
                 <div class="patient-portal-item-actions">
                     ${app.status === 'booked' ? '' : `<span class="badge ${app.status === 'cancelled' ? 'text-bg-danger' : 'text-bg-light'}">${escapeHtml(statusLabel)}</span>`}
+                    ${recordingAction}
                     ${paymentStatus.action}
                 </div>
             </div>
@@ -2329,6 +2609,13 @@ function renderPatientPortalTasks(tasks) {
         const completed = task.status === 'completed';
         const priority = workPlanPriorityLabel(task.priority);
         const isFitnessExercise = Boolean(task.fitness_exercise_id);
+        const attachmentUrl = assetUrl(task.attachment_file_path || '');
+        const attachment = attachmentUrl && task.attachment_original_name
+            ? `<div class="small mt-2">
+                    <i class="bi bi-paperclip me-1"></i>
+                    <a href="${escapeHtml(attachmentUrl)}" target="_blank" rel="noopener">${escapeHtml(task.attachment_original_name)}</a>
+                </div>`
+            : '';
         const statusBadge = statusEnabled
             ? `<span class="badge ${completed ? 'text-bg-success' : 'text-bg-warning'}">${completed ? 'Completada' : 'Pendiente'}</span>`
             : '';
@@ -2342,6 +2629,7 @@ function renderPatientPortalTasks(tasks) {
                     </div>
                     <strong>${escapeHtml(task.title || '')}</strong>
                     ${task.description ? `<div class="text-muted small">${escapeHtml(task.description)}</div>` : ''}
+                    ${attachment}
                     ${statusEnabled && completed && task.completed_at ? `<div class="text-muted small">Completada el ${escapeHtml(formatDateTimeLabel(task.completed_at))}</div>` : ''}
                 </div>
                 ${isFitnessExercise ? `
@@ -2941,6 +3229,14 @@ function getPaymentBadge(app) {
     return ' <small class="payment-badge pending">Pendiente de pago</small>';
 }
 
+function renderPatientPendingConsents(consents) {
+    const pending = Array.isArray(consents) ? consents : [];
+    const portalSignatureEnabled = planFeatureEnabled('legalConsents.portalSignature', false);
+    $('#patient-pending-consents-alert')
+        .toggleClass('d-none', pending.length === 0 || !portalSignatureEnabled)
+        .toggleClass('d-flex', pending.length > 0 && portalSignatureEnabled);
+}
+
 function getAppointmentAttendanceBadge(app) {
     if (!app || !IS_ADMIN) {
         return '';
@@ -2950,6 +3246,12 @@ function getAppointmentAttendanceBadge(app) {
     }
     if (app.status === 'no_show') {
         return ' <small class="appointment-attendance-badge no-show">No asistió</small>';
+    }
+    if (app.status === 'booked' && app.patient_confirmed_at) {
+        return ' <small class="appointment-attendance-badge confirmed" title="Confirmada voluntariamente por el paciente">Confirmada</small>';
+    }
+    if (app.status === 'booked') {
+        return ' <small class="appointment-attendance-badge unconfirmed" title="El paciente no ha confirmado la asistencia">Sin confirmar</small>';
     }
     return '';
 }
@@ -2978,13 +3280,18 @@ function appointmentLocationInlineHtml(app = {}) {
 function appointmentLocationActionHtml(app = {}, buttonClass = 'btn btn-outline-primary btn-sm') {
     const value = appointmentLocationValue(app);
     const livekitUrl = app.consultation_type === 'online' && app.livekit_enabled == 1 && !value && parseInt(app.id || 0, 10) > 0
-        ? `livekit_call.php?appointment_id=${parseInt(app.id, 10)}`
+        ? `video_call.php?appointment_id=${parseInt(app.id, 10)}`
         : '';
     if (!value && !livekitUrl) {
         return '';
     }
     if (app.consultation_type === 'online') {
         const joinUrl = value || livekitUrl;
+        if (livekitUrl && IS_ADMIN) {
+            const appointmentId = parseInt(app.id || 0, 10);
+            const label = integratedVideoCallIsOpen(appointmentId) ? 'Volver a videollamada' : 'Entrar';
+            return `<button class="${buttonClass} btn-open-integrated-video-call" type="button" data-call-url="${escapeHtml(joinUrl)}" data-appointment-id="${appointmentId}" data-default-label="Entrar"><i class="bi bi-camera-video"></i> ${label}</button>`;
+        }
         return `<a class="${buttonClass}" href="${escapeHtml(joinUrl)}" target="_blank" rel="noopener"><i class="bi bi-camera-video"></i> Entrar</a>`;
     }
     return `<a class="${buttonClass}" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value)}" target="_blank" rel="noopener"><i class="bi bi-map"></i> Mapa</a>`;
@@ -3024,8 +3331,15 @@ function canPayAppointment(app) {
 // Modal handling
 let appointmentModal = new bootstrap.Modal(document.getElementById('appointmentModal'));
 let settingsModal = document.getElementById('settingsModal') ? new bootstrap.Modal(document.getElementById('settingsModal')) : null;
+let initialOnboardingModal = document.getElementById('initialOnboardingModal') ? new bootstrap.Modal(document.getElementById('initialOnboardingModal')) : null;
+let onboardingApplyingModal = document.getElementById('onboardingApplyingModal') ? new bootstrap.Modal(document.getElementById('onboardingApplyingModal')) : null;
 let closedDayModal = document.getElementById('closedDayModal') ? new bootstrap.Modal(document.getElementById('closedDayModal')) : null;
 let professionalEditorModal = document.getElementById('professionalEditorModal') ? new bootstrap.Modal(document.getElementById('professionalEditorModal')) : null;
+let knowledgeBaseWizardModal = document.getElementById('knowledgeBaseWizardModal') ? new bootstrap.Modal(document.getElementById('knowledgeBaseWizardModal')) : null;
+let knowledgeDiagnosisInfoModal = document.getElementById('knowledgeDiagnosisInfoModal') ? new bootstrap.Modal(document.getElementById('knowledgeDiagnosisInfoModal')) : null;
+let signatureChoiceModal = document.getElementById('signatureChoiceModal') ? new bootstrap.Modal(document.getElementById('signatureChoiceModal')) : null;
+let oauthRedirectModal = document.getElementById('oauthRedirectModal') ? new bootstrap.Modal(document.getElementById('oauthRedirectModal')) : null;
+let PENDING_SIGNATURE_URL = '';
 let professionalKnowledgeSectorsModal = document.getElementById('professionalKnowledgeSectorsModal') ? new bootstrap.Modal(document.getElementById('professionalKnowledgeSectorsModal')) : null;
 let professionalTransferModal = document.getElementById('professionalTransferModal') ? new bootstrap.Modal(document.getElementById('professionalTransferModal')) : null;
 let serviceCatalogItemModal = document.getElementById('serviceCatalogItemModal') ? new bootstrap.Modal(document.getElementById('serviceCatalogItemModal')) : null;
@@ -3042,6 +3356,9 @@ let patientPortalReportsModal = document.getElementById('patientPortalReportsMod
 let patientPortalCompositionModal = document.getElementById('patientPortalCompositionModal') ? new bootstrap.Modal(document.getElementById('patientPortalCompositionModal')) : null;
 let globalSearchModal = document.getElementById('globalSearchModal') ? new bootstrap.Modal(document.getElementById('globalSearchModal')) : null;
 let dashboardCustomConfigModal = document.getElementById('dashboardCustomConfigModal') ? new bootstrap.Modal(document.getElementById('dashboardCustomConfigModal')) : null;
+let legalDocumentModal = document.getElementById('legalDocumentModal') ? new bootstrap.Modal(document.getElementById('legalDocumentModal')) : null;
+let serviceLegalDocumentsModal = document.getElementById('serviceLegalDocumentsModal') ? new bootstrap.Modal(document.getElementById('serviceLegalDocumentsModal')) : null;
+let suggestedLegalDocumentsModal = document.getElementById('suggestedLegalDocumentsModal') ? new bootstrap.Modal(document.getElementById('suggestedLegalDocumentsModal')) : null;
 let taskTemplateModal = document.getElementById('taskTemplateModal') ? new bootstrap.Modal(document.getElementById('taskTemplateModal')) : null;
 let taskTemplateItemModal = document.getElementById('taskTemplateItemModal') ? new bootstrap.Modal(document.getElementById('taskTemplateItemModal')) : null;
 inviteModal = document.getElementById('inviteModal') ? new bootstrap.Modal(document.getElementById('inviteModal')) : null;
@@ -3051,13 +3368,125 @@ appointmentSessionNoteModal = document.getElementById('appointmentSessionNoteMod
 adminStatsModal = document.getElementById('adminStatsModal') ? new bootstrap.Modal(document.getElementById('adminStatsModal')) : null;
 bonusesModal = document.getElementById('bonusesModal') ? new bootstrap.Modal(document.getElementById('bonusesModal')) : null;
 invoicesModal = document.getElementById('invoicesModal') ? new bootstrap.Modal(document.getElementById('invoicesModal')) : null;
+sendInvoiceEmailModal = document.getElementById('sendInvoiceEmailModal') ? new bootstrap.Modal(document.getElementById('sendInvoiceEmailModal')) : null;
 appLogModal = document.getElementById('appLogModal') ? new bootstrap.Modal(document.getElementById('appLogModal')) : null;
 let customDomainModal = document.getElementById('customDomainModal') ? new bootstrap.Modal(document.getElementById('customDomainModal')) : null;
 let adminPatientsModal = document.getElementById('adminPatientsModal') ? new bootstrap.Modal(document.getElementById('adminPatientsModal')) : null;
 let patientEditorModal = document.getElementById('patientEditorModal') ? new bootstrap.Modal(document.getElementById('patientEditorModal')) : null;
+let patientDeletionModal = document.getElementById('patientDeletionModal') ? new bootstrap.Modal(document.getElementById('patientDeletionModal')) : null;
+let postCreatePatientInviteModal = document.getElementById('postCreatePatientInviteModal') ? new bootstrap.Modal(document.getElementById('postCreatePatientInviteModal')) : null;
+let PENDING_POST_CREATE_PATIENT_INVITE = null;
+let patientContactModal = document.getElementById('patientContactModal') ? new bootstrap.Modal(document.getElementById('patientContactModal')) : null;
 let patientDocumentModal = document.getElementById('patientDocumentModal') ? new bootstrap.Modal(document.getElementById('patientDocumentModal')) : null;
+let docxEditorModal = document.getElementById('docxEditorModal') ? new bootstrap.Modal(document.getElementById('docxEditorModal')) : null;
+let drawingEditorModal = document.getElementById('drawingEditorModal') ? new bootstrap.Modal(document.getElementById('drawingEditorModal')) : null;
+let patientLegalDocumentModal = document.getElementById('patientLegalDocumentModal') ? new bootstrap.Modal(document.getElementById('patientLegalDocumentModal')) : null;
+let handwrittenConsentModal = document.getElementById('handwrittenConsentModal') ? new bootstrap.Modal(document.getElementById('handwrittenConsentModal')) : null;
+let HANDWRITTEN_CONSENT_STATE = {
+    step: 1,
+    document: null,
+    hasStroke: false,
+    drawing: false,
+    patientPortal: false,
+    method: 'handwritten',
+    autofirmaCertificate: '',
+    autofirmaCertificateInfo: null,
+    autofirmaSignedPdf: '',
+    autofirmaTransactionToken: '',
+    autofirmaSourceUrl: ''
+};
 let patientReportConfigModal = document.getElementById('patientReportConfigModal') ? new bootstrap.Modal(document.getElementById('patientReportConfigModal')) : null;
 let patientReportSuggestionsModal = document.getElementById('patientReportSuggestionsModal') ? new bootstrap.Modal(document.getElementById('patientReportSuggestionsModal')) : null;
+
+function integratedVideoCallWindowName(appointmentId) {
+    return `sgpraxis_video_call_${parseInt(appointmentId || 0, 10) || 'current'}`;
+}
+
+function integratedVideoCallStorageKey(appointmentId) {
+    return `sgpraxis_video_call_open_${parseInt(appointmentId || 0, 10) || 'current'}`;
+}
+
+function integratedVideoCallIsOpen(appointmentId) {
+    try {
+        const state = JSON.parse(localStorage.getItem(integratedVideoCallStorageKey(appointmentId)) || '{}');
+        return Date.now() - parseInt(state.updatedAt || 0, 10) < 15000;
+    } catch (error) {
+        return false;
+    }
+}
+
+function updateIntegratedVideoCallButtons(appointmentId) {
+    const id = parseInt(appointmentId || 0, 10);
+    if (!id) return;
+    const isOpen = integratedVideoCallIsOpen(id);
+    $(`.btn-open-integrated-video-call[data-appointment-id="${id}"]`).each(function () {
+        const label = isOpen ? 'Volver a videollamada' : ($(this).data('default-label') || 'Abrir videollamada');
+        $(this).html(`<i class="bi bi-camera-video"></i> ${label}`);
+    });
+}
+
+function openIntegratedVideoCall(url, appointmentId) {
+    const callUrl = String(url || '').trim();
+    if (!callUrl) return;
+    const desktopPopup = window.matchMedia('(min-width: 992px)').matches;
+    let windowFeatures = '';
+    if (desktopPopup) {
+        const popupWidth = Math.min(620, Math.max(480, Math.round(screen.availWidth * 0.38)));
+        const popupHeight = Math.min(820, Math.max(620, screen.availHeight - 80));
+        const popupLeft = Math.max(0, screen.availLeft + screen.availWidth - popupWidth - 20);
+        const popupTop = Math.max(0, screen.availTop + 20);
+        windowFeatures = [
+            'popup=yes',
+            'resizable=yes',
+            'scrollbars=yes',
+            `width=${popupWidth}`,
+            `height=${popupHeight}`,
+            `left=${popupLeft}`,
+            `top=${popupTop}`
+        ].join(',');
+    }
+    const callWindow = window.open(callUrl, integratedVideoCallWindowName(appointmentId), windowFeatures);
+    if (callWindow) {
+        try {
+            callWindow.opener = null;
+            callWindow.focus();
+        } catch (error) {
+            // A custom tenant domain can prevent access to the window object.
+        }
+        window.setTimeout(function () {
+            updateIntegratedVideoCallButtons(appointmentId);
+        }, 600);
+        return;
+    }
+    showAppointmentPaymentAlert('warning', 'El navegador ha bloqueado la pestaña de videollamada. Permite las ventanas emergentes para SGPraxis.');
+}
+
+$(document).on('click', '.btn-open-integrated-video-call', function () {
+    openIntegratedVideoCall($(this).data('call-url'), $(this).data('appointment-id'));
+});
+
+window.addEventListener('storage', function (event) {
+    if (!event.key || !event.key.startsWith('sgpraxis_video_call_open_')) return;
+    updateIntegratedVideoCallButtons(event.key.replace('sgpraxis_video_call_open_', ''));
+});
+
+function openAppointmentRequestedFromVideoCall() {
+    if (!IS_ADMIN) return;
+    const params = new URLSearchParams(window.location.search);
+    const appointmentId = parseInt(params.get('open_appointment') || 0, 10);
+    if (!appointmentId) return;
+    params.delete('open_appointment');
+    const query = params.toString();
+    window.history.replaceState({}, document.title, `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash || ''}`);
+    window.setTimeout(function () {
+        openAppointmentPaymentModal(appointmentId);
+    }, 250);
+}
+
+if (IS_ADMIN) {
+    window.name = 'sgpraxis_dashboard';
+    window.setTimeout(openAppointmentRequestedFromVideoCall, 350);
+}
 let patientEvolutionModal = document.getElementById('patientEvolutionModal') ? new bootstrap.Modal(document.getElementById('patientEvolutionModal')) : null;
 let workoutxExerciseModal = document.getElementById('workoutxExerciseModal') ? new bootstrap.Modal(document.getElementById('workoutxExerciseModal')) : null;
 patientWorkPlanTaskModal = document.getElementById('patientWorkPlanTaskModal') ? new bootstrap.Modal(document.getElementById('patientWorkPlanTaskModal')) : null;
@@ -3081,6 +3510,13 @@ let CURRENT_PATIENT_EVOLUTION_ID = 0;
 let CURRENT_PATIENT_FILES_ID = 0;
 let CURRENT_PATIENT_FILES_FILTER = 'all';
 let CURRENT_PATIENT_FILES_ROWS = [];
+let CURRENT_DOCX_EDITOR_CONTEXT = null;
+let DOCX_EDITOR_CLOSE_AFTER_SAVE = false;
+let CURRENT_DRAWING_EDITOR_CONTEXT = null;
+let DRAWING_EDITOR_CLOSE_AFTER_SAVE = false;
+let LEGAL_DOCUMENTS = [];
+let CURRENT_PATIENT_LEGAL_DOCUMENTS_ID = 0;
+let CURRENT_PATIENT_LEGAL_DOCUMENTS_ROWS = [];
 let CURRENT_PATIENT_REPORTS_ID = 0;
 let CURRENT_PATIENT_REPORTS_ROWS = [];
 let patientFilesAlertTimer = null;
@@ -3091,7 +3527,20 @@ let CURRENT_WORK_PLAN_FORM_CONTEXT = { source: 'patient', patientId: 0, appointm
 let KNOWLEDGE_PROBLEMS = [];
 let KNOWLEDGE_PROBLEMS_LOADED = false;
 let CURRENT_KNOWLEDGE_PROBLEM_DETAIL = null;
-let CURRENT_PATIENT_PORTAL = { appointments: [], tasks: [], documents: [], reports: [], composition: { enabled: false, current: null, history: [] } };
+let KNOWLEDGE_WIZARD_STATE = null;
+let CURRENT_PATIENT_PORTAL = {
+    appointments: [],
+    tasks: [],
+    documents: [],
+    reports: [],
+    pending_consents: [],
+    patient_name: '',
+    patient_nif: '',
+    consent_signer_name: '',
+    consent_signer_nif: '',
+    consent_signer_is_minor: false,
+    composition: { enabled: false, current: null, history: [] }
+};
 let CURRENT_PATIENT_PORTAL_DOCUMENTS_FILTER = 'all';
 let CURRENT_PATIENT_EVOLUTION_VIEW = 'records';
 let CURRENT_PATIENT_EVOLUTION_CHART_GROUP = 'body';
@@ -3146,6 +3595,10 @@ function openModal(date, time, status, extraName = '', extraEmail = '', extraPho
     $('#btn-confirm-action').removeClass('d-none').prop('disabled', false);
 
     if (status === 'available') {
+        QUICK_BOOKING_MODAL_CONTEXT = QUICK_BOOKING_CONTEXT ? { ...QUICK_BOOKING_CONTEXT } : null;
+        if (QUICK_BOOKING_MODAL_CONTEXT && QUICK_BOOKING_MODAL_CONTEXT.consultationType) {
+            CURRENT_BOOKING_CONSULTATION_TYPE = QUICK_BOOKING_MODAL_CONTEXT.consultationType;
+        }
         $('#modalTitle').text(`Reservar cita: ${formatDisplayDate(date)} a las ${time}`);
         if (IS_ADMIN) {
             $('#modalDesc').text(`Selecciona un ${sectorLabel('patient', 'singular', 'paciente')} para reservar el horario.`);
@@ -3163,10 +3616,15 @@ function openModal(date, time, status, extraName = '', extraEmail = '', extraPho
             renderModalProfessionalContext();
         }
         const continueAvailableBooking = function () {
+            applyQuickBookingContextToModal();
             if (IS_SUPERADMIN) {
-                populateBookingProfessionalSelect(CURRENT_PROFESSIONAL_ID);
-                updateBookingPatientProfessionalNote(bookingPatientById($('#patientSelect').val()));
-                loadBookingContextForProfessional($('#booking-professional').val() || CURRENT_PROFESSIONAL_ID);
+                const selectedPatient = bookingPatientById($('#patientSelect').val());
+                const preferredProfessionalId = (QUICK_BOOKING_MODAL_CONTEXT && QUICK_BOOKING_MODAL_CONTEXT.professionalId)
+                    || (selectedPatient && selectedPatient.professional_id)
+                    || CURRENT_PROFESSIONAL_ID;
+                populateBookingProfessionalSelect(preferredProfessionalId);
+                updateBookingPatientProfessionalNote(selectedPatient);
+                loadBookingContextForProfessional(preferredProfessionalId);
             } else if (!IS_ADMIN && shouldChooseProfessionalInSlot()) {
                 loadAvailableProfessionalsForSlot(date, time);
             } else {
@@ -3221,6 +3679,71 @@ function openModal(date, time, status, extraName = '', extraEmail = '', extraPho
 
     applyCancelPaymentNotice(status, extraName);
     appointmentModal.show();
+}
+
+function applyQuickBookingContextToModal() {
+    const context = QUICK_BOOKING_MODAL_CONTEXT;
+    if (!QUICK_PATIENT_BOOKING_ENABLED || !context || !IS_ADMIN) return;
+
+    const $patient = $('#patientSelect');
+    if (context.patientId && $patient.find(`option[value="${context.patientId}"]`).length) {
+        $patient.val(String(context.patientId));
+    }
+    if (IS_SUPERADMIN) {
+        const patient = bookingPatientById(context.patientId);
+        const professionalId = context.professionalId || (patient && patient.professional_id) || CURRENT_PROFESSIONAL_ID;
+        populateBookingProfessionalSelect(professionalId);
+        updateBookingPatientProfessionalNote(patient);
+    }
+}
+
+function quickBookingPatientName(patientId, fallback = '') {
+    const patient = bookingPatientById(patientId)
+        || ADMIN_PATIENTS.find(item => String(item.id) === String(patientId))
+        || DASHBOARD_PATIENTS.find(item => String(item.id) === String(patientId));
+    return (patient && patient.name) || fallback || sectorLabel('patient', 'singular', 'paciente');
+}
+
+function startQuickBookingSlotSelection(context = {}) {
+    if (!QUICK_PATIENT_BOOKING_ENABLED || !IS_ADMIN) return;
+    if (!memberCan('create_appointments')) {
+        showAdminActionMessage('No tienes permiso para crear citas.', 'danger');
+        return;
+    }
+    const patientId = parseInt(context.patientId || 0, 10);
+    if (!patientId) return;
+
+    QUICK_BOOKING_CONTEXT = {
+        patientId,
+        patientName: quickBookingPatientName(patientId, context.patientName || ''),
+        professionalId: parseInt(context.professionalId || 0, 10),
+        serviceOptionId: parseInt(context.serviceOptionId || 0, 10),
+        consultationType: context.consultationType || ''
+    };
+    if (context.referenceDate) {
+        const reference = new Date(`${context.referenceDate}T00:00:00`);
+        if (!Number.isNaN(reference.getTime())) {
+            currentStartDate = getMonday(reference);
+            currentMonthDate = new Date(reference.getFullYear(), reference.getMonth(), 1);
+        }
+    }
+    // La vista semanal expone cada hueco disponible; la agenda detallada solo dibuja citas ocupadas.
+    currentCalendarView = 'week';
+    $('#quick-booking-slot-message').html(
+        `<strong>Nueva cita para ${escapeHtml(QUICK_BOOKING_CONTEXT.patientName)}.</strong> Selecciona un hueco libre en la agenda.`
+    );
+    $('#quick-booking-slot-alert').removeClass('d-none').addClass('d-flex');
+    renderWeekInfo();
+    const offset = $('#quick-booking-slot-alert').offset();
+    if (offset) {
+        window.scrollTo({ top: Math.max(0, offset.top - 90), behavior: 'smooth' });
+    }
+}
+
+function cancelQuickBookingSlotSelection() {
+    QUICK_BOOKING_CONTEXT = null;
+    QUICK_BOOKING_MODAL_CONTEXT = null;
+    $('#quick-booking-slot-alert').addClass('d-none').removeClass('d-flex');
 }
 
 function parseCancelPayload(raw) {
@@ -3280,6 +3803,64 @@ function applyCancelPaymentNotice(status, payload) {
 $(document).ready(function () {
     applyPlanFeatureVisibility();
     applyKnowledgeBaseVisibility();
+
+    $('#btn-handwritten-consent-next').on('click', advanceHandwrittenConsentWizard);
+    $('#btn-handwritten-consent-previous').on('click', function () {
+        showHandwrittenConsentStep(Math.max(1, HANDWRITTEN_CONSENT_STATE.step - 1));
+    });
+    $('#btn-clear-handwritten-consent').on('click', clearHandwrittenConsentCanvas);
+    $('input[name="consent_sign_method"]').on('change', handleConsentSignatureMethodChange);
+    $('#btn-sign-consent-autofirma').on('click', startPatientConsentAutoFirmaSignature);
+    $('#btn-handwritten-consent-finish').on('click', finishHandwrittenConsent);
+    $(document).on('click', '#btn-open-patient-pending-consents', function () {
+        const legalDocument = (CURRENT_PATIENT_PORTAL.pending_consents || [])[0];
+        if (legalDocument) openHandwrittenConsentWizard(legalDocument, true);
+    });
+    $('#handwrittenConsentModal').on('shown.bs.modal', function () {
+        resizeHandwrittenConsentCanvas(false);
+    });
+    $('#handwrittenConsentModal').on('show.bs.modal', function () {
+        $('body').addClass('handwritten-consent-modal-open patient-editor-secondary-modal-open');
+    });
+    $('#handwrittenConsentModal').on('hidden.bs.modal', function () {
+        $('#handwritten-consent-document-frame').attr('src', 'about:blank');
+        if (HANDWRITTEN_CONSENT_STATE.patientPortal && HANDWRITTEN_CONSENT_STATE.autofirmaTransactionToken) {
+            const body = new FormData();
+            body.append('transaction_token', HANDWRITTEN_CONSENT_STATE.autofirmaTransactionToken);
+            fetch('api/appointments.php?action=patient_portal_cancel_autofirma', {
+                method: 'POST',
+                body,
+                credentials: 'same-origin',
+                keepalive: true
+            }).catch(function () {});
+            HANDWRITTEN_CONSENT_STATE.autofirmaTransactionToken = '';
+            HANDWRITTEN_CONSENT_STATE.autofirmaSourceUrl = '';
+        }
+        if (typeof window.AutoScript !== 'undefined') {
+            try {
+                AutoScript.setStickySignatory(false);
+            } catch (error) {
+                // AutoFirma may not have been initialized in this session.
+            }
+        }
+        $('body').removeClass('handwritten-consent-modal-open patient-editor-secondary-modal-open');
+        if ($('#patientEditorModal').hasClass('show')) {
+            const $backdrops = $('.modal-backdrop');
+            if ($backdrops.length > 1) {
+                $backdrops.slice(1).remove();
+            }
+            document.body.classList.add('modal-open');
+        } else if (!$('.modal.show').length) {
+            $('.modal-backdrop').remove();
+            document.body.classList.remove('modal-open');
+        }
+    });
+    window.addEventListener('resize', function () {
+        const signatureStep = HANDWRITTEN_CONSENT_STATE.patientPortal ? 4 : 3;
+        if ($('#handwrittenConsentModal').hasClass('show') && HANDWRITTEN_CONSENT_STATE.step === signatureStep) {
+            resizeHandwrittenConsentCanvas(true);
+        }
+    });
 
     if (IS_ADMIN) {
         initializeAdminDashboardSettings();
@@ -3414,7 +3995,7 @@ $(document).ready(function () {
             if (selectedMonthDay) {
                 currentStartDate = getMonday(new Date(`${selectedMonthDay}T00:00:00`));
             }
-        } else if (view === 'patients' || view === 'upcoming') {
+        } else if (view === 'dashboard' || view === 'patients' || view === 'upcoming') {
             if (view === 'patients') {
                 dashboardPatientsWaitingOnly = false;
             }
@@ -3429,6 +4010,10 @@ $(document).ready(function () {
         }
         const view = $(this).data('dashboard-main-view') || 'agenda';
         const nextView = view === 'agenda' ? defaultAgendaCalendarView() : view;
+        if (nextView === 'knowledge') {
+            openKnowledgeWizard({ readonly: true, source: 'dashboard' });
+            return;
+        }
         if (nextView === currentCalendarView) {
             updateCalendarNavigationLabels();
             return;
@@ -3448,7 +4033,11 @@ $(document).ready(function () {
             if (selectedMonthDay) {
                 currentStartDate = getMonday(new Date(`${selectedMonthDay}T00:00:00`));
             }
-        } else if (nextView === 'patients' || nextView === 'upcoming') {
+        } else if (nextView === 'dashboard' || nextView === 'patients' || nextView === 'upcoming' || nextView === 'configuration' || nextView === 'questionnaires') {
+            if (nextView === 'questionnaires' && !supportsDashboardInlineViews()) {
+                openFocusedSettingsTab('questionnaires-settings-tab', 'Mis cuestionarios');
+                return;
+            }
             if (nextView === 'patients') {
                 dashboardPatientsWaitingOnly = false;
             }
@@ -3762,16 +4351,146 @@ $(document).ready(function () {
         setAppointmentSessionTaskStatus(this);
     });
 
+    $(document).on('click', '.btn-open-task-docx-editor', function () {
+        const $button = $(this);
+        openDocxEditor({
+            source: $button.data('source') || 'patient',
+            patientId: parseInt($button.data('patient-id') || 0, 10),
+            appointmentId: parseInt($button.data('appointment-id') || 0, 10),
+            documentId: parseInt($button.data('document-id') || 0, 10),
+            title: $button.data('title') || 'Documento'
+        });
+    });
+
     $('#appointmentPaymentModal').on('click', '#btn-toggle-appointment-session-note', function () {
         openAppointmentSessionNoteModal();
     });
 
+    $('#appointmentPaymentModal').on('click', '#btn-create-appointment-docx', function () {
+        const patientId = parseInt(CURRENT_APPOINTMENT_SESSION.patient_id || (CURRENT_APPOINTMENT_PAYMENT_DETAIL && CURRENT_APPOINTMENT_PAYMENT_DETAIL.patient_id) || 0, 10);
+        const appointmentId = parseInt(CURRENT_APPOINTMENT_SESSION.appointment_id || (CURRENT_APPOINTMENT_PAYMENT_DETAIL && CURRENT_APPOINTMENT_PAYMENT_DETAIL.id) || 0, 10);
+        openDocxEditor({
+            source: 'appointment',
+            patientId,
+            appointmentId,
+            title: `Notas sesión ${new Date().toLocaleDateString('es-ES')}`
+        });
+    });
+
+    $('#appointmentPaymentModal').on('click', '.btn-show-task-file', function () {
+        const documentId = parseInt($(this).data('document-id') || 0, 10);
+        const filesTab = document.getElementById('appointment-files-tab');
+        if (!filesTab || filesTab.disabled) return;
+        bootstrap.Tab.getOrCreateInstance(filesTab).show();
+        setTimeout(function () {
+            const $file = $(`#appointment-files-content [data-document-id="${documentId}"]`).first()
+                .closest('.appointment-session-activity-item, .appointment-session-file, .border');
+            if ($file.length) {
+                $file.addClass('border-primary shadow-sm');
+                $file[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                setTimeout(() => $file.removeClass('border-primary shadow-sm'), 2400);
+            }
+        }, 120);
+    });
+
+    $('#appointmentPaymentModal').on('click', '#btn-create-appointment-drawing', function () {
+        const patientId = parseInt(CURRENT_APPOINTMENT_SESSION.patient_id || (CURRENT_APPOINTMENT_PAYMENT_DETAIL && CURRENT_APPOINTMENT_PAYMENT_DETAIL.patient_id) || 0, 10);
+        const appointmentId = parseInt(CURRENT_APPOINTMENT_SESSION.appointment_id || (CURRENT_APPOINTMENT_PAYMENT_DETAIL && CURRENT_APPOINTMENT_PAYMENT_DETAIL.id) || 0, 10);
+        openDrawingEditor({
+            source: 'appointment',
+            patientId,
+            appointmentId,
+            title: `Dibujo sesión ${new Date().toLocaleDateString('es-ES')}`
+        });
+    });
+
+    $('#appointmentPaymentModal').on('click', '.btn-open-appointment-docx-editor', function () {
+        const documentId = parseInt($(this).data('document-id') || '0', 10);
+        const document = (CURRENT_APPOINTMENT_SESSION.files || []).find(item => item.type === 'patient_document' && parseInt(item.id || 0, 10) === documentId);
+        if (document) {
+            openDocxEditor({
+                source: 'appointment',
+                patientId: CURRENT_APPOINTMENT_SESSION.patient_id,
+                appointmentId: CURRENT_APPOINTMENT_SESSION.appointment_id,
+                documentId,
+                title: document.name || document.file_name || 'Documento'
+            });
+        }
+    });
+
+    $('#btn-book-another-appointment').on('click', function () {
+        const app = CURRENT_APPOINTMENT_PAYMENT_DETAIL || {};
+        if (!app.patient_id) return;
+        if (appointmentPaymentModal) {
+            appointmentPaymentModal.hide();
+        }
+        setTimeout(function () {
+            startQuickBookingSlotSelection({
+                patientId: app.patient_id,
+                patientName: app.patient_name || '',
+                professionalId: app.professional_id || 0,
+                serviceOptionId: app.service_option_id || 0,
+                consultationType: app.consultation_type || '',
+                referenceDate: app.appointment_date || ''
+            });
+        }, 180);
+    });
+
+    $('#btn-book-patient-appointment').on('click', function () {
+        const patient = CURRENT_PATIENT_EDITOR || {};
+        if (!patient.id) return;
+        if (patientEditorModal) {
+            patientEditorModal.hide();
+        }
+        setTimeout(function () {
+            startQuickBookingSlotSelection({
+                patientId: patient.id,
+                patientName: patient.name || '',
+                professionalId: patient.professional_id || 0
+            });
+        }, 180);
+    });
+
+    $('#btn-cancel-quick-booking').on('click', cancelQuickBookingSlotSelection);
+
+    $('#appointmentPaymentModal').on('click', '.btn-open-appointment-drawing-editor', function () {
+        const documentId = parseInt($(this).data('document-id') || '0', 10);
+        const document = (CURRENT_APPOINTMENT_SESSION.files || []).find(item => item.type === 'patient_document' && parseInt(item.id || 0, 10) === documentId);
+        if (document) {
+            openDrawingEditor({
+                source: 'appointment',
+                patientId: CURRENT_APPOINTMENT_SESSION.patient_id,
+                appointmentId: CURRENT_APPOINTMENT_SESSION.appointment_id,
+                documentId,
+                title: document.name || document.file_name || 'Dibujo'
+            });
+        }
+    });
+
     $('#appointmentPaymentModal').on('click', '#btn-show-appointment-session-work-plan-form', function () {
-        showAppointmentSessionWorkPlanForm();
+        showAppointmentSessionWorkPlanForm('manual');
+    });
+    $('#appointmentPaymentModal').on('click', '#btn-import-appointment-task-template', function () {
+        showAppointmentSessionWorkPlanForm('template');
+    });
+    $('#appointmentPaymentModal').on('click', '#btn-use-appointment-knowledge', function () {
+        if (!knowledgeBaseEnabled()) return;
+        openKnowledgeWizard({
+            mode: 'tasks',
+            source: 'appointment-session',
+            patientId: CURRENT_APPOINTMENT_SESSION.patient_id,
+            appointmentId: CURRENT_APPOINTMENT_SESSION.appointment_id
+        });
     });
 
     $('#appointmentPaymentModal').on('click', '.btn-delete-session-note', function () {
         deleteAppointmentSessionNote(this);
+    });
+    $('#appointmentPaymentModal').on('click', '.btn-delete-appointment-document', function () {
+        deleteAppointmentDocument(this);
+    });
+    $('#appointmentPaymentModal').on('click', '.btn-toggle-file-portal', function () {
+        togglePatientFilePortal(this, true);
     });
 
     $('#appointmentPaymentModal').on('hidden.bs.modal', function () {
@@ -3823,10 +4542,6 @@ $(document).ready(function () {
 
     $('#admin-reports-content').on('click', '.btn-export-report-section-xls', function () {
         exportReportSectionXls($(this).closest('.report-section'));
-    });
-
-    $('.btn-export-modal-table').on('click', function () {
-        exportModalVisibleTable($(this).data('table-target'), $(this).data('export-type'));
     });
 
     $('#btn-admin-patients').click(function () {
@@ -3897,6 +4612,8 @@ $(document).ready(function () {
     });
 
     $('#patient-diagnosis-tab').on('shown.bs.tab', function () {
+        syncProgressiveKnowledgeUi();
+        loadPatientDiagnoses(parseInt((CURRENT_PATIENT_EDITOR || {}).id || 0, 10));
         if (!knowledgeBaseEnabled()) return;
         initPatientBodyMap();
         loadKnowledgeProblems(function () {
@@ -4000,8 +4717,128 @@ $(document).ready(function () {
         openPatientEditorModal(patient || null);
     });
 
-    $('#admin-patients-body').on('click', '.btn-send-patient-invite', function () {
+    $('#admin-patients-body').on('click', '.btn-send-patient-invite', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
         openPatientInviteModal($(this).data('patient-id'), this);
+    });
+
+    $('#btn-use-knowledge-base').on('click', function () { openKnowledgeWizard({ mode: 'diagnosis' }); });
+    $('#btn-add-manual-diagnosis').on('click', saveManualDiagnosis);
+    $('#patient-manual-diagnosis').on('keydown', function (event) {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            saveManualDiagnosis();
+        }
+    });
+    $('#knowledgeBaseWizardModal').on('hidden.bs.modal', function () {
+        $('body').removeClass('patient-editor-secondary-modal-open appointment-payment-secondary-modal-open');
+        if ($('#patientEditorModal').hasClass('show')) {
+            document.body.classList.add('modal-open');
+        }
+        if ($('#appointmentPaymentModal').hasClass('show')) document.body.classList.add('modal-open');
+    });
+    $('#knowledgeBaseWizardModal').on('shown.bs.modal', function () {
+        if (KNOWLEDGE_WIZARD_STATE && KNOWLEDGE_WIZARD_STATE.step === 0) {
+            $('#knowledge-wizard-search').trigger('focus');
+        }
+    });
+    $('#knowledgeDiagnosisInfoModal').on('hidden.bs.modal', function () {
+        $('body').removeClass('patient-editor-secondary-modal-open');
+        if ($('#patientEditorModal').hasClass('show')) document.body.classList.add('modal-open');
+    });
+    $('#btn-knowledge-wizard-previous').on('click', function () { knowledgeWizardMove(-1); });
+    $('#btn-knowledge-wizard-next').on('click', function () { knowledgeWizardMove(1); });
+    $('#btn-knowledge-wizard-apply').on('click', applyKnowledgeWizardSelection);
+    $(document).on('input', '#knowledge-wizard-search', debounce(searchKnowledgeWizard, 250));
+    $(document).on('click', '.knowledge-wizard-problem', function () {
+        selectKnowledgeWizardProblem(parseInt($(this).data('problem-id') || 0, 10), $(this).data());
+    });
+    $(document).on('change', 'input[name="knowledge-wizard-objective"]', function () {
+        KNOWLEDGE_WIZARD_STATE.objective = String($(this).val() || '');
+    });
+    $(document).on('change', '.knowledge-wizard-technique-check', function () {
+        const id = parseInt($(this).val() || 0, 10);
+        this.checked ? KNOWLEDGE_WIZARD_STATE.techniques.add(id) : KNOWLEDGE_WIZARD_STATE.techniques.delete(id);
+    });
+    $(document).on('change', '.knowledge-wizard-task-check', function () {
+        const id = parseInt($(this).val() || 0, 10);
+        this.checked ? KNOWLEDGE_WIZARD_STATE.recommendations.add(id) : KNOWLEDGE_WIZARD_STATE.recommendations.delete(id);
+    });
+    $(document).on('click', '.btn-move-patient-diagnosis', function () {
+        movePatientDiagnosis(
+            parseInt($(this).data('diagnosis-id') || 0, 10),
+            String($(this).data('direction') || 'up')
+        );
+    });
+    $(document).on('click', '.btn-patient-diagnosis-archive', function () {
+        archivePatientDiagnosis(parseInt($(this).data('diagnosis-id') || 0, 10));
+    });
+    $(document).on('click', '.btn-patient-diagnosis-info', function () {
+        showKnowledgeDiagnosisInfo(parseInt($(this).data('problem-id') || 0, 10));
+    });
+
+    $('#btn-manage-patient-deletion').on('click', function () {
+        if (!CURRENT_PATIENT_EDITOR || !CURRENT_PATIENT_EDITOR.id || !patientDeletionModal) return;
+        $('#patient-deletion-name').text(CURRENT_PATIENT_EDITOR.name || '');
+        $('#patient-deletion-reason, #patient-deletion-confirmation').val('');
+        $('input[name="patient_deletion_mode"][value="legal"]').prop('checked', true);
+        $('#patient-deletion-alert').addClass('d-none').text('');
+        $('#btn-confirm-patient-deletion').prop('disabled', true);
+        patientDeletionModal.show();
+    });
+
+    $('#patient-deletion-confirmation').on('input', function () {
+        $('#btn-confirm-patient-deletion').prop('disabled', $(this).val().trim() !== 'ELIMINAR');
+    });
+
+    $('#btn-confirm-patient-deletion').on('click', function () {
+        const patient = CURRENT_PATIENT_EDITOR || {};
+        const $button = $(this);
+        if (!patient.id || $('#patient-deletion-confirmation').val().trim() !== 'ELIMINAR') return;
+        $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Procesando...');
+        $('#patient-deletion-alert').addClass('d-none').text('');
+        $.post('api/admin.php?action=delete_patient', {
+            patient_id: patient.id,
+            mode: $('input[name="patient_deletion_mode"]:checked').val() || 'legal',
+            reason: $('#patient-deletion-reason').val().trim(),
+            confirmation: 'ELIMINAR'
+        }, null, 'json')
+            .done(function (response) {
+                if (!response.success) {
+                    $('#patient-deletion-alert').removeClass('d-none alert-success').addClass('alert-danger').text(response.error || 'No se pudo completar la operación.');
+                    return;
+                }
+                patientDeletionModal.hide();
+                if (patientEditorModal) patientEditorModal.hide();
+                showAdminAlert('success', response.message || 'Operación completada.');
+                loadAdminPatients();
+                dashboardPatientsLoaded = false;
+                if (currentCalendarView === 'patients') {
+                    loadDashboardPatients();
+                }
+                loadPatients();
+            })
+            .fail(function () {
+                $('#patient-deletion-alert').removeClass('d-none alert-success').addClass('alert-danger').text('Error de conexión al gestionar la eliminación.');
+            })
+            .always(function () {
+                $button.prop('disabled', $('#patient-deletion-confirmation').val().trim() !== 'ELIMINAR').html('<i class="bi bi-trash"></i> Confirmar');
+            });
+    });
+
+    $('#admin-patients-body').on('click', '.btn-book-patient', function () {
+        const patient = ADMIN_PATIENTS.find(item => String(item.id) === String($(this).data('patient-id')));
+        if (adminPatientsModal) {
+            adminPatientsModal.hide();
+        }
+        setTimeout(function () {
+            startQuickBookingSlotSelection({
+                patientId: patient && patient.id,
+                patientName: patient && patient.name,
+                professionalId: patient && patient.professional_id
+            });
+        }, 180);
     });
 
     $('#admin-patients-search, #admin-patients-sort').on('input change', function () {
@@ -4020,6 +4857,47 @@ $(document).ready(function () {
         dashboardPatientsWaitingOnly = true;
         currentCalendarView = 'patients';
         renderWeekInfo();
+    });
+
+    $(document).on('click', '.btn-important-notice-action', function () {
+        const action = String($(this).data('notice-action') || '');
+        if (action === 'waiting_list') {
+            dashboardPatientsWaitingOnly = true;
+            currentCalendarView = 'patients';
+            renderWeekInfo();
+            return;
+        }
+        if (action === 'professional_profile') {
+            $('#btn-my-professional-profile').trigger('click');
+            window.setTimeout(() => {
+                const tab = document.getElementById('professional-editor-preferences-tab');
+                if (tab && window.bootstrap) bootstrap.Tab.getOrCreateInstance(tab).show();
+            }, 150);
+            return;
+        }
+        if (action === 'data_export') {
+            $('#btn-open-data-export').trigger('click');
+            return;
+        }
+        const tabIds = {
+            payment_settings: 'payment-settings-tab',
+            billing_settings: 'billing-settings-tab',
+            signature_settings: 'signature-settings-tab'
+        };
+        $('#btn-open-settings').trigger('click');
+        const targetTab = document.getElementById(tabIds[action] || '');
+        if (targetTab && window.bootstrap) {
+            bootstrap.Tab.getOrCreateInstance(targetTab).show();
+        }
+    });
+
+    $(document).on('click', '.btn-important-notice-nav', function () {
+        if (quickImportantNotices.length < 2) return;
+        const direction = parseInt($(this).data('direction') || 0, 10);
+        quickImportantNoticeIndex = (quickImportantNoticeIndex + direction + quickImportantNotices.length) % quickImportantNotices.length;
+        $(this).closest('.col-12').replaceWith(
+            importantNoticesQuickCardHtml(quickImportantNotices, quickImportantNoticeIndex)
+        );
     });
 
     $(document).on('click', '#btn-clear-dashboard-waiting-filter', function () {
@@ -4054,7 +4932,9 @@ $(document).ready(function () {
         }
     });
 
-    $(document).on('click', '.btn-dashboard-send-patient-invite', function () {
+    $(document).on('click', '.btn-dashboard-send-patient-invite', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
         openPatientInviteModal($(this).data('patient-id'), this);
     });
 
@@ -4072,6 +4952,15 @@ $(document).ready(function () {
         savePatient(this);
     });
 
+    $(document).on('click', '.btn-dashboard-book-patient', function () {
+        const patient = DASHBOARD_PATIENTS.find(item => String(item.id) === String($(this).data('patient-id')));
+        startQuickBookingSlotSelection({
+            patientId: patient && patient.id,
+            patientName: patient && patient.name,
+            professionalId: patient && patient.professional_id
+        });
+    });
+
     $('#professional-editor-role').on('change', applyProfessionalRoleDefaultPermissions);
     $(document).on('change', '.professional-permission-check', updateProfessionalRoleUi);
 
@@ -4081,6 +4970,28 @@ $(document).ready(function () {
             $('#patient-editor-photo-preview').attr('src', URL.createObjectURL(file)).removeClass('d-none');
             $('#patient-editor-photo-status').text(file.name);
         }
+    });
+
+    $('#patient-contacts-tab').on('shown.bs.tab', function () {
+        loadPatientContacts(parseInt($('#patient-editor-id').val() || '0', 10));
+    });
+
+    $('#btn-new-patient-contact').on('click', function () {
+        openPatientContactModal();
+    });
+
+    $('#patient-contact-form').on('submit', function (event) {
+        event.preventDefault();
+        savePatientContact(this);
+    });
+
+    $('#patient-contacts-list').on('click', '.btn-edit-patient-contact', function () {
+        const contact = CURRENT_PATIENT_CONTACTS.find(item => String(item.id) === String($(this).data('contact-id')));
+        openPatientContactModal(contact || null);
+    });
+
+    $('#patient-contacts-list').on('click', '.btn-delete-patient-contact', function () {
+        deletePatientContact(parseInt($(this).data('contact-id') || 0, 10));
     });
 
     $('#patient-history-tab').on('shown.bs.tab', function () {
@@ -4107,6 +5018,11 @@ $(document).ready(function () {
     $('#patient-files-tab').on('shown.bs.tab', function () {
         const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
         loadPatientFiles(patientId);
+    });
+
+    $('#patient-legal-documents-tab').on('shown.bs.tab', function () {
+        const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
+        loadPatientLegalDocuments(patientId);
     });
 
     $('#patient-reports-tab').on('shown.bs.tab', function () {
@@ -4137,6 +5053,9 @@ $(document).ready(function () {
     $('#patient-reports-body').on('click', '.btn-configure-patient-report', function () {
         showPatientReportConfigForm($(this).data('report-id'));
     });
+    $('#patient-reports-body').on('click', '.btn-delete-custom-patient-report', function () {
+        deleteCustomPatientReport(this);
+    });
 
     $('#patient-report-payment-mode').on('change', function () {
         updatePatientReportPaymentFields();
@@ -4159,6 +5078,24 @@ $(document).ready(function () {
         showPatientDocumentForm(null, defaultType);
     });
 
+    $('#btn-create-patient-docx').on('click', function () {
+        const patientId = parseInt(CURRENT_PATIENT_FILES_ID || $('#patient-editor-id').val() || '0', 10);
+        openDocxEditor({
+            source: 'patient',
+            patientId,
+            title: `Documento ${new Date().toLocaleDateString('es-ES')}`
+        });
+    });
+
+    $('#btn-create-patient-drawing').on('click', function () {
+        const patientId = parseInt(CURRENT_PATIENT_FILES_ID || $('#patient-editor-id').val() || '0', 10);
+        openDrawingEditor({
+            source: 'patient',
+            patientId,
+            title: `Dibujo ${new Date().toLocaleDateString('es-ES')}`
+        });
+    });
+
     $('#patient-document-type').on('change', function () {
         updatePatientDocumentTypeFields(false, true);
     });
@@ -4171,13 +5108,234 @@ $(document).ready(function () {
     $('#patient-files-body').on('click', '.btn-delete-patient-document', function () {
         deletePatientDocument($(this).data('document-id'), $(this).closest('tr'));
     });
+    $('#patient-files-body').on('click', '.btn-delete-evolution-file', function () {
+        deletePatientEvolutionFile($(this).data('file-id'), $(this).closest('tr'));
+    });
+    $('#patient-files-body').on('click', '.btn-toggle-file-portal', function () {
+        togglePatientFilePortal(this, false);
+    });
 
     $('#patient-files-body').on('click', '.btn-edit-patient-document', function () {
         const documentId = parseInt($(this).data('document-id') || '0', 10);
-        const document = CURRENT_PATIENT_FILES_ROWS.find(item => parseInt(item.id || 0, 10) === documentId && item.can_delete);
+        const document = CURRENT_PATIENT_FILES_ROWS.find(item =>
+            parseInt(item.id || 0, 10) === documentId
+            && item.can_delete
+            && item.legacy_type !== 'evolution_file'
+        );
         if (document) {
             showPatientDocumentForm(document);
         }
+    });
+
+    $('#patient-files-body').on('click', '.btn-open-docx-editor', function () {
+        const documentId = parseInt($(this).data('document-id') || '0', 10);
+        const document = CURRENT_PATIENT_FILES_ROWS.find(item => parseInt(item.id || 0, 10) === documentId && parseInt(item.can_edit_docx || 0, 10) === 1);
+        if (document) {
+            openDocxEditor({
+                source: 'patient',
+                patientId: CURRENT_PATIENT_FILES_ID || parseInt($('#patient-editor-id').val() || '0', 10),
+                appointmentId: parseInt(document.appointment_id || 0, 10),
+                documentId,
+                title: document.name || document.file_name || 'Documento'
+            });
+        }
+    });
+
+    $('#patient-files-body').on('click', '.btn-open-drawing-editor', function () {
+        const documentId = parseInt($(this).data('document-id') || '0', 10);
+        const document = CURRENT_PATIENT_FILES_ROWS.find(item => parseInt(item.id || 0, 10) === documentId && parseInt(item.can_edit_drawing || 0, 10) === 1);
+        if (document) {
+            openDrawingEditor({
+                source: 'patient',
+                patientId: CURRENT_PATIENT_FILES_ID || parseInt($('#patient-editor-id').val() || '0', 10),
+                appointmentId: parseInt(document.appointment_id || 0, 10),
+                documentId,
+                title: document.name || document.file_name || 'Dibujo'
+            });
+        }
+    });
+
+    $('#btn-docx-editor-save').on('click', function () {
+        DOCX_EDITOR_CLOSE_AFTER_SAVE = false;
+        setDocxEditorSavingState(true, false);
+        setDocxEditorFooterStatus('Guardando documento...', 'muted');
+        postDocxEditorCommand('save');
+    });
+
+    $('#btn-docx-editor-save-close').on('click', function () {
+        DOCX_EDITOR_CLOSE_AFTER_SAVE = true;
+        setDocxEditorSavingState(true, true);
+        setDocxEditorFooterStatus('Guardando documento...', 'muted');
+        postDocxEditorCommand('save');
+    });
+
+    $('#btn-docx-editor-new').on('click', function () {
+        postDocxEditorCommand('new', { title: `Documento ${new Date().toLocaleDateString('es-ES')}` });
+    });
+
+    $('#btn-docx-editor-upload').on('click', function () {
+        $('#docx-editor-upload-input').trigger('click');
+    });
+
+    $('#docx-editor-upload-input').on('change', async function () {
+        const file = this.files && this.files[0] ? this.files[0] : null;
+        this.value = '';
+        if (!file) return;
+        if (!String(file.name || '').toLowerCase().endsWith('.docx')) {
+            setDocxEditorFooterStatus('El archivo debe ser .docx.', 'danger');
+            return;
+        }
+        const buffer = await file.arrayBuffer();
+        postDocxEditorCommand('upload-buffer', { fileName: file.name, buffer }, [buffer]);
+        $('#docx-editor-modal-title').text(file.name.replace(/\.docx$/i, ''));
+        setDocxEditorFooterStatus('Documento cargado en el editor.', 'success');
+    });
+
+    $('#docxEditorModal').on('hidden.bs.modal', function () {
+        $('#docx-editor-frame').attr('src', 'about:blank');
+        CURRENT_DOCX_EDITOR_CONTEXT = null;
+        DOCX_EDITOR_CLOSE_AFTER_SAVE = false;
+        setDocxEditorSavingState(false, false);
+        $('body').removeClass('docx-editor-modal-open patient-editor-secondary-modal-open appointment-payment-secondary-modal-open');
+        if ($('#patientEditorModal').hasClass('show') || $('#appointmentPaymentModal').hasClass('show')) {
+            document.body.classList.add('modal-open');
+        }
+    });
+
+    $('#docxEditorModal').on('show.bs.modal', function () {
+        $('body').addClass('docx-editor-modal-open');
+        if ($('#patientEditorModal').hasClass('show')) {
+            $('body').addClass('patient-editor-secondary-modal-open');
+        }
+        if ($('#appointmentPaymentModal').hasClass('show')) {
+            $('body').addClass('appointment-payment-secondary-modal-open');
+        }
+    });
+
+    $('#btn-drawing-editor-save').on('click', function () {
+        DRAWING_EDITOR_CLOSE_AFTER_SAVE = false;
+        setDrawingEditorSavingState(true, false);
+        setDrawingEditorFooterStatus('Guardando dibujo...', 'muted');
+        postDrawingEditorCommand('save');
+    });
+
+    $('#btn-drawing-editor-save-close').on('click', function () {
+        DRAWING_EDITOR_CLOSE_AFTER_SAVE = true;
+        setDrawingEditorSavingState(true, true);
+        setDrawingEditorFooterStatus('Guardando dibujo...', 'muted');
+        postDrawingEditorCommand('save');
+    });
+
+    $('#btn-drawing-editor-download').on('click', function () {
+        setDrawingEditorFooterStatus('Preparando imagen...', 'muted');
+        postDrawingEditorCommand('export-png');
+    });
+
+    $('#btn-drawing-editor-new').on('click', function () {
+        postDrawingEditorCommand('new', { title: `Dibujo ${new Date().toLocaleDateString('es-ES')}` });
+        $('#drawing-editor-modal-title').text('Nuevo dibujo');
+        setDrawingEditorFooterStatus('Dibujo en blanco preparado.', 'success');
+    });
+
+    $('#drawingEditorModal').on('hidden.bs.modal', function () {
+        $('#drawing-editor-frame').attr('src', 'about:blank');
+        CURRENT_DRAWING_EDITOR_CONTEXT = null;
+        DRAWING_EDITOR_CLOSE_AFTER_SAVE = false;
+        setDrawingEditorSavingState(false, false);
+        $('body').removeClass('drawing-editor-modal-open patient-editor-secondary-modal-open appointment-payment-secondary-modal-open');
+        if ($('#patientEditorModal').hasClass('show') || $('#appointmentPaymentModal').hasClass('show')) {
+            document.body.classList.add('modal-open');
+        }
+    });
+
+    $('#drawingEditorModal').on('show.bs.modal', function () {
+        $('body').addClass('drawing-editor-modal-open');
+        if ($('#patientEditorModal').hasClass('show')) {
+            $('body').addClass('patient-editor-secondary-modal-open');
+        }
+        if ($('#appointmentPaymentModal').hasClass('show')) {
+            $('body').addClass('appointment-payment-secondary-modal-open');
+        }
+    });
+
+    window.addEventListener('message', function (event) {
+        if (event.origin !== window.location.origin) return;
+        const data = event.data || {};
+        if (data.source === 'sgpraxis-drawing-editor') {
+            if (data.type === 'status' || data.type === 'dirty') {
+                if (data.message) {
+                    $('#drawing-editor-modal-status').text(data.message);
+                    setDrawingEditorFooterStatus(data.message, data.error ? 'danger' : 'muted');
+                } else if (data.dirty) {
+                    setDrawingEditorFooterStatus('Hay cambios sin guardar.', 'warning');
+                }
+            } else if (data.type === 'saved') {
+                if (CURRENT_DRAWING_EDITOR_CONTEXT) {
+                    CURRENT_DRAWING_EDITOR_CONTEXT.documentId = parseInt(data.documentId || CURRENT_DRAWING_EDITOR_CONTEXT.documentId || 0, 10);
+                }
+                setDrawingEditorSavingState(false, false);
+                setDrawingEditorFooterStatus(data.autosave ? 'Autoguardado correctamente.' : 'Dibujo guardado correctamente.', 'success');
+                refreshDrawingEditorContext();
+                if (DRAWING_EDITOR_CLOSE_AFTER_SAVE && !data.autosave) {
+                    DRAWING_EDITOR_CLOSE_AFTER_SAVE = false;
+                    if (drawingEditorModal) {
+                        drawingEditorModal.hide();
+                    }
+                }
+            } else if (data.type === 'error') {
+                DRAWING_EDITOR_CLOSE_AFTER_SAVE = false;
+                setDrawingEditorSavingState(false, false);
+                setDrawingEditorFooterStatus(data.message || 'No se pudo guardar el dibujo.', 'danger');
+            }
+            return;
+        }
+        if (data.source !== 'sgpraxis-docx-editor') return;
+        if (data.type === 'status' || data.type === 'dirty') {
+            if (data.message) {
+                $('#docx-editor-modal-status').text(data.message);
+                setDocxEditorFooterStatus(data.message, data.error ? 'danger' : 'muted');
+            } else if (data.dirty) {
+                setDocxEditorFooterStatus('Hay cambios sin guardar.', 'warning');
+            }
+        } else if (data.type === 'saved') {
+            if (CURRENT_DOCX_EDITOR_CONTEXT) {
+                CURRENT_DOCX_EDITOR_CONTEXT.documentId = parseInt(data.documentId || CURRENT_DOCX_EDITOR_CONTEXT.documentId || 0, 10);
+            }
+            setDocxEditorSavingState(false, false);
+            setDocxEditorFooterStatus(data.autosave ? 'Autoguardado correctamente.' : 'Documento guardado correctamente.', 'success');
+            refreshDocxEditorContext();
+            if (DOCX_EDITOR_CLOSE_AFTER_SAVE && !data.autosave) {
+                DOCX_EDITOR_CLOSE_AFTER_SAVE = false;
+                if (docxEditorModal) {
+                    docxEditorModal.hide();
+                }
+            }
+        } else if (data.type === 'error') {
+            DOCX_EDITOR_CLOSE_AFTER_SAVE = false;
+            setDocxEditorSavingState(false, false);
+            setDocxEditorFooterStatus(data.message || 'No se pudo guardar el documento.', 'danger');
+        }
+    });
+
+    $('#patient-legal-documents-body').on('click', '.btn-edit-patient-legal-document', function () {
+        const legalDocumentId = parseInt($(this).data('legal-document-id') || '0', 10);
+        const document = CURRENT_PATIENT_LEGAL_DOCUMENTS_ROWS.find(item => parseInt(item.legal_document_id || 0, 10) === legalDocumentId);
+        if (document) {
+            showPatientLegalDocumentForm(document);
+        }
+    });
+
+    $('#patient-legal-documents-body').on('click', '.btn-handwritten-consent', function () {
+        const legalDocumentId = parseInt($(this).data('legal-document-id') || '0', 10);
+        const document = CURRENT_PATIENT_LEGAL_DOCUMENTS_ROWS.find(item => parseInt(item.legal_document_id || 0, 10) === legalDocumentId);
+        if (document) {
+            openHandwrittenConsentWizard(document);
+        }
+    });
+
+    $('#patient-legal-document-form').on('submit', function (e) {
+        e.preventDefault();
+        savePatientLegalDocument(this);
     });
 
     $('#patient-bonuses-tab').on('shown.bs.tab', function () {
@@ -4207,7 +5365,15 @@ $(document).ready(function () {
     });
 
     $('#btn-show-patient-work-plan-form').on('click', function () {
-        showPatientWorkPlanForm();
+        showPatientWorkPlanForm(null, 'manual');
+    });
+
+    $('#btn-import-patient-task-template').on('click', function () {
+        showPatientWorkPlanForm(null, 'template');
+    });
+
+    $('#btn-use-work-plan-knowledge').on('click', function () {
+        openKnowledgeWizard({ mode: 'tasks', source: 'patient' });
     });
 
     $('#btn-open-work-plan-templates').on('click', function () {
@@ -4298,6 +5464,10 @@ $(document).ready(function () {
         loadWorkPlanTaskTemplates();
     });
 
+    $('#questionnaires-settings-tab').on('shown.bs.tab', function () {
+        ensureQuestionnaireAssets(() => window.SGPraxisQuestionnaires?.loadList());
+    });
+
     $('#btn-show-create-patient-bonus').on('click', function () {
         $('#patient-bonus-create-form').toggleClass('d-none');
         populatePatientBonusCreateSelect();
@@ -4372,6 +5542,8 @@ $(document).ready(function () {
         if (IS_SUPERADMIN) {
             syncBookingProfessionalFromPatient();
         } else {
+            CURRENT_BOOKING_CONSULTATION_TYPE = '';
+            renderBookingServiceOptions();
             refreshBookingBonusNotice();
         }
     });
@@ -4406,13 +5578,30 @@ $(document).ready(function () {
 
     $('#service-option').change(function () {
         if (bookingContextLoading) return;
+        renderBookingDiscountPrice();
         refreshBookingBonusNotice();
     });
 
     $('#btn-open-settings').click(function () {
+        resetFocusedSettingsMode();
         loadClosedDays();
         loadPaymentSettings();
+        loadSignatureSettings();
         settingsModal.show();
+    });
+
+    $(document).on('input', '#dashboard-settings-search', function () {
+        const query = String($(this).val() || '').trim().toLowerCase();
+        $('.dashboard-settings-card').each(function () { $(this).toggle(!query || String($(this).data('settings-search') || '').includes(query)); });
+        $('[data-settings-group]').each(function () { $(this).toggle($(this).find('.dashboard-settings-card:visible').length > 0); });
+    });
+
+    $(document).on('click', '.dashboard-settings-card', function () {
+        openFocusedSettingsTab(String($(this).data('settings-tab') || ''), String($(this).data('settings-label') || 'Configuración'));
+    });
+
+    $('#btn-settings-back-to-hub').on('click', function () {
+        resetFocusedSettingsMode();
     });
 
     $('#btn-change-password').click(function () {
@@ -4433,6 +5622,86 @@ $(document).ready(function () {
             $('#patient-self-photo-preview').attr('src', URL.createObjectURL(file)).removeClass('d-none');
             $('#patient-self-photo-status').text(file.name);
         }
+    });
+
+    $('#btn-my-professional-profile').on('click', function () {
+        if (!IS_SUPERADMIN && professionalEditorModal) {
+            $.ajax({
+                url: 'api/admin.php?action=get_my_professional_profile',
+                dataType: 'json',
+                success: function (res) {
+                    if (!res.success || !res.professional) {
+                        showAdminAlert('danger', res.error || 'No se pudo cargar tu ficha profesional.');
+                        return;
+                    }
+                    const professional = normalizeProfessional(res.professional);
+                    const existingIndex = CABINET_PROFESSIONALS.findIndex(item =>
+                        parseInt(item.id || 0, 10) === parseInt(professional.id || 0, 10)
+                    );
+                    if (existingIndex >= 0) {
+                        CABINET_PROFESSIONALS[existingIndex] = professional;
+                        openProfessionalEditor(existingIndex);
+                    } else {
+                        CABINET_PROFESSIONALS.push(professional);
+                        openProfessionalEditor(CABINET_PROFESSIONALS.length - 1);
+                    }
+                },
+                error: function () {
+                    showAdminAlert('danger', 'Error de conexi&oacute;n al cargar tu ficha profesional.');
+                }
+            });
+            return;
+        }
+        const findCurrentProfessionalIndex = () => CABINET_PROFESSIONALS.findIndex(professional =>
+            professional.is_current_user == 1
+            || parseInt(professional.user_id || 0, 10) === parseInt(CURRENT_USER_ID || 0, 10)
+            || parseInt(professional.id || 0, 10) === parseInt(CURRENT_PROFESSIONAL_ID || 0, 10)
+        );
+        const index = findCurrentProfessionalIndex();
+        if (professionalEditorModal && index >= 0) {
+            const professional = CABINET_PROFESSIONALS[index] || {};
+            if (professional.user_id || !IS_SUPERADMIN) {
+                openProfessionalEditor(index);
+                return;
+            }
+        }
+        if (professionalEditorModal && IS_SUPERADMIN) {
+            loadCabinetSettings()
+                .then(function () {
+                    const refreshedIndex = findCurrentProfessionalIndex();
+                    if (refreshedIndex >= 0) {
+                        openProfessionalEditor(refreshedIndex);
+                    } else {
+                        showAdminAlert('danger', 'No se pudo localizar tu ficha profesional.');
+                    }
+                })
+                .catch(function () {
+                    showAdminAlert('danger', 'No se pudo cargar tu ficha profesional.');
+                });
+            return;
+        }
+        showAdminAlert('danger', 'No se pudo localizar tu ficha profesional.');
+    });
+
+    $('#btn-import-my-signature-certificate').on('click', function () {
+        importMySignatureCertificate(document.getElementById('my-signature-certificate-form'));
+    });
+
+    $('#btn-remove-my-signature-certificate').on('click', function () {
+        removeMySignatureCertificate(this);
+    });
+
+    $(document).on('click', '.btn-sign-pdf', function () {
+        requestPdfSignature(
+            $(this).data('signature-url') || '',
+            $(this).data('has-professional') == 1,
+            $(this).data('has-tenant') == 1
+        );
+    });
+
+    $('.signature-owner-choice').on('click', function () {
+        openSignedPdf(PENDING_SIGNATURE_URL, $(this).data('owner') || 'tenant');
+        if (signatureChoiceModal) signatureChoiceModal.hide();
     });
 
     $('#patient-self-invoice-use-alt-data').on('change', togglePatientSelfAltBillingFields);
@@ -4508,9 +5777,9 @@ $(document).ready(function () {
         }
     }
 
-    $('#serviceCatalogItemModal, #serviceCatalogDeleteModal, #appointmentLocationItemModal, #appointmentLocationDeleteModal, #messageTemplateModal').on('hidden.bs.modal', cleanupSettingsChildModalBackdrop);
+    $('#serviceCatalogItemModal, #serviceCatalogDeleteModal, #appointmentLocationItemModal, #appointmentLocationDeleteModal, #messageTemplateModal, #legalDocumentModal, #serviceLegalDocumentsModal, #suggestedLegalDocumentsModal').on('hidden.bs.modal', cleanupSettingsChildModalBackdrop);
 
-    $('#closedDayModal, #professionalEditorModal, #professionalKnowledgeSectorsModal, #professionalTransferModal, #serviceCatalogItemModal, #serviceCatalogDeleteModal, #appointmentLocationItemModal, #appointmentLocationDeleteModal, #messageTemplateModal').on('show.bs.modal', function () {
+    $('#closedDayModal, #professionalEditorModal, #professionalKnowledgeSectorsModal, #professionalTransferModal, #serviceCatalogItemModal, #serviceCatalogDeleteModal, #appointmentLocationItemModal, #appointmentLocationDeleteModal, #messageTemplateModal, #legalDocumentModal, #serviceLegalDocumentsModal, #suggestedLegalDocumentsModal').on('show.bs.modal', function () {
         if ($('#settingsModal').hasClass('show')) {
             $('body').addClass('settings-secondary-modal-open');
         }
@@ -4555,7 +5824,7 @@ $(document).ready(function () {
         }
     });
 
-    $('#patientWorkPlanTaskModal, #patientDocumentModal, #patientReportConfigModal, #patientReportSuggestionsModal, #patientEvolutionModal, #workoutxExerciseModal').on('show.bs.modal', function () {
+    $('#patientContactModal, #patientWorkPlanTaskModal, #patientDocumentModal, #patientLegalDocumentModal, #patientReportConfigModal, #patientReportSuggestionsModal, #patientEvolutionModal, #workoutxExerciseModal, #patientDeletionModal').on('show.bs.modal', function () {
         if ($('#patientEditorModal').hasClass('show')) {
             $('body').addClass('patient-editor-secondary-modal-open');
         }
@@ -4567,7 +5836,18 @@ $(document).ready(function () {
         }
     });
 
-    $('#patientWorkPlanTaskModal, #patientDocumentModal, #patientReportConfigModal, #patientReportSuggestionsModal, #patientEvolutionModal, #workoutxExerciseModal').on('hidden.bs.modal', function () {
+    $('#patientWorkPlanTaskModal').on('shown.bs.modal', function () {
+        if (CURRENT_WORK_PLAN_FORM_CONTEXT.mode !== 'manual') return;
+        const titleInput = document.getElementById('patient-work-plan-title');
+        if (!titleInput || titleInput.disabled) return;
+        window.setTimeout(function () {
+            titleInput.focus();
+            const length = titleInput.value.length;
+            titleInput.setSelectionRange(length, length);
+        }, 0);
+    });
+
+    $('#patientContactModal, #patientWorkPlanTaskModal, #patientDocumentModal, #patientLegalDocumentModal, #patientReportConfigModal, #patientReportSuggestionsModal, #patientEvolutionModal, #workoutxExerciseModal, #patientDeletionModal').on('hidden.bs.modal', function () {
         $('body').removeClass('patient-editor-secondary-modal-open');
         if ($('#patientEditorModal').hasClass('show')) {
             document.body.classList.add('modal-open');
@@ -4645,6 +5925,7 @@ $(document).ready(function () {
         e.preventDefault();
         saveProfessionalEditor(this.querySelector('button[type="submit"]'));
     });
+    $('#professional-editor-video-provider, #professional-editor-livekit-recording-enabled').on('change', updateProfessionalLivekitRecordingUi);
     $('#professional-editor-knowledge-mode').on('change', updateProfessionalKnowledgeSectorUi);
     $('#btn-professional-knowledge-sectors').on('click', openProfessionalKnowledgeSectorsModal);
     $('#btn-save-professional-knowledge-sectors').on('click', saveProfessionalKnowledgeSectorsSelection);
@@ -4721,6 +6002,29 @@ $(document).ready(function () {
 
     $('#bonuses-enabled').change(function () {
         toggleBonusesSettings();
+    });
+
+    $('#discount-period-enabled').change(function () {
+        toggleDiscountPeriodSettings();
+    });
+
+    $('#legal-country, #legal-province, #legal-province-other').on('change input', function () {
+        syncLegalCountryFields();
+        syncBillingCountryVisibility();
+        syncBillingTaxSettings();
+        renderServicesSettings();
+    });
+
+    $('#verifactu-taxpayer-type, #verifactu-activation-mode').change(function () {
+        syncVerifactuSettings();
+    });
+
+    $(document).on('change', '.billing-service-tax-mode', function () {
+        const serviceId = parseInt($(this).closest('.service-group-row').data('service-id') || 0, 10);
+        const service = APPOINTMENT_SERVICES.find(item => parseInt(item.id || 0, 10) === serviceId);
+        if (service) {
+            service.tax_mode = $(this).val() === 'exempt' ? 'exempt' : 'taxed';
+        }
     });
 
     $(document).on('change', '.available-session-type', function () {
@@ -4880,15 +6184,96 @@ $(document).ready(function () {
     });
 
     $('#btn-google-connect').click(function () {
-        savePaymentSettings('#email-settings-alert', function () {
-            window.location.href = 'google_oauth_start.php';
-        }, this, 'email');
+        beginOauthRedirect('Google', 'google_oauth_start.php', '#email-settings-alert', this, 'email');
     });
 
     $('#btn-google-connect-calendar').click(function () {
-        savePaymentSettings('#calendar-settings-alert', function () {
-            window.location.href = 'google_oauth_start.php';
-        }, this, 'calendar');
+        beginOauthRedirect('Google', 'google_oauth_start.php', '#calendar-settings-alert', this, 'calendar');
+    });
+
+    $('#btn-microsoft-connect-calendar').click(function () {
+        beginOauthRedirect('Microsoft', 'microsoft_oauth_start.php', '#calendar-settings-alert', this, 'calendar');
+    });
+
+    $('#oauthRedirectModal').on('hidden.bs.modal', function () {
+        $('body').removeClass('oauth-redirect-modal-open');
+        if ($('#settingsModal').hasClass('show')) {
+            document.body.classList.add('modal-open');
+        }
+    });
+
+    $('#legal-settings-tab').on('shown.bs.tab', function () {
+        loadLegalDocuments();
+    });
+
+    $('#signature-settings-tab').on('shown.bs.tab', function () {
+        loadSignatureCertificateStatus();
+        loadSignatureSettings();
+    });
+
+    $('#signature-certificate-owner').on('change', function () {
+        $('#signature-certificate-alert').addClass('d-none').text('');
+        loadSignatureCertificateStatus();
+    });
+
+    $('#signature-certificate-form').on('submit', function (e) {
+        e.preventDefault();
+        importSignatureCertificate(this);
+    });
+
+    $('#btn-remove-signature-certificate').on('click', function () {
+        removeSignatureCertificate(this);
+    });
+
+    $('#sign-arbitrary-pdf-form').on('submit', function (e) {
+        e.preventDefault();
+        signArbitraryPdf(this);
+    });
+
+    $('#btn-show-legal-document-form').on('click', function () {
+        showLegalDocumentForm();
+    });
+
+    $('#btn-add-legal-document-section').on('click', function () {
+        addLegalDocumentSection();
+    });
+
+    $('#legal-document-sections').on('click', '.btn-remove-legal-document-section', function () {
+        $(this).closest('.legal-document-section').remove();
+    });
+
+    $('#btn-show-suggested-legal-documents').on('click', function () {
+        showSuggestedLegalDocumentsModal();
+    });
+
+    $('#btn-map-service-legal-documents').on('click', function () {
+        showServiceLegalDocumentsModal();
+    });
+
+    $('#btn-save-service-legal-documents').on('click', function () {
+        saveServiceLegalDocumentMappings(this);
+    });
+
+    $('#legal-document-form').on('submit', function (e) {
+        e.preventDefault();
+        saveLegalDocument(this);
+    });
+
+    $('#suggested-legal-documents-form').on('submit', function (e) {
+        e.preventDefault();
+        createSuggestedLegalDocuments();
+    });
+
+    $('#legal-documents-body').on('click', '.btn-edit-legal-document', function () {
+        const documentId = parseInt($(this).data('document-id') || '0', 10);
+        const document = LEGAL_DOCUMENTS.find(item => parseInt(item.id || 0, 10) === documentId);
+        if (document) {
+            showLegalDocumentForm(document);
+        }
+    });
+
+    $('#legal-documents-body').on('click', '.btn-delete-legal-document', function () {
+        deleteLegalDocument($(this).data('document-id'));
     });
 
     $(document).on('click', '.btn-message-template', function () {
@@ -5116,6 +6501,7 @@ function bookAppointment() {
                 return;
             }
 
+            cancelQuickBookingSlotSelection();
             invalidateDashboardUpcomingAppointments();
             renderWeekInfo();
             if (!IS_ADMIN) {
@@ -5232,6 +6618,47 @@ function formatPrice(value) {
         : value;
 }
 
+function discountPeriodAppliesToDate(dateValue) {
+    const date = String(dateValue || '');
+    const start = String(PAYMENT_SETTINGS.discount_period_start_date || '');
+    const end = String(PAYMENT_SETTINGS.discount_period_end_date || '');
+    return planFeatureEnabled('catalog.discounts', false)
+        && PAYMENT_SETTINGS.discount_period_enabled == 1
+        && /^\d{4}-\d{2}-\d{2}$/.test(date)
+        && date >= start
+        && date <= end;
+}
+
+function serviceOptionPriceDetails(option, dateValue) {
+    const base = parseFloat(String(option && option.price !== undefined ? option.price : 0).replace(',', '.')) || 0;
+    const configuredDiscount = parseFloat(String(option && option.discount_percentage !== undefined ? option.discount_percentage : 0).replace(',', '.')) || 0;
+    const discount = discountPeriodAppliesToDate(dateValue) ? Math.min(100, Math.max(0, configuredDiscount)) : 0;
+    return {
+        base,
+        discount,
+        final: Math.round((base * (1 - discount / 100) + Number.EPSILON) * 100) / 100
+    };
+}
+
+function renderBookingDiscountPrice() {
+    const option = selectedServiceOption();
+    const $price = $('#booking-discount-price');
+    if (!$price.length || !option) {
+        $price.addClass('d-none').empty();
+        return;
+    }
+    const details = serviceOptionPriceDetails(option, $('#modalDate').val());
+    if (details.discount <= 0) {
+        $price.addClass('d-none').empty();
+        return;
+    }
+    $price.removeClass('d-none').html(
+        `<span class="text-muted text-decoration-line-through me-2">${formatPrice(details.base)} €</span>`
+        + `<strong class="text-success">${formatPrice(details.final)} €</strong>`
+        + `<span class="badge bg-success ms-2">-${formatPrice(details.discount)}%</span>`
+    );
+}
+
 function renderBookingServiceOptions() {
     const $select = $('#service-option');
     $select.empty();
@@ -5240,6 +6667,16 @@ function renderBookingServiceOptions() {
         $select.append('<option value="">Este profesional no tiene disponible este horario</option>');
         return;
     }
+    const patient = IS_ADMIN ? bookingPatientById($('#patientSelect').val()) : null;
+    const preferredOptionId = patient ? parseInt(patient.preferred_service_option_id || 0, 10) : 0;
+    const preferredOption = preferredOptionId > 0
+        ? ACTIVE_SERVICE_OPTIONS.find(option => parseInt(option.id || 0, 10) === preferredOptionId)
+        : null;
+    if (!CURRENT_BOOKING_CONSULTATION_TYPE
+        && preferredOption
+        && selectedSlotCanFitDuration(preferredOption.duration_minutes)) {
+        CURRENT_BOOKING_CONSULTATION_TYPE = preferredOption.consultation_type || '';
+    }
     const selectedConsultation = ensureBookingConsultationType();
     renderBookingConsultationCards();
     const visibleOptions = ACTIVE_SERVICE_OPTIONS.filter(option => {
@@ -5247,12 +6684,28 @@ function renderBookingServiceOptions() {
             && selectedSlotCanFitDuration(option.duration_minutes);
     });
     visibleOptions.forEach(option => {
-        const label = `${option.service_name} · ${option.duration_minutes} min · ${formatPrice(option.price)} €`;
+        const priceDetails = serviceOptionPriceDetails(option, $('#modalDate').val());
+        const priceLabel = priceDetails.discount > 0
+            ? `${formatPrice(priceDetails.final)} € (${formatPrice(priceDetails.base)} €, -${formatPrice(priceDetails.discount)}%)`
+            : `${formatPrice(priceDetails.base)} €`;
+        const label = `${option.service_name} · ${option.duration_minutes} min · ${priceLabel}`;
         $select.append(`<option value="${option.id}">${label}</option>`);
     });
+    if (QUICK_BOOKING_MODAL_CONTEXT && QUICK_BOOKING_MODAL_CONTEXT.serviceOptionId) {
+        const preferredId = String(QUICK_BOOKING_MODAL_CONTEXT.serviceOptionId);
+        if ($select.find(`option[value="${preferredId}"]`).length) {
+            $select.val(preferredId);
+        }
+    } else if (preferredOptionId > 0) {
+        const preferredId = String(preferredOptionId);
+        if ($select.find(`option[value="${preferredId}"]`).length) {
+            $select.val(preferredId);
+        }
+    }
     if (!visibleOptions.length) {
         $select.append('<option value="">No hay servicios disponibles para esta hora</option>');
     }
+    renderBookingDiscountPrice();
 }
 
 function refreshBookingBonusNotice() {
@@ -5438,7 +6891,7 @@ function renderAvailableSessionControls() {
     if ($types.length) {
         $types.html(appointmentServiceCatalog().map(item => {
             const id = `available-session-${item.key}`;
-            const canDelete = isCustomAppointmentService(item.key);
+            const canDelete = IS_SUPERADMIN && isCustomAppointmentService(item.key);
             const service = (APPOINTMENT_SERVICES || []).find(row => row.service_key === item.key) || {};
             return `
                 <div class="col-6 col-md-3">
@@ -5458,7 +6911,7 @@ function renderAvailableSessionControls() {
     if ($durations.length) {
         $durations.html(appointmentDurationCatalog().map(item => {
             const id = `available-duration-${item.minutes}`;
-            const canDelete = isCustomAppointmentDuration(item.minutes);
+            const canDelete = IS_SUPERADMIN && isCustomAppointmentDuration(item.minutes);
             return `
                 <div class="col-4 col-md-3">
                     <div class="d-inline-flex align-items-start gap-1">
@@ -5513,14 +6966,20 @@ function renderAppointmentLocationsSettings() {
     if (!$list.length) {
         return;
     }
-    const locations = appointmentLocationCatalog();
+    const customLocationsEnabled = planFeatureEnabled('catalog.customLocations', false);
+    const locations = appointmentLocationCatalog().filter(location => customLocationsEnabled
+        || location.is_system == 1
+        || location.location_key === 'default'
+        || location.location_key === 'home'
+        || location.location_type === 'default'
+        || location.location_type === 'home');
     $list.html(locations.map(location => {
         const id = `appointment-location-${parseInt(location.id || 0, 10) || escapeHtml(location.location_key || '')}`;
         const isDefault = location.location_type === 'default' || location.location_key === 'default';
         const isSystem = location.is_system == 1 || isDefault || location.location_key === 'home';
         const checked = isDefault || location.is_enabled == 1;
         const disabled = isDefault ? 'disabled' : '';
-        const deleteButton = !isSystem && parseInt(location.id || 0, 10) > 0
+        const deleteButton = customLocationsEnabled && IS_SUPERADMIN && !isSystem && parseInt(location.id || 0, 10) > 0
             ? `<button type="button" class="btn btn-link btn-sm text-danger p-0 ms-1 btn-delete-appointment-location" data-location-id="${parseInt(location.id || 0, 10)}" title="Eliminar ubicaci&oacute;n"><i class="bi bi-trash"></i></button>`
             : '';
         return `
@@ -5576,7 +7035,13 @@ function renderProfessionalLocationSelect(selectedId = null) {
     if (!$select.length) {
         return;
     }
-    const locations = enabledAppointmentLocations(true);
+    const customLocationsEnabled = planFeatureEnabled('catalog.customLocations', false);
+    const locations = enabledAppointmentLocations(true).filter(location => customLocationsEnabled
+        || location.is_system == 1
+        || location.location_key === 'default'
+        || location.location_key === 'home'
+        || location.location_type === 'default'
+        || location.location_type === 'home');
     const fallback = defaultAppointmentLocation();
     const current = selectedId !== null && selectedId !== undefined && String(selectedId) !== ''
         ? parseInt(selectedId, 10)
@@ -5745,7 +7210,8 @@ function applyServiceCatalogResponse(res) {
 function openServiceCatalogDeleteModal(type, key, id = 0) {
     if (!serviceCatalogDeleteModal) return;
     const isDuration = type === 'duration';
-    const label = isDuration ? `${parseInt(key || 0, 10)} minutos` : (appointmentServiceCatalog().find(item => item.key === key)?.label || key);
+    const matchingService = isDuration ? null : appointmentServiceCatalog().find(item => item.key === key);
+    const label = isDuration ? `${parseInt(key || 0, 10)} minutos` : ((matchingService && matchingService.label) || key);
     $('#service-catalog-delete-type').val(isDuration ? 'duration' : 'service');
     $('#service-catalog-delete-key').val(key);
     $('#service-catalog-delete-id').val(id || 0);
@@ -6755,7 +8221,18 @@ function patientPortalStatusIcon(patient) {
 function patientWaitingListIcon(patient) {
     return parseInt(patient && patient.waiting_list || 0, 10) === 1
         ? '<span class="patient-waiting-list-icon text-warning" title="En lista de espera"><i class="bi bi-hourglass-split"></i></span>'
-        : '<span class="text-muted">-</span>';
+        : '';
+}
+
+function patientLegalPendingIcon(patient) {
+    const pending = parseInt(patient && patient.pending_required_legal_documents || 0, 10);
+    if (pending <= 0) {
+        return '';
+    }
+    const title = pending === 1
+        ? 'Hay consentimientos pendientes de aceptar/firmar'
+        : `Hay ${pending} consentimientos pendientes de aceptar/firmar`;
+    return `<span class="text-danger ms-2" title="${escapeHtml(title)}"><i class="bi bi-pen"></i></span>`;
 }
 
 function renderAdminPatients(patients) {
@@ -6774,6 +8251,7 @@ function renderAdminPatients(patients) {
     }
 
     const html = filteredPatients.map(patient => {
+        const isRetentionBlocked = patient.patient_status === 'retention_blocked';
         const photo = patient.photo_path
             ? `<img class="table-avatar" src="${escapeHtml(assetUrl(patient.photo_path))}" alt="${escapeHtml(patient.name || '')}">`
             : '<span class="table-avatar table-avatar-empty"><i class="bi bi-person"></i></span>';
@@ -6782,7 +8260,7 @@ function renderAdminPatients(patients) {
             patient.phone ? `<small class="text-muted">${escapeHtml(patient.phone)}${patientContactActionsHtml(patient.phone, 'ms-1')}</small>` : ''
         ].join('');
         const accessBadge = patientPortalStatusIcon(patient);
-        const inviteButton = parseInt(patient.has_portal_access || 0, 10) === 1
+        const inviteButton = isRetentionBlocked || parseInt(patient.has_portal_access || 0, 10) === 1
             ? ''
             : `<button class="btn btn-outline-primary btn-sm btn-send-patient-invite" type="button" data-patient-id="${patient.id}" title="Enviar invitacion de registro"><i class="bi bi-envelope"></i></button>`;
         const documentLink = patient.document_path
@@ -6790,11 +8268,14 @@ function renderAdminPatients(patients) {
             : '';
 
         return `
-            <tr class="admin-patient-row" data-patient-id="${patient.id}">
+            <tr class="admin-patient-row ${isRetentionBlocked ? 'table-secondary opacity-75' : ''}" data-patient-id="${patient.id}">
                 <td>
                     <div class="d-flex align-items-center gap-2">
                         ${photo}
-                        <strong>${escapeHtml(patient.name || '')}</strong>
+                        <div>
+                            <strong>${escapeHtml(patient.name || '')}</strong>
+                            ${isRetentionBlocked ? '<div><span class="badge text-bg-secondary">Expediente bloqueado</span></div>' : ''}
+                        </div>
                     </div>
                 </td>
                 ${showProfessional ? `<td>${professionalCellHtml(patient, 'professional_name', 'professional_photo_path')}</td>` : ''}
@@ -6803,10 +8284,14 @@ function renderAdminPatients(patients) {
                 <td>${patient.admission_date ? formatDisplayDate(patient.admission_date) : '<span class="text-muted">-</span>'}</td>
                 <td class="text-center">${accessBadge}</td>
                 <td>${documentLink}</td>
-                <td class="text-center">${patientWaitingListIcon(patient)}</td>
+                <td class="text-center">${patientWaitingListIcon(patient)}${patientLegalPendingIcon(patient)}</td>
                 <td class="text-end no-export">
                     <div class="d-inline-flex gap-1">
                         ${inviteButton}
+                        ${!isRetentionBlocked && QUICK_PATIENT_BOOKING_ENABLED && memberCan('create_appointments') ? `
+                        <button class="btn btn-outline-primary btn-sm btn-book-patient" type="button" data-patient-id="${patient.id}" title="Nueva cita">
+                            <i class="bi bi-calendar-plus"></i>
+                        </button>` : ''}
                         <button class="btn btn-outline-secondary btn-sm btn-edit-patient" type="button" data-patient-id="${patient.id}" title="Datos del ${escapeHtml(sectorLabel('patient', 'singular', 'paciente'))}">
                             <i class="bi bi-pencil"></i>
                         </button>
@@ -6857,6 +8342,271 @@ function filterAndSortAdminPatients(patients) {
     return rows;
 }
 
+function serverExportDropdownHtml(entity) {
+    return `
+        <div class="dropdown">
+            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" title="Exportar">
+                <i class="bi bi-download"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                <li><button class="dropdown-item btn-server-export" type="button" data-export-entity="${entity}" data-export-format="json"><i class="bi bi-braces me-2"></i>JSON</button></li>
+                <li><button class="dropdown-item btn-server-export" type="button" data-export-entity="${entity}" data-export-format="xlsx"><i class="bi bi-file-earmark-spreadsheet me-2"></i>Excel</button></li>
+            </ul>
+        </div>
+    `;
+}
+
+function printTableButtonHtml(target, title) {
+    return `
+        <button class="btn btn-sm btn-outline-secondary btn-export-modal-table" type="button"
+            data-table-target="${target}" data-export-type="print" title="${escapeHtml(title || 'Imprimir')}">
+            <i class="bi bi-printer"></i>
+        </button>
+    `;
+}
+
+function serverExportUrl(entity, format) {
+    const actions = {
+        patients: 'export_patients',
+        appointments: 'export_appointments',
+        invoices: 'export_invoices',
+        logs: 'export_app_logs'
+    };
+    const params = new URLSearchParams({
+        action: actions[entity] || '',
+        format: format || 'xlsx'
+    });
+    if (entity === 'patients' && IS_SUPERADMIN) {
+        const professional = $('#admin-patients-professional').val() || $('#dashboard-patients-professional').val() || '';
+        if (professional && professional !== 'all') params.set('professional_id', professional);
+    }
+    if (entity === 'appointments') {
+        const professional = $('#upcoming-appointments-professional').val() || $('#dashboard-upcoming-professional').val() || '';
+        if (professional && !['all', 'current'].includes(professional)) params.set('professional_id', professional);
+        if ($('#cancelled-list-panel').hasClass('active')) params.set('status', 'cancelled');
+    }
+    if (entity === 'invoices') {
+        params.set('date_from', $('#invoices-date-from').val() || '');
+        params.set('date_to', $('#invoices-date-to').val() || '');
+    }
+    if (entity === 'logs') {
+        params.set('date_from', $('#app-log-date-from').val() || '');
+        params.set('date_to', $('#app-log-date-to').val() || '');
+    }
+    return `api/admin.php?${params.toString()}`;
+}
+
+$(document).on('click', '.btn-server-export', function () {
+    const entity = String($(this).data('export-entity') || '');
+    const format = String($(this).data('export-format') || 'xlsx');
+    if (!entity) return;
+    window.location.href = serverExportUrl(entity, format);
+});
+
+$(document).on('click', '#btn-export-patient-json', function () {
+    const patientId = parseInt($('#patient-editor-id').val() || 0, 10);
+    if (!patientId) return;
+    window.location.href = `api/admin.php?action=export_patient&patient_id=${patientId}`;
+});
+
+function dashboardSummaryMetric(label, value, icon, tone, detail) {
+    return `
+        <article class="dashboard-summary-metric dashboard-summary-metric-${tone}">
+            <div class="dashboard-summary-metric-icon"><i class="bi ${icon}"></i></div>
+            <div>
+                <div class="dashboard-summary-metric-label">${escapeHtml(label)}</div>
+                <strong class="dashboard-summary-metric-value">${escapeHtml(String(value))}</strong>
+                ${detail ? `<div class="dashboard-summary-metric-detail">${escapeHtml(detail)}</div>` : ''}
+            </div>
+        </article>
+    `;
+}
+
+function dashboardSummaryCurrency(value) {
+    return new Intl.NumberFormat('es-ES', {
+        style: 'currency',
+        currency: 'EUR'
+    }).format(parseFloat(value || 0));
+}
+
+function dashboardSummaryAttentionItem(item) {
+    const icons = {
+        waiting_list: 'bi-hourglass-split',
+        consents: 'bi-pen',
+        pending_payments: 'bi-credit-card'
+    };
+    const action = item.type === 'waiting_list'
+        ? '<button class="btn btn-sm btn-outline-secondary btn-dashboard-summary-waiting" type="button">Ver pacientes</button>'
+        : '';
+    return `
+        <div class="dashboard-summary-attention-item dashboard-summary-attention-${escapeHtml(item.level || 'warning')}">
+            <i class="bi ${icons[item.type] || 'bi-exclamation-circle'}"></i>
+            <span>${escapeHtml(item.label || '')}</span>
+            ${action}
+        </div>
+    `;
+}
+
+function dashboardSummaryTeamTable(team) {
+    if (!Array.isArray(team) || !team.length) return '';
+    return `
+        <section class="dashboard-summary-section">
+            <div class="dashboard-summary-section-heading">
+                <div>
+                    <h3>Equipo</h3>
+                    <p>Actividad registrada durante el periodo seleccionado.</p>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle dashboard-summary-team-table">
+                    <thead>
+                        <tr><th>Profesional</th><th class="text-center">Citas</th><th class="text-center">Realizadas</th><th class="text-center">No asistió</th></tr>
+                    </thead>
+                    <tbody>
+                        ${team.map(member => `
+                            <tr>
+                                <td><strong>${escapeHtml(member.name || '')}</strong></td>
+                                <td class="text-center">${parseInt(member.total || 0, 10)}</td>
+                                <td class="text-center text-success">${parseInt(member.completed || 0, 10)}</td>
+                                <td class="text-center ${parseInt(member.no_show || 0, 10) > 0 ? 'text-danger' : 'text-muted'}">${parseInt(member.no_show || 0, 10)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    `;
+}
+
+function renderDashboardSummaryContent(data) {
+    const today = data.today;
+    const period = data.period;
+    const patients = data.patients;
+    const billing = data.billing;
+    const attention = Array.isArray(data.attention) ? data.attention : [];
+    const metrics = [];
+
+    if (period) {
+        metrics.push(dashboardSummaryMetric('Citas', period.total || 0, 'bi-calendar3', 'primary', `${period.completed || 0} realizadas`));
+        metrics.push(dashboardSummaryMetric('Asistencia', `${period.attendance_rate || 0}%`, 'bi-person-check', 'success', `${period.no_show || 0} no asistieron`));
+    }
+    if (patients) {
+        metrics.push(dashboardSummaryMetric(
+            sectorLabel('patient', 'titlePlural', 'Pacientes'),
+            patients.total || 0,
+            'bi-people',
+            'info',
+            `${patients.new || 0} nuevos · ${patients.waiting || 0} en lista de espera`
+        ));
+    }
+    if (billing) {
+        metrics.push(dashboardSummaryMetric('Cobrado', dashboardSummaryCurrency(billing.collected), 'bi-cash-stack', 'success', `${billing.pending_count || 0} cobros pendientes`));
+    }
+
+    const todayHtml = today ? `
+        <section class="dashboard-summary-today">
+            <div class="dashboard-summary-today-heading">
+                <div><span>Hoy</span><strong>${escapeHtml(new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date()))}</strong></div>
+                <i class="bi bi-calendar-check"></i>
+            </div>
+            <div class="dashboard-summary-today-grid">
+                <div><strong>${today.total || 0}</strong><span>Total</span></div>
+                <div><strong>${today.completed || 0}</strong><span>Realizadas</span></div>
+                <div><strong>${today.pending || 0}</strong><span>Reservadas</span></div>
+                <div><strong>${today.confirmed || 0}</strong><span>Confirmadas</span></div>
+                <div><strong>${today.no_show || 0}</strong><span>No asistió</span></div>
+            </div>
+        </section>
+    ` : '';
+
+    const attentionHtml = attention.length ? `
+        <section class="dashboard-summary-section">
+            <div class="dashboard-summary-section-heading">
+                <div><h3>Requiere atención</h3><p>Asuntos pendientes que conviene revisar.</p></div>
+            </div>
+            <div class="dashboard-summary-attention-list">${attention.map(dashboardSummaryAttentionItem).join('')}</div>
+        </section>
+    ` : '';
+
+    const emptyHtml = !today && !metrics.length && !attention.length
+        ? '<div class="alert alert-info">No hay información disponible con tus permisos actuales.</div>'
+        : '';
+
+    $('#calendar-container').html(`
+        <section class="dashboard-summary-view">
+            <header class="dashboard-summary-header">
+                <div>
+                    <h2>Dashboard</h2>
+                    <p>Resumen operativo de la actividad.</p>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <select class="form-select form-select-sm" id="dashboard-summary-period" aria-label="Periodo del dashboard">
+                        <option value="7"${dashboardSummaryPeriod === 7 ? ' selected' : ''}>Últimos 7 días</option>
+                        <option value="30"${dashboardSummaryPeriod === 30 ? ' selected' : ''}>Últimos 30 días</option>
+                        <option value="90"${dashboardSummaryPeriod === 90 ? ' selected' : ''}>Últimos 90 días</option>
+                    </select>
+                    <button class="btn btn-sm btn-outline-secondary" id="btn-refresh-dashboard-summary" type="button" title="Actualizar">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+            </header>
+            ${todayHtml}
+            ${metrics.length ? `
+                <section class="dashboard-summary-section">
+                    <div class="dashboard-summary-section-heading">
+                        <div><h3>Últimos ${dashboardSummaryPeriod} días</h3><p>Indicadores principales del periodo seleccionado.</p></div>
+                    </div>
+                    <div class="dashboard-summary-metrics">${metrics.join('')}</div>
+                </section>
+            ` : ''}
+            ${attentionHtml}
+            ${dashboardSummaryTeamTable(data.team)}
+            ${emptyHtml}
+        </section>
+    `);
+}
+
+function renderDashboardSummaryView(force) {
+    if (currentCalendarView !== 'dashboard') return;
+    const cacheKey = String(dashboardSummaryPeriod);
+    if (!force && dashboardSummaryCache[cacheKey]) {
+        renderDashboardSummaryContent(dashboardSummaryCache[cacheKey]);
+        return;
+    }
+    $('#calendar-container').html('<div class="text-center text-muted py-5"><div class="spinner-border text-secondary" role="status"></div><br>Cargando. Espera...</div>');
+    $.getJSON('api/admin.php?action=dashboard_summary', { period_days: dashboardSummaryPeriod })
+        .done(function (res) {
+            if (currentCalendarView !== 'dashboard') return;
+            if (!res.success) {
+                $('#calendar-container').html(`<div class="alert alert-danger">${escapeHtml(res.error || 'No se pudo cargar el dashboard.')}</div>`);
+                return;
+            }
+            dashboardSummaryCache[cacheKey] = res.dashboard || {};
+            renderDashboardSummaryContent(dashboardSummaryCache[cacheKey]);
+        })
+        .fail(function () {
+            if (currentCalendarView === 'dashboard') {
+                $('#calendar-container').html('<div class="alert alert-danger">Error de conexión al cargar el dashboard.</div>');
+            }
+        });
+}
+
+$(document).on('change', '#dashboard-summary-period', function () {
+    dashboardSummaryPeriod = parseInt($(this).val() || 30, 10);
+    renderDashboardSummaryView(false);
+});
+
+$(document).on('click', '#btn-refresh-dashboard-summary', function () {
+    delete dashboardSummaryCache[String(dashboardSummaryPeriod)];
+    renderDashboardSummaryView(true);
+});
+
+$(document).on('click', '.btn-dashboard-summary-waiting', function () {
+    dashboardPatientsWaitingOnly = true;
+    currentCalendarView = 'patients';
+    renderWeekInfo();
+});
+
 function renderDashboardPatientsView() {
     const patientPluralTitle = sectorLabel('patient', 'titlePlural', 'Pacientes');
     const patientSingular = sectorLabel('patient', 'singular', 'paciente');
@@ -6874,9 +8624,13 @@ function renderDashboardPatientsView() {
                 <div>
                     <h5 class="mb-1">${escapeHtml(patientPluralTitle)}</h5>
                 </div>
-                <button class="btn btn-primary btn-sm btn-dashboard-new-patient" type="button">
-                    <i class="bi bi-person-plus"></i> Nuevo ${escapeHtml(patientSingular)}
-                </button>
+                <div class="d-flex gap-2 align-items-center">
+                    ${printTableButtonHtml('.dashboard-patients-view', 'Imprimir pacientes')}
+                    ${serverExportDropdownHtml('patients')}
+                    <button class="btn btn-primary btn-sm btn-dashboard-new-patient" type="button">
+                        <i class="bi bi-person-plus"></i> Nuevo ${escapeHtml(patientSingular)}
+                    </button>
+                </div>
             </div>
             <div id="dashboard-patients-alert" class="alert d-none"></div>
             <div class="row g-2 mb-3">
@@ -7038,6 +8792,7 @@ function renderDashboardPatients(patients) {
         return;
     }
     const html = rows.map(patient => {
+        const isRetentionBlocked = patient.patient_status === 'retention_blocked';
         const photo = patient.photo_path
             ? `<img class="table-avatar" src="${escapeHtml(assetUrl(patient.photo_path))}" alt="${escapeHtml(patient.name || '')}">`
             : '<span class="table-avatar table-avatar-empty"><i class="bi bi-person"></i></span>';
@@ -7046,18 +8801,21 @@ function renderDashboardPatients(patients) {
             patient.phone ? `<small class="text-muted">${escapeHtml(patient.phone)}${patientContactActionsHtml(patient.phone, 'ms-1')}</small>` : ''
         ].join('');
         const accessBadge = patientPortalStatusIcon(patient);
-        const inviteButton = parseInt(patient.has_portal_access || 0, 10) === 1
+        const inviteButton = isRetentionBlocked || parseInt(patient.has_portal_access || 0, 10) === 1
             ? ''
             : `<button class="btn btn-outline-primary btn-sm btn-dashboard-send-patient-invite" type="button" data-patient-id="${patient.id}" title="Enviar invitacion de registro"><i class="bi bi-envelope"></i></button>`;
         const documentLink = patient.document_path
             ? `<a href="api/admin.php?action=download_patient_document&patient_id=${patient.id}" target="_blank" rel="noopener">${escapeHtml(patient.document_name || 'Documento')}</a>`
             : '';
         return `
-            <tr class="dashboard-patient-row" data-patient-id="${patient.id}">
+            <tr class="dashboard-patient-row ${isRetentionBlocked ? 'table-secondary opacity-75' : ''}" data-patient-id="${patient.id}">
                 <td>
                     <div class="d-flex align-items-center gap-2">
                         ${photo}
-                        <strong>${escapeHtml(patient.name || '')}</strong>
+                        <div>
+                            <strong>${escapeHtml(patient.name || '')}</strong>
+                            ${isRetentionBlocked ? '<div><span class="badge text-bg-secondary">Expediente bloqueado</span></div>' : ''}
+                        </div>
                     </div>
                 </td>
                 ${IS_SUPERADMIN ? `<td>${professionalCellHtml(patient, 'professional_name', 'professional_photo_path')}</td>` : ''}
@@ -7066,10 +8824,14 @@ function renderDashboardPatients(patients) {
                 <td>${patient.admission_date ? formatDisplayDate(patient.admission_date) : '<span class="text-muted">-</span>'}</td>
                 <td class="text-center">${accessBadge}</td>
                 <td>${documentLink}</td>
-                <td class="text-center">${patientWaitingListIcon(patient)}</td>
+                <td class="text-center">${patientWaitingListIcon(patient)}${patientLegalPendingIcon(patient)}</td>
                 <td class="text-end no-export">
                     <div class="d-inline-flex gap-1">
                         ${inviteButton}
+                        ${!isRetentionBlocked && QUICK_PATIENT_BOOKING_ENABLED && memberCan('create_appointments') ? `
+                        <button class="btn btn-outline-primary btn-sm btn-dashboard-book-patient" type="button" data-patient-id="${patient.id}" title="Nueva cita">
+                            <i class="bi bi-calendar-plus"></i>
+                        </button>` : ''}
                         <button class="btn btn-outline-secondary btn-sm btn-dashboard-edit-patient" type="button" data-patient-id="${patient.id}" title="Datos del ${escapeHtml(sectorLabel('patient', 'singular', 'paciente'))}">
                             <i class="bi bi-pencil"></i>
                         </button>
@@ -7089,9 +8851,13 @@ function renderDashboardUpcomingView() {
                 <div>
                     <h5 class="mb-1">Pr&oacute;ximas citas</h5>
                 </div>
-                <button class="btn btn-primary btn-sm btn-dashboard-more-upcoming" type="button">
-                    <i class="bi bi-list-check"></i> M&aacute;s citas
-                </button>
+                <div class="d-flex gap-2 align-items-center">
+                    ${printTableButtonHtml('.dashboard-upcoming-view', 'Imprimir citas')}
+                    ${serverExportDropdownHtml('appointments')}
+                    <button class="btn btn-primary btn-sm btn-dashboard-more-upcoming" type="button">
+                        <i class="bi bi-list-check"></i> M&aacute;s citas
+                    </button>
+                </div>
             </div>
             <div id="dashboard-upcoming-alert" class="alert d-none"></div>
             <div class="row g-2 mb-3">
@@ -7258,6 +9024,408 @@ function renderDashboardUpcomingAppointments(appointments) {
     $('#dashboard-upcoming-count').text(`${rows.length} ${rows.length === 1 ? 'cita' : 'citas'}`);
 }
 
+function syncProgressiveKnowledgeUi() {
+    const enabled = progressiveKnowledgeWizardEnabled();
+    const patientId = parseInt((CURRENT_PATIENT_EDITOR || {}).id || $('#patient-editor-id').val() || 0, 10);
+    $('#patient-knowledge-plan-b').toggleClass('d-none', !enabled);
+    $('#patient-knowledge-plan-a').toggleClass('d-none', enabled);
+    $('#patient-objective-panel').toggleClass('patient-objective-panel-progressive', enabled);
+    $('#btn-use-knowledge-base')
+        .prop('disabled', !knowledgeBaseEnabled() || !patientId)
+        .attr('title', !knowledgeBaseEnabled()
+            ? 'Disponible en los planes Magister y Summum.'
+            : (patientId ? '' : `Guarda primero el ${sectorLabel('patient', 'singular', 'paciente')}.`));
+    $('#btn-add-manual-diagnosis')
+        .prop('disabled', !patientId)
+        .attr('title', patientId ? '' : `Guarda primero el ${sectorLabel('patient', 'singular', 'paciente')}.`);
+    const diagnoses = Array.isArray(CURRENT_PATIENT_DIAGNOSES) ? CURRENT_PATIENT_DIAGNOSES : [];
+    $('#patient-knowledge-current-selection').html(diagnoses.length
+        ? `<div class="patient-diagnosis-list">${diagnoses.map((diagnosis, index) => `
+            <article class="patient-diagnosis-item">
+                <div class="patient-diagnosis-item-copy">
+                    <div class="d-flex align-items-center flex-wrap gap-2">
+                        <strong>${escapeHtml(diagnosis.label || '')}</strong>
+                        <span class="badge text-bg-primary">Prioridad ${index + 1}</span>
+                    </div>
+                    <small class="text-muted">${escapeHtml(diagnosis.area_name || (diagnosis.source_type === 'manual' ? 'Indicado manualmente' : 'Base de conocimiento'))}</small>
+                    ${diagnosis.selected_objective ? `<small class="text-muted d-block">Objetivo: ${escapeHtml(diagnosis.selected_objective)}</small>` : ''}
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-primary btn-move-patient-diagnosis" data-diagnosis-id="${parseInt(diagnosis.id, 10)}" data-direction="up" title="Subir prioridad" ${index === 0 ? 'disabled' : ''}><i class="bi bi-arrow-up"></i></button>
+                    <button type="button" class="btn btn-sm btn-outline-primary btn-move-patient-diagnosis" data-diagnosis-id="${parseInt(diagnosis.id, 10)}" data-direction="down" title="Bajar prioridad" ${index === diagnoses.length - 1 ? 'disabled' : ''}><i class="bi bi-arrow-down"></i></button>
+                    ${parseInt(diagnosis.knowledge_problem_id || 0, 10) > 0 ? `<button type="button" class="btn btn-sm btn-outline-primary btn-patient-diagnosis-info" data-problem-id="${parseInt(diagnosis.knowledge_problem_id, 10)}" title="Consultar información"><i class="bi bi-info-circle"></i></button>` : ''}
+                    <button type="button" class="btn btn-sm btn-outline-danger btn-patient-diagnosis-archive" data-diagnosis-id="${parseInt(diagnosis.id, 10)}">Archivar</button>
+                </div>
+            </article>`).join('')}</div>`
+        : `<div class="text-muted small">Todavía no hay ${escapeHtml(sectorText('clinicalTerms.diagnosis', 'diagnóstico'))} asociado.</div>`);
+}
+
+function loadPatientDiagnoses(patientId) {
+    patientId = parseInt(patientId || 0, 10);
+    if (!patientId) {
+        CURRENT_PATIENT_DIAGNOSES = [];
+        syncProgressiveKnowledgeUi();
+        return;
+    }
+    $.getJSON('api/admin.php?action=patient_diagnoses', { patient_id: patientId })
+        .done(function (res) {
+            if (!res.success) return;
+            applyPatientDiagnosesState(res.diagnoses);
+        });
+}
+
+function applyPatientDiagnosesState(diagnoses) {
+    CURRENT_PATIENT_DIAGNOSES = Array.isArray(diagnoses) ? diagnoses : [];
+    const primary = CURRENT_PATIENT_DIAGNOSES.find(item => parseInt(item.is_primary || 0, 10) === 1) || null;
+    const knowledgeProblemId = primary ? parseInt(primary.knowledge_problem_id || 0, 10) : 0;
+    const manualDiagnosis = primary && primary.source_type === 'manual' ? primary.label || '' : '';
+    if (CURRENT_PATIENT_EDITOR) {
+        CURRENT_PATIENT_EDITOR.knowledge_problem_id = knowledgeProblemId;
+        CURRENT_PATIENT_EDITOR.manual_diagnosis = manualDiagnosis;
+        const storedPatient = ADMIN_PATIENTS.find(item => parseInt(item.id || 0, 10) === parseInt(CURRENT_PATIENT_EDITOR.id || 0, 10));
+        if (storedPatient) {
+            storedPatient.knowledge_problem_id = knowledgeProblemId;
+            storedPatient.manual_diagnosis = manualDiagnosis;
+        }
+    }
+    $('#patient-editor-knowledge-problem').val(knowledgeProblemId || '');
+    syncProgressiveKnowledgeUi();
+}
+
+function showKnowledgeDiagnosisInfo(problemId) {
+    if (!problemId || !knowledgeDiagnosisInfoModal) return;
+    $('#knowledge-diagnosis-info-title').text('Información del diagnóstico');
+    $('#knowledge-diagnosis-info-area').text('');
+    $('#knowledge-diagnosis-info-content').html('<div class="text-center py-5"><span class="spinner-border"></span></div>');
+    $('body').addClass('patient-editor-secondary-modal-open');
+    knowledgeDiagnosisInfoModal.show();
+    $.getJSON('api/admin.php?action=knowledge_problem_detail', { problem_id: problemId }).done(function (res) {
+        if (!res.success) {
+            $('#knowledge-diagnosis-info-content').html(`<div class="alert alert-warning">${escapeHtml(res.error || 'No se pudo cargar la información.')}</div>`);
+            return;
+        }
+        const problem = res.problem || {};
+        const techniques = Array.isArray(res.techniques) ? res.techniques : [];
+        $('#knowledge-diagnosis-info-title').text(problem.name || 'Información del diagnóstico');
+        $('#knowledge-diagnosis-info-area').text([problem.area_name, problem.population].filter(Boolean).join(' · '));
+        $('#knowledge-diagnosis-info-content').html(`
+            ${problem.description ? `<p>${escapeHtml(problem.description)}</p>` : ''}
+            ${techniques.length ? techniques.map(technique => `
+                <section class="border rounded p-3 mb-3">
+                    <h6>${escapeHtml(technique.name || '')}</h6>
+                    ${technique.description ? `<p class="small text-muted">${escapeHtml(technique.description)}</p>` : ''}
+                    <div class="d-grid gap-2">${(technique.recommendations || []).map(rec => `
+                        <div class="bg-light border rounded p-2">
+                            <strong>${escapeHtml((rec.task || {}).title || '')}</strong>
+                            ${(rec.task || {}).description ? `<div class="small text-muted mt-1">${escapeHtml(rec.task.description)}</div>` : ''}
+                            ${(rec.task || {}).objective ? `<div class="small mt-1"><strong>Objetivo:</strong> ${escapeHtml(rec.task.objective)}</div>` : ''}
+                        </div>`).join('')}</div>
+                </section>`).join('') : '<div class="text-muted">Este diagnóstico no tiene pautas o tareas configuradas.</div>'}
+        `);
+    }).fail(function () {
+        $('#knowledge-diagnosis-info-content').html('<div class="alert alert-warning">No se pudo cargar la información.</div>');
+    });
+}
+
+function movePatientDiagnosis(diagnosisId, direction) {
+    const patientId = parseInt((CURRENT_PATIENT_EDITOR || {}).id || 0, 10);
+    if (!patientId || !diagnosisId) return;
+    $.post('api/admin.php?action=move_patient_diagnosis', {
+        patient_id: patientId,
+        diagnosis_id: diagnosisId,
+        direction: direction === 'down' ? 'down' : 'up'
+    }, null, 'json').done(function (res) {
+        if (!res.success) {
+            showPatientKnowledgeAlert('danger', res.error || 'No se pudo cambiar la prioridad del diagnóstico.');
+            return;
+        }
+        applyPatientDiagnosesState(res.diagnoses);
+    });
+}
+
+function archivePatientDiagnosis(diagnosisId) {
+    const patientId = parseInt((CURRENT_PATIENT_EDITOR || {}).id || 0, 10);
+    if (!patientId || !diagnosisId) return;
+    if (!window.confirm('¿Archivar este diagnóstico? Las tareas asociadas se conservarán en el Plan de trabajo.')) return;
+    $.post('api/admin.php?action=archive_patient_diagnosis', {
+        patient_id: patientId,
+        diagnosis_id: diagnosisId
+    }, null, 'json').done(function (res) {
+        if (!res.success) {
+            showPatientKnowledgeAlert('danger', res.error || 'No se pudo archivar el diagnóstico.');
+            return;
+        }
+        applyPatientDiagnosesState(res.diagnoses);
+        showPatientKnowledgeAlert('success', 'Diagnóstico archivado. Sus tareas se conservan en el Plan de trabajo.');
+    });
+}
+
+function openKnowledgeWizard(options = {}) {
+    if (!progressiveKnowledgeWizardEnabled() || !knowledgeBaseEnabled() || !knowledgeBaseWizardModal) return;
+    const readonly = options.readonly === true;
+    const mode = options.mode === 'tasks' ? 'tasks' : 'diagnosis';
+    const source = options.source || 'patient';
+    const patientId = parseInt(options.patientId || (CURRENT_PATIENT_EDITOR || {}).id || $('#patient-editor-id').val() || 0, 10);
+    if (!readonly && !patientId) {
+        showPatientKnowledgeAlert('warning', `Guarda primero el ${sectorLabel('patient', 'singular', 'paciente')}.`);
+        return;
+    }
+    KNOWLEDGE_WIZARD_STATE = {
+        step: 0,
+        problemId: 0,
+        problem: null,
+        objective: '',
+        techniques: new Set(),
+        recommendations: new Set(),
+        detail: null,
+        searchResults: [],
+        mode,
+        source,
+        patientId,
+        appointmentId: parseInt(options.appointmentId || 0, 10),
+        assignedDiagnoses: [],
+        readonly
+    };
+    if (!readonly) $('body').addClass(source === 'appointment-session' ? 'appointment-payment-secondary-modal-open' : 'patient-editor-secondary-modal-open');
+    const showWizard = function () {
+        loadKnowledgeProblems(function () {
+            renderKnowledgeWizard();
+            knowledgeBaseWizardModal.show();
+        });
+    };
+    if (mode === 'tasks' && !readonly) {
+        $.getJSON('api/admin.php?action=patient_diagnoses', { patient_id: patientId }).done(function (res) {
+            KNOWLEDGE_WIZARD_STATE.assignedDiagnoses = res.success && Array.isArray(res.diagnoses) ? res.diagnoses : [];
+            showWizard();
+        }).fail(showWizard);
+    } else {
+        showWizard();
+    }
+}
+
+function saveManualDiagnosis() {
+    const patientId = parseInt((CURRENT_PATIENT_EDITOR || {}).id || $('#patient-editor-id').val() || 0, 10);
+    const manualDiagnosis = String($('#patient-manual-diagnosis').val() || '').trim();
+    if (!patientId) {
+        showPatientKnowledgeAlert('warning', `Guarda primero el ${sectorLabel('patient', 'singular', 'paciente')}.`);
+        return;
+    }
+    if (!manualDiagnosis) {
+        showPatientKnowledgeAlert('warning', `Escribe primero el ${sectorText('clinicalTerms.diagnosis', 'diagnóstico')}.`);
+        return;
+    }
+    const $button = $('#btn-add-manual-diagnosis');
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>A&ntilde;adiendo');
+    $.post('api/admin.php?action=save_manual_diagnosis', {
+        patient_id: patientId,
+        manual_diagnosis: manualDiagnosis
+    }, null, 'json').done(function (res) {
+        if (!res.success) {
+            showPatientKnowledgeAlert('danger', res.error || 'No se pudo guardar.');
+            return;
+        }
+        applyPatientDiagnosesState(res.diagnoses);
+        $('#patient-manual-diagnosis').val('');
+        syncProgressiveKnowledgeUi();
+        showPatientKnowledgeAlert('success', 'Se ha añadido correctamente.');
+    }).fail(function () {
+        showPatientKnowledgeAlert('danger', 'Error de conexión al guardar.');
+    }).always(function () {
+        $button.prop('disabled', false).html(original);
+    });
+}
+
+function knowledgeWizardRecommendations() {
+    if (!KNOWLEDGE_WIZARD_STATE || !KNOWLEDGE_WIZARD_STATE.detail) return [];
+    return (KNOWLEDGE_WIZARD_STATE.detail.techniques || []).flatMap(technique =>
+        (technique.recommendations || []).map(rec => ({ ...rec, technique }))
+    );
+}
+
+function renderKnowledgeWizard() {
+    const state = KNOWLEDGE_WIZARD_STATE;
+    if (!state) return;
+    const taskMode = state.mode === 'tasks';
+    const readonly = state.readonly === true;
+    const labels = readonly ? ['Problema', 'Objetivos', 'Pautas', 'Tareas'] : [taskMode ? 'Diagnóstico' : 'Problema', 'Objetivo', 'Pautas', 'Tareas', 'Confirmar'];
+    $('#knowledgeBaseWizardModal .modal-title').text(readonly ? 'Base de conocimiento' : (taskMode ? 'Importar tareas de la base de conocimiento' : 'Usar base de conocimiento'));
+    $('#btn-knowledge-wizard-cancel').text(readonly ? 'Cerrar' : 'Cancelar');
+    $('#btn-knowledge-wizard-apply').html(taskMode ? '<i class="bi bi-box-arrow-in-down"></i> Importar tareas' : '<i class="bi bi-check2-circle"></i> Añadir al paciente');
+    $('#knowledge-wizard-steps').html(labels.map((label, index) =>
+        `<span class="${index === state.step ? 'active' : ''}${index < state.step ? ' complete' : ''}">${index + 1}. ${label}</span>`
+    ).join(''));
+    $('#knowledge-wizard-progress-label').text(`${labels[state.step]} · Paso ${state.step + 1} de ${labels.length}`);
+    $('#btn-knowledge-wizard-previous').toggleClass('d-none', state.step === 0);
+    $('#btn-knowledge-wizard-next').toggleClass('d-none', state.step === labels.length - 1);
+    $('#btn-knowledge-wizard-apply').toggleClass('d-none', readonly || state.step !== labels.length - 1);
+    let html = '';
+    if (state.step === 0) {
+        const assignedKnowledgeDiagnoses = (state.assignedDiagnoses || []).filter(item => parseInt(item.knowledge_problem_id || 0, 10) > 0);
+        const availableProblems = taskMode && assignedKnowledgeDiagnoses.length
+            ? assignedKnowledgeDiagnoses.map(item => ({ id: item.knowledge_problem_id, name: item.label, area_name: item.area_name }))
+            : KNOWLEDGE_PROBLEMS;
+        html = `
+            <div class="mb-3">
+                <label class="form-label" for="knowledge-wizard-search">${taskMode && assignedKnowledgeDiagnoses.length ? 'Elige uno de los diagnósticos asignados al paciente' : 'Buscar diagnósticos, objetivos, pautas o tareas'}</label>
+                ${taskMode && assignedKnowledgeDiagnoses.length ? '' : '<input type="search" class="form-control form-control-sm" id="knowledge-wizard-search" placeholder="Por ejemplo: ansiedad">'}
+            </div>
+            ${taskMode && !assignedKnowledgeDiagnoses.length ? '<div class="alert alert-info small">Este paciente no tiene diagnósticos de la base de conocimiento asignados. Puedes buscar en toda la base e importar las tareas que necesites.</div>' : ''}
+            <div id="knowledge-wizard-search-results">${knowledgeWizardProblemListHtml(availableProblems)}</div>`;
+    } else if (state.step === 1) {
+        const objectives = [...new Set(knowledgeWizardRecommendations().map(item => String((item.task || {}).objective || '').trim()).filter(Boolean))];
+        html = readonly
+            ? `<h6>Objetivos relacionados</h6><div class="knowledge-wizard-options">${objectives.length ? objectives.map(objective => `<div class="knowledge-wizard-readonly-item">${escapeHtml(objective)}</div>`).join('') : '<div class="text-muted">No hay objetivos definidos.</div>'}</div>`
+            : `<h6>Elige un objetivo</h6><div class="knowledge-wizard-options">
+            <label><input type="radio" name="knowledge-wizard-objective" value="" ${state.objective === '' ? 'checked' : ''}> Ver todas las recomendaciones</label>
+            ${objectives.map(objective => `<label><input type="radio" name="knowledge-wizard-objective" value="${escapeHtml(objective)}" ${state.objective === objective ? 'checked' : ''}> ${escapeHtml(objective)}</label>`).join('')}
+        </div>`;
+    } else if (state.step === 2) {
+        const techniques = (state.detail.techniques || []).filter(technique =>
+            !state.objective || (technique.recommendations || []).some(rec => String((rec.task || {}).objective || '') === state.objective)
+        );
+        html = `<h6>${readonly ? 'Pautas o técnicas relacionadas' : 'Selecciona pautas o técnicas'}</h6><div class="knowledge-wizard-options">
+            ${techniques.map(technique => readonly ? `<div class="knowledge-wizard-readonly-item"><strong>${escapeHtml(technique.name || '')}</strong><small>${escapeHtml(technique.description || '')}</small></div>` : `<label><input class="knowledge-wizard-technique-check" type="checkbox" value="${parseInt(technique.id, 10)}" ${state.techniques.has(parseInt(technique.id, 10)) ? 'checked' : ''}> <strong>${escapeHtml(technique.name || '')}</strong><small>${escapeHtml(technique.description || '')}</small></label>`).join('')}
+        </div>`;
+    } else if (state.step === 3) {
+        const recommendations = knowledgeWizardRecommendations().filter(item =>
+            (!state.objective || String((item.task || {}).objective || '') === state.objective)
+            && (!state.techniques.size || state.techniques.has(parseInt(item.technique.id, 10)))
+        );
+        html = readonly
+            ? `<h6>Tareas relacionadas</h6><div class="knowledge-wizard-options">${recommendations.length ? recommendations.map(item => `<div class="knowledge-wizard-readonly-item"><strong>${escapeHtml((item.task || {}).title || '')}</strong><small>${escapeHtml((item.task || {}).description || '')}</small></div>`).join('') : '<div class="text-muted">No hay tareas relacionadas.</div>'}</div>`
+            : knowledgeImportEnabled()
+            ? `<h6>Selecciona tareas</h6><div class="knowledge-wizard-options">
+            ${recommendations.map(item => `<label><input class="knowledge-wizard-task-check" type="checkbox" value="${parseInt(item.id, 10)}" ${state.recommendations.has(parseInt(item.id, 10)) ? 'checked' : ''}> <strong>${escapeHtml((item.task || {}).title || '')}</strong><small>${escapeHtml((item.task || {}).description || '')}</small></label>`).join('')}
+        </div>`
+            : '<div class="alert alert-info mb-0">La importaci&oacute;n de tareas no est&aacute; incluida en el plan actual. Puedes continuar para asociar el diagn&oacute;stico y las pautas seleccionadas.</div>';
+    } else {
+        const selectedTasks = knowledgeImportEnabled()
+            ? knowledgeWizardRecommendations().filter(item => state.recommendations.has(parseInt(item.id, 10)))
+            : [];
+        const diagnosisAlreadyAssigned = (state.assignedDiagnoses || []).some(item => parseInt(item.knowledge_problem_id || 0, 10) === parseInt(state.problemId || 0, 10));
+        html = `<div class="alert alert-info small">${taskMode
+            ? 'Las tareas seleccionadas se añadirán al Plan de Trabajo y quedarán vinculadas a este diagnóstico.'
+            : 'Puedes asignar solo el diagnóstico o añadir también las tareas que hayas seleccionado.'}</div>
+            <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+                <h5 class="mb-0">${escapeHtml((state.problem || {}).name || '')}</h5>
+                ${taskMode && !diagnosisAlreadyAssigned ? `<label class="small text-muted d-inline-flex align-items-center gap-1 mb-0">
+                    (<input class="form-check-input position-static m-0" type="checkbox" id="knowledge-wizard-assign-diagnosis" checked>
+                    Añadir ${escapeHtml((state.problem || {}).name || 'este diagnóstico')} a los diagnósticos del paciente)
+                </label>` : ''}
+            </div>
+            ${state.objective ? `<p><strong>Objetivo:</strong> ${escapeHtml(state.objective)}</p>` : ''}
+            <p><strong>Pautas seleccionadas:</strong> ${state.techniques.size}</p>
+            <p><strong>Tareas que se añadirán:</strong> ${selectedTasks.length}</p>
+            ${selectedTasks.map(item => `<div class="border rounded p-2 mb-2">${escapeHtml((item.task || {}).title || '')}</div>`).join('')}`;
+    }
+    $('#knowledge-wizard-content').html(html);
+}
+
+function knowledgeWizardProblemListHtml(problems) {
+    if (!problems.length) return '<div class="text-muted py-4">No hay resultados.</div>';
+    return `<div class="knowledge-wizard-results">${problems.slice(0, 80).map(problem => `
+        <button type="button" class="knowledge-wizard-problem"
+            data-problem-id="${parseInt(problem.id || problem.problem_id, 10)}"
+            data-objective="${escapeHtml(problem.objective || '')}"
+            data-technique-id="${parseInt(problem.technique_id || 0, 10)}"
+            data-recommendation-id="${parseInt(problem.recommendation_id || 0, 10)}">
+            <strong>${escapeHtml(problem.name || problem.problem_name || '')}</strong>
+            <span>${escapeHtml(problem.area_name || '')}${problem.technique_name ? ` · ${escapeHtml(problem.technique_name)}` : ''}${problem.objective ? ` · ${escapeHtml(problem.objective)}` : ''}${problem.task_title ? ` · ${escapeHtml(problem.task_title)}` : ''}</span>
+        </button>`).join('')}</div>`;
+}
+
+function searchKnowledgeWizard() {
+    const query = ($('#knowledge-wizard-search').val() || '').trim();
+    if (query.length < 2) {
+        $('#knowledge-wizard-search-results').html(knowledgeWizardProblemListHtml(KNOWLEDGE_PROBLEMS));
+        return;
+    }
+    $('#knowledge-wizard-search-results').html('<div class="text-muted py-4">Buscando...</div>');
+    $.getJSON('api/admin.php?action=knowledge_search', { q: query })
+        .done(res => $('#knowledge-wizard-search-results').html(res.success ? knowledgeWizardProblemListHtml(res.results || []) : `<div class="alert alert-warning">${escapeHtml(res.error || '')}</div>`))
+        .fail(() => $('#knowledge-wizard-search-results').html('<div class="alert alert-warning">No se pudo completar la búsqueda.</div>'));
+}
+
+function selectKnowledgeWizardProblem(problemId, context = {}) {
+    if (!problemId) return;
+    $('#knowledge-wizard-content').html('<div class="text-center py-5"><span class="spinner-border"></span></div>');
+    $.getJSON('api/admin.php?action=knowledge_problem_detail', { problem_id: problemId }).done(function (res) {
+        if (!res.success) return;
+        KNOWLEDGE_WIZARD_STATE.problemId = problemId;
+        KNOWLEDGE_WIZARD_STATE.problem = res.problem || {};
+        KNOWLEDGE_WIZARD_STATE.detail = res;
+        KNOWLEDGE_WIZARD_STATE.objective = String(context.objective || '');
+        if (context.techniqueId) KNOWLEDGE_WIZARD_STATE.techniques.add(parseInt(context.techniqueId, 10));
+        if (context.recommendationId) KNOWLEDGE_WIZARD_STATE.recommendations.add(parseInt(context.recommendationId, 10));
+        KNOWLEDGE_WIZARD_STATE.step = 1;
+        renderKnowledgeWizard();
+    });
+}
+
+function knowledgeWizardMove(direction) {
+    const state = KNOWLEDGE_WIZARD_STATE;
+    if (!state) return;
+    if (direction > 0 && state.step === 0 && !state.problemId) {
+        $('#knowledge-wizard-alert').removeClass('d-none').addClass('alert-warning').text('Selecciona primero un problema o diagnóstico.');
+        return;
+    }
+    if (!state.readonly && direction > 0 && state.step === 2) {
+        const availableTechniqueIds = new Set((state.detail.techniques || [])
+            .filter(technique => !state.objective || (technique.recommendations || [])
+                .some(rec => String((rec.task || {}).objective || '') === state.objective))
+            .map(technique => parseInt(technique.id, 10)));
+        state.techniques = new Set([...state.techniques].filter(id => availableTechniqueIds.has(id)));
+        const availableRecommendationIds = new Set(knowledgeWizardRecommendations()
+            .filter(item => (!state.objective || String((item.task || {}).objective || '') === state.objective)
+                && state.techniques.has(parseInt(item.technique.id, 10)))
+            .map(item => parseInt(item.id, 10)));
+        state.recommendations = new Set([...state.recommendations].filter(id => availableRecommendationIds.has(id)));
+    }
+    if (!state.readonly && direction > 0 && state.step === 3 && state.mode === 'tasks' && knowledgeImportEnabled() && !state.recommendations.size) {
+        $('#knowledge-wizard-alert')
+            .removeClass('d-none alert-danger alert-info')
+            .addClass('alert-warning')
+            .text('Selecciona al menos una tarea para continuar.');
+        return;
+    }
+    state.step = Math.max(0, Math.min(state.readonly ? 3 : 4, state.step + direction));
+    $('#knowledge-wizard-alert').addClass('d-none').text('');
+    renderKnowledgeWizard();
+}
+
+function applyKnowledgeWizardSelection() {
+    const state = KNOWLEDGE_WIZARD_STATE;
+    const patientId = parseInt(state && state.patientId || (CURRENT_PATIENT_EDITOR || {}).id || 0, 10);
+    if (!state || !patientId || !state.problemId) return;
+    const $button = $('#btn-knowledge-wizard-apply').prop('disabled', true);
+    $.post('api/admin.php?action=apply_knowledge_selection', {
+        patient_id: patientId,
+        problem_id: state.problemId,
+        selected_objective: state.objective,
+        recommendation_ids: JSON.stringify(knowledgeImportEnabled() ? [...state.recommendations] : []),
+        import_only: state.mode === 'tasks' ? 1 : 0,
+        assign_diagnosis: state.mode !== 'tasks' || !$('#knowledge-wizard-assign-diagnosis').length || $('#knowledge-wizard-assign-diagnosis').is(':checked') ? 1 : 0,
+        appointment_id: state.appointmentId || 0
+    }, null, 'json').done(function (res) {
+        if (!res.success) {
+            $('#knowledge-wizard-alert').removeClass('d-none').addClass('alert-danger').text(res.error || 'No se pudo aplicar la selección.');
+            return;
+        }
+        if (state.source === 'patient' || state.mode !== 'tasks') applyPatientDiagnosesState(res.diagnoses);
+        loadPatientWorkPlan(patientId);
+        knowledgeBaseWizardModal.hide();
+        if (state.source === 'appointment-session') {
+            loadAppointmentSession();
+            showAppointmentSessionAlert('success', `${parseInt(res.imported || 0, 10)} tareas importadas.`);
+        } else {
+            showPatientKnowledgeAlert('success', state.mode === 'tasks'
+                ? `${parseInt(res.imported || 0, 10)} tareas importadas desde la base de conocimiento.`
+                : `Diagnóstico asignado. ${parseInt(res.imported || 0, 10)} tareas añadidas.`);
+        }
+    }).always(() => $button.prop('disabled', false));
+}
+
 function loadKnowledgeProblems(callback) {
     const done = typeof callback === 'function' ? callback : function () {};
     if (!knowledgeBaseEnabled()) {
@@ -7318,6 +9486,7 @@ function populateKnowledgeProblemSelect() {
         html += '</optgroup>';
     });
     $('#patient-editor-knowledge-problem').html(html).val(selected);
+    syncProgressiveKnowledgeUi();
 }
 
 function loadSelectedPatientKnowledgeProblem() {
@@ -8581,20 +10750,209 @@ function importKnowledgeTechniqueTasks(button) {
     });
 }
 
+let CURRENT_PATIENT_CONTACTS = [];
+
+function showPatientContactsAlert(type, message) {
+    $('#patient-contacts-alert').removeClass('d-none alert-success alert-danger alert-warning alert-info')
+        .addClass(`alert-${type}`).text(message);
+}
+
+function renderPatientContacts() {
+    const $list = $('#patient-contacts-list');
+    if (!CURRENT_PATIENT_CONTACTS.length) {
+        $list.html('<div class="text-center text-muted py-4">No hay contactos asociados.</div>');
+        return;
+    }
+    $list.html(CURRENT_PATIENT_CONTACTS.map(contact => {
+        const badges = [];
+        if (parseInt(contact.is_legal_guardian || 0, 10) === 1) badges.push('<span class="badge text-bg-primary">Tutor / representante</span>');
+        if (parseInt(contact.is_emergency_contact || 0, 10) === 1) badges.push('<span class="badge text-bg-danger">Emergencia</span>');
+        if (parseInt(contact.receives_communications || 0, 10) === 1) badges.push('<span class="badge text-bg-info">Comunicaciones</span>');
+        if (parseInt(contact.portal_access_enabled || 0, 10) === 1) badges.push('<span class="badge text-bg-success">Portal autorizado</span>');
+        const details = [
+            contact.relationship,
+            contact.nif ? `NIF: ${contact.nif}` : '',
+            contact.phone,
+            contact.email
+        ].filter(Boolean).map(escapeHtml).join(' · ');
+        return `
+            <div class="border rounded p-3 mb-2 d-flex justify-content-between align-items-start gap-3">
+                <div class="min-w-0">
+                    <div class="fw-semibold">${escapeHtml(contact.name || '')}</div>
+                    ${details ? `<div class="small text-muted mt-1">${details}</div>` : ''}
+                    ${badges.length ? `<div class="d-flex flex-wrap gap-1 mt-2">${badges.join('')}</div>` : ''}
+                    ${contact.notes ? `<div class="small mt-2">${escapeHtml(contact.notes)}</div>` : ''}
+                </div>
+                <div class="d-flex gap-1 flex-shrink-0">
+                    <button type="button" class="btn btn-outline-secondary btn-sm btn-edit-patient-contact" data-contact-id="${parseInt(contact.id || 0, 10)}" title="Editar contacto">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    <button type="button" class="btn btn-outline-danger btn-sm btn-delete-patient-contact" data-contact-id="${parseInt(contact.id || 0, 10)}" title="Eliminar contacto">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </div>`;
+    }).join(''));
+}
+
+function syncLegacyPatientContactFields() {
+    const contact = CURRENT_PATIENT_CONTACTS.find(item =>
+        parseInt(item.is_legal_guardian || 0, 10) === 1
+    ) || CURRENT_PATIENT_CONTACTS.find(item =>
+        parseInt(item.is_emergency_contact || 0, 10) === 1
+    ) || null;
+    $('#patient-editor-emergency-name').val(contact ? contact.name || '' : '');
+    $('#patient-editor-emergency-nif').val(contact ? contact.nif || '' : '');
+    $('#patient-editor-emergency-phone').val(contact ? contact.phone || '' : '');
+    $('#patient-editor-emergency-relation').val(contact ? contact.relationship || '' : '');
+}
+
+function loadPatientContacts(patientId) {
+    CURRENT_PATIENT_CONTACTS = [];
+    $('#patient-contacts-alert').addClass('d-none').text('');
+    $('#btn-new-patient-contact').prop('disabled', !patientId);
+    if (!patientId) {
+        $('#patient-contacts-list').html(`<div class="text-center text-muted py-4">Guarda primero el ${sectorLabel('patient', 'singular', 'paciente')}.</div>`);
+        return;
+    }
+    $('#patient-contacts-list').html('<div class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2"></span>Cargando contactos...</div>');
+    $.getJSON('api/admin.php', { action: 'patient_contacts', patient_id: patientId })
+        .done(function (response) {
+            if (!response.success) {
+                showPatientContactsAlert('danger', response.error || 'No se pudieron cargar los contactos.');
+                return;
+            }
+            CURRENT_PATIENT_CONTACTS = response.contacts || [];
+            syncLegacyPatientContactFields();
+            renderPatientContacts();
+        })
+        .fail(function () {
+            showPatientContactsAlert('danger', 'Error de conexión al cargar los contactos asociados.');
+        });
+}
+
+function openPatientContactModal(contact = null) {
+    const patientId = parseInt($('#patient-editor-id').val() || 0, 10);
+    if (!patientId || !patientContactModal) {
+        showPatientContactsAlert('warning', `Guarda primero el ${sectorLabel('patient', 'singular', 'paciente')}.`);
+        return;
+    }
+    $('#patient-contact-form')[0].reset();
+    $('#patient-contact-alert').addClass('d-none').text('');
+    $('#patient-contact-modal-title').text(contact ? 'Editar contacto asociado' : 'Nuevo contacto asociado');
+    $('#patient-contact-id').val(contact ? contact.id : 0);
+    $('#patient-contact-patient-id').val(patientId);
+    $('#patient-contact-name').val(contact ? contact.name || '' : '');
+    $('#patient-contact-relationship').val(contact ? contact.relationship || '' : '');
+    $('#patient-contact-nif').val(contact ? contact.nif || '' : '');
+    $('#patient-contact-email').val(contact ? contact.email || '' : '');
+    $('#patient-contact-phone').val(contact ? contact.phone || '' : '');
+    $('#patient-contact-address').val(contact ? contact.address || '' : '');
+    $('#patient-contact-notes').val(contact ? contact.notes || '' : '');
+    $('#patient-contact-legal-guardian').prop('checked', contact ? parseInt(contact.is_legal_guardian || 0, 10) === 1 : false);
+    $('#patient-contact-emergency').prop('checked', contact ? parseInt(contact.is_emergency_contact || 0, 10) === 1 : false);
+    $('#patient-contact-communications').prop('checked', contact ? parseInt(contact.receives_communications || 0, 10) === 1 : false);
+    $('#patient-contact-portal').prop('checked', contact ? parseInt(contact.portal_access_enabled || 0, 10) === 1 : false);
+    patientContactModal.show();
+}
+
+function savePatientContact(form) {
+    const $button = $('#btn-save-patient-contact');
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Guardando');
+    $.ajax({
+        url: 'api/admin.php?action=save_patient_contact',
+        method: 'POST',
+        dataType: 'json',
+        data: $(form).serialize(),
+        success: function (response) {
+            if (!response.success) {
+                $('#patient-contact-alert').removeClass('d-none alert-success').addClass('alert-danger').text(response.error || 'No se pudo guardar el contacto.');
+                return;
+            }
+            patientContactModal.hide();
+            loadPatientContacts(parseInt($('#patient-editor-id').val() || 0, 10));
+        },
+        error: function () {
+            $('#patient-contact-alert').removeClass('d-none alert-success').addClass('alert-danger').text('Error de conexión al guardar el contacto.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function deletePatientContact(contactId) {
+    if (!contactId || !confirm('¿Eliminar este contacto asociado?')) return;
+    const patientId = parseInt($('#patient-editor-id').val() || 0, 10);
+    $.post('api/admin.php?action=delete_patient_contact', { patient_id: patientId, contact_id: contactId }, null, 'json')
+        .done(function (response) {
+            if (!response.success) {
+                showPatientContactsAlert('danger', response.error || 'No se pudo eliminar el contacto.');
+                return;
+            }
+            loadPatientContacts(patientId);
+        })
+        .fail(function () {
+            showPatientContactsAlert('danger', 'Error de conexión al eliminar el contacto.');
+        });
+}
+
+function populatePatientPreferredServiceOptions(selectedOptionId = '') {
+    const $select = $('#patient-editor-preferred-service-option');
+    if (!$select.length) return;
+
+    const options = [];
+    (APPOINTMENT_SERVICES || []).forEach(service => {
+        if (parseInt(service.is_active || 0, 10) !== 1) return;
+        (service.options || []).forEach(option => {
+            if (parseInt(option.is_active || 0, 10) !== 1 || parseInt(option.id || 0, 10) <= 0) return;
+            const modality = option.consultation_type === 'online' ? 'Online' : 'Presencial';
+            options.push({
+                id: parseInt(option.id, 10),
+                label: `${service.name || service.service_key} - ${parseInt(option.duration_minutes || 0, 10)} min - ${modality}`
+            });
+        });
+    });
+
+    $select.html('<option value="">Sin servicio preferido</option>');
+    options.forEach(option => {
+        $select.append($('<option>', { value: option.id, text: option.label }));
+    });
+    if (selectedOptionId && $select.find(`option[value="${selectedOptionId}"]`).length) {
+        $select.val(String(selectedOptionId));
+    }
+}
+
 function openPatientEditorModal(patient = null) {
     if (!patientEditorModal) return;
     const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     CURRENT_PATIENT_EDITOR = patient ? { ...patient } : null;
+    CURRENT_PATIENT_DIAGNOSES = [];
     $('#patient-editor-alert').addClass('d-none').text('');
     $('#patient-history-alert').addClass('d-none').text('');
     $('#patient-editor-form')[0].reset();
     $('#patient-editor-title').text(patient ? `Editar ${patientSingular}` : `Nuevo ${patientSingular}`);
     $('#patient-editor-id').val(patient ? patient.id : '');
+    $('#btn-export-patient-json').toggleClass('d-none', !(patient && patient.id));
+    $('#btn-book-patient-appointment').toggleClass(
+        'd-none',
+        !QUICK_PATIENT_BOOKING_ENABLED || !memberCan('create_appointments') || !(patient && patient.id)
+    );
+    $('#btn-manage-patient-deletion').toggleClass('d-none', !(patient && patient.id));
+    $('#btn-save-patient, #btn-book-patient-appointment').prop('disabled', !!(patient && patient.patient_status === 'retention_blocked'));
+    if (patient && patient.patient_status === 'retention_blocked') {
+        showPatientEditorAlert(
+            'warning',
+            'Este expediente está bloqueado por una solicitud de supresión y solo se conserva con acceso restringido por obligación legal.'
+        );
+    }
     $('.btn-patient-report').prop('disabled', !(patient && patient.id));
     $('#patient-editor-name').val(patient ? patient.name || '' : '');
     $('#patient-editor-type').val(patient ? patient.patient_type || '' : '');
     $('#patient-editor-fiscal-name').val(patient ? patient.fiscal_name || '' : '');
     $('#patient-editor-fiscal-nif').val(patient ? patient.fiscal_nif || '' : '');
+    $('#patient-editor-invoice-tax-exempt').prop('checked', patient ? patient.invoice_tax_exempt == 1 : false);
     $('#patient-editor-invoice-use-alt-data').prop('checked', patient ? patient.invoice_use_alt_data == 1 : false);
     $('#patient-editor-invoice-name').val(patient ? patient.invoice_name || '' : '');
     $('#patient-editor-invoice-nif').val(patient ? patient.invoice_nif || '' : '');
@@ -8609,6 +10967,7 @@ function openPatientEditorModal(patient = null) {
     $('#patient-editor-referral-source').val(patient ? patient.referral_source || '' : '');
     $('#patient-editor-address').val(patient ? patient.address || '' : '');
     $('#patient-editor-knowledge-problem').val(patient ? patient.knowledge_problem_id || '' : '');
+    $('#patient-manual-diagnosis').val('');
     CURRENT_KNOWLEDGE_PROBLEM_DETAIL = null;
     $('#patient-knowledge-alert').addClass('d-none').text('');
     $('#patient-knowledge-content').html('<div class="text-center text-muted py-4">No hay diagn&oacute;stico seleccionado.</div>');
@@ -8617,11 +10976,15 @@ function openPatientEditorModal(patient = null) {
         $('#patient-editor-knowledge-problem').val(patient ? patient.knowledge_problem_id || '' : '');
     });
     $('#patient-editor-emergency-name').val(patient ? patient.emergency_contact_name || '' : '');
+    $('#patient-editor-emergency-nif').val(patient ? patient.emergency_contact_nif || '' : '');
     $('#patient-editor-emergency-phone').val(patient ? patient.emergency_contact_phone || '' : '');
     $('#patient-editor-emergency-relation').val(patient ? patient.emergency_contact_relation || '' : '');
     $('#patient-editor-initial-reason').val(patient ? patient.initial_consultation_reason || '' : '');
     $('#patient-editor-background').val(patient ? patient.background_notes || '' : '');
     $('#patient-editor-support-network').val(patient ? patient.support_network_notes || '' : '');
+    $('#patient-editor-smoker').prop('checked', patient ? parseInt(patient.smoker || 0, 10) === 1 : false);
+    $('#patient-editor-alcohol-consumption').val(patient ? patient.alcohol_consumption || '' : '');
+    populatePatientPreferredServiceOptions(patient ? patient.preferred_service_option_id || '' : '');
     updatePatientAgeDisplay();
     $('#patient-editor-email').val(patient ? patient.email || '' : '');
     $('#patient-editor-phone').val(patient ? patient.phone || '' : '');
@@ -8662,9 +11025,16 @@ function openPatientEditorModal(patient = null) {
     }
     bootstrap.Tab.getOrCreateInstance(document.getElementById('patient-data-tab')).show();
     resetPatientAppointmentHistory(patient ? patient.id : 0);
+    CURRENT_PATIENT_CONTACTS = [];
+    $('#patient-contacts-alert').addClass('d-none').text('');
+    $('#patient-contacts-list').html(patient && patient.id
+        ? '<div class="text-center text-muted py-4">Abre esta pestaña para cargar los contactos.</div>'
+        : `<div class="text-center text-muted py-4">Guarda primero el ${patientSingular}.</div>`);
+    $('#btn-new-patient-contact').prop('disabled', !(patient && patient.id));
     resetPatientWorkPlan(patient ? patient.id : 0);
     resetPatientEvolution(patient ? patient.id : 0);
     resetPatientFiles(patient ? patient.id : 0);
+    resetPatientLegalDocuments(patient ? patient.id : 0);
     resetPatientReports(patient ? patient.id : 0);
     resetPatientBonuses(patient ? patient.id : 0);
     if (patient && patient.id) {
@@ -8672,6 +11042,7 @@ function openPatientEditorModal(patient = null) {
         loadPatientWorkPlan(patient.id);
         loadPatientEvolution(patient.id);
         loadPatientFiles(patient.id);
+        loadPatientLegalDocuments(patient.id);
         loadPatientBonuses(patient.id);
     }
     patientEditorModal.show();
@@ -8735,7 +11106,10 @@ function renderPatientAppointmentHistory(appointments) {
             <td>${consultationTypeLabel(app.consultation_type)}</td>
             <td>${adminPaymentLabel(app)}</td>
             <td class="text-end">${appointmentPaymentButton(app)}</td>
-            <td>${appointmentStatusLabel(app.status)}</td>
+            <td>
+                ${appointmentStatusLabel(app.status)}
+                ${app.recording_count > 0 && app.recording_url ? `<a class="btn btn-outline-danger btn-sm ms-2" href="${escapeHtml(app.recording_url)}" target="_blank" rel="noopener" title="Ver grabación de la cita"><i class="bi bi-record-circle"></i></a>` : ''}
+            </td>
         </tr>
     `).join('');
 
@@ -8816,7 +11190,28 @@ function renderPatientWorkPlanList(tasks, listType) {
         }
         return `<div class="text-center text-muted py-4">${listType === 'pending' ? 'No hay tareas pendientes.' : 'No hay tareas completadas.'}</div>`;
     }
-    return tasks.map(task => renderPatientWorkPlanTask(task)).join('');
+    const hasLinkedDiagnoses = tasks.some(task => parseInt(task.patient_diagnosis_id || 0, 10) > 0);
+    if (!hasLinkedDiagnoses) {
+        return tasks.map(task => renderPatientWorkPlanTask(task)).join('');
+    }
+    const groups = new Map();
+    tasks.forEach(task => {
+        const diagnosisId = parseInt(task.patient_diagnosis_id || 0, 10);
+        const key = diagnosisId > 0 ? `diagnosis-${diagnosisId}` : 'unassigned';
+        if (!groups.has(key)) {
+            groups.set(key, {
+                label: task.diagnosis_label || 'Otras tareas',
+                tasks: []
+            });
+        }
+        groups.get(key).tasks.push(task);
+    });
+    return [...groups.values()].map(group => `
+        <section class="patient-work-plan-diagnosis-group">
+            <div class="patient-work-plan-diagnosis-heading">${escapeHtml(group.label)}</div>
+            ${group.tasks.map(task => renderPatientWorkPlanTask(task)).join('')}
+        </section>
+    `).join('');
 }
 
 function renderPatientWorkPlanTask(task) {
@@ -8837,6 +11232,21 @@ function renderPatientWorkPlanTask(task) {
                         <i class="bi ${toggleIcon}"></i>
                     </button>`
         : '';
+    const attachmentUrl = assetUrl(task.attachment_file_path || '');
+    const attachmentName = task.attachment_original_name || '';
+    const attachment = attachmentUrl && attachmentName
+        ? `<div class="small mt-2">
+                <i class="bi bi-paperclip me-1"></i>
+                <a href="${escapeHtml(attachmentUrl)}" target="_blank" rel="noopener">${escapeHtml(attachmentName)}</a>
+                ${task.attachment_file_size ? `<span class="text-muted ms-1">(${formatFileSize(task.attachment_file_size)})</span>` : ''}
+            </div>`
+        : '';
+    const editAttachmentButton = parseInt(task.can_edit_docx || 0, 10) === 1
+        ? `<button class="btn btn-outline-primary btn-sm btn-open-task-docx-editor" type="button"
+                    data-source="patient" data-patient-id="${task.patient_id || 0}" data-appointment-id="${task.appointment_id || 0}"
+                    data-document-id="${task.document_id || 0}" data-title="${escapeHtml(attachmentName || task.title || 'Documento')}"
+                    title="Editar documento DOCX"><i class="bi bi-file-earmark-word"></i></button>`
+        : '';
     return `
         <div class="patient-work-plan-task ${completed ? 'is-completed' : ''}" data-task-id="${task.id}">
             <div class="d-flex justify-content-between align-items-start">
@@ -8844,14 +11254,17 @@ function renderPatientWorkPlanTask(task) {
                     <div class="d-flex flex-wrap align-items-center patient-work-plan-badges">
                         <span class="badge ${priority.className}">${priority.label}</span>
                         ${statusBadge}
+                        ${task.diagnosis_label ? `<span class="badge text-bg-light border">${escapeHtml(task.diagnosis_label)}</span>` : ''}
                         ${task.visible_to_patient == 1 ? '<span class="badge text-bg-info">Visible portal</span>' : ''}
                     </div>
                     <h6 class="mb-1 mt-2">${escapeHtml(task.title || '')}</h6>
                     ${task.description ? `<div class="text-muted small">${escapeHtml(task.description)}</div>` : ''}
+                    ${attachment}
                     ${completedText}
                 </div>
                 <div class="patient-work-plan-actions">
                     ${toggleButton}
+                    ${editAttachmentButton}
                     <button class="btn btn-outline-secondary btn-sm btn-edit-work-plan-task" type="button" data-task-id="${task.id}" title="Editar tarea">
                         <i class="bi bi-pencil"></i>
                     </button>
@@ -8889,24 +11302,26 @@ function workPlanPriorityLabel(priority) {
     return { label: 'Normal', className: 'text-bg-primary' };
 }
 
-function showPatientWorkPlanForm(task = null) {
+function showPatientWorkPlanForm(task = null, mode = 'manual') {
     const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
     openWorkPlanTaskModal({
         source: 'patient',
         patientId,
         appointmentId: 0,
-        task
+        task,
+        mode
     });
 }
 
-function showAppointmentSessionWorkPlanForm() {
+function showAppointmentSessionWorkPlanForm(mode = 'manual') {
     const patientId = parseInt(CURRENT_APPOINTMENT_SESSION.patient_id || (CURRENT_APPOINTMENT_PAYMENT_DETAIL && CURRENT_APPOINTMENT_PAYMENT_DETAIL.patient_id) || 0, 10);
     const appointmentId = parseInt(CURRENT_APPOINTMENT_SESSION.appointment_id || (CURRENT_APPOINTMENT_PAYMENT_DETAIL && CURRENT_APPOINTMENT_PAYMENT_DETAIL.id) || 0, 10);
     openWorkPlanTaskModal({
         source: 'appointment-session',
         patientId,
         appointmentId,
-        task: null
+        task: null,
+        mode
     });
 }
 
@@ -8916,6 +11331,7 @@ function openWorkPlanTaskModal(options = {}) {
     const source = options.source || 'patient';
     const patientId = parseInt(options.patientId || 0, 10);
     const appointmentId = parseInt(options.appointmentId || 0, 10);
+    const mode = task ? 'manual' : (options.mode === 'template' ? 'template' : 'manual');
     if (!patientId) {
         if (source === 'appointment-session') {
             showAppointmentSessionAlert('danger', `No se pudo identificar el ${patientSingular} de la cita.`);
@@ -8924,12 +11340,13 @@ function openWorkPlanTaskModal(options = {}) {
         }
         return;
     }
-    CURRENT_WORK_PLAN_FORM_CONTEXT = { source, patientId, appointmentId: source === 'appointment-session' ? appointmentId : 0 };
-    $('#patient-work-plan-modal-title').text(task ? 'Editar tarea' : (source === 'appointment-session' ? 'Crear o importar tareas de sesión' : 'Crear o importar tareas'));
+    CURRENT_WORK_PLAN_FORM_CONTEXT = { source, patientId, appointmentId: source === 'appointment-session' ? appointmentId : 0, mode };
+    $('#patient-work-plan-modal-title').text(task ? 'Editar tarea' : (mode === 'template' ? 'Importar Mis Tareas' : 'Crear tarea manualmente'));
     $('#patient-work-plan-id').val(task ? task.id : 0);
     $('#patient-work-plan-patient-id').val(patientId);
     $('#patient-work-plan-template').val('manual');
-    $('#patient-work-plan-template-block').toggleClass('d-none', Boolean(task));
+    $('#patient-work-plan-template-block').toggleClass('d-none', Boolean(task) || mode !== 'template');
+    $('#patient-work-plan-manual-block').toggleClass('d-none', !task && mode === 'template');
     $('#patient-work-plan-title').val(task ? task.title || '' : '');
     $('#patient-work-plan-description').val(task ? task.description || '' : '');
     $('#patient-work-plan-priority').val(task ? String(task.priority || 2) : '2');
@@ -8939,11 +11356,7 @@ function openWorkPlanTaskModal(options = {}) {
     togglePatientWorkPlanTaskMode();
     if (patientWorkPlanTaskModal) {
         patientWorkPlanTaskModal.show();
-        if (task) {
-            setTimeout(() => $('#patient-work-plan-title').trigger('focus'), 180);
-        } else {
-            prepareWorkPlanImportOptions();
-        }
+        if (mode === 'template') prepareWorkPlanImportOptions();
     }
 }
 
@@ -8970,10 +11383,7 @@ function prepareWorkPlanImportOptions() {
         });
         return deferred.promise();
     };
-    const knowledgePromise = knowledgeImportEnabled()
-        ? loadWorkPlanKnowledgeImportOptions()
-        : $.Deferred().resolve({ success: true }).promise();
-    $.when(waitFor(loadWorkPlanTaskTemplates()), waitFor(knowledgePromise))
+    $.when(waitFor(loadWorkPlanTaskTemplates()))
         .done(function () {
             populateWorkPlanTemplateSelect();
             setWorkPlanImportLoading(false);
@@ -8992,7 +11402,7 @@ function resetPatientWorkPlanFormFields() {
     $('#patient-work-plan-priority').val('2');
     $('#patient-work-plan-completed').prop('checked', false);
     $('#patient-work-plan-visible').prop('checked', false);
-    CURRENT_WORK_PLAN_FORM_CONTEXT = { source: 'patient', patientId: 0, appointmentId: 0 };
+    CURRENT_WORK_PLAN_FORM_CONTEXT = { source: 'patient', patientId: 0, appointmentId: 0, mode: 'manual' };
     syncPatientWorkPlanStatusUi();
     togglePatientWorkPlanTaskMode();
 }
@@ -9036,7 +11446,8 @@ function togglePatientWorkPlanTaskMode() {
     const isImportable = selection.type === 'template'
         ? selection.templateId > 0
         : (selection.type === 'knowledge' && selection.problemId > 0 && selection.techniqueId > 0);
-    const isManual = isEditing || selection.type === 'manual' || !isImportable;
+    const templateMode = CURRENT_WORK_PLAN_FORM_CONTEXT.mode === 'template';
+    const isManual = isEditing || !templateMode;
     $('#patient-work-plan-manual-block')
         .toggleClass('d-none', !isManual)
         .find('input, select, textarea')
@@ -9270,7 +11681,7 @@ function populateWorkPlanTemplateSelect() {
     const $select = $('#patient-work-plan-template');
     if (!$select.length) return;
     const previous = $select.val() || 'manual';
-    $select.empty().append('<option value="manual">Crear manualmente</option>');
+    $select.empty().append('<option value="">Selecciona una plantilla</option>');
     const activeTemplates = WORK_PLAN_TASK_TEMPLATES.filter(template => parseInt(template.is_active || 1, 10) === 1);
     const grouped = {};
     activeTemplates.forEach(template => {
@@ -9286,35 +11697,13 @@ function populateWorkPlanTemplateSelect() {
         });
         $select.append($group);
     });
-    if (knowledgeImportEnabled()) {
-        const knowledgeGrouped = {};
-        const knowledgeBaseLabel = 'Base de conocimiento';
-        const diagnosisFallback = capitalizeFirst(sectorText('clinicalTerms.diagnosis', 'Diagnostico'));
-        const taskSingular = sectorLabel('task', 'singular', 'tarea');
-        const taskPlural = sectorLabel('task', 'plural', 'tareas');
-        WORK_PLAN_KNOWLEDGE_IMPORT_OPTIONS.forEach(option => {
-            const sectorName = option.sector_label || knowledgeSectorName(option.sector_key || APP_CURRENT_SECTOR_KEY);
-            const key = `${sectorName ? `${sectorName} · ` : ''}${option.area_name || knowledgeBaseLabel} · ${option.problem_name || diagnosisFallback}`;
-            if (!knowledgeGrouped[key]) knowledgeGrouped[key] = [];
-            knowledgeGrouped[key].push(option);
-        });
-        Object.keys(knowledgeGrouped).sort((a, b) => a.localeCompare(b)).forEach(groupName => {
-            const $group = $('<optgroup>').attr('label', `${knowledgeBaseLabel}: ${groupName}`);
-            knowledgeGrouped[groupName].forEach(option => {
-                const count = parseInt(option.task_count || 0, 10);
-                const value = `knowledge:${parseInt(option.problem_id || 0, 10)}:${parseInt(option.technique_id || 0, 10)}`;
-                $group.append(`<option value="${value}">${escapeHtml(option.technique_name || '')}${count ? ` (${count} ${escapeHtml(count === 1 ? taskSingular : taskPlural)})` : ''}</option>`);
-            });
-            $select.append($group);
-        });
-    }
     const hasPrevious = previous && $select.find('option').filter(function () {
         return $(this).val() === previous;
     }).length > 0;
     if (hasPrevious) {
         $select.val(previous);
     } else {
-        $select.val('manual');
+        $select.val('');
     }
     togglePatientWorkPlanTaskMode();
 }
@@ -9335,12 +11724,21 @@ function renderWorkPlanTaskTemplates() {
         const itemHtml = items.length
             ? items.map(item => {
                 const priority = workPlanPriorityLabel(item.priority);
+                const attachmentUrl = assetUrl(item.attachment_file_path || '');
+                const attachment = attachmentUrl && item.attachment_original_name
+                    ? `<div class="small mt-1">
+                            <i class="bi bi-paperclip me-1"></i>
+                            <a href="${escapeHtml(attachmentUrl)}" target="_blank" rel="noopener">${escapeHtml(item.attachment_original_name)}</a>
+                            ${item.attachment_file_size ? `<span class="text-muted ms-1">(${formatFileSize(item.attachment_file_size)})</span>` : ''}
+                        </div>`
+                    : '';
                 return `
                     <div class="task-template-subitem">
                         <div>
                             <span class="badge ${priority.className}">${priority.label}</span>
                             <strong>${escapeHtml(item.title || '')}</strong>
                             ${item.description ? `<div class="small text-muted mt-1">${escapeHtml(item.description)}</div>` : ''}
+                            ${attachment}
                         </div>
                         <div class="task-template-actions">
                             <button type="button" class="btn btn-outline-secondary btn-sm btn-edit-task-template-item" data-template-id="${template.id}" data-item-id="${item.id}" title="Editar tarea">
@@ -9453,6 +11851,8 @@ function resetWorkPlanTaskTemplateItemForm() {
     $('#task-template-item-id').val(0);
     $('#task-template-item-template-id').val('');
     $('#task-template-item-priority').val('2');
+    $('#task-template-item-file').val('');
+    $('#task-template-item-current-file').addClass('d-none').empty();
 }
 
 function fillWorkPlanTaskTemplateItemForm(task, templateId = 0) {
@@ -9461,6 +11861,12 @@ function fillWorkPlanTaskTemplateItemForm(task, templateId = 0) {
     $('#task-template-item-title').val(task.title || '');
     $('#task-template-item-description').val(task.description || '');
     $('#task-template-item-priority').val(String(task.priority || 2));
+    const attachmentUrl = assetUrl(task.attachment_file_path || '');
+    if (attachmentUrl && task.attachment_original_name) {
+        $('#task-template-item-current-file')
+            .removeClass('d-none')
+            .html(`<i class="bi bi-paperclip me-1"></i>Archivo actual: <a href="${escapeHtml(attachmentUrl)}" target="_blank" rel="noopener">${escapeHtml(task.attachment_original_name)}</a>`);
+    }
     $('#task-template-item-title').trigger('focus');
 }
 
@@ -9510,17 +11916,23 @@ function saveWorkPlanTaskTemplateItem() {
     const $button = $('#btn-save-task-template-item');
     const original = $button.html();
     $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Guardando');
+    const formData = new FormData();
+    formData.append('item_id', $('#task-template-item-id').val() || 0);
+    formData.append('template_id', templateId);
+    formData.append('title', $('#task-template-item-title').val() || '');
+    formData.append('description', $('#task-template-item-description').val() || '');
+    formData.append('priority', $('#task-template-item-priority').val() || 2);
+    const fileInput = document.getElementById('task-template-item-file');
+    if (fileInput && fileInput.files && fileInput.files[0]) {
+        formData.append('attachment', fileInput.files[0]);
+    }
     $.ajax({
         url: 'api/admin.php?action=save_work_plan_task_template_item',
         method: 'POST',
         dataType: 'json',
-        data: {
-            item_id: $('#task-template-item-id').val() || 0,
-            template_id: templateId,
-            title: $('#task-template-item-title').val() || '',
-            description: $('#task-template-item-description').val() || '',
-            priority: $('#task-template-item-priority').val() || 2
-        },
+        data: formData,
+        processData: false,
+        contentType: false,
         success: function (res) {
             if (!res.success) {
                 showTaskTemplatesAlert('danger', res.error || 'No se pudo guardar la tarea de plantilla.');
@@ -10046,7 +12458,7 @@ function loadPatientReports(patientId) {
                 $('#patient-reports-body').html('<tr><td colspan="5" class="text-center text-muted py-4">No se pudieron cargar los informes.</td></tr>');
                 return;
             }
-            renderPatientReports(res.reports || []);
+            renderPatientReports(res.reports || [], res.signature_available === true, res.signature_certificates || {});
         },
         error: function () {
             showPatientReportsAlert('danger', 'Error de conexion al cargar los informes.');
@@ -10213,7 +12625,83 @@ function addSuggestedPatientReport(button) {
     });
 }
 
-function renderPatientReports(reports) {
+function signatureButtonHtml(baseUrl, certificates, iconClass = 'bi-patch-check') {
+    const choices = certificates || {};
+    const hasProfessional = choices.professional === true;
+    const hasTenant = choices.tenant === true;
+    if (!baseUrl || choices.feature_available === false) return '';
+    const disabled = (!hasProfessional && !hasTenant) || choices.api_configured === false;
+    if (disabled) {
+        return `<span title="Configura primero un certificado digital">
+            <button type="button" class="btn btn-outline-secondary btn-sm" disabled aria-disabled="true">
+                <i class="bi ${iconClass}"></i>
+            </button>
+        </span>`;
+    }
+    return `<button type="button" class="btn btn-outline-success btn-sm btn-sign-pdf"
+        data-signature-url="${escapeHtml(baseUrl)}"
+        data-has-professional="${hasProfessional ? 1 : 0}"
+        data-has-tenant="${hasTenant ? 1 : 0}"
+        title="Firmar PDF"><i class="bi ${iconClass}"></i></button>`;
+}
+
+function signedStatusButtonHtml(iconClass = 'bi-patch-check-fill') {
+    return `<button type="button" class="btn btn-success btn-sm" disabled aria-disabled="true" title="PDF firmado">
+        <i class="bi ${iconClass}"></i>
+    </button>`;
+}
+
+function signatureDropdownItems(baseUrl, certificates, label = 'Firmar PDF') {
+    const choices = certificates || {};
+    const hasProfessional = choices.professional === true;
+    const hasTenant = choices.tenant === true;
+    if (!baseUrl || choices.feature_available === false) return [];
+    if ((!hasProfessional && !hasTenant) || choices.api_configured === false) {
+        return [`<li><button type="button" class="dropdown-item disabled" disabled aria-disabled="true"
+            title="Configura primero un certificado digital">
+            <i class="bi bi-patch-check me-2"></i>${escapeHtml(label)}</button></li>`];
+    }
+    return [`<li><button type="button" class="dropdown-item btn-sign-pdf"
+        data-signature-url="${escapeHtml(baseUrl)}"
+        data-has-professional="${hasProfessional ? 1 : 0}"
+        data-has-tenant="${hasTenant ? 1 : 0}">
+        <i class="bi bi-patch-check me-2"></i>${escapeHtml(label)}</button></li>`];
+}
+
+function openSignedPdf(baseUrl, owner) {
+    if (!baseUrl) return;
+    const separator = baseUrl.includes('?') ? '&' : '?';
+    window.open(`${baseUrl}${separator}certificate_owner=${encodeURIComponent(owner)}`, '_blank', 'noopener');
+}
+
+function requestPdfSignature(baseUrl, hasProfessional, hasTenant) {
+    if (!baseUrl || (!hasProfessional && !hasTenant)) return;
+    if (hasProfessional && hasTenant && signatureChoiceModal) {
+        PENDING_SIGNATURE_URL = baseUrl;
+        signatureChoiceModal.show();
+        return;
+    }
+    openSignedPdf(baseUrl, hasProfessional ? 'professional' : 'tenant');
+}
+
+function rowActionsDropdown(items, dangerItems = []) {
+    const regular = (Array.isArray(items) ? items : []).filter(Boolean);
+    const danger = (Array.isArray(dangerItems) ? dangerItems : []).filter(Boolean);
+    if (!regular.length && !danger.length) return '';
+    return `
+        <div class="dropdown">
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="dropdown" data-bs-boundary="viewport" aria-expanded="false" title="Opciones">
+                <i class="bi bi-three-dots-vertical"></i>
+                <span class="visually-hidden">Opciones</span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                ${regular.join('')}
+                ${danger.length ? `<li><hr class="dropdown-divider"></li>${danger.join('')}` : ''}
+            </ul>
+        </div>`;
+}
+
+function renderPatientReports(reports, signatureAvailable = false, signatureCertificates = {}) {
     const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     const rows = Array.isArray(reports) ? reports : [];
     CURRENT_PATIENT_REPORTS_ROWS = rows;
@@ -10222,11 +12710,22 @@ function renderPatientReports(reports) {
         const generatedMeta = lastGenerated
             ? (lastGenerated.generated_at ? formatDisplayDateOnly(lastGenerated.generated_at) : (lastGenerated.created_at ? formatDisplayDateOnly(lastGenerated.created_at) : ''))
             : '';
-        const configButton = lastGenerated && template.key !== 'internal_summary'
-            ? `<button type="button" class="btn btn-outline-secondary btn-sm btn-configure-patient-report" data-report-id="${parseInt(lastGenerated.id || 0, 10)}" title="Configurar informe" aria-label="Configurar informe"><i class="bi bi-gear"></i></button>`
+        const configItem = lastGenerated && template.key !== 'internal_summary'
+            ? `<li><button type="button" class="dropdown-item btn-configure-patient-report" data-report-id="${parseInt(lastGenerated.id || 0, 10)}"><i class="bi bi-gear me-2"></i>Configurar informe</button></li>`
             : '';
-        const finalButton = lastGenerated && lastGenerated.final_url
-            ? `<a class="btn btn-outline-success btn-sm" href="${escapeHtml(lastGenerated.final_url)}" target="_blank" rel="noopener" title="Descargar informe final" aria-label="Descargar informe final"><i class="bi bi-download"></i></a>`
+        const finalItem = lastGenerated && lastGenerated.final_url
+            ? `<li><a class="dropdown-item" href="${escapeHtml(lastGenerated.final_url)}" target="_blank" rel="noopener"><i class="bi bi-download me-2"></i>Descargar informe final</a></li>`
+            : '';
+        const pdfItem = lastGenerated && lastGenerated.url
+            ? `<li><a class="dropdown-item" href="${escapeHtml(lastGenerated.url)}&format=pdf" target="_blank" rel="noopener"><i class="bi bi-file-earmark-pdf me-2 text-danger"></i>Abrir PDF</a></li>`
+            : '';
+        const signedItems = lastGenerated && lastGenerated.url
+            && !(lastGenerated.signature && lastGenerated.signature.signed === true)
+            ? signatureDropdownItems(`${lastGenerated.url}&format=pdf&signed=1`, signatureCertificates)
+            : [];
+        const openItem = `<li><button type="button" class="dropdown-item btn-patient-report" data-report-key="${escapeHtml(template.key)}" data-report-type="${escapeHtml(template.type)}"><i class="bi bi-printer me-2"></i>${lastGenerated ? 'Abrir/imprimir informe' : 'Generar informe'}</button></li>`;
+        const signatureBadge = lastGenerated && lastGenerated.signature && lastGenerated.signature.signed === true
+            ? '<span class="badge bg-success ms-1"><i class="bi bi-patch-check-fill me-1"></i>Firmado</span>'
             : '';
         const paymentBadge = lastGenerated ? patientReportPaymentBadge(lastGenerated) : '<span class="badge bg-light text-dark">Configurable</span>';
         const paymentLabel = lastGenerated ? patientReportPaymentLabel(lastGenerated) : template.defaultPayment;
@@ -10234,20 +12733,14 @@ function renderPatientReports(reports) {
         return `
         <tr class="patient-report-template-row">
             <td>
-                <strong>${escapeHtml(template.title)}</strong>
+                <strong>${escapeHtml(template.title)}</strong>${signatureBadge}
                 <br><small class="text-muted">${escapeHtml(template.description)}</small>
             </td>
             <td><span class="badge bg-light text-dark">${escapeHtml(statusLabel)}</span><br><small class="text-muted">Predefinido</small></td>
             <td>${paymentBadge}<br><small class="text-muted">${escapeHtml(paymentLabel)}</small></td>
             <td>${escapeHtml(generatedMeta)}</td>
             <td class="text-end">
-                <div class="d-flex justify-content-end gap-1 flex-wrap">
-                    ${configButton}
-                    ${finalButton}
-                    <button type="button" class="btn btn-outline-primary btn-sm btn-patient-report" data-report-key="${escapeHtml(template.key)}" data-report-type="${escapeHtml(template.type)}" title="${lastGenerated ? 'Abrir/imprimir informe' : 'Generar informe'}" aria-label="${lastGenerated ? 'Abrir/imprimir informe' : 'Generar informe'}">
-                        <i class="bi bi-printer"></i>
-                    </button>
-                </div>
+                <div class="d-flex justify-content-end">${rowActionsDropdown([configItem, finalItem, pdfItem, ...signedItems, openItem])}</div>
             </td>
         </tr>
         `;
@@ -10257,16 +12750,17 @@ function renderPatientReports(reports) {
         const paymentLabel = patientReportPaymentLabel(report);
         const statusBadge = `<span class="badge bg-light text-dark">${escapeHtml(statusLabel)}</span>`;
         const paymentBadge = patientReportPaymentBadge(report);
-        const previewButton = report.url
-            ? `<a class="btn btn-outline-primary btn-sm" href="${escapeHtml(report.url)}" target="_blank" rel="noopener" title="Abrir borrador" aria-label="Abrir borrador"><i class="bi bi-file-earmark-text"></i></a>`
+        const previewItem = report.url
+            ? `<li><a class="dropdown-item" href="${escapeHtml(report.url)}" target="_blank" rel="noopener"><i class="bi bi-file-earmark-text me-2"></i>Abrir borrador</a></li>`
             : '';
-        const sourceButton = report.source_url
-            ? `<a class="btn btn-outline-primary btn-sm" href="${escapeHtml(report.source_url)}" target="_blank" rel="noopener" title="Descargar archivo" aria-label="Descargar archivo"><i class="bi bi-download"></i></a>`
+        const sourceItem = report.source_url
+            ? `<li><a class="dropdown-item" href="${escapeHtml(report.source_url)}" target="_blank" rel="noopener"><i class="bi bi-download me-2"></i>Descargar archivo original</a></li>`
             : '';
-        const finalButton = report.final_url
-            ? `<a class="btn btn-outline-success btn-sm" href="${escapeHtml(report.final_url)}" target="_blank" rel="noopener" title="Descargar informe final" aria-label="Descargar informe final"><i class="bi bi-download"></i></a>`
+        const finalItem = report.final_url
+            ? `<li><a class="dropdown-item" href="${escapeHtml(report.final_url)}" target="_blank" rel="noopener"><i class="bi bi-download me-2"></i>Descargar informe final</a></li>`
             : '';
-        const configButton = `<button type="button" class="btn btn-outline-secondary btn-sm btn-configure-patient-report" data-report-id="${parseInt(report.id || 0, 10)}" title="Configurar informe" aria-label="Configurar informe"><i class="bi bi-gear"></i></button>`;
+        const configItem = `<li><button type="button" class="dropdown-item btn-configure-patient-report" data-report-id="${parseInt(report.id || 0, 10)}"><i class="bi bi-gear me-2"></i>Configurar informe</button></li>`;
+        const deleteItem = `<li><button type="button" class="dropdown-item text-danger btn-delete-custom-patient-report" data-report-id="${parseInt(report.id || 0, 10)}"><i class="bi bi-trash me-2"></i>Eliminar informe</button></li>`;
         const portalBadge = parseInt(report.portal_available || 0, 10) === 1
             ? '<br><span class="badge bg-info text-dark mt-1">Portal</span>'
             : '';
@@ -10280,12 +12774,7 @@ function renderPatientReports(reports) {
             <td>${paymentBadge}<br><small class="text-muted">${escapeHtml(paymentLabel)}</small>${portalBadge}</td>
             <td>${report.generated_at ? formatDisplayDateOnly(report.generated_at) : (report.created_at ? formatDisplayDateOnly(report.created_at) : '')}</td>
             <td class="text-end">
-                <div class="d-flex justify-content-end gap-1 flex-wrap">
-                    ${configButton}
-                    ${previewButton}
-                    ${sourceButton}
-                    ${finalButton}
-                </div>
+                <div class="d-flex justify-content-end">${rowActionsDropdown([configItem, previewItem, sourceItem, finalItem], [deleteItem])}</div>
             </td>
         </tr>
         `;
@@ -10295,6 +12784,39 @@ function renderPatientReports(reports) {
     const html = templateRows.concat(customRows).join('');
     $('#patient-reports-body').html(html);
     $('#patient-reports-count').text(`${generatedCount} ${generatedCount === 1 ? 'informe generado/subido' : 'informes generados/subidos'}`);
+}
+
+function deleteCustomPatientReport(button) {
+    const reportId = parseInt($(button).data('report-id') || 0, 10);
+    if (!reportId || !confirm('¿Eliminar este informe subido manualmente? Esta acción no se puede deshacer.')) {
+        return;
+    }
+    const $button = $(button);
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Eliminando...');
+    $.ajax({
+        url: 'api/admin.php?action=delete_custom_patient_report',
+        method: 'POST',
+        dataType: 'json',
+        data: { report_id: reportId },
+        success: function (res) {
+            if (!res.success) {
+                showPatientReportsAlert('danger', res.error || 'No se pudo eliminar el informe.');
+                return;
+            }
+            showPatientReportsAlert('success', res.message || 'Informe eliminado correctamente.', true);
+            loadPatientReports(CURRENT_PATIENT_REPORTS_ID);
+            if (CURRENT_PATIENT_FILES_ID) {
+                loadPatientFiles(CURRENT_PATIENT_FILES_ID);
+            }
+        },
+        error: function () {
+            showPatientReportsAlert('danger', 'Error de conexión al eliminar el informe.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
 }
 
 function patientReportTemplates() {
@@ -10379,7 +12901,7 @@ function billingIsEnabledForManualInvoices() {
 }
 
 function syncPatientBillingTabVisibility() {
-    const visible = billingIsEnabledForManualInvoices();
+    const visible = memberCan('billing') && billingIsEnabledForManualInvoices();
     $('#patient-billing-tab-item').toggleClass('d-none', !visible);
     $('#patient-billing-data-panel').toggleClass('d-none', !visible);
     if (!visible && $('#patient-billing-data-tab').hasClass('active')) {
@@ -10627,6 +13149,162 @@ function resetPatientFiles(patientId = 0) {
     $('#patient-files-body').html('<tr><td colspan="5" class="text-center text-muted py-4">Cargando documentaci&oacute;n...</td></tr>');
 }
 
+function docxEditorBuildUrl(context = {}) {
+    const params = new URLSearchParams();
+    if (context.documentId) params.set('document_id', parseInt(context.documentId, 10));
+    if (context.patientId) params.set('patient_id', parseInt(context.patientId, 10));
+    if (context.appointmentId) params.set('appointment_id', parseInt(context.appointmentId, 10));
+    if (context.title) params.set('title', context.title);
+    return `docx_editor.php?${params.toString()}`;
+}
+
+function postDocxEditorCommand(type, payload = {}, transfer = []) {
+    const frame = document.getElementById('docx-editor-frame');
+    if (!frame || !frame.contentWindow) return;
+    frame.contentWindow.postMessage({ source: 'sgpraxis-docx-editor-host', type, ...payload }, window.location.origin, transfer);
+}
+
+function openDocxEditor(context = {}) {
+    const patientId = parseInt(context.patientId || CURRENT_PATIENT_FILES_ID || $('#patient-editor-id').val() || 0, 10);
+    if (!patientId) {
+        showPatientFilesAlert('danger', `Guarda el ${sectorLabel('patient', 'singular', 'paciente')} antes de crear documentos.`);
+        return;
+    }
+    const defaultTitle = context.title || `Documento ${new Date().toLocaleDateString('es-ES')}`;
+    CURRENT_DOCX_EDITOR_CONTEXT = {
+        source: context.source || 'patient',
+        patientId,
+        appointmentId: parseInt(context.appointmentId || 0, 10),
+        documentId: parseInt(context.documentId || 0, 10),
+        title: defaultTitle
+    };
+    $('#docx-editor-modal-title').text(CURRENT_DOCX_EDITOR_CONTEXT.documentId ? defaultTitle : 'Nuevo documento DOCX');
+    $('#docx-editor-modal-status').text('Preparando editor...');
+    setDocxEditorFooterStatus('Los cambios se autoguardan mientras editas.', 'muted');
+    $('#btn-docx-editor-save').prop('disabled', false).html('<i class="bi bi-check2"></i> Guardar cambios');
+    $('#docx-editor-frame').attr('src', docxEditorBuildUrl(CURRENT_DOCX_EDITOR_CONTEXT));
+    if (docxEditorModal) {
+        docxEditorModal.show();
+    }
+}
+
+function refreshDocxEditorContext() {
+    const context = CURRENT_DOCX_EDITOR_CONTEXT || {};
+    if (context.source === 'appointment' && $('#appointmentPaymentModal').hasClass('show')) {
+        loadAppointmentSession();
+    }
+    if (CURRENT_PATIENT_FILES_ID || $('#patientEditorModal').hasClass('show')) {
+        const patientId = CURRENT_PATIENT_FILES_ID || parseInt($('#patient-editor-id').val() || '0', 10);
+        if (patientId) {
+            loadPatientFiles(patientId);
+        }
+    }
+}
+
+function setDocxEditorSavingState(isSaving, closeAfterSave = false) {
+    $('#btn-docx-editor-save')
+        .prop('disabled', isSaving)
+        .html(isSaving && !closeAfterSave
+            ? '<span class="spinner-border spinner-border-sm me-1"></span> Guardando...'
+            : '<i class="bi bi-check2"></i> Guardar cambios');
+    $('#btn-docx-editor-save-close')
+        .prop('disabled', isSaving)
+        .html(isSaving && closeAfterSave
+            ? '<span class="spinner-border spinner-border-sm me-1"></span> Guardando...'
+            : '<i class="bi bi-box-arrow-down"></i> Guardar y cerrar');
+}
+
+function setDocxEditorFooterStatus(message, type = 'muted') {
+    const classMap = {
+        success: 'text-success',
+        danger: 'text-danger',
+        warning: 'text-warning',
+        muted: 'text-muted'
+    };
+    $('#docx-editor-footer-status')
+        .removeClass('text-muted text-success text-danger text-warning')
+        .addClass(classMap[type] || classMap.muted)
+        .text(message || '');
+}
+
+function drawingEditorBuildUrl(context = {}) {
+    const params = new URLSearchParams();
+    if (context.documentId) params.set('document_id', parseInt(context.documentId, 10));
+    if (context.patientId) params.set('patient_id', parseInt(context.patientId, 10));
+    if (context.appointmentId) params.set('appointment_id', parseInt(context.appointmentId, 10));
+    if (context.title) params.set('title', context.title);
+    return `drawing_editor.php?${params.toString()}`;
+}
+
+function postDrawingEditorCommand(type, payload = {}) {
+    const frame = document.getElementById('drawing-editor-frame');
+    if (!frame || !frame.contentWindow) return;
+    frame.contentWindow.postMessage({ source: 'sgpraxis-drawing-editor-host', type, ...payload }, window.location.origin);
+}
+
+function openDrawingEditor(context = {}) {
+    const patientId = parseInt(context.patientId || CURRENT_PATIENT_FILES_ID || $('#patient-editor-id').val() || 0, 10);
+    if (!patientId) {
+        showPatientFilesAlert('danger', `Guarda el ${sectorLabel('patient', 'singular', 'paciente')} antes de crear dibujos.`);
+        return;
+    }
+    const defaultTitle = context.title || `Dibujo ${new Date().toLocaleDateString('es-ES')}`;
+    CURRENT_DRAWING_EDITOR_CONTEXT = {
+        source: context.source || 'patient',
+        patientId,
+        appointmentId: parseInt(context.appointmentId || 0, 10),
+        documentId: parseInt(context.documentId || 0, 10),
+        title: defaultTitle
+    };
+    $('#drawing-editor-modal-title').text(CURRENT_DRAWING_EDITOR_CONTEXT.documentId ? defaultTitle : 'Nuevo dibujo');
+    $('#drawing-editor-modal-status').text('Preparando editor...');
+    setDrawingEditorFooterStatus('Los cambios se autoguardan mientras dibujas.', 'muted');
+    $('#btn-drawing-editor-save').prop('disabled', false).html('<i class="bi bi-check2"></i> Guardar cambios');
+    $('#drawing-editor-frame').attr('src', drawingEditorBuildUrl(CURRENT_DRAWING_EDITOR_CONTEXT));
+    if (drawingEditorModal) {
+        drawingEditorModal.show();
+    }
+}
+
+function refreshDrawingEditorContext() {
+    const context = CURRENT_DRAWING_EDITOR_CONTEXT || {};
+    if (context.source === 'appointment' && $('#appointmentPaymentModal').hasClass('show')) {
+        loadAppointmentSession();
+    }
+    if (CURRENT_PATIENT_FILES_ID || $('#patientEditorModal').hasClass('show')) {
+        const patientId = CURRENT_PATIENT_FILES_ID || parseInt($('#patient-editor-id').val() || '0', 10);
+        if (patientId) {
+            loadPatientFiles(patientId);
+        }
+    }
+}
+
+function setDrawingEditorSavingState(isSaving, closeAfterSave = false) {
+    $('#btn-drawing-editor-save')
+        .prop('disabled', isSaving)
+        .html(isSaving && !closeAfterSave
+            ? '<span class="spinner-border spinner-border-sm me-1"></span> Guardando...'
+            : '<i class="bi bi-check2"></i> Guardar cambios');
+    $('#btn-drawing-editor-save-close')
+        .prop('disabled', isSaving)
+        .html(isSaving && closeAfterSave
+            ? '<span class="spinner-border spinner-border-sm me-1"></span> Guardando...'
+            : '<i class="bi bi-box-arrow-down"></i> Guardar y cerrar');
+}
+
+function setDrawingEditorFooterStatus(message, type = 'muted') {
+    const classMap = {
+        success: 'text-success',
+        danger: 'text-danger',
+        warning: 'text-warning',
+        muted: 'text-muted'
+    };
+    $('#drawing-editor-footer-status')
+        .removeClass('text-muted text-success text-danger text-warning')
+        .addClass(classMap[type] || classMap.muted)
+        .text(message || '');
+}
+
 function loadPatientFiles(patientId) {
     patientId = parseInt(patientId || 0, 10);
     if (!patientId) {
@@ -10647,7 +13325,7 @@ function loadPatientFiles(patientId) {
                 $('#patient-files-body').html('<tr><td colspan="5" class="text-center text-muted py-4">No se pudo cargar la documentaci&oacute;n.</td></tr>');
                 return;
             }
-            renderPatientFiles(res.files || []);
+            renderPatientFiles(res.files || [], res.signature_certificates || {});
         },
         error: function () {
             showPatientFilesAlert('danger', 'Error de conexion al cargar la documentacion.');
@@ -10656,60 +13334,79 @@ function loadPatientFiles(patientId) {
     });
 }
 
-function renderPatientFiles(files) {
+function renderPatientFiles(files, signatureCertificates = {}) {
     const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     const rows = Array.isArray(files) ? files : [];
     CURRENT_PATIENT_FILES_ROWS = rows;
-    if (!rows.length) {
+        if (!rows.length) {
         const emptyText = CURRENT_PATIENT_FILES_FILTER === 'questionnaire'
             ? `Este ${patientSingular} no tiene cuestionarios.`
-            : (CURRENT_PATIENT_FILES_FILTER === 'file'
+            : (CURRENT_PATIENT_FILES_FILTER === 'drawing'
+                ? `Este ${patientSingular} no tiene dibujos.`
+                : (CURRENT_PATIENT_FILES_FILTER === 'file'
                 ? `Este ${patientSingular} no tiene archivos subidos.`
-                : `Este ${patientSingular} no tiene documentaci&oacute;n.`);
+                : `Este ${patientSingular} no tiene documentaci&oacute;n.`));
         $('#patient-files-body').html(`<tr><td colspan="5" class="text-center text-muted py-4">${emptyText}</td></tr>`);
         $('#patient-files-count').text('');
         return;
     }
     const html = rows.map(file => {
         const isQuestionnaire = file.type === 'questionnaire';
+        const isDrawing = file.type === 'drawing';
         const typeBadge = isQuestionnaire
             ? '<span class="badge bg-info text-dark">Cuestionario</span>'
-            : '<span class="badge bg-secondary">Archivo</span>';
+            : (isDrawing ? '<span class="badge bg-primary">Dibujo</span>' : '<span class="badge bg-secondary">Archivo</span>');
         const statusBadge = isQuestionnaire && file.status
             ? `<span class="badge bg-light text-dark ms-1">${formatPatientDocumentStatus(file.status)}</span>`
             : '';
-        const portalBadge = parseInt(file.visible_to_patient || 0, 10) === 1
-            ? '<span class="badge bg-success">Portal</span>'
-            : '<span class="text-muted small">No</span>';
-        const scoreLine = (file.score || file.result_label)
-            ? `<br><small class="text-muted">${escapeHtml([file.score, file.result_label].filter(Boolean).join(' - '))}</small>`
-            : '';
-        const fileNameLine = file.file_name
-            ? `<br><small class="text-muted">${escapeHtml(file.file_name)}${file.size ? ` - ${formatFileSize(file.size)}` : ''}</small>`
-            : (file.size ? `<br><small class="text-muted">${formatFileSize(file.size)}</small>` : '');
-        const descriptionLine = file.description
-            ? `<br><small class="text-muted">${escapeHtml(truncateText(file.description, 90))}</small>`
+        const fileType = file.legacy_type === 'evolution_file' ? 'evolution_file' : 'patient_document';
+        const documentSubtitle = (file.score || file.result_label)
+            ? [file.score, file.result_label].filter(Boolean).join(' - ')
+            : (file.file_name && String(file.file_name).trim() !== String(file.name || '').trim()
+                ? file.file_name
+                : '');
+        const documentSubtitleLine = documentSubtitle
+            ? `<div class="small text-muted text-truncate">${escapeHtml(documentSubtitle)}</div>`
             : '';
         const versionLine = parseInt(file.version_count || 0, 10) > 1
-            ? `<br><small class="text-muted">${parseInt(file.version_count, 10)} versiones</small>`
+            ? `<span class="badge bg-light text-dark ms-1">${parseInt(file.version_count, 10)} versiones</span>`
             : '';
-        const downloadButton = file.url
-            ? `<a class="btn btn-outline-primary btn-sm" href="${escapeHtml(file.url)}" target="_blank" rel="noopener" title="Descargar archivo"><i class="bi bi-download"></i></a>`
+        const downloadItem = file.url
+            ? `<li><a class="dropdown-item" href="${escapeHtml(file.url)}" target="_blank" rel="noopener"><i class="bi bi-download me-2"></i>Descargar archivo</a></li>`
             : '';
-        const editButton = file.can_delete
-            ? `<button type="button" class="btn btn-outline-primary btn-sm btn-edit-patient-document" data-document-id="${parseInt(file.id || 0, 10)}" title="Editar documento"><i class="bi bi-pencil"></i></button>`
+        const isSigned = file.signature && file.signature.signed === true;
+        const signItems = parseInt(file.can_sign_pdf || 0, 10) === 1 && !isSigned
+            ? signatureDropdownItems(`api/admin.php?action=sign_patient_document_file&id=${parseInt(file.id || 0, 10)}`, signatureCertificates)
+            : [];
+        const signedBadge = isSigned
+            ? `<span class="badge bg-success ms-1"><i class="bi bi-patch-check-fill me-1"></i>Firmado</span>`
             : '';
-        const deleteButton = file.can_delete
-            ? `<button type="button" class="btn btn-outline-danger btn-sm btn-delete-patient-document" data-document-id="${parseInt(file.id || 0, 10)}" title="Eliminar documento"><i class="bi bi-trash"></i></button>`
+        const docxEditItem = parseInt(file.can_edit_docx || 0, 10) === 1
+            ? `<li><button type="button" class="dropdown-item btn-open-docx-editor" data-document-id="${parseInt(file.id || 0, 10)}"><i class="bi bi-file-earmark-word me-2"></i>Editar DOCX</button></li>`
+            : '';
+        const drawingEditItem = parseInt(file.can_edit_drawing || 0, 10) === 1
+            ? `<li><button type="button" class="dropdown-item btn-open-drawing-editor" data-document-id="${parseInt(file.id || 0, 10)}"><i class="bi bi-brush me-2"></i>Editar dibujo</button></li>`
+            : '';
+        const editItem = file.can_delete
+            && fileType === 'patient_document'
+            ? `<li><button type="button" class="dropdown-item btn-edit-patient-document" data-document-id="${parseInt(file.id || 0, 10)}"><i class="bi bi-pencil me-2"></i>Editar datos</button></li>`
+            : '';
+        const portalButton = parseInt(file.id || 0, 10) > 0
+            ? patientFilePortalButton(fileType, file.id, file.visible_to_patient)
+            : '';
+        const deleteItem = file.can_delete
+            ? (fileType === 'evolution_file'
+                ? `<li><button type="button" class="dropdown-item text-danger btn-delete-evolution-file" data-file-id="${parseInt(file.id || 0, 10)}"><i class="bi bi-trash me-2"></i>Eliminar archivo</button></li>`
+                : `<li><button type="button" class="dropdown-item text-danger btn-delete-patient-document" data-document-id="${parseInt(file.id || 0, 10)}"><i class="bi bi-trash me-2"></i>Eliminar documento</button></li>`)
             : '';
         return `
         <tr>
-            <td><strong>${escapeHtml(file.name || 'Documento')}</strong>${scoreLine}${fileNameLine}${descriptionLine}</td>
-            <td>${typeBadge}${statusBadge}<br><small class="text-muted">${escapeHtml(file.source || '')}${versionLine}</small></td>
+            <td><div><strong>${escapeHtml(file.name || 'Documento')}</strong>${signedBadge}</div>${documentSubtitleLine}</td>
+            <td>${typeBadge}${statusBadge}${versionLine}</td>
             <td>${file.date ? formatDateTimeLabel(file.date) : '-'}</td>
-            <td>${portalBadge}</td>
+            <td class="text-center">${portalButton}</td>
             <td class="text-end">
-                <div class="d-inline-flex gap-1">${downloadButton}${editButton}${deleteButton}</div>
+                <div class="d-flex justify-content-end">${rowActionsDropdown([downloadItem, ...signItems, docxEditItem, drawingEditItem, editItem], [deleteItem])}</div>
             </td>
         </tr>
     `;
@@ -10848,6 +13545,1501 @@ function deletePatientDocument(documentId, $row) {
         },
         error: function () {
             showPatientFilesAlert('danger', 'Error de conexion al eliminar el documento.');
+        }
+    });
+}
+
+function deletePatientEvolutionFile(fileId, $row) {
+    fileId = parseInt(fileId || 0, 10);
+    if (!fileId || !confirm('¿Eliminar este archivo?')) return;
+    $.ajax({
+        url: 'api/admin.php?action=delete_patient_evolution_file',
+        method: 'POST',
+        dataType: 'json',
+        data: { file_id: fileId },
+        success: function (res) {
+            if (!res.success) {
+                showPatientFilesAlert('danger', res.error || 'No se pudo eliminar el archivo.');
+                return;
+            }
+            showPatientFilesAlert('success', res.message || 'Archivo eliminado correctamente.');
+            loadPatientFiles(CURRENT_PATIENT_FILES_ID);
+        },
+        error: function () {
+            showPatientFilesAlert('danger', 'Error de conexión al eliminar el archivo.');
+        }
+    });
+}
+
+function patientFilePortalButton(fileType, fileId, visible) {
+    const isVisible = parseInt(visible || 0, 10) === 1;
+    return `<button type="button" class="btn ${isVisible ? 'btn-outline-success' : 'btn-outline-secondary'} btn-sm btn-toggle-file-portal"
+        data-file-type="${escapeHtml(fileType)}" data-file-id="${parseInt(fileId || 0, 10)}" data-visible="${isVisible ? 1 : 0}"
+        title="${isVisible ? 'Ocultar del portal del paciente' : 'Mostrar en el portal del paciente'}">
+        <i class="bi ${isVisible ? 'bi-eye-fill' : 'bi-eye-slash'}"></i>
+    </button>`;
+}
+
+function togglePatientFilePortal(button, reloadAppointment) {
+    const $button = $(button);
+    const fileId = parseInt($button.data('file-id') || 0, 10);
+    const fileType = String($button.data('file-type') || '');
+    const nextVisible = parseInt($button.data('visible') || 0, 10) === 1 ? 0 : 1;
+    if (!fileId) return;
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+    $.ajax({
+        url: 'api/admin.php?action=set_patient_file_portal_visibility',
+        method: 'POST',
+        dataType: 'json',
+        data: { file_type: fileType, file_id: fileId, visible_to_patient: nextVisible },
+        success: function (res) {
+            if (!res.success) {
+                (reloadAppointment ? showAppointmentSessionAlert : showPatientFilesAlert)('danger', res.error || 'No se pudo cambiar la visibilidad.');
+                return;
+            }
+            (reloadAppointment ? showAppointmentSessionAlert : showPatientFilesAlert)('success', res.message || 'Visibilidad actualizada.');
+            if (reloadAppointment) loadAppointmentSession();
+            else loadPatientFiles(CURRENT_PATIENT_FILES_ID);
+        },
+        error: function () {
+            (reloadAppointment ? showAppointmentSessionAlert : showPatientFilesAlert)('danger', 'Error de conexión al cambiar la visibilidad.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function renderSignatureCertificateStatus(certificate) {
+    const status = certificate || {};
+    const available = status.available === true;
+    const effectiveAvailable = status.effective_available === true || available;
+    const apiConfigured = status.api_configured === true;
+    $('#btn-remove-signature-certificate').toggleClass('d-none', !available);
+    $('#btn-sign-arbitrary-pdf').prop('disabled', !(effectiveAvailable && apiConfigured));
+    if (!available) {
+        const fallback = status.using_tenant_fallback === true
+            ? '<span class="text-success"><i class="bi bi-shield-check me-1"></i>Este profesional usará el certificado del tenant.</span>'
+            : '<span class="text-muted"><i class="bi bi-shield-x me-1"></i>No hay un certificado de firma configurado.</span>';
+        $('#signature-certificate-status').html(fallback);
+        return;
+    }
+    const validTo = status.valid_to ? new Date(status.valid_to).toLocaleDateString('es-ES') : '-';
+    const holderName = status.holder_name || status.subject || '';
+    const holderRow = holderName
+        ? `<div><strong>Titular:</strong> ${escapeHtml(holderName)}</div>`
+        : '';
+    const holderNifRow = status.holder_nif
+        ? `<div><strong>NIF del titular:</strong> ${escapeHtml(status.holder_nif)}</div>`
+        : '';
+    const organizationRow = status.organization && status.organization !== holderName
+        ? `<div><strong>Entidad representada:</strong> ${escapeHtml(status.organization)}</div>`
+        : '';
+    const organizationNifRow = status.organization_nif
+        ? `<div><strong>NIF de la entidad:</strong> ${escapeHtml(status.organization_nif)}</div>`
+        : '';
+    const mismatchAlert = status.legal_nif_mismatch === true
+        ? `<div class="alert alert-danger small mt-2 mb-0">
+            Parece haber una discrepancia entre el NIF del certificado y el NIF de los datos fiscales configurados.
+        </div>`
+        : '';
+    $('#signature-certificate-status').html(`
+        <strong class="text-body d-block mb-2"><i class="bi bi-patch-check-fill text-success me-1"></i>Certificado configurado</strong>
+        ${holderRow}
+        ${holderNifRow}
+        ${organizationRow}
+        ${organizationNifRow}
+        <div><strong>Válido hasta:</strong> ${escapeHtml(validTo)}</div>
+        ${mismatchAlert}
+    `);
+}
+
+function mySignatureProfessionalId() {
+    return Math.max(0, parseInt($('#my-signature-certificate-form input[name="professional_id"]').val() || '0', 10));
+}
+
+function renderMySignatureCertificateStatus(certificate) {
+    const status = certificate || {};
+    const available = status.available === true;
+    $('#btn-remove-my-signature-certificate').toggleClass('d-none', !available);
+    if (!available) {
+        $('#my-signature-certificate-status').html('<span class="text-muted"><i class="bi bi-shield-x me-1"></i>No tienes un certificado personal configurado.</span>');
+        return;
+    }
+    const validTo = status.valid_to ? new Date(status.valid_to).toLocaleDateString('es-ES') : '-';
+    const holderName = status.holder_name || status.subject || '';
+    const holderRow = holderName
+        ? `<div class="mt-2"><strong>Titular:</strong> ${escapeHtml(holderName)}</div>`
+        : '';
+    const holderNifRow = status.holder_nif
+        ? `<div><strong>NIF del titular:</strong> ${escapeHtml(status.holder_nif)}</div>`
+        : '';
+    const organizationRow = status.organization && status.organization !== holderName
+        ? `<div><strong>Entidad representada:</strong> ${escapeHtml(status.organization)}</div>`
+        : '';
+    const organizationNifRow = status.organization_nif
+        ? `<div><strong>NIF de la entidad:</strong> ${escapeHtml(status.organization_nif)}</div>`
+        : '';
+    $('#my-signature-certificate-status').html(`
+        <strong class="text-body"><i class="bi bi-patch-check-fill text-success me-1"></i>Certificado personal configurado</strong>
+        ${holderRow}
+        ${holderNifRow}
+        ${organizationRow}
+        ${organizationNifRow}
+        <div><strong>Válido hasta:</strong> ${escapeHtml(validTo)}</div>
+    `);
+}
+
+function loadMySignatureCertificateStatus() {
+    const professionalId = mySignatureProfessionalId();
+    if (!professionalId) return;
+    $('#my-signature-certificate-status').html('<span class="text-muted">Comprobando certificado...</span>');
+    $.ajax({
+        url: 'api/admin.php?action=signature_certificate_status',
+        dataType: 'json',
+        data: { professional_id: professionalId },
+        success: res => res.success
+            ? renderMySignatureCertificateStatus(res.certificate || {})
+            : $('#my-signature-certificate-status').text(res.error || 'No se pudo comprobar el certificado.'),
+        error: () => $('#my-signature-certificate-status').text('Error de conexión al comprobar el certificado.')
+    });
+}
+
+function importMySignatureCertificate(form) {
+    const $button = $('#btn-import-my-signature-certificate');
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+    $('#my-signature-certificate-alert').addClass('d-none').text('');
+    const formData = new FormData();
+    formData.append('professional_id', mySignatureProfessionalId());
+    const fileInput = document.getElementById('my-signature-certificate-file');
+    const passwordInput = document.getElementById('my-signature-certificate-password');
+    if (!fileInput || !fileInput.files || !fileInput.files[0] || !passwordInput || !passwordInput.value) {
+        $('#my-signature-certificate-alert').removeClass('d-none alert-success').addClass('alert-danger').text('Selecciona el certificado e indica su contraseña.');
+        $button.prop('disabled', false).html(original);
+        return;
+    }
+    formData.append('signature_certificate', fileInput.files[0]);
+    formData.append('certificate_password', passwordInput.value);
+    $.ajax({
+        url: 'api/admin.php?action=save_signature_certificate',
+        method: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        dataType: 'json',
+        success: function (res) {
+            if (!res.success) {
+                $('#my-signature-certificate-alert').removeClass('d-none alert-success').addClass('alert-danger').text(res.error || 'No se pudo importar el certificado.');
+                return;
+            }
+            fileInput.value = '';
+            passwordInput.value = '';
+            renderMySignatureCertificateStatus(res.certificate || {});
+            $('#my-signature-certificate-alert').removeClass('d-none alert-danger').addClass('alert-success').text('Certificado personal importado correctamente.');
+        },
+        error: () => $('#my-signature-certificate-alert').removeClass('d-none alert-success').addClass('alert-danger').text('Error de conexión al importar el certificado.'),
+        complete: () => $button.prop('disabled', false).html(original)
+    });
+}
+
+function removeMySignatureCertificate(button) {
+    const professionalId = mySignatureProfessionalId();
+    if (!professionalId || !window.confirm('¿Eliminar tu certificado personal? Los documentos ya firmados no se verán afectados.')) return;
+    const $button = $(button);
+    $button.prop('disabled', true);
+    $.ajax({
+        url: 'api/admin.php?action=remove_signature_certificate',
+        method: 'POST',
+        dataType: 'json',
+        data: { professional_id: professionalId },
+        success: function (res) {
+            if (!res.success) {
+                $('#my-signature-certificate-alert').removeClass('d-none alert-success').addClass('alert-danger').text(res.error || 'No se pudo eliminar el certificado.');
+                return;
+            }
+            loadMySignatureCertificateStatus();
+            $('#my-signature-certificate-alert').removeClass('d-none alert-danger').addClass('alert-success').text('Certificado personal eliminado.');
+        },
+        error: () => $('#my-signature-certificate-alert').removeClass('d-none alert-success').addClass('alert-danger').text('Error de conexión al eliminar el certificado.'),
+        complete: () => $button.prop('disabled', false)
+    });
+}
+
+function signatureCertificateProfessionalId() {
+    return Math.max(0, parseInt($('#signature-certificate-owner').val() || '0', 10));
+}
+
+function populateSignatureCertificateOwners() {
+    const $select = $('#signature-certificate-owner');
+    if (!$select.length) return;
+    const selected = String($select.val() || '0');
+    const professionals = CABINET_PROFESSIONALS.filter(item => item && item.is_current_user == 1);
+    const options = ['<option value="0">Tenant / empresa</option>'].concat(professionals.map(item => (
+        `<option value="${parseInt(item.id || 0, 10)}">Profesional: ${escapeHtml(item.name || 'Sin nombre')}</option>`
+    )));
+    $select.html(options.join(''));
+    $select.val($select.find(`option[value="${selected}"]`).length ? selected : '0');
+}
+
+function loadSignatureCertificateStatus() {
+    if (!$('#signature-certificate-status').length) return;
+    $('#signature-certificate-status').html('<span class="text-muted">Comprobando certificado...</span>');
+    $.ajax({
+        url: 'api/admin.php?action=signature_certificate_status',
+        dataType: 'json',
+        data: { professional_id: signatureCertificateProfessionalId() },
+        success: function (res) {
+            if (!res.success) {
+                $('#signature-certificate-status').text(res.error || 'No se pudo comprobar el certificado.');
+                return;
+            }
+            renderSignatureCertificateStatus(res.certificate || {});
+        },
+        error: function () {
+            $('#signature-certificate-status').text('Error de conexión al comprobar el certificado.');
+        }
+    });
+}
+
+function loadSignatureSettings() {
+    if (!$('#signature-settings-panel').length) return Promise.resolve();
+    return $.ajax({
+        url: 'api/admin.php?action=signature_settings',
+        dataType: 'json'
+    }).then(function (res) {
+        if (!res.success) throw new Error(res.error || 'No se pudo cargar la configuración de firma.');
+        const settings = res.settings || {};
+        $('#signature-auto-invoices').prop('checked', settings.signature_auto_invoices == 1);
+        $('#signature-auto-reports').prop('checked', settings.signature_auto_reports == 1);
+        $('#signature-auto-documents').prop('checked', settings.signature_auto_documents == 1);
+        return res;
+    }).catch(function () {
+        return null;
+    });
+}
+
+function saveSignatureSettings() {
+    if (!$('#signature-settings-panel').length) return Promise.resolve();
+    return $.ajax({
+        url: 'api/admin.php?action=save_signature_settings',
+        method: 'POST',
+        dataType: 'json',
+        data: {
+            signature_auto_invoices: $('#signature-auto-invoices').is(':checked') ? 1 : 0,
+            signature_auto_reports: $('#signature-auto-reports').is(':checked') ? 1 : 0,
+            signature_auto_documents: $('#signature-auto-documents').is(':checked') ? 1 : 0
+        }
+    }).then(function (res) {
+        if (!res.success) throw new Error(res.error || 'No se pudo guardar la configuración de firma.');
+        return res;
+    });
+}
+
+function importSignatureCertificate(form) {
+    const $button = $('#btn-import-signature-certificate');
+    const original = $button.html();
+    const formData = new FormData(form);
+    formData.set('professional_id', String(signatureCertificateProfessionalId()));
+    $('#signature-certificate-alert').addClass('d-none').text('');
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Importando...');
+    $.ajax({
+        url: 'api/admin.php?action=save_signature_certificate',
+        method: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        dataType: 'json',
+        success: function (res) {
+            if (!res.success) {
+                $('#signature-certificate-alert').removeClass('d-none alert-success').addClass('alert-danger').text(res.error || 'No se pudo importar el certificado.');
+                return;
+            }
+            form.reset();
+            loadSignatureCertificateStatus();
+            $('#signature-certificate-alert').removeClass('d-none alert-danger').addClass('alert-success').text(res.message || 'Certificado importado correctamente.');
+        },
+        error: function () {
+            $('#signature-certificate-alert').removeClass('d-none alert-success').addClass('alert-danger').text('Error de conexión al importar el certificado.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function removeSignatureCertificate(button) {
+    if (!window.confirm('¿Eliminar el certificado de firma del tenant? Los documentos ya firmados no se verán afectados.')) return;
+    const $button = $(button);
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+    $.ajax({
+        url: 'api/admin.php?action=remove_signature_certificate',
+        method: 'POST',
+        data: { professional_id: signatureCertificateProfessionalId() },
+        dataType: 'json',
+        success: function (res) {
+            if (!res.success) {
+                $('#signature-certificate-alert').removeClass('d-none alert-success').addClass('alert-danger').text(res.error || 'No se pudo eliminar el certificado.');
+                return;
+            }
+            renderSignatureCertificateStatus(res.certificate || {});
+            $('#signature-certificate-alert').removeClass('d-none alert-danger').addClass('alert-success').text(res.message || 'Certificado eliminado correctamente.');
+        },
+        error: function () {
+            $('#signature-certificate-alert').removeClass('d-none alert-success').addClass('alert-danger').text('Error de conexión al eliminar el certificado.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+async function signArbitraryPdf(form) {
+    const button = document.getElementById('btn-sign-arbitrary-pdf');
+    const original = button ? button.innerHTML : '';
+    $('#signature-certificate-alert').addClass('d-none').text('');
+    if (button) {
+        button.disabled = true;
+        button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Firmando...';
+    }
+    try {
+        const formData = new FormData(form);
+        formData.set('professional_id', String(signatureCertificateProfessionalId()));
+        const response = await fetch('api/admin.php?action=sign_uploaded_pdf', { method: 'POST', body: formData });
+        if (!response.ok) {
+            throw new Error((await response.text()) || 'No se pudo firmar el PDF.');
+        }
+        const blob = await response.blob();
+        const disposition = response.headers.get('Content-Disposition') || '';
+        const match = disposition.match(/filename="?([^";]+)"?/i);
+        const filename = match ? match[1] : 'documento-firmado.pdf';
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        form.reset();
+        $('#signature-certificate-alert').removeClass('d-none alert-danger').addClass('alert-success').text('PDF firmado correctamente.');
+    } catch (error) {
+        $('#signature-certificate-alert').removeClass('d-none alert-success').addClass('alert-danger').text(error.message || 'No se pudo firmar el PDF.');
+    } finally {
+        if (button) {
+            button.innerHTML = original;
+            loadSignatureCertificateStatus();
+        }
+    }
+}
+
+function loadLegalDocuments() {
+    const $body = $('#legal-documents-body');
+    if (!$body.length) return;
+    $body.html('<tr><td colspan="5" class="text-center text-muted py-4">Cargando documentos legales...</td></tr>');
+    $.ajax({
+        url: 'api/admin.php?action=legal_documents',
+        dataType: 'json',
+        success: function (res) {
+            if (!res.success) {
+                $body.html('<tr><td colspan="5" class="text-center text-muted py-4">No se pudieron cargar los documentos legales.</td></tr>');
+                showSettingsAlert('#legal-settings-alert', 'danger', res.error || 'No se pudieron cargar los documentos legales.');
+                return;
+            }
+            LEGAL_DOCUMENTS = Array.isArray(res.documents) ? res.documents : [];
+            renderLegalDocuments();
+        },
+        error: function () {
+            $body.html('<tr><td colspan="5" class="text-center text-muted py-4">No se pudieron cargar los documentos legales.</td></tr>');
+            showSettingsAlert('#legal-settings-alert', 'danger', 'Error de conexion al cargar documentos legales.');
+        }
+    });
+}
+
+function renderLegalDocuments() {
+    const rows = Array.isArray(LEGAL_DOCUMENTS) ? LEGAL_DOCUMENTS : [];
+    const canManageTemplates = planFeatureEnabled('legalConsents.templates', false);
+    const canGeneratePdf = planFeatureEnabled('legalConsents.generatedPdf', false);
+    if (!rows.length) {
+        $('#legal-documents-body').html('<tr><td colspan="5" class="text-center text-muted py-4">Todavia no hay documentos legales.</td></tr>');
+        return;
+    }
+    const html = rows.map(document => {
+        const active = parseInt(document.is_active || 0, 10) === 1;
+        const required = parseInt(document.is_required || 0, 10) === 1;
+        const generated = (document.template_type || 'uploaded_pdf') === 'generated';
+        return `
+            <tr>
+                <td><strong>${escapeHtml(document.title || 'Documento legal')}</strong></td>
+                <td>${document.category ? escapeHtml(document.category) : '<span class="text-muted">-</span>'}</td>
+                <td class="text-center">${required ? '<span class="badge bg-warning text-dark">Si</span>' : '<span class="text-muted">No</span>'}</td>
+                <td class="text-center">${active ? '<span class="badge bg-success">Activo</span>' : '<span class="badge bg-secondary">Inactivo</span>'}</td>
+                <td class="text-end">
+                    <div class="d-inline-flex gap-1">
+                        ${(!generated || canGeneratePdf) ? `<a class="btn btn-outline-primary btn-sm" href="${escapeHtml(document.url || '#')}" target="_blank" rel="noopener" title="Descargar plantilla"><i class="bi bi-download"></i></a>` : ''}
+                        ${canManageTemplates ? `<button type="button" class="btn btn-outline-secondary btn-sm btn-edit-legal-document" data-document-id="${parseInt(document.id || 0, 10)}" title="Editar documento"><i class="bi bi-pencil"></i></button>` : ''}
+                        ${canManageTemplates ? `<button type="button" class="btn btn-outline-danger btn-sm btn-delete-legal-document" data-document-id="${parseInt(document.id || 0, 10)}" title="Eliminar/desactivar"><i class="bi bi-trash"></i></button>` : ''}
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+    $('#legal-documents-body').html(html);
+}
+
+function addLegalDocumentSection(section = {}) {
+    const title = escapeHtml(section.title || '');
+    const content = escapeHtml(section.content || '');
+    $('#legal-document-sections').append(`
+        <div class="legal-document-section border rounded p-3">
+            <div class="d-flex gap-2 align-items-start">
+                <div class="flex-grow-1">
+                    <input type="text" class="form-control legal-document-section-title mb-2" maxlength="180"
+                        placeholder="Título del apartado" value="${title}">
+                    <textarea class="form-control legal-document-section-content" rows="4"
+                        placeholder="Contenido del apartado">${content}</textarea>
+                </div>
+                <button type="button" class="btn btn-outline-danger btn-sm btn-remove-legal-document-section"
+                    title="Eliminar apartado"><i class="bi bi-trash"></i></button>
+            </div>
+        </div>
+    `);
+}
+
+function collectLegalDocumentSections() {
+    return $('#legal-document-sections .legal-document-section').map(function () {
+        return {
+            title: String($(this).find('.legal-document-section-title').val() || '').trim(),
+            content: String($(this).find('.legal-document-section-content').val() || '').trim()
+        };
+    }).get().filter(section => section.title || section.content);
+}
+
+function showServiceLegalDocumentsModal() {
+    $('#service-legal-documents-alert').addClass('d-none').text('');
+    $('#service-legal-documents-list').html('<div class="text-center text-muted py-4">Cargando servicios y consentimientos...</div>');
+    if (serviceLegalDocumentsModal) {
+        serviceLegalDocumentsModal.show();
+    }
+    $.ajax({
+        url: 'api/admin.php?action=service_legal_document_mappings',
+        dataType: 'json',
+        success: function (res) {
+            if (!res.success) {
+                $('#service-legal-documents-list').html('<div class="text-center text-muted py-4">No se pudieron cargar las asignaciones.</div>');
+                $('#service-legal-documents-alert').removeClass('d-none alert-success').addClass('alert-danger').text(res.error || 'No se pudieron cargar las asignaciones.');
+                return;
+            }
+            renderServiceLegalDocumentMappings(res.services || [], res.documents || [], res.mappings || {});
+        },
+        error: function () {
+            $('#service-legal-documents-list').html('<div class="text-center text-muted py-4">No se pudieron cargar las asignaciones.</div>');
+            $('#service-legal-documents-alert').removeClass('d-none alert-success').addClass('alert-danger').text('Error de conexión al cargar las asignaciones.');
+        }
+    });
+}
+
+function renderServiceLegalDocumentMappings(services, documents, mappings) {
+    const serviceRows = Array.isArray(services) ? services : [];
+    const documentRows = Array.isArray(documents) ? documents : [];
+    if (!serviceRows.length) {
+        $('#service-legal-documents-list').html('<div class="text-center text-muted py-4">No hay servicios configurados.</div>');
+        $('#btn-save-service-legal-documents').prop('disabled', true);
+        return;
+    }
+    if (!documentRows.length) {
+        $('#service-legal-documents-list').html('<div class="text-center text-muted py-4">Primero debes añadir al menos un consentimiento activo.</div>');
+        $('#btn-save-service-legal-documents').prop('disabled', true);
+        return;
+    }
+
+    const html = serviceRows.map(service => {
+        const serviceId = parseInt(service.id || 0, 10);
+        const selected = new Set((mappings[serviceId] || mappings[String(serviceId)] || []).map(value => parseInt(value || 0, 10)));
+        const documentOptions = documentRows.map(document => {
+            const documentId = parseInt(document.id || 0, 10);
+            const category = document.category ? `<small class="text-muted d-block">${escapeHtml(document.category)}</small>` : '';
+            const globalBadge = parseInt(document.is_required || 0, 10) === 1
+                ? '<span class="badge bg-warning text-dark ms-1">Obligatorio global</span>'
+                : '';
+            return `
+                <div class="col-md-6">
+                    <label class="border rounded p-2 d-flex gap-2 align-items-start h-100 cursor-pointer">
+                        <input class="form-check-input mt-1 service-legal-document-check" type="checkbox"
+                            data-service-id="${serviceId}" value="${documentId}" ${selected.has(documentId) ? 'checked' : ''}>
+                        <span class="min-w-0">
+                            <strong>${escapeHtml(document.title || 'Consentimiento')}</strong>${globalBadge}
+                            ${category}
+                        </span>
+                    </label>
+                </div>
+            `;
+        }).join('');
+        const inactiveBadge = parseInt(service.is_active || 0, 10) === 1
+            ? ''
+            : '<span class="badge bg-secondary ms-2">Inactivo</span>';
+        return `
+            <section class="border rounded p-3 mb-3">
+                <h6 class="mb-3">${escapeHtml(service.name || 'Servicio')}${inactiveBadge}</h6>
+                <div class="row g-2">
+                    ${documentOptions}
+                </div>
+            </section>
+        `;
+    }).join('');
+    $('#service-legal-documents-list').html(html);
+    $('#btn-save-service-legal-documents').prop('disabled', false);
+}
+
+function saveServiceLegalDocumentMappings(button) {
+    const mappings = {};
+    $('.service-legal-document-check:checked').each(function () {
+        const serviceId = String(parseInt($(this).data('service-id') || '0', 10));
+        const documentId = parseInt($(this).val() || '0', 10);
+        if (!serviceId || !documentId) return;
+        if (!Array.isArray(mappings[serviceId])) {
+            mappings[serviceId] = [];
+        }
+        mappings[serviceId].push(documentId);
+    });
+
+    const $button = $(button);
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Guardando...');
+    $('#service-legal-documents-alert').addClass('d-none').text('');
+    $.ajax({
+        url: 'api/admin.php?action=save_service_legal_document_mappings',
+        method: 'POST',
+        dataType: 'json',
+        data: { mappings: JSON.stringify(mappings) },
+        success: function (res) {
+            if (!res.success) {
+                $('#service-legal-documents-alert').removeClass('d-none alert-success').addClass('alert-danger').text(res.error || 'No se pudieron guardar las asignaciones.');
+                return;
+            }
+            if (serviceLegalDocumentsModal) {
+                serviceLegalDocumentsModal.hide();
+            }
+            showSettingsAlert('#legal-settings-alert', 'success', res.message || 'Asignaciones guardadas correctamente.');
+        },
+        error: function () {
+            $('#service-legal-documents-alert').removeClass('d-none alert-success').addClass('alert-danger').text('Error de conexión al guardar las asignaciones.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function showLegalDocumentForm(document = null) {
+    const form = $('#legal-document-form')[0];
+    if (form) form.reset();
+    $('#legal-document-alert').addClass('d-none').text('');
+    $('#legal-document-id').val(document ? parseInt(document.id || 0, 10) : 0);
+    $('#legal-document-title').val(document ? document.title || '' : '');
+    $('#legal-document-category').val(document ? document.category || '' : '');
+    $('#legal-document-version').val(document ? document.version_label || '' : '');
+    const templateType = document ? (document.template_type || 'uploaded_pdf') : 'generated';
+    const content = document && document.content ? document.content : {};
+    $('#legal-document-template-type').val(templateType);
+    $('#legal-document-summary').val(content.summary || '');
+    $('#legal-document-declaration').val(content.declaration || 'Declaro que he recibido información clara y comprensible, que he podido formular preguntas y que acepto libremente el contenido de este documento.');
+    $('#legal-document-sections').empty();
+    const sections = Array.isArray(content.sections) ? content.sections : [];
+    if (sections.length) {
+        sections.forEach(addLegalDocumentSection);
+    } else if (templateType === 'generated') {
+        addLegalDocumentSection({ title: 'Descripción y finalidad', content: '' });
+        addLegalDocumentSection({ title: 'Riesgos, efectos y alternativas', content: '' });
+    }
+    $('#legal-document-summary, #legal-document-declaration').prop('required', templateType === 'generated');
+    $('#legal-document-legacy-upload').prop('open', templateType === 'uploaded_pdf');
+    $('#legal-document-required').prop('checked', document ? parseInt(document.is_required || 0, 10) === 1 : false);
+    $('#legal-document-active').prop('checked', document ? parseInt(document.is_active || 0, 10) === 1 : true);
+    $('#legal-document-file').val('');
+    $('#legal-document-file-status').text(document && document.file_name
+        ? `PDF externo actual: ${document.file_name}. Sube uno nuevo solo si quieres sustituirlo.`
+        : 'Al seleccionar un PDF externo no se podrá autorrellenar su contenido.');
+    $('#legalDocumentModal .modal-title').text(document ? 'Editar documento legal' : 'Nuevo documento legal');
+    if (legalDocumentModal) {
+        legalDocumentModal.show();
+    }
+}
+
+function saveLegalDocument(form) {
+    const formData = new FormData(form);
+    formData.set('sections_json', JSON.stringify(collectLegalDocumentSections()));
+    formData.set('template_type', $('#legal-document-file')[0] && $('#legal-document-file')[0].files.length
+        ? 'uploaded_pdf'
+        : String($('#legal-document-template-type').val() || 'generated'));
+    const $button = $('#btn-save-legal-document');
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Guardando...');
+    $('#legal-document-alert').addClass('d-none').text('');
+    $.ajax({
+        url: 'api/admin.php?action=save_legal_document',
+        method: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        dataType: 'json',
+        success: function (res) {
+            if (!res.success) {
+                $('#legal-document-alert').removeClass('d-none alert-success').addClass('alert-danger').text(res.error || 'No se pudo guardar el documento legal.');
+                return;
+            }
+            if (legalDocumentModal) {
+                legalDocumentModal.hide();
+            }
+            showSettingsAlert('#legal-settings-alert', 'success', res.message || 'Documento legal guardado.');
+            loadLegalDocuments();
+        },
+        error: function () {
+            $('#legal-document-alert').removeClass('d-none alert-success').addClass('alert-danger').text('Error de conexion al guardar el documento legal.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function deleteLegalDocument(documentId) {
+    documentId = parseInt(documentId || 0, 10);
+    if (!documentId || !confirm('Eliminar o desactivar este documento legal?')) {
+        return;
+    }
+    $.ajax({
+        url: 'api/admin.php?action=delete_legal_document',
+        method: 'POST',
+        dataType: 'json',
+        data: { document_id: documentId },
+        success: function (res) {
+            if (!res.success) {
+                showSettingsAlert('#legal-settings-alert', 'danger', res.error || 'No se pudo eliminar el documento legal.');
+                return;
+            }
+            showSettingsAlert('#legal-settings-alert', 'success', res.message || 'Documento legal eliminado.');
+            loadLegalDocuments();
+        },
+        error: function () {
+            showSettingsAlert('#legal-settings-alert', 'danger', 'Error de conexion al eliminar el documento legal.');
+        }
+    });
+}
+
+function showSuggestedLegalDocumentsModal() {
+    $('#suggested-legal-documents-alert').addClass('d-none').text('');
+    $('#suggested-legal-documents-list').html('<div class="col-12 text-center text-muted py-4">Cargando plantillas sugeridas...</div>');
+    if (suggestedLegalDocumentsModal) {
+        suggestedLegalDocumentsModal.show();
+    }
+    $.ajax({
+        url: 'api/admin.php?action=suggested_legal_documents',
+        dataType: 'json',
+        success: function (res) {
+            if (!res.success) {
+                $('#suggested-legal-documents-list').html('<div class="col-12 text-center text-muted py-4">No se pudieron cargar las plantillas sugeridas.</div>');
+                $('#suggested-legal-documents-alert').removeClass('d-none alert-success').addClass('alert-danger').text(res.error || 'No se pudieron cargar las plantillas sugeridas.');
+                return;
+            }
+            renderSuggestedLegalDocuments(res.suggestions || []);
+        },
+        error: function () {
+            $('#suggested-legal-documents-list').html('<div class="col-12 text-center text-muted py-4">No se pudieron cargar las plantillas sugeridas.</div>');
+            $('#suggested-legal-documents-alert').removeClass('d-none alert-success').addClass('alert-danger').text('Error de conexion al cargar las plantillas sugeridas.');
+        }
+    });
+}
+
+function renderSuggestedLegalDocuments(suggestions) {
+    const rows = Array.isArray(suggestions) ? suggestions : [];
+    if (!rows.length) {
+        $('#suggested-legal-documents-list').html('<div class="col-12 text-center text-muted py-4">No hay plantillas sugeridas disponibles.</div>');
+        return;
+    }
+    const html = rows.map(item => {
+        const key = escapeHtml(item.key || '');
+        const required = parseInt(item.is_required || 0, 10) === 1;
+        const alreadyAdded = parseInt(item.already_added || 0, 10) === 1;
+        const previewUrl = `api/admin.php?action=preview_suggested_legal_document&key=${encodeURIComponent(item.key || '')}`;
+        return `
+            <div class="col-md-6">
+                <div class="border rounded p-3 h-100 d-flex flex-column suggested-legal-document-option${alreadyAdded ? ' bg-light' : ''}">
+                    <label class="d-flex gap-2 cursor-pointer mb-3">
+                        <input class="form-check-input mt-1" type="checkbox" name="suggested_legal_document_keys[]" value="${key}" ${alreadyAdded ? 'disabled' : 'checked'}>
+                        <span>
+                            <strong>${escapeHtml(item.title || 'Plantilla legal')}</strong>
+                            <span class="d-block small text-muted">${escapeHtml(item.category || 'Documento legal')}</span>
+                            <span class="badge ${required ? 'bg-warning text-dark' : 'bg-light text-dark'} mt-2">${required ? 'Obligatorio' : 'Opcional'}</span>
+                            ${alreadyAdded ? '<span class="badge bg-success ms-1 mt-2">Ya añadida</span>' : ''}
+                        </span>
+                    </label>
+                    <div class="mt-auto text-end">
+                        <a class="btn btn-outline-primary btn-sm" href="${escapeHtml(previewUrl)}" target="_blank" rel="noopener">
+                            <i class="bi bi-file-earmark-pdf"></i> Vista previa
+                        </a>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+    $('#suggested-legal-documents-list').html(html);
+    $('#btn-create-suggested-legal-documents').prop('disabled', rows.every(item => parseInt(item.already_added || 0, 10) === 1));
+}
+
+function createSuggestedLegalDocuments() {
+    const keys = $('#suggested-legal-documents-form input[name="suggested_legal_document_keys[]"]:checked')
+        .map(function () { return $(this).val(); })
+        .get();
+    if (!keys.length) {
+        $('#suggested-legal-documents-alert').removeClass('d-none alert-success').addClass('alert-danger').text('Selecciona al menos una plantilla sugerida.');
+        return;
+    }
+    const $button = $('#btn-create-suggested-legal-documents');
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Generando...');
+    $('#suggested-legal-documents-alert').addClass('d-none').text('');
+    $.ajax({
+        url: 'api/admin.php?action=create_suggested_legal_documents',
+        method: 'POST',
+        dataType: 'json',
+        data: { keys: keys },
+        success: function (res) {
+            if (!res.success) {
+                $('#suggested-legal-documents-alert').removeClass('d-none alert-success').addClass('alert-danger').text(res.error || 'No se pudieron anadir las plantillas sugeridas.');
+                return;
+            }
+            if (suggestedLegalDocumentsModal) {
+                suggestedLegalDocumentsModal.hide();
+            }
+            showSettingsAlert('#legal-settings-alert', 'success', res.message || 'Plantillas sugeridas anadidas correctamente.');
+            loadLegalDocuments();
+        },
+        error: function () {
+            $('#suggested-legal-documents-alert').removeClass('d-none alert-success').addClass('alert-danger').text('Error de conexion al generar las plantillas sugeridas.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function resetPatientLegalDocuments(patientId = 0) {
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
+    CURRENT_PATIENT_LEGAL_DOCUMENTS_ID = parseInt(patientId || 0, 10);
+    CURRENT_PATIENT_LEGAL_DOCUMENTS_ROWS = [];
+    $('#patient-legal-documents-alert').addClass('d-none').text('');
+    $('#patient-legal-documents-info-alert')
+        .removeClass('alert-warning')
+        .addClass('alert-info')
+        .text('Añade aquí los consentimientos y documentos legales firmados/aceptados, o indica si han sido aceptados de forma externa.');
+    $('#patient-legal-documents-count').text('');
+    if (!patientId) {
+        $('#patient-legal-documents-body').html(`<tr><td colspan="4" class="text-center text-muted py-4">Guarda el ${patientSingular} para ver sus consentimientos.</td></tr>`);
+        return;
+    }
+    $('#patient-legal-documents-body').html('<tr><td colspan="4" class="text-center text-muted py-4">Cargando consentimientos...</td></tr>');
+}
+
+function loadPatientLegalDocuments(patientId) {
+    patientId = parseInt(patientId || 0, 10);
+    if (!patientId) {
+        resetPatientLegalDocuments(0);
+        return;
+    }
+    CURRENT_PATIENT_LEGAL_DOCUMENTS_ID = patientId;
+    $('#patient-legal-documents-alert').addClass('d-none').text('');
+    $('#patient-legal-documents-body').html('<tr><td colspan="4" class="text-center text-muted py-4">Cargando consentimientos...</td></tr>');
+    $.ajax({
+        url: 'api/admin.php?action=patient_legal_documents',
+        dataType: 'json',
+        data: { patient_id: patientId },
+        success: function (res) {
+            if (!res.success) {
+                showPatientLegalDocumentsAlert('danger', res.error || 'No se pudieron cargar los consentimientos.');
+                $('#patient-legal-documents-body').html('<tr><td colspan="4" class="text-center text-muted py-4">No se pudieron cargar los consentimientos.</td></tr>');
+                return;
+            }
+            renderPatientLegalDocuments(res.documents || [], res.signature_certificates || {});
+        },
+        error: function () {
+            showPatientLegalDocumentsAlert('danger', 'Error de conexion al cargar los consentimientos.');
+            $('#patient-legal-documents-body').html('<tr><td colspan="4" class="text-center text-muted py-4">No se pudieron cargar los consentimientos.</td></tr>');
+        }
+    });
+}
+
+function renderPatientLegalDocuments(documents, signatureCertificates = {}) {
+    const patientPlural = sectorLabel('patient', 'plural', 'pacientes');
+    const rows = Array.isArray(documents) ? documents : [];
+    CURRENT_PATIENT_LEGAL_DOCUMENTS_ROWS = rows;
+    if (!rows.length) {
+        $('#patient-legal-documents-info-alert')
+            .removeClass('alert-info')
+            .addClass('alert-warning')
+            .text(`Debes indicar en Configuración los consentimientos y documentos legales que deberán aceptar/firmar tus ${patientPlural}.`);
+        $('#patient-legal-documents-body').html('<tr><td colspan="4" class="text-center text-muted py-4">No hay documentos legales configurados.</td></tr>');
+        $('#patient-legal-documents-count').text('');
+        return;
+    }
+    $('#patient-legal-documents-info-alert')
+        .removeClass('alert-warning')
+        .addClass('alert-info')
+        .text('Añade aquí los consentimientos y documentos legales firmados/aceptados, o indica si han sido aceptados de forma externa.');
+    const html = rows.map(document => {
+        const accepted = parseInt(document.accepted || 0, 10) === 1;
+        const hasSigned = Boolean(document.signed_file_name);
+        const templateDigitallySigned = document.template_signature && document.template_signature.signed === true;
+        const globallyRequired = parseInt(document.is_required || 0, 10) === 1;
+        const serviceRequired = parseInt(document.is_required_by_service || 0, 10) === 1;
+        const requiredBadge = globallyRequired
+            ? '<span class="badge bg-warning text-dark ms-1">Obligatorio</span>'
+            : (serviceRequired ? '<span class="badge bg-warning text-dark ms-1">Requerido por servicio</span>' : '');
+        const requiredServiceLine = serviceRequired && document.required_service_names
+            ? `<br><small class="text-warning-emphasis">Servicio: ${escapeHtml(document.required_service_names)}</small>`
+            : '';
+        const status = hasSigned
+            ? (document.signature_method === 'handwritten'
+                ? '<span class="badge bg-success">Firmado presencialmente</span>'
+                : (document.signature_method === 'autofirma_patient'
+                    ? '<span class="badge bg-success">Firmado con AutoFirma</span>'
+                    : '<span class="badge bg-success">PDF firmado subido</span>'))
+            : (accepted ? '<span class="badge bg-info text-dark">Aceptado fuera de SGPraxis</span>' : '<span class="badge bg-danger">Pendiente</span>');
+        const signedLine = hasSigned
+            ? `<a href="${escapeHtml(document.signed_url || '#')}" target="_blank" rel="noopener">${escapeHtml(document.signed_file_name)}</a>${document.signed_file_size ? ` <small class="text-muted">(${formatFileSize(document.signed_file_size)})</small>` : ''}`
+            : '<span class="text-muted">Sin PDF firmado</span>';
+        const acceptedMeta = accepted
+            ? `<br><small class="text-muted">${document.accepted_at ? formatDateTimeLabel(document.accepted_at) : ''}${document.accepted_by_name ? ` - ${escapeHtml(document.accepted_by_name)}` : ''}</small>`
+            : '';
+        const noteLine = document.acceptance_note ? `<br><small class="text-muted">${escapeHtml(truncateText(document.acceptance_note, 90))}</small>` : '';
+        const actionItems = [
+            `<li><a class="dropdown-item" href="${escapeHtml(document.template_url || '#')}" target="_blank" rel="noopener"><i class="bi bi-eye me-2"></i>Leer documento</a></li>`,
+            ...(planFeatureEnabled('legalConsents.handwrittenSignature', false)
+                ? [`<li><button type="button" class="dropdown-item btn-handwritten-consent" data-legal-document-id="${parseInt(document.legal_document_id || 0, 10)}"><i class="bi bi-pen me-2"></i>Firma presencial</button></li>`]
+                : []),
+            `<li><button type="button" class="dropdown-item btn-edit-patient-legal-document" data-legal-document-id="${parseInt(document.legal_document_id || 0, 10)}"><i class="bi bi-pencil me-2"></i>Actualizar manualmente</button></li>`
+        ];
+        return `
+            <tr>
+                <td>
+                    <strong>${escapeHtml(document.title || 'Documento legal')}</strong>${requiredBadge}
+                    ${templateDigitallySigned ? '<span class="badge bg-success ms-1"><i class="bi bi-patch-check-fill me-1"></i>Firmado</span>' : ''}
+                    ${document.category ? `<br><small class="text-muted">${escapeHtml(document.category)}</small>` : ''}
+                    ${document.version_label ? `<br><small class="text-muted">${escapeHtml(document.version_label)}</small>` : ''}
+                    ${requiredServiceLine}
+                </td>
+                <td>${status}${acceptedMeta}${noteLine}</td>
+                <td>${signedLine}</td>
+                <td class="text-end">
+                    ${rowActionsDropdown(actionItems)}
+                </td>
+            </tr>
+        `;
+    }).join('');
+    $('#patient-legal-documents-body').html(html);
+    $('#patient-legal-documents-count').text(`${rows.length} ${rows.length === 1 ? 'consentimiento' : 'consentimientos'}`);
+}
+
+function showPatientLegalDocumentsAlert(type, message) {
+    $('#patient-legal-documents-alert')
+        .removeClass('d-none alert-success alert-danger alert-warning alert-info')
+        .addClass(`alert-${type}`)
+        .text(message || '');
+}
+
+function showPatientLegalDocumentForm(document) {
+    const form = $('#patient-legal-document-form')[0];
+    if (form) form.reset();
+    $('#patient-legal-document-alert').addClass('d-none').text('');
+    $('#patient-legal-document-patient-id').val(CURRENT_PATIENT_LEGAL_DOCUMENTS_ID || parseInt($('#patient-editor-id').val() || '0', 10));
+    $('#patient-legal-document-legal-id').val(parseInt(document.legal_document_id || 0, 10));
+    $('#patient-legal-document-title').text(document.title || 'Documento legal');
+    const isRequired = parseInt(document.is_required || 0, 10) === 1 || parseInt(document.is_required_by_service || 0, 10) === 1;
+    $('#patient-legal-document-meta').text([document.category || '', document.version_label || '', isRequired ? 'Obligatorio' : 'Opcional'].filter(Boolean).join(' - '));
+    $('#patient-legal-document-accepted').prop('checked', parseInt(document.accepted || 0, 10) === 1 || Boolean(document.signed_file_name));
+    $('#patient-legal-document-note').val(document.acceptance_note || '');
+    $('#patient-legal-document-file').val('');
+    if (patientLegalDocumentModal) {
+        patientLegalDocumentModal.show();
+    }
+}
+
+function savePatientLegalDocument(form) {
+    const formData = new FormData(form);
+    const $button = $('#btn-save-patient-legal-document');
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Guardando...');
+    $('#patient-legal-document-alert').addClass('d-none').text('');
+    $.ajax({
+        url: 'api/admin.php?action=save_patient_legal_document',
+        method: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        dataType: 'json',
+        success: function (res) {
+            if (!res.success) {
+                $('#patient-legal-document-alert').removeClass('d-none alert-success').addClass('alert-danger').text(res.error || 'No se pudo guardar el consentimiento.');
+                return;
+            }
+            if (patientLegalDocumentModal) {
+                patientLegalDocumentModal.hide();
+            }
+            showPatientLegalDocumentsAlert('success', res.message || 'Consentimiento guardado correctamente.');
+            loadPatientLegalDocuments(CURRENT_PATIENT_LEGAL_DOCUMENTS_ID || parseInt($('#patient-editor-id').val() || '0', 10));
+            loadPatients();
+            if (dashboardPatientsLoaded) {
+                loadDashboardPatients(false);
+            }
+        },
+        error: function () {
+            $('#patient-legal-document-alert').removeClass('d-none alert-success').addClass('alert-danger').text('Error de conexion al guardar el consentimiento.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+}
+
+function handwrittenConsentCanvas() {
+    return document.getElementById('handwritten-consent-canvas');
+}
+
+function setupHandwrittenConsentCanvas() {
+    const canvas = handwrittenConsentCanvas();
+    if (!canvas || canvas.dataset.ready === '1') return;
+    canvas.dataset.ready = '1';
+    const position = event => {
+        const rect = canvas.getBoundingClientRect();
+        return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    };
+    const start = event => {
+        const signatureStep = HANDWRITTEN_CONSENT_STATE.patientPortal ? 4 : 3;
+        if (HANDWRITTEN_CONSENT_STATE.step !== signatureStep || HANDWRITTEN_CONSENT_STATE.method === 'autofirma') return;
+        event.preventDefault();
+        canvas.setPointerCapture(event.pointerId);
+        const point = position(event);
+        const context = canvas.getContext('2d');
+        context.beginPath();
+        context.moveTo(point.x, point.y);
+        HANDWRITTEN_CONSENT_STATE.drawing = true;
+    };
+    const move = event => {
+        if (!HANDWRITTEN_CONSENT_STATE.drawing) return;
+        event.preventDefault();
+        const point = position(event);
+        const context = canvas.getContext('2d');
+        context.lineTo(point.x, point.y);
+        context.stroke();
+        HANDWRITTEN_CONSENT_STATE.hasStroke = true;
+    };
+    const end = event => {
+        if (!HANDWRITTEN_CONSENT_STATE.drawing) return;
+        event.preventDefault();
+        HANDWRITTEN_CONSENT_STATE.drawing = false;
+        try {
+            canvas.releasePointerCapture(event.pointerId);
+        } catch (error) {
+            // Pointer capture may already have been released.
+        }
+    };
+    canvas.addEventListener('pointerdown', start);
+    canvas.addEventListener('pointermove', move);
+    canvas.addEventListener('pointerup', end);
+    canvas.addEventListener('pointercancel', end);
+    canvas.addEventListener('pointerleave', end);
+}
+
+function resizeHandwrittenConsentCanvas(preserve = true) {
+    const canvas = handwrittenConsentCanvas();
+    if (!canvas || !canvas.parentElement) return;
+    const previous = preserve && canvas.width > 0 && canvas.height > 0 ? canvas.toDataURL('image/png') : '';
+    const rect = canvas.parentElement.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const ratio = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+    canvas.width = Math.round(rect.width * ratio);
+    canvas.height = Math.round(rect.height * ratio);
+    const context = canvas.getContext('2d');
+    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, rect.width, rect.height);
+    context.strokeStyle = '#172033';
+    context.lineWidth = 2.5;
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+    if (previous && HANDWRITTEN_CONSENT_STATE.hasStroke) {
+        const image = new Image();
+        image.onload = () => context.drawImage(image, 0, 0, rect.width, rect.height);
+        image.src = previous;
+    }
+}
+
+function clearHandwrittenConsentCanvas() {
+    HANDWRITTEN_CONSENT_STATE.hasStroke = false;
+    HANDWRITTEN_CONSENT_STATE.drawing = false;
+    resizeHandwrittenConsentCanvas(false);
+}
+
+function normalizeAutoFirmaBase64(value) {
+    return String(value || '').replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
+}
+
+function arrayBufferToAutoFirmaBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    const chunkSize = 0x8000;
+    let binary = '';
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(offset, offset + chunkSize));
+    }
+    return btoa(binary);
+}
+
+function setAutoFirmaStatus(selector, message, type = 'secondary') {
+    $(selector)
+        .removeClass('d-none alert-secondary alert-info alert-success alert-danger alert-warning')
+        .addClass(`alert-${type}`)
+        .text(message || '');
+}
+
+function handleConsentSignatureMethodChange() {
+    const method = $('input[name="consent_sign_method"]:checked').val() || 'handwritten';
+    HANDWRITTEN_CONSENT_STATE.method = method;
+    HANDWRITTEN_CONSENT_STATE.autofirmaSignedPdf = '';
+    $('.consent-sign-method').removeClass('active');
+    $('input[name="consent_sign_method"]:checked').closest('.consent-sign-method').addClass('active');
+    const useAutoFirma = method === 'autofirma';
+    if (!useAutoFirma) {
+        $('#handwritten-consent-signer-name, #handwritten-consent-signer-nif').prop('readonly', false);
+    }
+}
+
+async function preparePatientConsentAutoFirmaTransaction(showErrors = true) {
+    if (HANDWRITTEN_CONSENT_STATE.autofirmaTransactionToken && HANDWRITTEN_CONSENT_STATE.autofirmaSourceUrl) {
+        return true;
+    }
+    try {
+        const body = new FormData();
+        body.append('legal_document_id', parseInt($('#handwritten-consent-document-id').val() || '0', 10));
+        const response = await fetch('api/appointments.php?action=patient_portal_prepare_autofirma', {
+            method: 'POST',
+            body,
+            credentials: 'same-origin'
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.success) {
+            throw new Error(payload.error || 'No se pudo preparar el documento para AutoFirma.');
+        }
+        HANDWRITTEN_CONSENT_STATE.autofirmaTransactionToken = payload.token || '';
+        HANDWRITTEN_CONSENT_STATE.autofirmaSourceUrl = payload.source_url || '';
+        if (HANDWRITTEN_CONSENT_STATE.autofirmaSourceUrl) {
+            $('#handwritten-consent-document-frame').attr('src', HANDWRITTEN_CONSENT_STATE.autofirmaSourceUrl);
+        }
+        return true;
+    } catch (error) {
+        if (showErrors) {
+            showHandwrittenConsentError(error.message || 'No se pudo preparar la firma con AutoFirma.');
+        }
+        return false;
+    }
+}
+
+function autoFirmaClientReady() {
+    return typeof AUTOFIRMA_PATIENT_SIGNING_ENABLED !== 'undefined'
+        && AUTOFIRMA_PATIENT_SIGNING_ENABLED
+        && typeof window.AutoScript !== 'undefined';
+}
+
+async function parsePatientConsentAutoFirmaCertificate(certificateBase64) {
+    const body = new FormData();
+    body.append('certificate', certificateBase64);
+    const response = await fetch('api/appointments.php?action=patient_portal_autofirma_certificate', {
+        method: 'POST',
+        body,
+        credentials: 'same-origin'
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.success) {
+        throw new Error(payload.error || 'No se pudo leer el certificado seleccionado.');
+    }
+    return payload.certificate || {};
+}
+
+function normalizeConsentSignerNif(value) {
+    return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+function patientEditorIsMinor() {
+    const birthDate = String($('#patient-editor-birth-date').val() || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) return false;
+    const birth = new Date(`${birthDate}T00:00:00`);
+    if (Number.isNaN(birth.getTime())) return false;
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDifference = today.getMonth() - birth.getMonth();
+    if (monthDifference < 0 || (monthDifference === 0 && today.getDate() < birth.getDate())) age -= 1;
+    return age < 18;
+}
+
+function expectedConsentSigner(patientPortal) {
+    if (patientPortal) {
+        return {
+            name: CURRENT_PATIENT_PORTAL.consent_signer_name || CURRENT_PATIENT_PORTAL.patient_name || '',
+            nif: CURRENT_PATIENT_PORTAL.consent_signer_nif || CURRENT_PATIENT_PORTAL.patient_nif || '',
+            isMinor: CURRENT_PATIENT_PORTAL.consent_signer_is_minor === true
+        };
+    }
+    const isMinor = patientEditorIsMinor();
+    return {
+        name: isMinor ? ($('#patient-editor-emergency-name').val() || '') : ($('#patient-editor-name').val() || ''),
+        nif: isMinor ? ($('#patient-editor-emergency-nif').val() || '') : ($('#patient-editor-fiscal-nif').val() || ''),
+        isMinor
+    };
+}
+
+function validateAutoFirmaConsentCertificate(info) {
+    const expected = HANDWRITTEN_CONSENT_STATE.expectedSigner || {};
+    const expectedNif = normalizeConsentSignerNif(expected.nif);
+    const certificateNif = normalizeConsentSignerNif(info && info.nif);
+    if (expectedNif && !certificateNif) {
+        throw new Error('El certificado no incluye un NIF que permita comprobar la identidad del firmante.');
+    }
+    if (expectedNif && certificateNif !== expectedNif) {
+        throw new Error(expected.isMinor
+            ? 'El NIF del certificado no coincide con el NIF del tutor indicado en la ficha.'
+            : 'El NIF del certificado no coincide con el NIF del paciente indicado en la ficha.');
+    }
+}
+
+function selectPatientConsentAutoFirmaCertificate() {
+    if (HANDWRITTEN_CONSENT_STATE.autofirmaCertificate && HANDWRITTEN_CONSENT_STATE.autofirmaCertificateInfo) {
+        return Promise.resolve(true);
+    }
+    if (!autoFirmaClientReady()) {
+        showHandwrittenConsentError('No se pudo cargar AutoFirma. Comprueba que la integración está habilitada.');
+        return Promise.resolve(false);
+    }
+
+    setAutoFirmaStatus('#autofirma-certificate-selection', 'Abriendo AutoFirma para seleccionar el certificado...', 'info');
+    return preparePatientConsentAutoFirmaTransaction(true).then(prepared => {
+        if (!prepared) return false;
+        return new Promise(resolve => {
+            try {
+                AutoScript.setLocale('es_ES');
+                AutoScript.setAppName('SimplyGest Praxis');
+                AutoScript.setStickySignatory(true);
+                AutoScript.cargarAppAfirma();
+                AutoScript.selectCertificate(
+                    '',
+                    async function (certificate) {
+                        try {
+                            const normalized = normalizeAutoFirmaBase64(certificate);
+                            const info = await parsePatientConsentAutoFirmaCertificate(normalized);
+                            validateAutoFirmaConsentCertificate(info);
+                            HANDWRITTEN_CONSENT_STATE.autofirmaCertificate = normalized;
+                            HANDWRITTEN_CONSENT_STATE.autofirmaCertificateInfo = info;
+                            if (info.name && !$('#handwritten-consent-signer-name').val().trim()) {
+                                $('#handwritten-consent-signer-name').val(info.name).prop('readonly', true);
+                            }
+                            if (info.nif && !$('#handwritten-consent-signer-nif').val().trim()) {
+                                $('#handwritten-consent-signer-nif').val(info.nif).prop('readonly', true);
+                            }
+                            const identity = info.nif ? `${info.name || info.common_name || 'Certificado'} (${info.nif})` : (info.name || info.common_name || 'Certificado seleccionado');
+                            setAutoFirmaStatus('#autofirma-certificate-selection', `Certificado seleccionado: ${identity}`, 'success');
+                            resolve(true);
+                        } catch (error) {
+                            setAutoFirmaStatus('#autofirma-certificate-selection', error.message || 'No se pudo leer el certificado.', 'danger');
+                            resolve(false);
+                        }
+                    },
+                    function (errorType, errorMessage, errorCode) {
+                        const detail = [errorMessage, errorCode].filter(Boolean).join(' ');
+                        setAutoFirmaStatus('#autofirma-certificate-selection', detail || 'No se pudo seleccionar el certificado.', 'danger');
+                        resolve(false);
+                    }
+                );
+            } catch (error) {
+                setAutoFirmaStatus('#autofirma-certificate-selection', error.message || 'No se pudo abrir AutoFirma.', 'danger');
+                resolve(false);
+            }
+        });
+    });
+}
+
+async function startPatientConsentAutoFirmaSignature() {
+    const $button = $('#btn-sign-consent-autofirma');
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Abriendo AutoFirma...');
+    setAutoFirmaStatus('#autofirma-sign-status', 'Preparando el PDF para firmar...', 'info');
+    try {
+        if (!HANDWRITTEN_CONSENT_STATE.autofirmaCertificate) {
+            const selected = await selectPatientConsentAutoFirmaCertificate();
+            if (!selected) return;
+        }
+        const prepared = await preparePatientConsentAutoFirmaTransaction(true);
+        if (!prepared) return;
+        const pdfResponse = await fetch(HANDWRITTEN_CONSENT_STATE.autofirmaSourceUrl, {
+            credentials: 'same-origin',
+            cache: 'no-store'
+        });
+        if (!pdfResponse.ok) {
+            throw new Error('No se pudo recuperar el PDF exacto que se va a firmar.');
+        }
+        const pdfBase64 = arrayBufferToAutoFirmaBase64(await pdfResponse.arrayBuffer());
+        await new Promise((resolve, reject) => {
+            AutoScript.sign(
+                pdfBase64,
+                'SHA256withRSA',
+                'PAdES',
+                'mode=implicit\nheadless=false\nallowSignFormatUpgrade=true',
+                async function (signature, certificate) {
+                    try {
+                        const normalizedCertificate = normalizeAutoFirmaBase64(certificate);
+                        const info = await parsePatientConsentAutoFirmaCertificate(normalizedCertificate);
+                        validateAutoFirmaConsentCertificate(info);
+                        HANDWRITTEN_CONSENT_STATE.autofirmaSignedPdf = normalizeAutoFirmaBase64(signature);
+                        HANDWRITTEN_CONSENT_STATE.autofirmaCertificate = normalizedCertificate;
+                        HANDWRITTEN_CONSENT_STATE.autofirmaCertificateInfo = info;
+                        if (info.name && !$('#handwritten-consent-signer-name').val().trim()) $('#handwritten-consent-signer-name').val(info.name).prop('readonly', true);
+                        if (info.nif && !$('#handwritten-consent-signer-nif').val().trim()) $('#handwritten-consent-signer-nif').val(info.nif).prop('readonly', true);
+                        setAutoFirmaStatus('#autofirma-sign-status', 'Documento firmado correctamente. Ya puedes continuar.', 'success');
+                        $('#btn-handwritten-consent-next').prop('disabled', false);
+                        resolve();
+                    } catch (error) {
+                        reject(error);
+                    }
+                },
+                function (errorType, errorMessage, errorCode) {
+                    reject(new Error([errorMessage, errorCode].filter(Boolean).join(' ') || 'AutoFirma no pudo completar la firma.'));
+                }
+            );
+        });
+    } catch (error) {
+        setAutoFirmaStatus('#autofirma-sign-status', error.message || 'No se pudo completar la firma con AutoFirma.', 'danger');
+    } finally {
+        $button.prop('disabled', false).html(original);
+    }
+}
+
+function renderAutoFirmaCertificateSummary() {
+    const info = HANDWRITTEN_CONSENT_STATE.autofirmaCertificateInfo || {};
+    const rows = [
+        ['Titular', info.name || info.common_name || info.organization || ''],
+        ['NIF / NIE', info.nif || 'No incluido en el certificado'],
+        ['Emisor', info.issuer || ''],
+        ['Válido desde', info.valid_from || ''],
+        ['Válido hasta', info.valid_to || ''],
+        ['Huella SHA-256', info.fingerprint_sha256 || '']
+    ];
+    const container = document.getElementById('autofirma-summary-certificate');
+    if (!container) return;
+    container.replaceChildren();
+    rows.forEach(row => {
+        const dt = document.createElement('dt');
+        const dd = document.createElement('dd');
+        dt.textContent = row[0];
+        dd.textContent = row[1] || '-';
+        container.appendChild(dt);
+        container.appendChild(dd);
+    });
+}
+
+function openHandwrittenConsentWizard(legalDocument, patientPortal = false) {
+    const patientId = patientPortal ? 1 : (CURRENT_PATIENT_LEGAL_DOCUMENTS_ID || parseInt($('#patient-editor-id').val() || '0', 10));
+    if (!patientId || !legalDocument) return;
+    const expectedSigner = expectedConsentSigner(patientPortal);
+    HANDWRITTEN_CONSENT_STATE = {
+        step: 1,
+        document: legalDocument,
+        hasStroke: false,
+        drawing: false,
+        patientPortal,
+        method: 'handwritten',
+        autofirmaCertificate: '',
+        autofirmaCertificateInfo: null,
+        autofirmaSignedPdf: '',
+        autofirmaTransactionToken: '',
+        autofirmaSourceUrl: '',
+        expectedSigner
+    };
+    $('#handwritten-consent-alert').addClass('d-none').text('');
+    $('#handwritten-consent-patient-id').val(patientId);
+    $('#handwritten-consent-document-id').val(parseInt(legalDocument.legal_document_id || 0, 10));
+    $('#handwritten-consent-subtitle').text(legalDocument.title || 'Lectura y firma del consentimiento');
+    const templateUrl = legalDocument.template_url || '';
+    const inlineTemplateUrl = templateUrl
+        ? `${templateUrl}${templateUrl.includes('?') ? '&' : '?'}inline=1`
+        : 'about:blank';
+    $('#handwritten-consent-document-frame').attr('src', inlineTemplateUrl);
+    $('#handwritten-consent-read').prop('checked', false);
+    const patientName = patientPortal ? (CURRENT_PATIENT_PORTAL.patient_name || '') : ($('#patient-editor-name').val() || '');
+    $('#handwrittenConsentModal .modal-title').text(patientPortal ? 'Firma online' : 'Firma presencial');
+    $('#handwritten-consent-signer-name').val(expectedSigner.name || '').prop('readonly', !!expectedSigner.name);
+    $('#handwritten-consent-signer-nif').val(expectedSigner.nif || '').prop('readonly', !!expectedSigner.nif);
+    $('#handwritten-summary-patient').text(patientName);
+    $('#handwritten-summary-document').text(legalDocument.title || 'Documento legal');
+    $('#handwritten-summary-signer').text('');
+    $('#handwritten-summary-signature').attr('src', '');
+    $('#handwritten-summary-method').text(patientPortal ? 'Firma manuscrita online' : 'Firma manuscrita presencial');
+    $('#handwritten-summary-signature-wrap').removeClass('d-none');
+    $('#autofirma-summary-certificate-wrap').addClass('d-none');
+    $('#autofirma-summary-certificate').empty();
+    $('#autofirma-certificate-selection').addClass('d-none').text('');
+    setAutoFirmaStatus('#autofirma-sign-status', 'Preparado para firmar el documento.', 'secondary');
+    $('#consent-sign-method-handwritten').prop('checked', true);
+    $('.consent-sign-method').removeClass('active');
+    $('#consent-sign-method-handwritten').closest('.consent-sign-method').addClass('active');
+    setupHandwrittenConsentCanvas();
+    showHandwrittenConsentStep(1);
+    const modalElement = document.getElementById('handwrittenConsentModal');
+    if (!modalElement || !window.bootstrap || !bootstrap.Modal) return;
+    handwrittenConsentModal = bootstrap.Modal.getOrCreateInstance(modalElement);
+    handwrittenConsentModal.show();
+    if (patientPortal && autoFirmaClientReady()) {
+        preparePatientConsentAutoFirmaTransaction(false);
+    }
+}
+
+function showHandwrittenConsentStep(step) {
+    const patientPortal = HANDWRITTEN_CONSENT_STATE.patientPortal === true;
+    const signatureStep = patientPortal ? 4 : 3;
+    const summaryStep = patientPortal ? 5 : 4;
+    step = Math.max(1, Math.min(summaryStep, parseInt(step || 1, 10)));
+    HANDWRITTEN_CONSENT_STATE.step = step;
+    $('.handwritten-consent-step').addClass('d-none').filter(`[data-step="${step}"]`).removeClass('d-none');
+    $('.consent-wizard-step').each(function () {
+        const itemStep = parseInt($(this).data('step') || '0', 10);
+        $(this).toggleClass('active', itemStep === step).toggleClass('completed', itemStep < step);
+    });
+    $('#btn-handwritten-consent-previous').toggleClass('d-none', step === 1);
+    $('#btn-handwritten-consent-next').toggleClass('d-none', step === summaryStep);
+    $('#btn-handwritten-consent-finish').toggleClass('d-none', step !== summaryStep);
+    $('#handwritten-consent-alert').addClass('d-none').text('');
+    if (step === signatureStep) {
+        const useAutoFirma = patientPortal && HANDWRITTEN_CONSENT_STATE.method === 'autofirma';
+        $('#handwritten-consent-signature-panel').toggleClass('d-none', useAutoFirma);
+        $('#autofirma-consent-signature-panel').toggleClass('d-none', !useAutoFirma);
+        $('#btn-handwritten-consent-next').prop('disabled', useAutoFirma && !HANDWRITTEN_CONSENT_STATE.autofirmaSignedPdf);
+        if (!useAutoFirma) {
+            window.setTimeout(() => resizeHandwrittenConsentCanvas(HANDWRITTEN_CONSENT_STATE.hasStroke), 50);
+        }
+    } else {
+        $('#btn-handwritten-consent-next').prop('disabled', false);
+    }
+    if (step === summaryStep) {
+        const signerName = $('#handwritten-consent-signer-name').val().trim();
+        const signerNif = $('#handwritten-consent-signer-nif').val().trim();
+        const useAutoFirma = patientPortal && HANDWRITTEN_CONSENT_STATE.method === 'autofirma';
+        $('#handwritten-summary-signer').text(signerNif ? `${signerName} (${signerNif})` : signerName);
+        $('#handwritten-summary-method').text(useAutoFirma ? 'Certificado digital mediante AutoFirma' : (patientPortal ? 'Firma manuscrita online' : 'Firma manuscrita presencial'));
+        $('#handwritten-summary-signature-wrap').toggleClass('d-none', useAutoFirma);
+        $('#autofirma-summary-certificate-wrap').toggleClass('d-none', !useAutoFirma);
+        if (useAutoFirma) {
+            renderAutoFirmaCertificateSummary();
+        } else {
+            $('#handwritten-summary-signature').attr('src', handwrittenConsentCanvas().toDataURL('image/png'));
+        }
+    }
+}
+
+function showHandwrittenConsentError(message) {
+    $('#handwritten-consent-alert')
+        .removeClass('d-none alert-success alert-warning alert-info')
+        .addClass('alert-danger')
+        .text(message || 'Revisa los datos antes de continuar.');
+}
+
+async function advanceHandwrittenConsentWizard() {
+    const step = HANDWRITTEN_CONSENT_STATE.step;
+    const patientPortal = HANDWRITTEN_CONSENT_STATE.patientPortal === true;
+    const identityStep = patientPortal ? 3 : 2;
+    const signatureStep = patientPortal ? 4 : 3;
+    if (step === 1 && !$('#handwritten-consent-read').is(':checked')) {
+        showHandwrittenConsentError('Debes confirmar que has leído el documento antes de continuar.');
+        return;
+    }
+    if (patientPortal && step === 2 && HANDWRITTEN_CONSENT_STATE.method === 'autofirma') {
+        const selected = await selectPatientConsentAutoFirmaCertificate();
+        if (!selected) return;
+    }
+    if (step === identityStep && !$('#handwritten-consent-signer-name').val().trim()) {
+        showHandwrittenConsentError(HANDWRITTEN_CONSENT_STATE.expectedSigner && HANDWRITTEN_CONSENT_STATE.expectedSigner.isMinor
+            ? 'El paciente es menor. Indica el nombre del tutor en la ficha del paciente antes de firmar.'
+            : 'Indica el nombre y apellidos de la persona que firma.');
+        return;
+    }
+    if (step === identityStep && HANDWRITTEN_CONSENT_STATE.expectedSigner && HANDWRITTEN_CONSENT_STATE.expectedSigner.isMinor && !$('#handwritten-consent-signer-nif').val().trim()) {
+        showHandwrittenConsentError('El paciente es menor. Indica el NIF del tutor en la ficha del paciente antes de firmar.');
+        return;
+    }
+    if (step === signatureStep && HANDWRITTEN_CONSENT_STATE.method === 'handwritten' && !HANDWRITTEN_CONSENT_STATE.hasStroke) {
+        showHandwrittenConsentError('La firma está vacía. Firma dentro del recuadro antes de continuar.');
+        return;
+    }
+    if (step === signatureStep && HANDWRITTEN_CONSENT_STATE.method === 'autofirma' && !HANDWRITTEN_CONSENT_STATE.autofirmaSignedPdf) {
+        showHandwrittenConsentError('Firma el documento con AutoFirma antes de continuar.');
+        return;
+    }
+    showHandwrittenConsentStep(step + 1);
+}
+
+function finishHandwrittenConsent() {
+    const patientPortal = HANDWRITTEN_CONSENT_STATE.patientPortal === true;
+    const useAutoFirma = patientPortal && HANDWRITTEN_CONSENT_STATE.method === 'autofirma';
+    if (!useAutoFirma && !HANDWRITTEN_CONSENT_STATE.hasStroke) {
+        showHandwrittenConsentError('La firma está vacía.');
+        return;
+    }
+    if (useAutoFirma && (!HANDWRITTEN_CONSENT_STATE.autofirmaSignedPdf || !HANDWRITTEN_CONSENT_STATE.autofirmaCertificate)) {
+        showHandwrittenConsentError('No se ha recibido el PDF firmado por AutoFirma.');
+        return;
+    }
+    const $button = $('#btn-handwritten-consent-finish');
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Firmando...');
+    const requestData = {
+        patient_id: parseInt($('#handwritten-consent-patient-id').val() || '0', 10),
+        legal_document_id: parseInt($('#handwritten-consent-document-id').val() || '0', 10),
+        signer_name: $('#handwritten-consent-signer-name').val().trim(),
+        signer_nif: $('#handwritten-consent-signer-nif').val().trim()
+    };
+    if (useAutoFirma) {
+        requestData.signed_pdf = HANDWRITTEN_CONSENT_STATE.autofirmaSignedPdf;
+        requestData.certificate = HANDWRITTEN_CONSENT_STATE.autofirmaCertificate;
+        requestData.transaction_token = HANDWRITTEN_CONSENT_STATE.autofirmaTransactionToken;
+    } else {
+        requestData.signature_data = handwrittenConsentCanvas().toDataURL('image/png');
+    }
+    $.ajax({
+        url: useAutoFirma
+            ? 'api/appointments.php?action=patient_portal_sign_legal_document_autofirma'
+            : (patientPortal
+                ? 'api/appointments.php?action=patient_portal_sign_legal_document'
+                : 'api/admin.php?action=sign_patient_legal_document_handwritten'),
+        method: 'POST',
+        dataType: 'json',
+        data: requestData,
+        success: function (res) {
+            if (!res.success) {
+                showHandwrittenConsentError(res.error || 'No se pudo firmar el consentimiento.');
+                return;
+            }
+            if (handwrittenConsentModal) handwrittenConsentModal.hide();
+            if (patientPortal) {
+                loadPatientPortalSummary();
+            } else {
+                showPatientLegalDocumentsAlert('success', res.message || 'Consentimiento firmado correctamente.');
+                loadPatientLegalDocuments(CURRENT_PATIENT_LEGAL_DOCUMENTS_ID);
+                loadPatients();
+                if (dashboardPatientsLoaded) loadDashboardPatients(false);
+            }
+        },
+        error: function () {
+            showHandwrittenConsentError('Error de conexión al firmar el consentimiento.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
         }
     });
 }
@@ -11056,6 +15248,7 @@ function patientEditorSnapshot(patientId) {
         patient_type: $('#patient-editor-type').val() || '',
         fiscal_name: $('#patient-editor-fiscal-name').val() || '',
         fiscal_nif: $('#patient-editor-fiscal-nif').val() || '',
+        invoice_tax_exempt: $('#patient-editor-invoice-tax-exempt').is(':checked') ? 1 : 0,
         invoice_use_alt_data: $('#patient-editor-invoice-use-alt-data').is(':checked') ? 1 : 0,
         invoice_name: $('#patient-editor-invoice-name').val() || '',
         invoice_nif: $('#patient-editor-invoice-nif').val() || '',
@@ -11069,11 +15262,15 @@ function patientEditorSnapshot(patientId) {
         address: $('#patient-editor-address').val() || '',
         knowledge_problem_id: parseInt($('#patient-editor-knowledge-problem').val() || 0, 10),
         emergency_contact_name: $('#patient-editor-emergency-name').val() || '',
+        emergency_contact_nif: $('#patient-editor-emergency-nif').val() || '',
         emergency_contact_phone: $('#patient-editor-emergency-phone').val() || '',
         emergency_contact_relation: $('#patient-editor-emergency-relation').val() || '',
         initial_consultation_reason: $('#patient-editor-initial-reason').val() || '',
         background_notes: $('#patient-editor-background').val() || '',
         support_network_notes: $('#patient-editor-support-network').val() || '',
+        smoker: $('#patient-editor-smoker').is(':checked') ? 1 : 0,
+        alcohol_consumption: $('#patient-editor-alcohol-consumption').val() || '',
+        preferred_service_option_id: parseInt($('#patient-editor-preferred-service-option').val() || 0, 10),
         email: $('#patient-editor-email').val() || '',
         phone: $('#patient-editor-phone').val() || '',
         admission_date: $('#patient-editor-admission-date').val() || '',
@@ -11161,6 +15358,33 @@ function savePatient(form) {
                 $('.btn-patient-report').prop('disabled', false);
                 loadPatientAppointmentHistory(res.patient_id);
             }
+            PENDING_POST_CREATE_PATIENT_INVITE = !isExistingPatient && res.offer_portal_invite == 1
+                ? {
+                    patientId: parseInt(res.patient_id || 0, 10),
+                    name: res.patient_name || formData.get('name') || '',
+                    email: res.patient_email || formData.get('email') || ''
+                }
+                : null;
+            if (PENDING_POST_CREATE_PATIENT_INVITE && patientEditorModal) {
+                $('#patientEditorModal').one('hidden.bs.modal', function () {
+                    const invitation = PENDING_POST_CREATE_PATIENT_INVITE;
+                    PENDING_POST_CREATE_PATIENT_INVITE = null;
+                    if (!invitation || !postCreatePatientInviteModal) return;
+                    const showPostCreateInvite = function () {
+                        $('#post-create-patient-invite-alert').addClass('d-none').text('');
+                        $('#post-create-patient-invite-name').text(invitation.name);
+                        $('#post-create-patient-invite-email').text(invitation.email);
+                        $('#btn-send-post-create-patient-invite').data('patient-id', invitation.patientId);
+                        postCreatePatientInviteModal.show();
+                    };
+                    if ($('#adminPatientsModal').hasClass('show') && adminPatientsModal) {
+                        $('#adminPatientsModal').one('hidden.bs.modal', showPostCreateInvite);
+                        adminPatientsModal.hide();
+                    } else {
+                        showPostCreateInvite();
+                    }
+                });
+            }
             patientEditorModal.hide();
             loadAdminPatients();
             dashboardPatientsLoaded = false;
@@ -11179,8 +15403,52 @@ function savePatient(form) {
     });
 }
 
+$(document).on('click', '#btn-send-post-create-patient-invite', function () {
+    const patientId = parseInt($(this).data('patient-id') || 0, 10);
+    if (!patientId) return;
+    const $button = $(this);
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Enviando...');
+    $('#post-create-patient-invite-alert').addClass('d-none').text('');
+
+    $.ajax({
+        url: 'api/admin.php?action=send_patient_invite',
+        method: 'POST',
+        dataType: 'json',
+        data: { patient_id: patientId },
+        success: function (res) {
+            if (!res.success) {
+                $('#post-create-patient-invite-alert')
+                    .removeClass('d-none alert-success')
+                    .addClass('alert-danger')
+                    .text(res.error || 'No se pudo enviar la invitación.');
+                return;
+            }
+            if (postCreatePatientInviteModal) {
+                postCreatePatientInviteModal.hide();
+            }
+            showAdminPatientsAlert('success', res.message || 'Invitación enviada correctamente.');
+            loadAdminPatients();
+            dashboardPatientsLoaded = false;
+            if (currentCalendarView === 'patients') {
+                loadDashboardPatients();
+            }
+        },
+        error: function () {
+            $('#post-create-patient-invite-alert')
+                .removeClass('d-none alert-success')
+                .addClass('alert-danger')
+                .text('Error de conexión al enviar la invitación.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
+});
+
 function openPatientInviteModal(patientId, button) {
-    const patient = ADMIN_PATIENTS.find(item => String(item.id) === String(patientId));
+    const patient = [...DASHBOARD_PATIENTS, ...ADMIN_PATIENTS]
+        .find(item => String(item.id) === String(patientId));
     const $button = $(button);
     const original = $button.html();
     $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
@@ -11192,19 +15460,29 @@ function openPatientInviteModal(patientId, button) {
         data: { user_id: patientId },
         success: function (res) {
             if (res.success) {
-                if (adminPatientsModal) {
-                    adminPatientsModal.hide();
+                const parentModalElement = [
+                    document.getElementById('patientEditorModal'),
+                    document.getElementById('adminPatientsModal')
+                ].find(element => element && element.classList.contains('show'));
+                const showInvite = function () {
+                    openInviteModal(res.link, res.token || '', patient ? patient.email || '' : '');
+                    showInviteAlert('success', patient && patient.name
+                        ? `Enviar invitación a ${patient.name}.`
+                        : `Enviar invitación al ${sectorLabel('patient', 'singular', 'paciente')}.`);
+                };
+
+                if (parentModalElement) {
+                    parentModalElement.addEventListener('hidden.bs.modal', showInvite, { once: true });
+                    bootstrap.Modal.getOrCreateInstance(parentModalElement).hide();
+                } else {
+                    showInvite();
                 }
-                openInviteModal(res.link, res.token || '', patient ? patient.email || '' : '');
-                showInviteAlert('success', patient && patient.name
-                    ? `Enviar invitacion a ${patient.name}.`
-                    : `Enviar invitacion al ${sectorLabel('patient', 'singular', 'paciente')}.`);
             } else {
-                showAdminPatientsAlert('danger', res.error || 'No se pudo generar la invitacion.');
+                showAdminPatientsAlert('danger', res.error || 'No se pudo generar la invitación.');
             }
         },
         error: function () {
-            showAdminPatientsAlert('danger', 'Error de conexion al generar la invitacion.');
+            showAdminPatientsAlert('danger', 'Error de conexión al generar la invitación.');
         },
         complete: function () {
             $button.prop('disabled', false).html(original);
@@ -11466,7 +15744,9 @@ function loadBookingContextForProfessional(professionalId) {
                     PAYMENT_SETTINGS = { ...PAYMENT_SETTINGS, ...res.payment_settings };
                 }
                 ACTIVE_SERVICE_OPTIONS = Array.isArray(res.service_options) ? res.service_options : [];
-                CURRENT_BOOKING_CONSULTATION_TYPE = '';
+                CURRENT_BOOKING_CONSULTATION_TYPE = QUICK_BOOKING_MODAL_CONTEXT
+                    ? (QUICK_BOOKING_MODAL_CONTEXT.consultationType || '')
+                    : '';
                 renderBookingServiceOptions();
                 refreshBookingBonusNotice();
             } else {
@@ -11500,8 +15780,8 @@ function showAdminPatientsAlert(type, message) {
 
 function showPatientEditorAlert(type, message) {
     $('#patient-editor-alert')
-        .removeClass('d-none alert-success alert-danger')
-        .addClass(type === 'success' ? 'alert-success' : 'alert-danger')
+        .removeClass('d-none alert-success alert-warning alert-danger')
+        .addClass(type === 'success' ? 'alert-success' : (type === 'warning' ? 'alert-warning' : 'alert-danger'))
         .text(message);
 }
 
@@ -12118,6 +16398,11 @@ function renderAppointmentPaymentSummary(app = {}) {
         : 'Pendiente de pago';
     const statusClass = app.payment_status === 'paid' ? 'appointment-payment-status-paid' : 'appointment-payment-status-pending';
     const attendanceBadge = appointmentStatusLabel(app.status || 'booked');
+    const confirmationBadge = app.status === 'booked'
+        ? (app.patient_confirmed_at
+            ? '<span class="badge text-bg-success" title="Confirmada voluntariamente por el paciente">Confirmada por el paciente</span>'
+            : '<span class="badge text-bg-warning" title="El paciente no ha confirmado la asistencia">Sin confirmar por el paciente</span>')
+        : '';
     return `
         <div class="appointment-payment-card">
             <div class="appointment-payment-main">
@@ -12129,6 +16414,7 @@ function renderAppointmentPaymentSummary(app = {}) {
                 <div class="d-flex flex-column align-items-end gap-1">
                     <span class="appointment-payment-status ${statusClass}">${escapeHtml(paidText)}</span>
                     ${attendanceBadge}
+                    ${confirmationBadge}
                 </div>
             </div>
             <div class="appointment-payment-grid mt-3">
@@ -12247,7 +16533,7 @@ function renderAppointmentModalitySessionCard(app = {}) {
             <div class="appointment-online-link-wrap mt-3">
                 ${usesLivekit ? `
                     <div class="alert alert-light border mb-0">
-                        <i class="bi bi-camera-video me-1"></i> Esta cita usará una sala privada de LiveKit. El acceso se genera automáticamente para cada participante.
+                        <i class="bi bi-camera-video me-1"></i> Esta cita usar&aacute; una sala privada de ${app.video_provider === 'daily' ? 'Daily' : 'LiveKit'}. El acceso se genera autom&aacute;ticamente para cada participante.
                     </div>
                 ` : `
                     <label class="form-label" for="appointment-online-session-url" id="appointment-online-session-label">${fieldLabel}</label>
@@ -12260,7 +16546,7 @@ function renderAppointmentModalitySessionCard(app = {}) {
                     <div class="form-text ${isOnline ? 'd-none' : ''}" id="appointment-online-session-help">Si se deja en blanco, se entiende que la sesi&oacute;n/cita es en el centro de trabajo.</div>
                 `}
                 <div class="d-flex gap-2 flex-wrap mt-2 appointment-location-actions">
-                    ${usesLivekit ? `<a class="btn btn-outline-primary" href="livekit_call.php?appointment_id=${parseInt(app.id || 0, 10)}" target="_blank" rel="noopener"><i class="bi bi-camera-video"></i> Abrir videollamada</a>` : ''}
+                    ${usesLivekit ? `<button class="btn btn-outline-primary btn-open-integrated-video-call" type="button" data-call-url="video_call.php?appointment_id=${parseInt(app.id || 0, 10)}" data-appointment-id="${parseInt(app.id || 0, 10)}" data-default-label="Abrir videollamada"><i class="bi bi-camera-video"></i> ${integratedVideoCallIsOpen(app.id) ? 'Volver a videollamada' : 'Abrir videollamada'}</button>` : ''}
                     ${usesLivekit ? `<button class="btn btn-outline-secondary" type="button" id="btn-regenerate-appointment-livekit-link"><i class="bi bi-arrow-clockwise"></i> Regenerar enlace</button>` : ''}
                     <button class="btn btn-outline-primary ${isOnline ? '' : 'd-none'}" type="button" id="btn-send-appointment-online-link" ${isOnline && (usesLivekit || locationValue) ? '' : 'disabled'}>
                         <i class="bi bi-send"></i> Enviar al ${escapeHtml(sectorLabel('patient', 'singular', 'paciente'))}
@@ -12352,6 +16638,7 @@ function parseAppointmentDateTime(dateStr, timeStr) {
 
 function renderAppointmentSession(app = CURRENT_APPOINTMENT_PAYMENT_DETAIL) {
     const patientSingular = sectorLabel('patient', 'singular', 'paciente');
+    const knowledgeEnabled = knowledgeBaseEnabled();
     $('#appointment-session-content').html(`
         <div class="row g-3">
             <div class="col-lg-5">
@@ -12454,6 +16741,21 @@ function renderAppointmentSessionTasks(tasks) {
     return rows.map(task => {
         const completed = task.status === 'completed';
         const priority = workPlanPriorityLabel(task.priority);
+        const attachmentName = task.attachment_original_name || '';
+        const documentId = parseInt(task.document_id || 0, 10);
+        const attachment = documentId
+            ? `<button type="button" class="btn btn-link btn-sm p-0 text-start btn-show-task-file"
+                       data-document-id="${documentId}" title="Ver el archivo asociado en la pestaña Archivos">
+                    <i class="bi bi-paperclip me-1"></i>
+                    ${escapeHtml(attachmentName || 'Archivo asociado')} · Ver en Archivos
+               </button>`
+            : '';
+        const editAttachmentButton = parseInt(task.can_edit_docx || 0, 10) === 1
+            ? `<button class="btn btn-outline-primary btn-sm btn-open-task-docx-editor" type="button"
+                        data-source="appointment" data-patient-id="${task.patient_id || 0}" data-appointment-id="${task.appointment_id || 0}"
+                        data-document-id="${task.document_id || 0}" data-title="${escapeHtml(attachmentName || task.title || 'Documento')}"
+                        title="Editar documento DOCX"><i class="bi bi-file-earmark-word"></i></button>`
+            : '';
         return `
             <div class="appointment-session-item ${completed ? 'is-completed' : ''}">
                 <div class="d-flex justify-content-between gap-2">
@@ -12862,6 +17164,7 @@ function deleteAppointmentSessionTask(button) {
 
 function renderAppointmentSession(app = CURRENT_APPOINTMENT_PAYMENT_DETAIL) {
     const patientSingular = sectorLabel('patient', 'singular', 'paciente');
+    const knowledgeEnabled = knowledgeBaseEnabled();
     $('#appointment-session-content').html(`
         <div class="row g-3">
             <div class="col-12">
@@ -12871,9 +17174,18 @@ function renderAppointmentSession(app = CURRENT_APPOINTMENT_PAYMENT_DETAIL) {
                             <h6>Tareas del ${escapeHtml(patientSingular)}</h6>
                             <p>Crea tareas o importa plantillas para trabajar esta sesi&oacute;n.</p>
                         </div>
-                        <button class="btn btn-outline-primary btn-sm" type="button" id="btn-show-appointment-session-work-plan-form">
-                            <i class="bi bi-list-check"></i> Crear o importar tareas
-                        </button>
+                        <div class="d-flex gap-2 flex-wrap justify-content-end">
+                            <button class="btn btn-outline-primary btn-sm" type="button" id="btn-show-appointment-session-work-plan-form">
+                                <i class="bi bi-plus-lg"></i> Crear tarea manualmente
+                            </button>
+                            <button class="btn btn-outline-primary btn-sm" type="button" id="btn-import-appointment-task-template">
+                                <i class="bi bi-collection"></i> Usar Mis Tareas
+                            </button>
+                            <button class="btn ${knowledgeEnabled ? 'btn-primary' : 'btn-secondary plan-locked'} btn-sm" type="button" id="btn-use-appointment-knowledge"
+                                ${knowledgeEnabled ? '' : 'disabled title="Disponible en los planes Magister y Summum"'}>
+                                <i class="bi ${knowledgeEnabled ? 'bi-lightbulb' : 'bi-lock-fill'}"></i> Usar base de conocimiento
+                            </button>
+                        </div>
                     </div>
                     <div id="appointment-session-tasks">${renderAppointmentSessionTasks(CURRENT_APPOINTMENT_SESSION.tasks)}</div>
                 </section>
@@ -12886,9 +17198,19 @@ function renderAppointmentSession(app = CURRENT_APPOINTMENT_PAYMENT_DETAIL) {
                 <div>
                     <h6>Notas y archivos de la sesi&oacute;n</h6>
                 </div>
-                <button class="btn btn-outline-primary btn-sm" type="button" id="btn-toggle-appointment-session-note">
-                    <i class="bi bi-journal-plus"></i> Nueva nota / archivo
-                </button>
+                <div class="d-flex gap-2 flex-wrap">
+                    ${planFeatureEnabled('documents.onlineEditor', false) ? `
+                    <button class="btn btn-outline-primary btn-sm" type="button" id="btn-create-appointment-docx">
+                        <i class="bi bi-file-earmark-plus"></i> Crear documento
+                    </button>` : ''}
+                    ${planFeatureEnabled('documents.drawingBoard', false) ? `
+                    <button class="btn btn-outline-primary btn-sm" type="button" id="btn-create-appointment-drawing">
+                        <i class="bi bi-brush"></i> Crear dibujo
+                    </button>` : ''}
+                    <button class="btn btn-outline-primary btn-sm" type="button" id="btn-toggle-appointment-session-note">
+                        <i class="bi bi-journal-plus"></i> Nueva nota / archivo
+                    </button>
+                </div>
             </div>
             <div id="appointment-session-activity">${renderAppointmentSessionActivity(CURRENT_APPOINTMENT_SESSION.notes, CURRENT_APPOINTMENT_SESSION.files)}</div>
         </section>
@@ -12905,6 +17227,21 @@ function renderAppointmentSessionTasks(tasks) {
     return rows.map(task => {
         const completed = task.status === 'completed';
         const priority = workPlanPriorityLabel(task.priority);
+        const attachmentName = task.attachment_original_name || '';
+        const documentId = parseInt(task.document_id || 0, 10);
+        const attachment = documentId
+            ? `<button type="button" class="btn btn-link btn-sm p-0 text-start btn-show-task-file"
+                       data-document-id="${documentId}" title="Ver el archivo asociado en la pestaña Archivos">
+                    <i class="bi bi-paperclip me-1"></i>
+                    ${escapeHtml(attachmentName || 'Archivo asociado')} · Ver en Archivos
+               </button>`
+            : '';
+        const editAttachmentButton = parseInt(task.can_edit_docx || 0, 10) === 1
+            ? `<button class="btn btn-outline-primary btn-sm btn-open-task-docx-editor" type="button"
+                        data-source="appointment" data-patient-id="${task.patient_id || 0}" data-appointment-id="${task.appointment_id || 0}"
+                        data-document-id="${task.document_id || 0}" data-title="${escapeHtml(attachmentName || task.title || 'Documento')}"
+                        title="Editar documento DOCX"><i class="bi bi-file-earmark-word"></i></button>`
+            : '';
         const statusBadge = statusEnabled
             ? (completed ? '<span class="badge text-bg-success">Completada</span>' : '<span class="badge text-bg-warning">Pendiente</span>')
             : '';
@@ -12918,10 +17255,12 @@ function renderAppointmentSessionTasks(tasks) {
                 <div class="appointment-session-task-main">
                     <strong>${escapeHtml(task.title || '')}</strong>
                     ${task.description ? `<span>${escapeHtml(task.description)}</span>` : ''}
+                    ${attachment}
                 </div>
                 <div class="appointment-session-task-side">
                     <span class="badge ${priority.className}">${priority.label}</span>
                     ${statusBadge}
+                    ${editAttachmentButton}
                     ${toggleButton}
                 </div>
             </div>
@@ -12949,20 +17288,85 @@ function renderAppointmentSessionActivity(notes, files) {
                         ${detail ? `<div class="small text-muted mt-1">${detail}</div>` : ''}
                     </div>
                     <div class="appointment-session-activity-actions">
-                        ${hasFiles && noteFiles[0] ? `<a class="btn btn-outline-primary btn-sm" href="${escapeHtml(noteFiles[0].url || '#')}" target="_blank" rel="noopener" title="Descargar"><i class="bi bi-download"></i></a>` : ''}
-                        <button class="btn btn-outline-danger btn-sm btn-delete-session-note" type="button" data-note-id="${note.id}" title="Eliminar nota">
-                            <i class="bi bi-trash"></i>
-                        </button>
+                        ${hasFiles && noteFiles[0] ? patientFilePortalButton('evolution_file', noteFiles[0].id, noteFiles[0].visible_to_patient) : ''}
+                        ${rowActionsDropdown(
+                            hasFiles && noteFiles[0]
+                                ? [`<li><a class="dropdown-item" href="${escapeHtml(noteFiles[0].url || '#')}" target="_blank" rel="noopener"><i class="bi bi-download me-2"></i>Descargar archivo</a></li>`]
+                                : [],
+                            [`<li><button class="dropdown-item text-danger btn-delete-session-note" type="button" data-note-id="${note.id}"><i class="bi bi-trash me-2"></i>Eliminar nota / archivo</button></li>`]
+                        )}
                     </div>
                 </div>
             `
         };
     });
+    (Array.isArray(files) ? files : [])
+        .filter(file => file.type === 'patient_document')
+        .forEach(file => {
+            const canEditDocx = parseInt(file.can_edit_docx || 0, 10) === 1;
+            const canEditDrawing = parseInt(file.can_edit_drawing || 0, 10) === 1;
+            const versionLine = parseInt(file.version_count || 0, 10) > 1
+                ? ` · ${parseInt(file.version_count, 10)} versiones`
+                : '';
+            const itemIcon = canEditDrawing ? 'bi-brush' : 'bi-file-earmark-text';
+            const fallbackFileName = canEditDrawing ? 'PNG' : 'DOCX';
+            items.push({
+                date: file.date || '',
+                html: `
+                    <div class="appointment-session-activity-item" data-document-id="${parseInt(file.id || 0, 10)}">
+                        <i class="bi ${itemIcon}"></i>
+                        <small class="appointment-session-activity-date">${file.date ? formatDateTimeLabel(file.date) : ''}</small>
+                        <div class="appointment-session-activity-body">
+                            <strong>${escapeHtml(file.name || 'Documento')}</strong>
+                            <div class="small text-muted mt-1">${escapeHtml(file.file_name || fallbackFileName)}${file.size ? ` · ${formatFileSize(file.size)}` : ''}${versionLine}</div>
+                        </div>
+                        <div class="appointment-session-activity-actions">
+                            ${patientFilePortalButton('patient_document', file.id, file.visible_to_patient)}
+                            ${rowActionsDropdown([
+                                file.url ? `<li><a class="dropdown-item" href="${escapeHtml(file.url)}" target="_blank" rel="noopener"><i class="bi bi-download me-2"></i>Descargar archivo</a></li>` : '',
+                                canEditDocx ? `<li><button class="dropdown-item btn-open-appointment-docx-editor" type="button" data-document-id="${parseInt(file.id || 0, 10)}"><i class="bi bi-file-earmark-word me-2"></i>Editar DOCX</button></li>` : '',
+                                canEditDrawing ? `<li><button class="dropdown-item btn-open-appointment-drawing-editor" type="button" data-document-id="${parseInt(file.id || 0, 10)}"><i class="bi bi-brush me-2"></i>Editar dibujo</button></li>` : ''
+                            ], [
+                                `<li><button class="dropdown-item text-danger btn-delete-appointment-document" type="button" data-document-id="${parseInt(file.id || 0, 10)}"><i class="bi bi-trash me-2"></i>Eliminar documento</button></li>`
+                            ])}
+                        </div>
+                    </div>
+                `
+            });
+        });
     if (!items.length) {
-        return '<div class="text-center text-muted py-3">No hay notas ni archivos vinculados a esta sesi&oacute;n.</div>';
+        return '<div class="text-center text-muted py-3">No hay notas ni archivos vinculados a esta sesión.</div>';
     }
     items.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
     return `<div class="appointment-session-activity-list">${items.map(item => item.html).join('')}</div>`;
+}
+
+function deleteAppointmentDocument(button) {
+    const $button = $(button);
+    const documentId = parseInt($button.data('document-id') || 0, 10);
+    if (!documentId || !confirm('¿Eliminar este documento de la sesión?')) return;
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+    $.ajax({
+        url: 'api/admin.php?action=delete_patient_document_file',
+        method: 'POST',
+        dataType: 'json',
+        data: { document_id: documentId },
+        success: function (res) {
+            if (!res.success) {
+                showAppointmentSessionAlert('danger', res.error || 'No se pudo eliminar el documento.');
+                return;
+            }
+            showAppointmentSessionAlert('success', res.message || 'Documento eliminado.');
+            loadAppointmentSession();
+        },
+        error: function () {
+            showAppointmentSessionAlert('danger', 'Error de conexión al eliminar el documento.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
+    });
 }
 
 function truncateText(value, maxLength = 120) {
@@ -13054,6 +17458,7 @@ function updateAppointmentOnlineDetails(consultationType, onlineUrl, button, suc
                 location_type: res.location_type || '',
                 online_session_url: res.online_session_url || '',
                 livekit_enabled: res.livekit_enabled === undefined ? app.livekit_enabled : res.livekit_enabled,
+                video_provider: res.video_provider || app.video_provider || 'livekit',
                 can_online_appointment: app.can_online_appointment,
                 can_presential_appointment: app.can_presential_appointment,
                 patient_address: app.patient_address || '',
@@ -13201,9 +17606,25 @@ function sendManualAppointmentReminder(button) {
             showAppointmentPaymentAlert('danger', 'Error de conexion al enviar el recordatorio.');
         },
         complete: function () {
-            $('.btn-send-manual-appointment-reminder').prop('disabled', false);
+            updateManualReminderOptions(CURRENT_APPOINTMENT_PAYMENT_DETAIL || {});
             $button.html(original);
         }
+    });
+}
+
+function updateManualReminderOptions(app = {}) {
+    $('.btn-send-manual-appointment-reminder').each(function () {
+        const $option = $(this);
+        const channel = String($option.data('channel') || '');
+        const configured = String($option.data('configured')) === '1';
+        const hasRecipient = channel === 'sms'
+            ? String(app.patient_phone || '').trim() !== ''
+            : String(app.patient_email || '').trim() !== '';
+        const enabled = configured && hasRecipient;
+        const missingText = !configured
+            ? (channel === 'sms' ? 'Configura primero el envío de SMS' : 'Configura primero el envío de emails')
+            : (channel === 'sms' ? 'El paciente no tiene teléfono guardado' : 'El paciente no tiene email guardado');
+        $option.prop('disabled', !enabled).attr('title', enabled ? '' : missingText);
     });
 }
 
@@ -13226,6 +17647,7 @@ function openAppointmentPaymentModal(appointmentId) {
     $('#btn-save-appointment-payment').removeClass('d-none').prop('disabled', true);
     $('#btn-cancel-appointment-from-detail').addClass('d-none').prop('disabled', true);
     $('#btn-open-patient-from-appointment-detail').addClass('d-none').prop('disabled', true);
+    $('#btn-book-another-appointment').addClass('d-none').prop('disabled', true);
     $('#appointment-reminder-dropdown').addClass('d-none');
     $('body').toggleClass('appointment-payment-secondary-modal-open', $('.modal.show').not('#appointmentPaymentModal').length > 0);
     appointmentPaymentModal.show();
@@ -13243,6 +17665,7 @@ function openAppointmentPaymentModal(appointmentId) {
             }
             const app = res.appointment || {};
             CURRENT_APPOINTMENT_PAYMENT_DETAIL = app;
+            updateManualReminderOptions(app);
             $('#appointment-payment-summary').html(renderAppointmentPaymentSummary(app));
             updateAppointmentSessionTabLabel(app);
             bootstrap.Tab.getOrCreateInstance(document.getElementById('appointment-detail-tab')).show();
@@ -13255,6 +17678,8 @@ function openAppointmentPaymentModal(appointmentId) {
             $('#btn-save-appointment-payment').toggleClass('d-none', locked).prop('disabled', locked);
             $('#btn-cancel-appointment-from-detail').toggleClass('d-none', app.status !== 'booked' || !memberCan('cancel_appointments')).prop('disabled', app.status !== 'booked' || !memberCan('cancel_appointments'));
             $('#btn-open-patient-from-appointment-detail').toggleClass('d-none', !app.patient_id).prop('disabled', !app.patient_id);
+            const canBookAnother = QUICK_PATIENT_BOOKING_ENABLED && memberCan('create_appointments') && !!app.patient_id;
+            $('#btn-book-another-appointment').toggleClass('d-none', !canBookAnother).prop('disabled', !canBookAnother);
             $('#appointment-reminder-dropdown').toggleClass('d-none', app.status !== 'booked');
             if (locked) {
                 showAppointmentPaymentAlert('warning', app.is_bonus_payment == 1
@@ -13268,6 +17693,7 @@ function openAppointmentPaymentModal(appointmentId) {
             $('#appointment-status-editor').addClass('d-none');
             $('#btn-cancel-appointment-from-detail').addClass('d-none').prop('disabled', true);
             $('#btn-open-patient-from-appointment-detail').addClass('d-none').prop('disabled', true);
+            $('#btn-book-another-appointment').addClass('d-none').prop('disabled', true);
         }
     });
 }
@@ -13373,7 +17799,7 @@ function showUpcomingAppointmentsAlert(type, message) {
 }
 
 function openInvoicesModal() {
-    if (!IS_ADMIN || PAYMENT_SETTINGS.billing_enabled != 1) return;
+    if (!IS_ADMIN || !memberCan('billing') || PAYMENT_SETTINGS.billing_enabled != 1) return;
     const modalElement = document.getElementById('invoicesModal');
     if (!modalElement || !window.bootstrap) return;
     invoicesModal = invoicesModal || bootstrap.Modal.getOrCreateInstance(modalElement);
@@ -13393,7 +17819,7 @@ function initializeInvoicesModalFilters() {
 function loadInvoicesList() {
     if (!IS_ADMIN) return;
     $('#invoices-modal-alert').addClass('d-none').removeClass('alert-danger').text('');
-    $('#invoices-list-body').html('<tr><td colspan="6" class="text-center text-muted py-4">Cargando facturas...</td></tr>');
+    $('#invoices-list-body').html('<tr><td colspan="7" class="text-center text-muted py-4">Cargando facturas...</td></tr>');
 
     $.ajax({
         url: 'api/admin.php?action=list_invoices',
@@ -13427,7 +17853,7 @@ function loadInvoicesList() {
 function renderInvoicesList(invoices) {
     const $body = $('#invoices-list-body');
     if (!invoices.length) {
-        $body.html('<tr><td colspan="6" class="text-center text-muted py-4">Todavia no hay facturas emitidas.</td></tr>');
+        $body.html('<tr><td colspan="7" class="text-center text-muted py-4">Todavia no hay facturas emitidas.</td></tr>');
         return;
     }
     $body.html(invoices.map(invoice => `
@@ -13436,14 +17862,63 @@ function renderInvoicesList(invoices) {
             <td>${escapeHtml(formatInvoiceDate(invoice.fecha || ''))}</td>
             <td>
                 <div>${escapeHtml(invoice.destinatario_nombre || '')}</div>
-                <div class="small text-muted">${escapeHtml(invoice.destinatario_nif || '')}</div>
             </td>
             <td>${escapeHtml(invoice.concepto || '')}</td>
             <td class="text-end">${escapeHtml(invoice.total || '0.00')} &euro;</td>
             <td>${escapeHtml(invoice.verifactu_estado || '')}</td>
+            <td class="text-end">
+                <div class="dropdown invoice-actions-dropdown">
+                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-boundary="viewport" aria-expanded="false" title="Opciones">
+                        <i class="bi bi-three-dots-vertical"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li>
+                            <a class="dropdown-item" href="api/admin.php?action=invoice_pdf&download=1&id=${encodeURIComponent(invoice.id)}">
+                                <i class="bi bi-download me-2"></i>Descargar
+                            </a>
+                        </li>
+                        <li>
+                            <button class="dropdown-item btn-open-send-invoice-email${invoice.email_ready ? '' : ' disabled'}" type="button"
+                                data-invoice-id="${encodeURIComponent(invoice.id)}"
+                                data-invoice-number="${escapeHtml(invoice.numero_factura || '')}"
+                                data-invoice-email="${escapeHtml(invoice.recipient_email || '')}"
+                                ${invoice.email_ready ? '' : 'disabled title="Configura primero el envío de emails"'}>
+                                <i class="bi bi-envelope me-2"></i>Enviar al ${escapeHtml(sectorLabel('patient', 'singular', 'paciente'))} por email
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+            </td>
         </tr>
     `).join(''));
 }
+
+$(document).on('show.bs.dropdown', '.invoice-actions-dropdown', function () {
+    const menu = this.querySelector('.dropdown-menu');
+    if (!menu) return;
+    menu._invoiceDropdownOwner = this;
+    document.body.appendChild(menu);
+    menu.classList.add('invoice-actions-floating-menu');
+});
+
+$(document).on('hidden.bs.dropdown', '.invoice-actions-dropdown', function () {
+    const menu = document.querySelector('.invoice-actions-floating-menu');
+    if (!menu || menu._invoiceDropdownOwner !== this) return;
+    menu.classList.remove('invoice-actions-floating-menu');
+    this.appendChild(menu);
+    delete menu._invoiceDropdownOwner;
+});
+
+$('#invoicesModal').on('hidden.bs.modal', function () {
+    document.querySelectorAll('.invoice-actions-floating-menu').forEach(function (menu) {
+        const owner = menu._invoiceDropdownOwner;
+        menu.classList.remove('invoice-actions-floating-menu', 'show');
+        if (owner) {
+            owner.appendChild(menu);
+        }
+        delete menu._invoiceDropdownOwner;
+    });
+});
 
 function formatInvoiceDate(value) {
     const parts = String(value || '').split('-');
@@ -13462,6 +17937,52 @@ function attachInvoicesModalLoader() {
         loadInvoicesList();
     });
 }
+
+$(document).on('click', '.btn-open-send-invoice-email:not(:disabled)', function () {
+    if (!sendInvoiceEmailModal) return;
+    $('#send-invoice-email-id').val($(this).data('invoice-id') || '');
+    $('#send-invoice-email-number').text($(this).data('invoice-number') || '');
+    $('#send-invoice-email-address').val($(this).data('invoice-email') || '');
+    $('#send-invoice-email-alert').addClass('d-none').removeClass('alert-danger alert-success').text('');
+    if (invoicesModal) invoicesModal.hide();
+    sendInvoiceEmailModal.show();
+});
+
+$('#sendInvoiceEmailModal').on('hidden.bs.modal', function () {
+    if (invoicesModal && document.getElementById('invoicesModal')) {
+        invoicesModal.show();
+    }
+});
+
+$('#send-invoice-email-form').on('submit', function (event) {
+    event.preventDefault();
+    const $button = $('#btn-send-invoice-email');
+    const originalHtml = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Enviando...');
+    $('#send-invoice-email-alert').addClass('d-none').removeClass('alert-danger alert-success').text('');
+    $.ajax({
+        url: 'api/admin.php?action=send_invoice_email',
+        method: 'POST',
+        dataType: 'json',
+        data: {
+            id: $('#send-invoice-email-id').val(),
+            email: ($('#send-invoice-email-address').val() || '').trim()
+        }
+    }).done(function (res) {
+        if (!res.success) {
+            $('#send-invoice-email-alert').removeClass('d-none').addClass('alert-danger').text(res.error || 'No se pudo enviar la factura.');
+            return;
+        }
+        $('#send-invoice-email-alert').removeClass('d-none').addClass('alert-success').text('Factura enviada correctamente.');
+        setTimeout(function () {
+            if (sendInvoiceEmailModal) sendInvoiceEmailModal.hide();
+        }, 700);
+    }).fail(function () {
+        $('#send-invoice-email-alert').removeClass('d-none').addClass('alert-danger').text('Error de conexión al enviar la factura.');
+    }).always(function () {
+        $button.prop('disabled', false).html(originalHtml);
+    });
+});
 
 function openAppLogModal() {
     if (!IS_SUPERADMIN || !appLogModal) return;
@@ -13489,6 +18010,293 @@ function appLogStatusBadge(status) {
     return '<span class="badge text-bg-danger">Error</span>';
 }
 
+function timeTrackingFormatLocalDate(value) {
+    if (!value) return '';
+    const parts = String(value).split(' ');
+    const date = (parts[0] || '').split('-');
+    if (date.length !== 3) return value;
+    return `${date[2]}/${date[1]}/${date[0]}${parts[1] ? ` ${parts[1].slice(0, 5)}` : ''}`;
+}
+
+function timeTrackingEventLabel(eventType) {
+    return {
+        clock_in: 'Entrada',
+        break_start: 'Inicio de descanso',
+        break_end: 'Fin de descanso',
+        clock_out: 'Salida'
+    }[eventType] || eventType || '';
+}
+
+function renderTimeTrackingStatus(status) {
+    const state = status && status.state ? status.state : 'off';
+    const labels = { off: 'Fuera de jornada', working: 'Trabajando', break: 'En descanso' };
+    $('#time-tracking-state').text(labels[state] || 'Fuera de jornada');
+    const lastEntry = status && status.last_entry ? status.last_entry : null;
+    $('#time-tracking-last-entry').text(lastEntry
+        ? `Último registro: ${timeTrackingEventLabel(lastEntry.event_type)} · ${timeTrackingFormatLocalDate(lastEntry.local_datetime)}`
+        : 'Todavía no hay fichajes registrados.');
+    const allowed = status && Array.isArray(status.allowed_events) ? status.allowed_events : [];
+    $('.time-tracking-action').each(function () {
+        $(this).toggleClass('d-none', !allowed.includes($(this).data('event-type')));
+    });
+}
+
+function updateTimeTrackingClock() {
+    const clock = document.getElementById('time-tracking-current-time');
+    if (!clock) return;
+    clock.textContent = new Intl.DateTimeFormat('es-ES', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+    }).format(new Date());
+}
+
+function syncTimeTrackingSettingsControls() {
+    const enabled = $('#time-tracking-enabled').is(':checked');
+    $('#time-tracking-notify-missing-clock-in, #time-tracking-require-clock-in, #time-tracking-logout-on-clock-out')
+        .prop('disabled', !enabled);
+}
+
+function applyTimeTrackingRuntime(status, settings) {
+    const state = status && status.state ? status.state : 'off';
+    const enabled = settings && settings.enabled == 1;
+    const missingClockIn = enabled && state === 'off';
+    const notify = missingClockIn && settings.notify_missing_clock_in == 1;
+    const required = missingClockIn && settings.require_clock_in == 1;
+    const $launchers = $('#btn-navbar-time-tracking, #btn-time-tracking, #btn-sidebar-time-tracking, #btn-mobile-time-tracking');
+
+    $launchers.toggleClass('time-tracking-attention', notify);
+    $('#time-tracking-modal-close').toggleClass('d-none', required);
+
+    if (required) {
+        const modalElement = document.getElementById('timeTrackingModal');
+        if (modalElement) {
+            bootstrap.Modal.getOrCreateInstance(modalElement, {
+                backdrop: 'static',
+                keyboard: false
+            }).show();
+        }
+    }
+}
+
+function loadTimeTrackingStatus() {
+    if (typeof TIME_TRACKING_PLAN_ENABLED === 'undefined' || !TIME_TRACKING_PLAN_ENABLED) return;
+    $.getJSON('api/admin.php?action=time_tracking_status')
+        .done(function (res) {
+            if (!res.success) {
+                $('#time-tracking-alert').removeClass('d-none alert-success').addClass('alert-danger').text(res.error || 'No se pudo consultar el estado.');
+                return;
+            }
+            if (!res.enabled) {
+                $('#time-tracking-state').text('Control horario desactivado');
+                $('.time-tracking-action').addClass('d-none');
+                applyTimeTrackingRuntime({}, res.settings || {});
+                return;
+            }
+            $('#time-tracking-alert').addClass('d-none');
+            renderTimeTrackingStatus(res.status || {});
+            applyTimeTrackingRuntime(res.status || {}, res.settings || {});
+        })
+        .fail(function () {
+            $('#time-tracking-alert').removeClass('d-none alert-success').addClass('alert-danger').text('Error de conexión al consultar el control horario.');
+        });
+}
+
+function loadTimeTrackingEntries() {
+    if (!IS_SUPERADMIN || !$('#time-tracking-entries-body').length) return;
+    $('#time-tracking-entries-body').html('<tr><td colspan="4" class="text-center text-muted py-4">Cargando...</td></tr>');
+    $.getJSON('api/admin.php?action=time_tracking_entries', {
+        date_from: $('#time-tracking-date-from').val() || '',
+        date_to: $('#time-tracking-date-to').val() || ''
+    }).done(function (res) {
+        if (!res.success) {
+            $('#time-tracking-entries-body').html(`<tr><td colspan="4" class="text-center text-danger py-4">${escapeHtml(res.error || 'No se pudieron cargar los registros.')}</td></tr>`);
+            return;
+        }
+        $('#time-tracking-date-from').val(res.date_from || '');
+        $('#time-tracking-date-to').val(res.date_to || '');
+        const entries = res.entries || [];
+        $('#time-tracking-entries-body').html(entries.length ? entries.map(entry => `
+            <tr>
+                <td>${escapeHtml(timeTrackingFormatLocalDate(entry.local_datetime))}</td>
+                <td>${escapeHtml(entry.user_name || '')}</td>
+                <td>${escapeHtml(timeTrackingEventLabel(entry.event_type))}</td>
+                <td>${escapeHtml(entry.timezone_name || '')}</td>
+            </tr>
+        `).join('') : '<tr><td colspan="4" class="text-center text-muted py-4">No hay registros en este periodo.</td></tr>');
+    }).fail(function () {
+        $('#time-tracking-entries-body').html('<tr><td colspan="4" class="text-center text-danger py-4">Error de conexión al cargar los registros.</td></tr>');
+    });
+}
+
+function timeTrackingReportCell(value, reportType, columnIndex) {
+    const textValue = String(value == null ? '' : value);
+    if (reportType === 'entries' && columnIndex === 2) {
+        const styles = {
+            Entrada: ['bi-briefcase-fill', 'text-success'],
+            'Inicio de descanso': ['bi-cup-hot-fill', 'text-warning'],
+            'Fin de descanso': ['bi-arrow-counterclockwise', 'text-warning'],
+            Salida: ['bi-house-door-fill', 'text-danger']
+        };
+        const style = styles[textValue];
+        if (style) {
+            return `<span class="${style[1]}"><i class="bi ${style[0]} me-1"></i>${escapeHtml(textValue)}</span>`;
+        }
+    }
+    if ((reportType === 'overtime_daily' || reportType === 'overtime_weekly') && columnIndex === 4) {
+        const hasOvertime = textValue !== '' && textValue !== '00:00:00';
+        return `<span class="${hasOvertime ? 'text-danger fw-semibold' : 'text-muted'}">${escapeHtml(textValue)}</span>`;
+    }
+    return escapeHtml(textValue);
+}
+
+function timeTrackingExportUrl(format) {
+    const params = new URLSearchParams({
+        action: 'time_tracking_export',
+        report_type: $('#time-tracking-report-type').val() || 'entries',
+        user_id: $('#time-tracking-member-filter').val() || '0',
+        date_from: $('#time-tracking-date-from').val() || '',
+        date_to: $('#time-tracking-date-to').val() || '',
+        format: format
+    });
+    return `api/admin.php?${params.toString()}`;
+}
+
+function loadTimeTrackingReport() {
+    if (!$('#time-tracking-report-body').length) return;
+    $('#time-tracking-report-body').html('<tr><td class="text-center text-muted py-4">Cargando...</td></tr>');
+    $('#time-tracking-report-head').empty();
+    $('#time-tracking-report-count').text('');
+    $.getJSON('api/admin.php?action=time_tracking_report', {
+        report_type: $('#time-tracking-report-type').val() || 'entries',
+        user_id: $('#time-tracking-member-filter').val() || 0,
+        date_from: $('#time-tracking-date-from').val() || '',
+        date_to: $('#time-tracking-date-to').val() || ''
+    }).done(function (res) {
+        if (!res.success) {
+            $('#time-tracking-report-body').html(`<tr><td class="text-center text-danger py-4">${escapeHtml(res.error || 'No se pudo cargar el informe.')}</td></tr>`);
+            return;
+        }
+        $('#time-tracking-date-from').val(res.date_from || '');
+        $('#time-tracking-date-to').val(res.date_to || '');
+        if ($('#time-tracking-member-filter').length && !$('#time-tracking-member-filter').data('loaded')) {
+            const selectedUserId = String(res.selected_user_id || 0);
+            const options = ['<option value="0">Todos</option>'].concat((res.members || []).map(member =>
+                `<option value="${parseInt(member.user_id || 0, 10)}">${escapeHtml(member.user_name || '')}</option>`
+            ));
+            $('#time-tracking-member-filter').html(options.join('')).val(selectedUserId).data('loaded', true);
+        }
+        const report = res.report || {};
+        const headers = report.headers || [];
+        const rows = report.rows || [];
+        const reportType = report.type || 'entries';
+        $('#time-tracking-report-title').text(report.title || 'Control horario');
+        $('#time-tracking-report-head').html(`<tr>${headers.map(header => `<th>${escapeHtml(header)}</th>`).join('')}</tr>`);
+        $('#time-tracking-report-body').html(rows.length
+            ? rows.map(row => `<tr>${row.map((value, index) => `<td>${timeTrackingReportCell(value, reportType, index)}</td>`).join('')}</tr>`).join('')
+            : `<tr><td colspan="${Math.max(1, headers.length)}" class="text-center text-muted py-4">No hay registros en este periodo.</td></tr>`);
+        $('#time-tracking-report-count').text(`${rows.length} ${rows.length === 1 ? 'registro' : 'registros'}`);
+    }).fail(function () {
+        $('#time-tracking-report-body').html('<tr><td class="text-center text-danger py-4">Error de conexión al cargar el informe.</td></tr>');
+    });
+}
+
+function loadTimeTrackingSettings() {
+    if (!IS_SUPERADMIN || typeof TIME_TRACKING_PLAN_ENABLED === 'undefined' || !TIME_TRACKING_PLAN_ENABLED) return;
+    $.getJSON('api/admin.php?action=time_tracking_settings').done(function (res) {
+        if (!res.success) return;
+        const settings = res.settings || {};
+        $('#time-tracking-enabled').prop('checked', settings.enabled == 1);
+        $('#time-tracking-notify-missing-clock-in').prop('checked', settings.notify_missing_clock_in == 1);
+        $('#time-tracking-require-clock-in').prop('checked', settings.require_clock_in == 1);
+        $('#time-tracking-logout-on-clock-out').prop('checked', settings.logout_on_clock_out == 1);
+        syncTimeTrackingSettingsControls();
+    });
+}
+
+$(document).on('shown.bs.modal', '#timeTrackingModal', function () {
+    updateTimeTrackingClock();
+    loadTimeTrackingStatus();
+});
+
+$(document).on('shown.bs.modal', '#timeTrackingHistoryModal', loadTimeTrackingReport);
+
+window.setInterval(updateTimeTrackingClock, 1000);
+
+$(document).on('change', '#time-tracking-date-from, #time-tracking-date-to, #time-tracking-member-filter, #time-tracking-report-type', loadTimeTrackingReport);
+$(document).on('change', '#time-tracking-enabled', syncTimeTrackingSettingsControls);
+
+$(document).on('click', '.time-tracking-export', function () {
+    window.open(timeTrackingExportUrl(String($(this).data('format') || 'xlsx')), '_blank', 'noopener');
+});
+
+$(document).on('click', '.time-tracking-action', function () {
+    const $button = $(this);
+    const eventType = String($button.data('event-type') || '');
+    $('.time-tracking-action').prop('disabled', true);
+    $.post('api/admin.php?action=time_tracking_register', { event_type: eventType }, null, 'json')
+        .done(function (res) {
+            if (!res.success) {
+                $('#time-tracking-alert').removeClass('d-none alert-success').addClass('alert-danger').text(res.error || 'No se pudo registrar el fichaje.');
+                return;
+            }
+            $('#time-tracking-alert').removeClass('d-none alert-danger').addClass('alert-success').text(res.message || 'Fichaje registrado.');
+            renderTimeTrackingStatus(res.status || {});
+            loadTimeTrackingStatus();
+            if (res.logout) {
+                window.setTimeout(function () {
+                    window.location.href = 'logout.php';
+                }, 700);
+            } else {
+                const modalElement = document.getElementById('timeTrackingModal');
+                const modal = modalElement ? bootstrap.Modal.getInstance(modalElement) : null;
+                if (modal) modal.hide();
+            }
+        })
+        .fail(function () {
+            $('#time-tracking-alert').removeClass('d-none alert-success').addClass('alert-danger').text('Error de conexión al registrar el fichaje.');
+        })
+        .always(function () {
+            $('.time-tracking-action').prop('disabled', false);
+        });
+});
+
+$(document).on('shown.bs.tab', '#time-tracking-settings-tab', loadTimeTrackingSettings);
+
+function saveTimeTrackingSettings() {
+    if (!IS_SUPERADMIN || typeof TIME_TRACKING_PLAN_ENABLED === 'undefined' || !TIME_TRACKING_PLAN_ENABLED) {
+        return Promise.resolve();
+    }
+    return new Promise(function (resolve, reject) {
+        $.post('api/admin.php?action=save_time_tracking_settings', {
+            enabled: $('#time-tracking-enabled').is(':checked') ? 1 : 0,
+            notify_missing_clock_in: $('#time-tracking-notify-missing-clock-in').is(':checked') ? 1 : 0,
+            require_clock_in: $('#time-tracking-require-clock-in').is(':checked') ? 1 : 0,
+            logout_on_clock_out: $('#time-tracking-logout-on-clock-out').is(':checked') ? 1 : 0
+        }, null, 'json').done(function (res) {
+            if (!res.success) {
+                reject(new Error(res.error || 'No se pudo guardar la configuración del control horario.'));
+                return;
+            }
+            const settings = res.settings || {};
+            $('#btn-time-tracking, #btn-sidebar-time-tracking, #btn-navbar-time-tracking').toggleClass('d-none', settings.enabled != 1);
+            $('#btn-mobile-time-tracking').closest('li').toggleClass('d-none', settings.enabled != 1);
+            loadTimeTrackingStatus();
+            resolve(res);
+        }).fail(function () {
+            reject(new Error('Error de conexión al guardar la configuración del control horario.'));
+        });
+    });
+}
+
+$(function () {
+    updateTimeTrackingClock();
+    if (typeof INITIAL_TIME_TRACKING_ENABLED !== 'undefined' && INITIAL_TIME_TRACKING_ENABLED) {
+        loadTimeTrackingStatus();
+    }
+});
+
 function appLogActionLabel(action) {
     const labels = {
         manual_appointment_reminder: 'Recordatorio manual',
@@ -13498,9 +18306,50 @@ function appLogActionLabel(action) {
         appointment_payment_updated: 'Pago de cita',
         appointment_attendance_updated: 'Asistencia',
         patient_created: 'Paciente creado',
-        patient_updated: 'Paciente actualizado',
         patient_waiting_list_updated: 'Lista de espera',
-        patient_professional_transferred: 'Traspaso de paciente'
+        patient_professional_transferred: 'Traspaso de paciente',
+        patient_evolution_created: 'Evolución creada',
+        patient_evolution_saved: 'Evolución guardada',
+        patient_evolution_deleted: 'Evolución eliminada',
+        patient_clinical_history_accessed: 'Historia clínica consultada',
+        patient_sensitive_data_updated: 'Datos relevantes modificados',
+        patient_document_created: 'Documento guardado',
+        patient_document_updated: 'Documento actualizado',
+        patient_document_deleted: 'Documento eliminado',
+        patient_document_downloaded: 'Documento del expediente descargado',
+        patient_evolution_file_downloaded: 'Adjunto de evolución descargado',
+        patient_task_created: 'Tarea creada',
+        patient_task_updated: 'Tarea actualizada',
+        patient_task_status_updated: 'Estado de tarea',
+        patient_task_deleted: 'Tarea eliminada',
+        patient_report_created: 'Informe generado',
+        patient_report_regenerated: 'Informe regenerado',
+        patient_report_uploaded: 'Informe subido',
+        patient_report_updated: 'Informe actualizado',
+        patient_report_accessed: 'Informe clínico consultado',
+        patient_portal_invite_sent: 'Invitación portal',
+        patient_portal_invite_failed: 'Invitación fallida',
+        legal_document_saved: 'Documento legal guardado',
+        legal_document_disabled: 'Documento legal desactivado',
+        legal_document_deleted: 'Documento legal eliminado',
+        suggested_legal_documents_created: 'Plantillas legales sugeridas',
+        service_legal_documents_updated: 'Consentimientos asignados a servicios',
+        livekit_recording_blocked: 'Grabación LiveKit bloqueada',
+        patient_legal_document_uploaded: 'Consentimiento subido',
+        patient_legal_document_accepted: 'Consentimiento aceptado',
+        patient_legal_document_unaccepted: 'Consentimiento desmarcado',
+        patient_legal_document_downloaded: 'Consentimiento descargado',
+        signature_certificate_imported: 'Certificado de firma importado',
+        signature_certificate_import_failed: 'Error al importar certificado',
+        signature_certificate_removed: 'Certificado de firma eliminado',
+        patient_report_signed: 'Informe firmado digitalmente',
+        pdf_signed: 'PDF firmado digitalmente',
+        document_signed: 'Documento firmado digitalmente'
+        ,time_tracking_clock_in: 'Entrada registrada'
+        ,time_tracking_break_start: 'Descanso iniciado'
+        ,time_tracking_break_end: 'Descanso finalizado'
+        ,time_tracking_clock_out: 'Salida registrada'
+        ,time_tracking_settings_updated: 'Configuración de control horario'
     };
     return labels[action] || action || '';
 }
@@ -13835,7 +18684,9 @@ function exportModalVisibleTable(target, type) {
         }
         return;
     }
-    const title = modalVisibleTableTitle($modal, $scope);
+    const title = target === '#timeTrackingHistoryModal'
+        ? timeTrackingPrintTitle()
+        : modalVisibleTableTitle($modal, $scope);
     if (type === 'print') {
         printTableExport($table, title);
     } else if (type === 'xls') {
@@ -13846,7 +18697,7 @@ function exportModalVisibleTable(target, type) {
 }
 
 function modalVisibleTableTitle($modal, $scope) {
-    const modalTitle = $modal.find('.modal-title').first().text().trim() || 'Listado';
+    const modalTitle = $modal.find('.modal-title, h5').first().text().trim() || 'Listado';
     const tabId = $scope.attr('aria-labelledby');
     const tabTitle = tabId ? $(`#${tabId}`).text().trim() : '';
     return tabTitle ? `${modalTitle} - ${tabTitle}` : modalTitle;
@@ -14041,12 +18892,15 @@ function loadClosedDays() {
                     const professional = showProfessionals
                         ? `<span class="closed-day-professional">${professionalCellHtml(d, 'professional_name', 'professional_photo_path')}</span>`
                         : '';
+                    const deleteButton = d.can_delete
+                        ? `<button class="btn btn-sm btn-danger" type="button" onclick="deleteClosedRange('${escapeJsString(d.start_date)}', '${escapeJsString(d.end_date)}', '${escapeJsString(d.reason)}', ${d.is_global == 1 ? 1 : 0}, ${parseInt(d.professional_id || 0, 10)})" title="Eliminar"><i class="bi bi-trash"></i></button>`
+                        : '';
                     html += `<li class="list-group-item d-flex justify-content-between align-items-center">
                                 <span class="closed-day-row-main">
                                     <span>${label} - ${escapeHtml(d.reason)}${globalBadge}</span>
                                     ${professional}
                                 </span>
-                                <button class="btn btn-sm btn-danger" onclick="deleteClosedRange('${escapeJsString(d.start_date)}', '${escapeJsString(d.end_date)}', '${escapeJsString(d.reason)}', ${d.is_global == 1 ? 1 : 0}, ${parseInt(d.professional_id || 0, 10)})"><i class="bi bi-trash"></i></button>
+                                ${deleteButton}
                              </li>`;
                 });
                 $('#closed-days-list').html(html || '<li class="list-group-item text-center text-muted py-3">No hay vacaciones o cierres próximos.</li>');
@@ -14097,7 +18951,8 @@ function groupClosedDays(days) {
                 is_global: currentGlobal,
                 professional_id: currentProfessionalId,
                 professional_name: day.professional_name || (currentGlobal ? 'Todo el equipo' : ''),
-                professional_photo_path: day.professional_photo_path || ''
+                professional_photo_path: day.professional_photo_path || '',
+                can_delete: day.can_delete == 1
             });
         });
     });
@@ -14198,6 +19053,20 @@ function toggleDashboardConfigModeControls() {
         updateCustomDomainStatus(PAYMENT_SETTINGS.custom_domain || '');
     }
 }
+
+function timeTrackingPrintTitle() {
+    const reportTitle = $('#time-tracking-report-title').text().trim() || 'Control horario';
+    const dateFrom = $('#time-tracking-date-from').val() || '';
+    const dateTo = $('#time-tracking-date-to').val() || '';
+    if (!dateFrom || !dateTo) {
+        return reportTitle;
+    }
+    return `${reportTitle} desde ${formatDisplayDate(dateFrom)} hasta ${formatDisplayDate(dateTo)}`;
+}
+
+$(document).on('click', '.btn-export-modal-table', function () {
+    exportModalVisibleTable($(this).data('table-target'), $(this).data('export-type'));
+});
 
 function updateCustomDomainStatus(domain) {
     const clean = (domain || '').trim();
@@ -14364,7 +19233,7 @@ function regenerateAppointmentLivekitLink(button) {
     const app = CURRENT_APPOINTMENT_PAYMENT_DETAIL || {};
     const appointmentId = parseInt(app.id || $('#appointment-payment-id').val() || 0, 10);
     if (!appointmentId || app.consultation_type !== 'online' || app.livekit_enabled != 1) {
-        showAppointmentModalityAlert('danger', 'Esta cita no tiene una videollamada LiveKit activa.');
+        showAppointmentModalityAlert('danger', 'Esta cita no tiene una videollamada integrada activa.');
         return;
     }
 
@@ -14450,6 +19319,303 @@ function selectedProfessionalSessionDurations() {
     return durations.length ? durations.sort((a, b) => a - b) : selectedSessionDurations();
 }
 
+const INITIAL_ONBOARDING_VERSION = 1;
+const INITIAL_ONBOARDING_PROVINCES = [
+    'A Coruña', 'Álava', 'Albacete', 'Alicante', 'Almería', 'Asturias', 'Ávila',
+    'Badajoz', 'Barcelona', 'Bizkaia', 'Burgos', 'Cáceres', 'Cádiz', 'Cantabria',
+    'Castellón', 'Ceuta', 'Ciudad Real', 'Córdoba', 'Cuenca', 'Gipuzkoa', 'Girona',
+    'Granada', 'Guadalajara', 'Huelva', 'Huesca', 'Illes Balears', 'Jaén', 'La Rioja',
+    'Las Palmas', 'León', 'Lleida', 'Lugo', 'Madrid', 'Málaga', 'Melilla', 'Murcia',
+    'Navarra', 'Ourense', 'Palencia', 'Pontevedra', 'Salamanca', 'Santa Cruz de Tenerife',
+    'Segovia', 'Sevilla', 'Soria', 'Tarragona', 'Teruel', 'Toledo', 'Valencia',
+    'Valladolid', 'Zamora', 'Zaragoza'
+];
+let INITIAL_ONBOARDING_STATE = null;
+let INITIAL_ONBOARDING_STEP = 1;
+
+function showInitialOnboardingAlert(type, message) {
+    $('#initial-onboarding-alert')
+        .removeClass('d-none alert-danger alert-success alert-warning alert-info')
+        .addClass(`alert-${type}`)
+        .text(message || '');
+}
+
+function syncOnboardingCountryFields() {
+    const spanish = $('#onboarding-country').val() === 'ES';
+    $('#onboarding-spanish-province-wrap').toggleClass('d-none', !spanish);
+    $('#onboarding-other-province-wrap').toggleClass('d-none', spanish);
+}
+
+function populateLegalProvinceOptions(selectedProvince = '') {
+    const legacyProvinceNames = {
+        Alava: 'Álava',
+        Guipuzcoa: 'Gipuzkoa',
+        Vizcaya: 'Bizkaia'
+    };
+    selectedProvince = legacyProvinceNames[selectedProvince] || selectedProvince;
+    const legacyOption = selectedProvince && !INITIAL_ONBOARDING_PROVINCES.includes(selectedProvince)
+        ? `<option value="${escapeHtml(selectedProvince)}" disabled>${escapeHtml(selectedProvince)} (revisar)</option>`
+        : '';
+    $('#legal-province').html(
+        '<option value="">Selecciona una provincia</option>'
+        + legacyOption
+        + INITIAL_ONBOARDING_PROVINCES.map(province =>
+            `<option value="${escapeHtml(province)}">${escapeHtml(province)}</option>`
+        ).join('')
+    ).val(selectedProvince || '');
+}
+
+function syncLegalCountryFields() {
+    const spanish = ($('#legal-country').val() || 'ES') === 'ES';
+    $('#legal-spanish-province-wrap').toggleClass('d-none', !spanish);
+    $('#legal-other-province-wrap').toggleClass('d-none', spanish);
+}
+
+function syncOnboardingPortalFields() {
+    const portalAvailable = INITIAL_ONBOARDING_STATE
+        && INITIAL_ONBOARDING_STATE.portal_plan_enabled == 1;
+    const portalEnabled = portalAvailable && $('#onboarding-portal-enabled').is(':checked');
+    $('#onboarding-registration-requires-invite').prop('disabled', !portalEnabled);
+}
+
+function syncOnboardingColor(value) {
+    const color = /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value).toLowerCase() : '#4285f4';
+    const red = parseInt(color.slice(1, 3), 16);
+    const green = parseInt(color.slice(3, 5), 16);
+    const blue = parseInt(color.slice(5, 7), 16);
+    const contrast = ((red * 299 + green * 587 + blue * 114) / 1000) >= 160 ? '#263238' : '#ffffff';
+    const modal = document.getElementById('initialOnboardingModal');
+    if (modal) {
+        modal.style.setProperty('--primary-color', color);
+        modal.style.setProperty('--onboarding-primary-contrast', contrast);
+        modal.style.setProperty(
+            '--onboarding-close-filter',
+            contrast === '#ffffff' ? 'invert(1) grayscale(100%) brightness(200%)' : 'none'
+        );
+    }
+    $('#onboarding-primary-color').val(color);
+    $('#onboarding-primary-color-text').val(color);
+    $('#onboarding-color-preview').css({ color, borderColor: color });
+}
+
+function renderInitialOnboardingStep(step) {
+    INITIAL_ONBOARDING_STEP = Math.max(1, Math.min(5, parseInt(step || 1, 10)));
+    $('.onboarding-step').addClass('d-none');
+    $(`.onboarding-step[data-step="${INITIAL_ONBOARDING_STEP}"]`).removeClass('d-none');
+    $('.onboarding-progress-step').each(function () {
+        const itemStep = parseInt($(this).data('step') || 0, 10);
+        $(this).toggleClass('is-active', itemStep === INITIAL_ONBOARDING_STEP);
+        $(this).toggleClass('is-complete', itemStep < INITIAL_ONBOARDING_STEP);
+    });
+    $('#btn-onboarding-previous').toggleClass('d-none', INITIAL_ONBOARDING_STEP === 1);
+    $('#btn-onboarding-next').html(INITIAL_ONBOARDING_STEP === 5
+        ? '<i class="bi bi-check2 me-1"></i>Terminar'
+        : 'Continuar <i class="bi bi-arrow-right ms-1"></i>');
+    $('#initial-onboarding-alert').addClass('d-none').text('');
+    const body = document.querySelector('#initialOnboardingModal .modal-body');
+    if (body) body.scrollTop = 0;
+}
+
+function populateInitialOnboarding(state) {
+    const values = state.values || {};
+    const selectedProvince = values.billing_country === 'ES'
+        ? (values.billing_province || values.legal_province || '')
+        : '';
+    $('#onboarding-spanish-province').html(
+        '<option value="">Selecciona una provincia</option>'
+        + INITIAL_ONBOARDING_PROVINCES.map(province => `<option value="${escapeHtml(province)}">${escapeHtml(province)}</option>`).join('')
+    );
+    $('#onboarding-sector').val(values.sector_texts_key || 'psicologia');
+    $('#onboarding-timezone').val(values.timezone || 'Europe/Madrid');
+    $('#onboarding-country').val(values.billing_country === 'OT' ? 'OT' : 'ES');
+    $('#onboarding-spanish-province').val(selectedProvince);
+    $('#onboarding-other-province').val(values.billing_country === 'OT' ? (values.legal_province || '') : '');
+    $('#onboarding-address').val(values.legal_address || '');
+    $('#onboarding-city').val(values.legal_city || '');
+    $('#onboarding-postal-code').val(values.legal_postal_code || '');
+    $('#onboarding-legal-owner').val(values.legal_owner_name || '');
+    $('#onboarding-legal-nif').val(values.legal_nif || '');
+    $('#onboarding-taxpayer-type').val(values.verifactu_taxpayer_type === 'company' ? 'company' : 'self_employed');
+    $('#onboarding-health-registry').val(values.legal_health_registry_number || '');
+    $('#onboarding-license-number').val(values.legal_license_number || '');
+    $('#onboarding-professional-college').val(values.legal_professional_college || '');
+    $('#onboarding-app-name').val(values.app_name || values.tenant_name || '');
+    $('#onboarding-tagline').val(values.site_tagline || '');
+    $('#onboarding-site-phone').val(values.site_phone || '');
+    syncOnboardingColor(values.primary_color || '#4285f4');
+    $('#onboarding-initial-view').val(
+        ['dashboard', 'month', 'week', 'patients', 'upcoming'].includes(values.initial_calendar_view)
+            ? values.initial_calendar_view
+            : 'month'
+    );
+    $('#onboarding-portal-url').val(state.portal_url || '');
+    $('#onboarding-portal-enabled')
+        .prop('checked', state.portal_plan_enabled == 1 && values.online_booking_enabled == 1)
+        .prop('disabled', state.portal_plan_enabled != 1);
+    $('#onboarding-registration-requires-invite')
+        .prop('checked', values.patient_registration_mode !== 'open');
+    $('#onboarding-portal-plan-help').text(state.portal_plan_enabled == 1
+        ? 'Podrás copiar y compartir esta dirección cuando quieras.'
+        : 'El Portal está disponible en un plan superior.');
+    $('#onboarding-delivery-mode').val(values.appointment_delivery_mode || 'both');
+    $('#onboarding-contact-greeting').text(state.contact_name ? `, ${state.contact_name}` : '');
+    syncOnboardingCountryFields();
+    syncOnboardingPortalFields();
+    renderInitialOnboardingStep(state.current_step || 1);
+}
+
+function loadInitialOnboarding(autoOpen = false) {
+    if (!IS_SUPERADMIN || !initialOnboardingModal) return Promise.resolve(null);
+    return new Promise((resolve, reject) => {
+        $.ajax({
+            url: 'api/admin.php?action=get_initial_onboarding',
+            dataType: 'json',
+            success: function (res) {
+                if (!res.success) {
+                    reject(new Error(res.error || 'No se pudo cargar el asistente inicial.'));
+                    return;
+                }
+                INITIAL_ONBOARDING_STATE = res;
+                populateInitialOnboarding(res);
+                if (autoOpen && (res.completed != 1 || parseInt(res.completed_version || 0, 10) < INITIAL_ONBOARDING_VERSION)) {
+                    initialOnboardingModal.show();
+                }
+                resolve(res);
+            },
+            error: function () {
+                reject(new Error('Error de conexión al cargar el asistente inicial.'));
+            }
+        });
+    });
+}
+
+function initialOnboardingStepData(step) {
+    const data = { step };
+    if (step === 1) {
+        const spanish = $('#onboarding-country').val() === 'ES';
+        Object.assign(data, {
+            sector_texts_key: $('#onboarding-sector').val() || '',
+            timezone: $('#onboarding-timezone').val() || 'Europe/Madrid',
+            country: spanish ? 'ES' : 'OT',
+            province: spanish ? ($('#onboarding-spanish-province').val() || '') : ($('#onboarding-other-province').val() || '').trim(),
+            address: ($('#onboarding-address').val() || '').trim(),
+            city: ($('#onboarding-city').val() || '').trim(),
+            postal_code: ($('#onboarding-postal-code').val() || '').trim()
+        });
+    } else if (step === 2) {
+        Object.assign(data, {
+            legal_owner_name: ($('#onboarding-legal-owner').val() || '').trim(),
+            legal_nif: ($('#onboarding-legal-nif').val() || '').trim(),
+            verifactu_taxpayer_type: $('#onboarding-taxpayer-type').val() || 'self_employed',
+            legal_health_registry_number: ($('#onboarding-health-registry').val() || '').trim(),
+            legal_license_number: ($('#onboarding-license-number').val() || '').trim(),
+            legal_professional_college: ($('#onboarding-professional-college').val() || '').trim()
+        });
+    } else if (step === 3) {
+        Object.assign(data, {
+            app_name: ($('#onboarding-app-name').val() || '').trim(),
+            site_tagline: ($('#onboarding-tagline').val() || '').trim(),
+            site_phone: ($('#onboarding-site-phone').val() || '').trim(),
+            primary_color: ($('#onboarding-primary-color-text').val() || '').trim(),
+            initial_calendar_view: $('#onboarding-initial-view').val() || 'month'
+        });
+    } else if (step === 4) {
+        Object.assign(data, {
+            portal_enabled: $('#onboarding-portal-enabled').is(':checked') ? '1' : '0',
+            patient_registration_mode: $('#onboarding-registration-requires-invite').is(':checked') ? 'invite' : 'open',
+            appointment_delivery_mode: $('#onboarding-delivery-mode').val() || 'both'
+        });
+    }
+    return data;
+}
+
+function saveInitialOnboardingStep() {
+    const step = INITIAL_ONBOARDING_STEP;
+    const $button = $('#btn-onboarding-next');
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Guardando...');
+    $('#btn-onboarding-previous').prop('disabled', true);
+    $.ajax({
+        url: 'api/admin.php?action=save_initial_onboarding_step',
+        method: 'POST',
+        dataType: 'json',
+        data: initialOnboardingStepData(step),
+        success: function (res) {
+            if (!res.success) {
+                showInitialOnboardingAlert('danger', res.error || 'No se pudo guardar este paso.');
+                return;
+            }
+            if (res.completed == 1) {
+                const modalElement = document.getElementById('initialOnboardingModal');
+                modalElement.addEventListener('hidden.bs.modal', function showApplyingOnce() {
+                    modalElement.removeEventListener('hidden.bs.modal', showApplyingOnce);
+                    if (onboardingApplyingModal) onboardingApplyingModal.show();
+                    setTimeout(() => window.location.reload(), 180);
+                });
+                initialOnboardingModal.hide();
+                return;
+            }
+            renderInitialOnboardingStep(res.next_step || (step + 1));
+        },
+        error: function () {
+            showInitialOnboardingAlert('danger', 'Error de conexión al guardar este paso.');
+        },
+        complete: function () {
+            $button.prop('disabled', false);
+            if (INITIAL_ONBOARDING_STEP === step) {
+                $button.html(original);
+            }
+            $('#btn-onboarding-previous').prop('disabled', false);
+        }
+    });
+}
+
+function runOnboardingAfterReloadAction() {
+    const action = sessionStorage.getItem('initialOnboardingAfterReload') || '';
+    if (!action) return;
+    sessionStorage.removeItem('initialOnboardingAfterReload');
+    setTimeout(function () {
+        if (action === 'patient') {
+            $('#btn-admin-patients').trigger('click');
+            setTimeout(() => $('#btn-new-patient').trigger('click'), 250);
+        } else {
+            $('#btn-open-settings').trigger('click');
+            setTimeout(function () {
+                const tabId = action === 'team' ? 'cabinet-settings-tab' : 'services-settings-tab';
+                const tab = document.getElementById(tabId);
+                if (tab) bootstrap.Tab.getOrCreateInstance(tab).show();
+            }, 250);
+        }
+    }, 350);
+}
+
+$(document).on('change', '#onboarding-country', syncOnboardingCountryFields);
+$(document).on('change', '#onboarding-portal-enabled', syncOnboardingPortalFields);
+$(document).on('input change', '#onboarding-primary-color', function () {
+    syncOnboardingColor($(this).val());
+});
+$(document).on('input', '#onboarding-primary-color-text', function () {
+    const color = String($(this).val() || '');
+    if (/^#[0-9a-f]{6}$/i.test(color)) {
+        syncOnboardingColor(color);
+    }
+});
+$(document).on('click', '#btn-onboarding-previous', function () {
+    renderInitialOnboardingStep(INITIAL_ONBOARDING_STEP - 1);
+});
+$(document).on('click', '#btn-onboarding-next', saveInitialOnboardingStep);
+$(document).on('click', '#btn-open-initial-onboarding', function () {
+    loadInitialOnboarding(false).then(() => initialOnboardingModal.show()).catch(error => window.alert(error.message));
+});
+$(document).on('click', '#btn-copy-onboarding-portal-url', function () {
+    const value = $('#onboarding-portal-url').val() || '';
+    if (value && navigator.clipboard) navigator.clipboard.writeText(value);
+});
+$(document).on('click', '.onboarding-finish-action', function () {
+    sessionStorage.setItem('initialOnboardingAfterReload', $(this).data('action') || '');
+    saveInitialOnboardingStep();
+});
+
 async function initializeAdminDashboardSettings() {
     try {
         const settingsPromise = loadPaymentSettings();
@@ -14458,6 +19624,8 @@ async function initializeAdminDashboardSettings() {
         applyPlanFeatureVisibility();
         applyKnowledgeBaseVisibility();
         startQuickAppointmentsAutoRefresh();
+        await loadInitialOnboarding(true);
+        runOnboardingAfterReloadAction();
     } catch (err) {
         paymentSettingsLoaded = false;
         applyPlanFeatureVisibility();
@@ -14516,27 +19684,44 @@ function loadPaymentSettings() {
             $('#primary-color').val(primaryColor);
             $('#primary-color-text').val(primaryColor);
             document.documentElement.style.setProperty('--primary-color', primaryColor);
+            $('#tenant-timezone').val(settings.tenant_timezone || 'Europe/Madrid');
             $('#appointment-delivery-mode').val(settings.appointment_delivery_mode || 'both');
             document.title = `Dashboard - ${settings.app_name || 'SimplyGest Praxis'}`;
             $('#show-profile-image-public').prop('checked', settings.show_profile_image_public == 1);
             $('#show-prices-public').prop('checked', settings.show_prices_public == 1);
+            $('#discount-period-enabled').prop('checked', settings.discount_period_enabled == 1);
+            $('#discount-period-start-date').val(settings.discount_period_start_date || '');
+            $('#discount-period-end-date').val(settings.discount_period_end_date || '');
+            $('#discount-show-public').prop('checked', settings.discount_show_public == 1);
+            toggleDiscountPeriodSettings();
             $('#show-contact-public').prop('checked', settings.show_contact_public == 1);
             $('#legal-owner-name').val(settings.legal_owner_name || '');
             $('#legal-nif').val(settings.legal_nif || '');
             $('#legal-address').val(settings.legal_address || '');
+            $('#legal-country').val(settings.billing_country === 'OT' ? 'OT' : 'ES');
+            populateLegalProvinceOptions(settings.billing_country === 'OT' ? '' : (settings.legal_province || ''));
+            $('#legal-province-other').val(settings.billing_country === 'OT' ? (settings.legal_province || '') : '');
+            syncLegalCountryFields();
+            $('#legal-city').val(settings.legal_city || '');
+            $('#legal-postal-code').val(settings.legal_postal_code || '');
             $('#legal-email').val(settings.legal_email || '');
+            $('#legal-health-registry-number').val(settings.legal_health_registry_number || '');
             $('#legal-license-number').val(settings.legal_license_number || '');
             $('#legal-professional-college').val(settings.legal_professional_college || '');
             $('#legal-uses-non-technical-cookies').prop('checked', settings.legal_uses_non_technical_cookies == 1);
             $('#legal-terms-notes').val(settings.legal_terms_notes || '');
             $('#billing-enabled').prop('checked', settings.billing_enabled == 1);
-            $('#billing-country').val(settings.billing_country || 'ES');
-            $('#billing-province').val(settings.billing_province || '');
-            $('#billing-session-concept').val(settings.billing_session_concept || 'Sesion del dia {fecha} de duracion {duracion} minutos');
+            $('#verifactu-taxpayer-type').val(settings.verifactu_taxpayer_type === 'company' ? 'company' : 'self_employed');
+            $('#verifactu-activation-mode').val(settings.verifactu_activation_mode === 'voluntary' ? 'voluntary' : 'official');
+            syncBillingCountryVisibility();
+            syncVerifactuSettings();
+            $('#billing-session-concept').val(settings.billing_session_concept || 'Sesión {servicio} del día {fecha} ({duracion} minutos)');
             $('#billing-report-concept').val(settings.billing_report_concept || 'Informe {titulo}');
+            syncBillingTaxSettings();
+            renderServicesSettings();
             syncPatientBillingTabVisibility();
             togglePatientInvoiceAltFields();
-            const initialView = ['week', 'month', 'patients', 'upcoming'].includes(settings.initial_calendar_view) ? settings.initial_calendar_view : 'month';
+            const initialView = ['dashboard', 'week', 'month', 'patients', 'upcoming'].includes(settings.initial_calendar_view) ? settings.initial_calendar_view : 'month';
             $('#initial-calendar-view').val(initialView);
             LOADED_DASHBOARD_CONFIG_MODE = ['simple', 'advanced', 'custom'].includes(settings.dashboard_config_mode) ? settings.dashboard_config_mode : 'simple';
             $('#dashboard-config-mode').val(LOADED_DASHBOARD_CONFIG_MODE);
@@ -14628,6 +19813,7 @@ function loadPaymentSettings() {
             $('#google-calendar-id').val(settings.google_calendar_id || 'primary');
             $('#icloud-calendar-email').val(settings.icloud_calendar_email || '');
             $('#icloud-calendar-url').val(settings.icloud_calendar_url || 'https://caldav.icloud.com');
+            $('#microsoft-calendar-id').val(settings.microsoft_calendar_id || '');
             $('#icloud-calendar-app-password').val('');
             $('#icloud-calendar-app-password-status').text(settings.has_icloud_calendar_app_password == 1
                 ? 'Ya hay una contraseña específica de app guardada. Escribe una nueva solo si quieres cambiarla.'
@@ -14664,6 +19850,28 @@ function loadPaymentSettings() {
             reject(new Error(message));
         }
         });
+    });
+}
+
+function beginOauthRedirect(provider, redirectUrl, alertSelector, button, section) {
+    const providerName = provider === 'Microsoft' ? 'Microsoft' : 'Google';
+    $('#oauth-redirect-title').text(`Iniciando integración con ${providerName}`);
+    $('#oauth-redirect-message').text(
+        `Te estamos redirigiendo a ${providerName} para registrar tu cuenta.`
+    );
+    $('body').addClass('oauth-redirect-modal-open');
+    if (oauthRedirectModal) {
+        oauthRedirectModal.show();
+    }
+
+    savePaymentSettings(alertSelector, function () {
+        window.location.href = redirectUrl;
+    }, button, section).catch(function () {
+        if (oauthRedirectModal) {
+            oauthRedirectModal.hide();
+        } else {
+            $('body').removeClass('oauth-redirect-modal-open');
+        }
     });
 }
 
@@ -14726,10 +19934,30 @@ function toggleCalendarSettings() {
     $('#calendar-provider-none-fields').toggle(provider === 'none');
     $('#google-calendar-config-fields').toggle(provider === 'google');
     $('#icloud-calendar-config-fields').toggle(provider === 'icloud');
+    $('#microsoft-calendar-config-fields').toggle(provider === 'microsoft');
     setFieldBlockEnabled('#google-calendar-config-fields', provider === 'google');
     setFieldBlockEnabled('#icloud-calendar-config-fields', provider === 'icloud');
+    setFieldBlockEnabled('#microsoft-calendar-config-fields', provider === 'microsoft');
     updateGoogleConnectionUi();
+    updateMicrosoftConnectionUi();
     togglePatientCalendarLinkSettings();
+}
+
+function updateMicrosoftConnectionUi() {
+    const provider = $('#calendar-provider').val() || PAYMENT_SETTINGS.calendar_provider || 'none';
+    const email = String(PAYMENT_SETTINGS.microsoft_connected_email || '').trim();
+    const connected = Boolean(email && PAYMENT_SETTINGS.has_microsoft_refresh_token == 1);
+    const configured = PAYMENT_SETTINGS.microsoft_oauth_configured == 1;
+    $('#microsoft-calendar-connected-status')
+        .toggleClass('d-none', provider !== 'microsoft')
+        .removeClass('text-muted text-success text-danger')
+        .addClass(connected ? 'text-success' : 'text-danger')
+        .text(configured
+            ? (connected ? `Microsoft conectado: ${email}` : 'No hay ninguna cuenta Microsoft conectada.')
+            : 'Faltan las credenciales Microsoft OAuth en el servidor.');
+    $('#btn-microsoft-connect-calendar')
+        .prop('disabled', !configured)
+        .text(connected ? 'Reconectar/Reautorizar Microsoft' : 'Conectar con Microsoft');
 }
 
 function updateGoogleConnectionUi() {
@@ -14784,16 +20012,109 @@ function toggleBonusesSettings() {
     setFieldBlockEnabled('#bonuses-config-block', $('#bonuses-enabled').is(':checked'));
 }
 
+function toggleDiscountPeriodSettings() {
+    const enabled = $('#discount-period-enabled').is(':checked');
+    $('.discount-period-field').toggleClass('opacity-50', !enabled);
+    $('#discount-period-start-date, #discount-period-end-date, #discount-show-public').prop('disabled', !enabled);
+}
+
+function defaultBillingExemptionReason(system) {
+    if (system === 'igic') {
+        return 'Operación exenta de IGIC conforme al artículo 50.Uno.3.º de la Ley 4/2012.';
+    }
+    if (system === 'iva') {
+        return 'Operación exenta de IVA conforme al artículo 20.Uno.3.º de la Ley 37/1992.';
+    }
+    return 'Operación exenta según la normativa fiscal aplicable.';
+}
+
+function billingOfficialTax() {
+    const country = $('#legal-country').val() || PAYMENT_SETTINGS.billing_country || 'ES';
+    const province = country === 'ES'
+        ? ($('#legal-province').val() || PAYMENT_SETTINGS.billing_province || '')
+        : ($('#legal-province-other').val().trim() || '');
+    const canaryIslands = country === 'ES' && ['Las Palmas', 'Santa Cruz de Tenerife'].includes(province);
+    return canaryIslands
+        ? { system: 'igic', rate: 7, label: 'IGIC' }
+        : { system: 'iva', rate: 21, label: 'IVA' };
+}
+
+function syncBillingTaxSettings() {
+    const tax = billingOfficialTax();
+    $('#billing-tax-system').val(tax.system);
+    $('#billing-default-tax-rate').val(String(tax.rate));
+    $('#billing-default-tax-mode').val('taxed');
+    $('#billing-exemption-reason').val(defaultBillingExemptionReason(tax.system));
+    $('#services-tax-column-title').text(tax.label);
+}
+
+function syncBillingCountryVisibility() {
+    const isSpain = ($('#legal-country').val() || PAYMENT_SETTINGS.billing_country || 'ES') === 'ES';
+    $('#verifactu-settings-block').toggleClass('d-none', !isSpain);
+}
+
+function syncVerifactuSettings() {
+    const taxpayerType = $('#verifactu-taxpayer-type').val() === 'company' ? 'company' : 'self_employed';
+    const activationMode = $('#verifactu-activation-mode').val() === 'voluntary' ? 'voluntary' : 'official';
+    const officialLabel = taxpayerType === 'company' ? '1 de enero de 2027' : '1 de julio de 2027';
+    $('#verifactu-voluntary-warning').toggleClass('d-none', activationMode !== 'voluntary');
+
+    const todayDate = new Date();
+    const today = [
+        todayDate.getFullYear(),
+        String(todayDate.getMonth() + 1).padStart(2, '0'),
+        String(todayDate.getDate()).padStart(2, '0')
+    ].join('-');
+    const savedStartDate = PAYMENT_SETTINGS.verifactu_start_date || '';
+    const alreadyActive = (savedStartDate && savedStartDate <= today && PAYMENT_SETTINGS.verifactu_enabled == 1)
+        || parseInt(PAYMENT_SETTINGS.verifactu_environment || 0, 10) === 1
+        || !!PAYMENT_SETTINGS.verifactu_activated_at;
+
+    if (alreadyActive) {
+        const activatedDate = String(PAYMENT_SETTINGS.verifactu_activated_at || '').slice(0, 10);
+        const effectiveStartDate = savedStartDate || activatedDate || today;
+        $('#verifactu-taxpayer-type, #verifactu-activation-mode').prop('disabled', true);
+        $('#verifactu-voluntary-warning').addClass('d-none');
+        $('#verifactu-official-date-text').text(
+            `Se empez\u00f3 a enviar a VeriFactu el ${effectiveStartDate.split('-').reverse().join('/')}.`
+        );
+    } else if (activationMode === 'voluntary') {
+        $('#verifactu-official-date-text').text(
+            `El env\u00edo voluntario comenzar\u00e1 hoy, ${today.split('-').reverse().join('/')}.`
+        );
+    } else {
+        $('#verifactu-official-date-text').text(`Fecha de inicio prevista: ${officialLabel}.`);
+    }
+}
+
+function collectBillingServiceTaxSettings() {
+    const tax = billingOfficialTax();
+    return $('#services-settings-body .service-group-row').map(function () {
+        const mode = $(this).find('.billing-service-tax-mode').val() === 'exempt' ? 'exempt' : 'taxed';
+        return {
+            id: parseInt($(this).data('service-id') || 0, 10),
+            tax_mode: mode,
+            tax_rate: mode === 'taxed' ? tax.rate : '',
+            tax_exemption_reason: mode === 'exempt' ? defaultBillingExemptionReason(tax.system) : ''
+        };
+    }).get();
+}
+
 function renderServicesSettings() {
     const $body = $('#services-settings-body');
     if (!$body.length) {
         return;
     }
+    const showTax = billingPlanEnabled();
+    const showDiscounts = planFeatureEnabled('catalog.discounts', false);
+    const columnCount = 4 + (showDiscounts ? 1 : 0) + (showTax ? 1 : 0);
     if (!APPOINTMENT_SERVICES.length) {
-        $body.html('<tr><td colspan="4" class="text-muted text-center py-4">No hay precios configurados.</td></tr>');
+        $body.html(`<tr><td colspan="${columnCount}" class="text-muted text-center py-4">No hay precios configurados.</td></tr>`);
         return;
     }
 
+    const tax = billingOfficialTax();
+    $('#services-tax-column-title').text(tax.label);
     const visibleDurations = selectedSessionDurations();
     const visibleMode = $('#appointment-delivery-mode').val() || PAYMENT_SETTINGS.appointment_delivery_mode || 'both';
     const activeTypes = selectedSessionTypes();
@@ -14809,9 +20130,18 @@ function renderServicesSettings() {
         if (!serviceOptions.length) {
             return;
         }
+        const storedMode = ['exempt', 'taxed'].includes(service.tax_mode)
+            ? service.tax_mode
+            : ((PAYMENT_SETTINGS.billing_default_tax_mode || 'exempt') === 'taxed' ? 'taxed' : 'exempt');
         html += `
             <tr class="service-group-row" data-service-id="${service.id || 0}" data-service-key="${escapeHtml(serviceKey)}">
-                <td colspan="4" class="service-group-title">${escapeHtml(service.name || '')}</td>
+                <td colspan="${4 + (showDiscounts ? 1 : 0)}" class="service-group-title">${escapeHtml(service.name || '')}</td>
+                ${showTax ? `<td class="service-group-title">
+                    <select class="form-select form-select-sm billing-service-tax-mode" aria-label="${tax.label} de ${escapeHtml(service.name || '')}">
+                        <option value="exempt"${storedMode === 'exempt' ? ' selected' : ''}>Exento</option>
+                        <option value="taxed"${storedMode === 'taxed' ? ' selected' : ''}>Sujeto (${tax.rate}%)</option>
+                    </select>
+                </td>` : ''}
             </tr>
         `;
         serviceOptions.forEach(option => {
@@ -14827,11 +20157,18 @@ function renderServicesSettings() {
                             <span class="input-group-text">€</span>
                         </div>
                     </td>
+                    ${showDiscounts ? `<td>
+                        <div class="input-group input-group-sm">
+                            <input type="number" class="form-control option-discount-input" min="0" max="100" step="0.01" value="${option.discount_percentage || '0.00'}">
+                            <span class="input-group-text">%</span>
+                        </div>
+                    </td>` : ''}
+                    ${showTax ? '<td></td>' : ''}
                 </tr>
             `;
         });
     });
-    $body.html(html || '<tr><td colspan="4" class="text-muted text-center py-4">No hay precios para la configuración seleccionada.</td></tr>');
+    $body.html(html || `<tr><td colspan="${columnCount}" class="text-muted text-center py-4">No hay precios para la configuración seleccionada.</td></tr>`);
 }
 
 function renderBonusesSettings() {
@@ -14994,6 +20331,9 @@ function collectServicesSettings() {
                 duration_minutes: parseInt(option.duration_minutes, 10),
                 consultation_type: option.consultation_type,
                 price: isVisible ? $optionRow.find('.option-price-input').val() : option.price,
+                discount_percentage: planFeatureEnabled('catalog.discounts', false)
+                    ? (isVisible ? $optionRow.find('.option-discount-input').val() : (option.discount_percentage || 0))
+                    : 0,
                 is_active: isVisible ? 1 : 0
             };
         });
@@ -15002,6 +20342,9 @@ function collectServicesSettings() {
             service_key: service.service_key || '',
             name: (service.name || '').trim(),
             is_active: serviceVisible ? 1 : 0,
+            tax_mode: billingPlanEnabled() && $serviceRow.length
+                ? ($serviceRow.find('.billing-service-tax-mode').val() === 'exempt' ? 'exempt' : 'taxed')
+                : (service.tax_mode || 'inherit'),
             options
         };
     });
@@ -15158,6 +20501,7 @@ function normalizeProfessional(professional = {}) {
         display_name: professional.display_name || '',
         professional_title: professional.professional_title || '',
         license_number: professional.license_number || '',
+        professional_college: professional.professional_college || '',
         professional_specialty: professional.professional_specialty || '',
         public_bio: professional.public_bio || '',
         public_photo_path: professional.public_photo_path || '',
@@ -15168,11 +20512,27 @@ function normalizeProfessional(professional = {}) {
         facebook_url: professional.facebook_url || '',
         tiktok_url: professional.tiktok_url || '',
         appointment_summary_email_mode: professional.appointment_summary_email_mode || 'on_booking',
+        initial_calendar_view_override: ['dashboard', 'week', 'month', 'patients', 'upcoming'].includes(professional.initial_calendar_view_override) ? professional.initial_calendar_view_override : '',
+        timezone_override: professional.timezone_override || '',
+        notify_new_appointments: professional.notify_new_appointments == 0 ? 0 : 1,
+        notify_cancellations: professional.notify_cancellations == 0 ? 0 : 1,
+        notify_payments: professional.notify_payments == 0 ? 0 : 1,
+        notify_daily_summary: professional.notify_daily_summary == 0 ? 0 : 1,
+        notify_waiting_list: professional.notify_waiting_list == 0 ? 0 : 1,
+        contract_hours: professional.contract_hours === null || professional.contract_hours === undefined || professional.contract_hours === ''
+            ? ''
+            : parseFloat(professional.contract_hours),
+        contract_hours_unit: professional.contract_hours_unit === 'weekly' ? 'weekly' : 'daily',
         available_session_types: professional.available_session_types || '',
         available_session_durations: professional.available_session_durations || '',
         default_appointment_location: professional.default_appointment_location || '',
         default_location_id: parseInt(professional.default_location_id || 0, 10),
         livekit_enabled: professional.livekit_enabled === undefined ? 1 : (professional.livekit_enabled == 1 ? 1 : 0),
+        video_provider: ['livekit', 'daily', 'manual'].includes(professional.video_provider)
+            ? professional.video_provider
+            : (professional.livekit_enabled == 0 ? 'manual' : 'livekit'),
+        livekit_recording_enabled: professional.livekit_recording_enabled == 1 ? 1 : 0,
+        livekit_recording_mode: ['audio', 'audio_video'].includes(professional.livekit_recording_mode) ? professional.livekit_recording_mode : 'audio',
         knowledge_sector_mode: ['own', 'related', 'custom'].includes(professional.knowledge_sector_mode) ? professional.knowledge_sector_mode : 'own',
         knowledge_sector_keys: normalizeKnowledgeSectorKeys(professional.knowledge_sector_keys || []),
         role,
@@ -15224,6 +20584,10 @@ function teamMemberPermissionKeys() {
         'patients',
         'appointments',
         'statistics',
+        'view_patient_phone',
+        'billing',
+        'billing_own_patients',
+        'reports',
         'private_patient_data',
         'create_appointments',
         'cancel_appointments',
@@ -15245,6 +20609,10 @@ function defaultMemberPermissionsForRole(role) {
             patients: true,
             appointments: true,
             statistics: false,
+            view_patient_phone: true,
+            billing: false,
+            billing_own_patients: false,
+            reports: false,
             private_patient_data: false,
             create_appointments: true,
             cancel_appointments: true,
@@ -15259,6 +20627,10 @@ function defaultMemberPermissionsForRole(role) {
             patients: true,
             appointments: true,
             statistics: true,
+            view_patient_phone: true,
+            billing: true,
+            billing_own_patients: false,
+            reports: false,
             private_patient_data: false,
             create_appointments: true,
             cancel_appointments: true,
@@ -15273,6 +20645,10 @@ function defaultMemberPermissionsForRole(role) {
             patients: false,
             appointments: false,
             statistics: false,
+            view_patient_phone: false,
+            billing: false,
+            billing_own_patients: false,
+            reports: false,
             private_patient_data: false,
             create_appointments: false,
             cancel_appointments: false,
@@ -15485,6 +20861,8 @@ function updateProfessionalRoleUi() {
         }
     }
     $('.professional-permission-check').prop('disabled', role === 'superadmin');
+    $('#professional-permission-billing-own-patients')
+        .prop('disabled', role === 'superadmin' || !permissions.billing);
     $('#professional-editor-active')
         .closest('.professional-editor-status-wrap')
         .find('.form-text')
@@ -15568,6 +20946,18 @@ function renderProfessionalsSettings() {
 
     $body.html(CABINET_PROFESSIONALS.map(professionalSettingsRowHtml).join(''));
     updateTeamMemberLimitUi();
+}
+
+function updateProfessionalLivekitRecordingUi() {
+    const livekitPlanEnabled = planFeatureEnabled('livekit.enabled', false);
+    const recordingPlanEnabled = planFeatureEnabled('livekit.recording', false);
+    const provider = $('#professional-editor-video-provider').val() || 'manual';
+    const canUseRecording = provider === 'livekit' && livekitPlanEnabled && recordingPlanEnabled;
+    $('#professional-editor-livekit-recording-enabled').prop('disabled', !canUseRecording);
+    $('#professional-editor-livekit-recording-mode').prop('disabled', !canUseRecording || !$('#professional-editor-livekit-recording-enabled').is(':checked'));
+    if (!canUseRecording) {
+        $('#professional-editor-livekit-recording-enabled').prop('checked', false);
+    }
 }
 
 function teamMemberLimit() {
@@ -15662,26 +21052,34 @@ function professionalSettingsRowHtml(professional = {}, index = 0) {
     `;
 }
 
-function openProfessionalEditor(index = -1) {
+function openProfessionalEditor(index = -1, certificateOnly = false) {
     if (!professionalEditorModal) return;
     const professional = index >= 0 ? CABINET_PROFESSIONALS[index] : normalizeProfessional({ is_active: 1, role: 'admin' });
     if (!professional) return;
     const isCurrentSuperadmin = professional.role === 'superadmin'
         && (professional.is_current_user == 1 || (typeof CURRENT_USER_ID !== 'undefined' && parseInt(professional.user_id || 0, 10) === parseInt(CURRENT_USER_ID || 0, 10)));
 
-    $('#professional-editor-title').text(index >= 0 ? 'Editar miembro' : 'Nuevo miembro');
+    $('#professional-editor-title').text(!IS_SUPERADMIN ? 'Mi ficha profesional' : (index >= 0 ? (professional.display_name || 'Profesional') : 'Nuevo miembro'));
     $('#professional-editor-alert').addClass('d-none').removeClass('alert-success alert-danger').text('');
     $('#professional-editor-index').val(index);
     $('#professional-editor-id').val(professional.id || 0);
     $('#professional-editor-user-id').val(professional.user_id || 0);
-    const dataTab = document.getElementById('professional-editor-data-tab');
-    if (dataTab && window.bootstrap) {
-        bootstrap.Tab.getOrCreateInstance(dataTab).show();
+    const isCurrentUser = professional.is_current_user == 1
+        || parseInt(professional.user_id || 0, 10) === parseInt(CURRENT_USER_ID || 0, 10);
+    $('#professional-editor-certificate-tab-item').toggleClass('d-none', !isCurrentUser);
+    $('#my-signature-certificate-form input[name="professional_id"]').val(isCurrentUser ? (professional.id || 0) : 0);
+    const initialTab = certificateOnly && isCurrentUser
+        ? document.getElementById('professional-editor-certificate-tab')
+        : document.getElementById('professional-editor-data-tab');
+    if (initialTab && window.bootstrap) {
+        bootstrap.Tab.getOrCreateInstance(initialTab).show();
     }
+    if (isCurrentUser) loadMySignatureCertificateStatus();
     $('#professional-editor-name').val(professional.display_name || '');
-    $('#professional-editor-email').val(professional.email || '');
+    $('#professional-editor-email').val(professional.email || '').prop('disabled', !IS_SUPERADMIN);
     $('#professional-editor-title-field').val(professional.professional_title || '');
     $('#professional-editor-license').val(professional.license_number || '');
+    $('#professional-editor-college').val(professional.professional_college || '');
     $('#professional-editor-specialty').val(professional.professional_specialty || '');
     $('#professional-editor-bio').val(professional.public_bio || '');
     $('#professional-editor-phone').val(professional.public_phone || '');
@@ -15689,16 +21087,32 @@ function openProfessionalEditor(index = -1) {
     $('#professional-editor-facebook').val(professional.facebook_url || '');
     $('#professional-editor-tiktok').val(professional.tiktok_url || '');
     $('#professional-editor-summary-mode').val(professional.appointment_summary_email_mode || 'on_booking');
+    $('#professional-editor-initial-view').val(professional.initial_calendar_view_override || '');
+    $('#professional-editor-timezone').val(professional.timezone_override || '');
+    $('#professional-editor-notify-new-appointments').prop('checked', professional.notify_new_appointments != 0);
+    $('#professional-editor-notify-cancellations').prop('checked', professional.notify_cancellations != 0);
+    $('#professional-editor-notify-payments').prop('checked', professional.notify_payments != 0);
+    $('#professional-editor-notify-daily-summary').prop('checked', professional.notify_daily_summary != 0);
+    $('#professional-editor-notify-waiting-list').prop('checked', professional.notify_waiting_list != 0);
+    $('#professional-editor-contract-hours').val(professional.contract_hours === null || professional.contract_hours === undefined ? '' : professional.contract_hours);
+    $('#professional-editor-contract-hours-unit').val(professional.contract_hours_unit === 'weekly' ? 'weekly' : 'daily');
+    $('#professional-editor-contract-hours, #professional-editor-contract-hours-unit').prop('disabled', !IS_SUPERADMIN);
     renderProfessionalSessionControls(professional);
     $('#professional-editor-default-location').val(professional.default_appointment_location || '');
     renderProfessionalLocationSelect(professional.default_location_id || 0);
     const livekitPlanEnabled = planFeatureEnabled('livekit.enabled', false);
-    $('#professional-editor-livekit-enabled')
-        .prop('checked', livekitPlanEnabled && (professional.livekit_enabled === undefined || professional.livekit_enabled == 1))
-        .prop('disabled', !livekitPlanEnabled);
+    const livekitRecordingPlanEnabled = planFeatureEnabled('livekit.recording', false);
+    let videoProvider = professional.video_provider || (professional.livekit_enabled == 0 ? 'manual' : 'livekit');
+    if (!['livekit', 'daily', 'manual'].includes(videoProvider)) videoProvider = 'livekit';
+    if (!livekitPlanEnabled) videoProvider = 'manual';
+    $('#professional-editor-video-provider').val(videoProvider).prop('disabled', !livekitPlanEnabled);
     $('#professional-editor-livekit-help').text(livekitPlanEnabled
-        ? 'Si se desactiva, este profesional podrá indicar manualmente el enlace de Zoom, Teams u otro proveedor.'
+        ? 'Elige LiveKit, Daily o un enlace manual de Zoom, Teams u otro proveedor.'
         : 'Disponible solo en el plan Summum.');
+    $('#professional-editor-livekit-recording-enabled')
+        .prop('checked', livekitPlanEnabled && livekitRecordingPlanEnabled && professional.livekit_recording_enabled == 1);
+    $('#professional-editor-livekit-recording-mode').val(professional.livekit_recording_mode || 'audio');
+    updateProfessionalLivekitRecordingUi();
     $('#professional-editor-knowledge-mode').val(professional.knowledge_sector_mode || 'own');
     setProfessionalEditorSelectedKnowledgeKeys(professional.knowledge_sector_keys || []);
     updateProfessionalKnowledgeSectorUi();
@@ -15718,7 +21132,7 @@ function openProfessionalEditor(index = -1) {
     $('#professional-editor-active').prop('checked', professional.is_active != 0);
     updateProfessionalRoleUi();
 
-    $('.professional-editor-permission-wrap, .professional-editor-status-wrap').toggleClass('d-none', isCurrentSuperadmin);
+    $('.professional-editor-permission-wrap, .professional-editor-status-wrap').toggleClass('d-none', !IS_SUPERADMIN || isCurrentSuperadmin);
     updateProfessionalSummaryEmailUi();
     professionalEditorModal.show();
 }
@@ -15735,6 +21149,7 @@ function saveProfessionalEditor(button = null) {
         email: $('#professional-editor-email').val().trim(),
         professional_title: $('#professional-editor-title-field').val().trim(),
         license_number: $('#professional-editor-license').val().trim(),
+        professional_college: $('#professional-editor-college').val().trim(),
         professional_specialty: $('#professional-editor-specialty').val().trim(),
         public_bio: $('#professional-editor-bio').val().trim(),
         public_phone: $('#professional-editor-phone').val().trim(),
@@ -15742,11 +21157,23 @@ function saveProfessionalEditor(button = null) {
         facebook_url: $('#professional-editor-facebook').val().trim(),
         tiktok_url: $('#professional-editor-tiktok').val().trim(),
         appointment_summary_email_mode: $('#professional-editor-summary-mode').val() || 'on_booking',
+        initial_calendar_view_override: $('#professional-editor-initial-view').val() || '',
+        timezone_override: ($('#professional-editor-timezone').val() || '').trim(),
+        notify_new_appointments: $('#professional-editor-notify-new-appointments').is(':checked') ? 1 : 0,
+        notify_cancellations: $('#professional-editor-notify-cancellations').is(':checked') ? 1 : 0,
+        notify_payments: $('#professional-editor-notify-payments').is(':checked') ? 1 : 0,
+        notify_daily_summary: $('#professional-editor-notify-daily-summary').is(':checked') ? 1 : 0,
+        notify_waiting_list: $('#professional-editor-notify-waiting-list').is(':checked') ? 1 : 0,
+        contract_hours: $('#professional-editor-contract-hours').val(),
+        contract_hours_unit: $('#professional-editor-contract-hours-unit').val() || 'daily',
         available_session_types: selectedProfessionalSessionTypes().join(','),
         available_session_durations: selectedProfessionalSessionDurations().join(','),
         default_appointment_location: $('#professional-editor-default-location').val().trim(),
         default_location_id: parseInt($('#professional-editor-default-location-id').val() || '0', 10),
-        livekit_enabled: $('#professional-editor-livekit-enabled').is(':checked') ? 1 : 0,
+        video_provider: $('#professional-editor-video-provider').val() || 'manual',
+        livekit_enabled: ($('#professional-editor-video-provider').val() || 'manual') === 'manual' ? 0 : 1,
+        livekit_recording_enabled: $('#professional-editor-livekit-recording-enabled').is(':checked') ? 1 : 0,
+        livekit_recording_mode: $('#professional-editor-livekit-recording-mode').val() || 'audio',
         knowledge_sector_mode: $('#professional-editor-knowledge-mode').val() || 'own',
         knowledge_sector_keys: professionalEditorSelectedKnowledgeKeys(),
         public_photo_path: existing.public_photo_path || '',
@@ -15759,6 +21186,10 @@ function saveProfessionalEditor(button = null) {
 
     if (!professional.display_name || !professional.email) {
         showProfessionalEditorAlert('danger', 'Indica nombre y email del miembro.');
+        return;
+    }
+    if (!IS_SUPERADMIN) {
+        saveMyProfessionalProfile(professional, button);
         return;
     }
     const prospectiveProfessionals = CABINET_PROFESSIONALS.slice();
@@ -15789,6 +21220,42 @@ function saveProfessionalEditor(button = null) {
         photoFile: selectedPhotoFile,
         photoIndex: index >= 0 ? index : CABINET_PROFESSIONALS.length - 1,
         syncFromTable: false
+    });
+}
+
+function saveMyProfessionalProfile(professional, button = null) {
+    const $button = $(button || '#btn-save-professional-editor');
+    const original = $button.html();
+    const formData = new FormData();
+    formData.append('professional', JSON.stringify(professional));
+    const photoInput = document.getElementById('professional-editor-photo');
+    const photo = photoInput && photoInput.files && photoInput.files[0]
+        ? photoInput.files[0]
+        : PROFESSIONAL_PHOTO_FILE;
+    if (photo) formData.append('professional_photo', photo);
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Guardando');
+    $('#professional-editor-alert').addClass('d-none').text('');
+    $.ajax({
+        url: 'api/admin.php?action=save_my_professional_profile',
+        method: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        dataType: 'json',
+        success: function (res) {
+            if (!res.success) {
+                showProfessionalEditorAlert('danger', res.error || 'No se pudo guardar tu ficha profesional.');
+                return;
+            }
+            PROFESSIONAL_PHOTO_FILE = null;
+            showProfessionalEditorAlert('success', res.message || 'Ficha profesional guardada correctamente.');
+        },
+        error: function () {
+            showProfessionalEditorAlert('danger', 'Error de conexi&oacute;n al guardar tu ficha profesional.');
+        },
+        complete: function () {
+            $button.prop('disabled', false).html(original);
+        }
     });
 }
 
@@ -16257,6 +21724,8 @@ async function saveAllSettings(button = null) {
         });
 
         if (typeof IS_SUPERADMIN !== 'undefined' && IS_SUPERADMIN) {
+            await saveSignatureSettings();
+            await saveTimeTrackingSettings();
             if (servicesSettingsChanged()) {
                 await saveServicesSettings(null, {
                     suppressLoading: true,
@@ -16334,17 +21803,34 @@ function savePaymentSettings(alertSelector = '#payment-settings-alert', onSucces
     formData.append('legal_owner_name', $('#legal-owner-name').val().trim());
     formData.append('legal_nif', $('#legal-nif').val().trim());
     formData.append('legal_address', $('#legal-address').val().trim());
+    const legalCountry = $('#legal-country').val() === 'ES' ? 'ES' : 'OT';
+    const legalProvince = legalCountry === 'ES'
+        ? ($('#legal-province').val() || '')
+        : $('#legal-province-other').val().trim();
+    formData.append('legal_province', legalProvince);
+    formData.append('legal_city', $('#legal-city').val().trim());
+    formData.append('legal_postal_code', $('#legal-postal-code').val().trim());
     formData.append('legal_email', $('#legal-email').val().trim());
+    formData.append('legal_health_registry_number', $('#legal-health-registry-number').val().trim());
     formData.append('legal_license_number', $('#legal-license-number').val().trim());
     formData.append('legal_professional_college', $('#legal-professional-college').val().trim());
     formData.append('legal_uses_non_technical_cookies', $('#legal-uses-non-technical-cookies').is(':checked') ? '1' : '0');
     formData.append('legal_terms_notes', $('#legal-terms-notes').val().trim());
     formData.append('billing_enabled', billingPlanEnabled() && $('#billing-enabled').is(':checked') ? '1' : '0');
-    formData.append('billing_country', $('#billing-country').val() || 'ES');
-    formData.append('billing_province', $('#billing-province').val() || '');
+    const billingCountry = legalCountry;
+    formData.append('billing_country', billingCountry);
+    formData.append('billing_province', billingCountry === 'ES' ? legalProvince : '');
     formData.append('billing_session_concept', $('#billing-session-concept').val().trim());
     formData.append('billing_report_concept', $('#billing-report-concept').val().trim());
+    formData.append('billing_tax_system', $('#billing-tax-system').val() || 'iva');
+    formData.append('billing_default_tax_mode', 'taxed');
+    formData.append('billing_default_tax_rate', $('#billing-default-tax-rate').val() || '21');
+    formData.append('billing_exemption_reason', $('#billing-exemption-reason').val() || defaultBillingExemptionReason($('#billing-tax-system').val() || 'iva'));
+    formData.append('verifactu_taxpayer_type', $('#verifactu-taxpayer-type').val() || 'self_employed');
+    formData.append('verifactu_activation_mode', $('#verifactu-activation-mode').val() === 'voluntary' ? 'voluntary' : 'official');
+    formData.append('billing_service_tax_json', JSON.stringify(collectBillingServiceTaxSettings()));
     formData.append('primary_color', $('#primary-color-text').val().trim());
+    formData.append('tenant_timezone', $('#tenant-timezone').val() || 'Europe/Madrid');
     formData.append('appointment_delivery_mode', $('#appointment-delivery-mode').val());
     selectedSessionTypes().forEach(type => {
         formData.append('available_session_types[]', type);
@@ -16357,6 +21843,10 @@ function savePaymentSettings(alertSelector = '#payment-settings-alert', onSucces
     formData.append('display_duration_offset_minutes', $('#display-duration-offset-minutes').val().trim() || '5');
     formData.append('show_profile_image_public', $('#show-profile-image-public').is(':checked') ? '1' : '0');
     formData.append('show_prices_public', $('#show-prices-public').is(':checked') ? '1' : '0');
+    formData.append('discount_period_enabled', $('#discount-period-enabled').is(':checked') ? '1' : '0');
+    formData.append('discount_period_start_date', $('#discount-period-start-date').val() || '');
+    formData.append('discount_period_end_date', $('#discount-period-end-date').val() || '');
+    formData.append('discount_show_public', $('#discount-show-public').is(':checked') ? '1' : '0');
     formData.append('show_contact_public', $('#show-contact-public').is(':checked') ? '1' : '0');
     formData.append('initial_calendar_view', $('#initial-calendar-view').val() || 'month');
     formData.append('dashboard_config_mode', LOADED_DASHBOARD_CONFIG_MODE || 'advanced');
@@ -16413,6 +21903,7 @@ function savePaymentSettings(alertSelector = '#payment-settings-alert', onSucces
     formData.append('icloud_calendar_email', $('#icloud-calendar-email').val().trim());
     formData.append('icloud_calendar_app_password', $('#icloud-calendar-app-password').val().trim());
     formData.append('icloud_calendar_url', $('#icloud-calendar-url').val().trim());
+    formData.append('microsoft_calendar_id', $('#microsoft-calendar-id').val().trim());
     formData.append('send_patient_calendar_link', $('#send-patient-calendar-link').is(':checked') ? '1' : '0');
 
     return new Promise((resolve, reject) => {
@@ -16470,3 +21961,458 @@ function savePaymentSettings(alertSelector = '#payment-settings-alert', onSucces
         });
     });
 }
+
+let SUBSCRIPTION_OVERVIEW = null;
+let SUBSCRIPTION_ACTION_MODE = '';
+let SUBSCRIPTION_DROPIN = null;
+let subscriptionActionModal = null;
+let SUBSCRIPTION_SELECTED_PLAN_KEY = '';
+let SUBSCRIPTION_PAYMENT_READY = false;
+let SUBSCRIPTION_PROCESSING = false;
+
+function setSubscriptionProcessing(processing) {
+    SUBSCRIPTION_PROCESSING = Boolean(processing);
+    const titles = {
+        create: 'Activando la suscripción...',
+        change_plan: 'Actualizando el plan...',
+        payment: 'Actualizando la forma de pago...'
+    };
+    $('#subscription-processing-title').text(titles[SUBSCRIPTION_ACTION_MODE] || 'Procesando la solicitud...');
+    $('#subscription-processing-overlay').toggleClass('d-none', !SUBSCRIPTION_PROCESSING);
+    $('#subscriptionActionModal [data-bs-dismiss="modal"], #btn-confirm-subscription-action').prop('disabled', SUBSCRIPTION_PROCESSING);
+}
+
+function subscriptionBeforeUnload(event) {
+    if (!SUBSCRIPTION_PROCESSING) return;
+    event.preventDefault();
+    event.returnValue = '';
+}
+
+function subscriptionApi(action, method = 'GET', data = {}) {
+    if (method !== 'GET') data = Object.assign({}, data, { _subscription_csrf: SUBSCRIPTION_CSRF_TOKEN || '' });
+    return new Promise((resolve, reject) => {
+        $.ajax({
+            url: `api/admin.php?action=${encodeURIComponent(action)}`,
+            method,
+            data,
+            dataType: 'json',
+            success: response => response && response.success
+                ? resolve(response)
+                : reject(new Error(response && response.error ? response.error : 'No se pudo completar la operación.')),
+            error: xhr => {
+                const response = xhr.responseJSON || {};
+                reject(new Error(response.error || 'No se pudo conectar con el servidor.'));
+            }
+        });
+    });
+}
+
+function subscriptionFormatDate(value, includeTime = false) {
+    if (!value) return '';
+    const normalized = String(value).replace(' ', 'T') + (String(value).includes('Z') ? '' : 'Z');
+    const date = new Date(normalized);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return new Intl.DateTimeFormat('es-ES', includeTime
+        ? { dateStyle: 'short', timeStyle: 'short' }
+        : { dateStyle: 'long' }).format(date);
+}
+
+function subscriptionFormatAmount(amount, currency = 'EUR') {
+    const number = Number.parseFloat(amount || 0);
+    return new Intl.NumberFormat('es-ES', { style: 'currency', currency: currency || 'EUR' }).format(Number.isFinite(number) ? number : 0);
+}
+
+function subscriptionPlanName(key) {
+    const plans = { initium: 'Initium', novus: 'Novus', magister: 'Magister', summum: 'Summum' };
+    return plans[String(key || '').toLowerCase()] || 'Sin plan';
+}
+
+function subscriptionStatus(status, canceledAtPeriodEnd = false) {
+    if (canceledAtPeriodEnd) return { label: 'Cancelada', className: 'text-bg-warning' };
+    const statuses = {
+        trialing: ['Periodo de prueba', 'text-bg-info'], pending: ['Pendiente', 'text-bg-warning'],
+        active: ['Activa', 'text-bg-success'], past_due: ['Pago pendiente', 'text-bg-danger'],
+        canceled: ['Cancelada', 'text-bg-secondary'], expired: ['Finalizada', 'text-bg-secondary']
+    };
+    const item = statuses[String(status || '')] || ['Sin suscripción', 'text-bg-secondary'];
+    return { label: item[0], className: item[1] };
+}
+
+function renderSubscriptionOverview(data) {
+    SUBSCRIPTION_OVERVIEW = data || {};
+    const subscription = SUBSCRIPTION_OVERVIEW.subscription || null;
+    const sandbox = SUBSCRIPTION_OVERVIEW.environment === 'sandbox';
+    const canceledAtPeriodEnd = subscription && parseInt(subscription.cancel_at_period_end || 0, 10) === 1;
+    const trial = SUBSCRIPTION_OVERVIEW.trial || null;
+    const grantedPlan = SUBSCRIPTION_OVERVIEW.granted_plan || null;
+    const planKey = subscription ? subscription.plan_key : SUBSCRIPTION_OVERVIEW.configured_plan_key;
+    let status = subscriptionStatus(subscription ? subscription.status : '', canceledAtPeriodEnd);
+    if (!subscription && trial) {
+        const days = parseInt(trial.days_remaining || 1, 10);
+        status = {
+            label: days === 1 ? 'Modo Demostración. Te queda 1 día de prueba' : `Modo Demostración. Te quedan ${days} días de prueba`,
+            className: 'text-bg-info'
+        };
+    } else if (!subscription && grantedPlan) {
+        status = { label: 'Suscripción de cortesía', className: 'text-bg-success' };
+    } else if (!subscription && String(planKey || '').toLowerCase() === 'initium') {
+        status = { label: 'Plan gratuito', className: 'text-bg-secondary' };
+    }
+
+    $('#subscription-plan-name').text(subscriptionPlanName(planKey));
+    $('#subscription-status-badge').attr('class', `badge ${status.className}`).text(status.label);
+    $('#subscription-environment-badge').toggleClass('d-none', !sandbox);
+    $('#subscription-sandbox-alert, #subscription-action-sandbox').toggleClass('d-none', !sandbox);
+
+    let periodText = '';
+    if (subscription && canceledAtPeriodEnd && subscription.current_period_ends_at) {
+        periodText = `Conservarás el acceso hasta el ${subscriptionFormatDate(subscription.current_period_ends_at)}. Después pasarás a Initium.`;
+    } else if (subscription && subscription.next_billing_at) {
+        periodText = `Próximo cobro: ${subscriptionFormatDate(subscription.next_billing_at)}.`;
+    } else if (!subscription && grantedPlan && grantedPlan.until) {
+        periodText = `Suscripción de cortesía disponible hasta el ${subscriptionFormatDate(grantedPlan.until)}.`;
+    }
+    $('#subscription-period-text').text(periodText);
+
+    let paymentText = '';
+    if (subscription && subscription.payment_method_type) {
+        const type = subscription.payment_method_type === 'card' ? 'Tarjeta' : subscription.payment_method_type;
+        paymentText = `${type}${subscription.payment_method_last4 ? ` •••• ${subscription.payment_method_last4}` : ''}${subscription.payment_method_expiry ? ` · caduca ${subscription.payment_method_expiry}` : ''}`;
+    }
+    $('#subscription-payment-method').text(paymentText);
+
+    const editable = subscription && !canceledAtPeriodEnd && ['active', 'past_due'].includes(String(subscription.status || ''));
+    $('#btn-subscription-payment').toggleClass('d-none', !editable);
+    $('#btn-subscription-cancel').toggleClass('d-none', !editable);
+    $('#btn-subscription-plan').html(editable
+        ? '<i class="bi bi-arrow-repeat"></i> Cambiar plan'
+        : '<i class="bi bi-check-circle"></i> Contratar plan');
+
+    const rows = Array.isArray(SUBSCRIPTION_OVERVIEW.transactions) ? SUBSCRIPTION_OVERVIEW.transactions : [];
+    $('#subscription-history-body').html(rows.length ? rows.map(transaction => {
+        const paid = ['settled', 'settling', 'submitted_for_settlement', 'authorized'].includes(String(transaction.status || '').toLowerCase());
+        const invoice = transaction.invoice_id
+            ? `<button type="button" class="btn btn-outline-primary btn-sm btn-subscription-invoice" data-id="${parseInt(transaction.invoice_id, 10)}"><i class="bi bi-file-earmark-pdf"></i> PDF</button>`
+            : '<span class="text-muted small">—</span>';
+        return `<tr>
+            <td>${escapeHtml(subscriptionFormatDate(transaction.processed_at, true) || '—')}</td>
+            <td><code>${escapeHtml(transaction.provider_transaction_id || '—')}</code></td>
+            <td><span class="badge ${paid ? 'text-bg-success' : 'text-bg-warning'}">${escapeHtml(transaction.status || 'Pendiente')}</span></td>
+            <td class="text-end">${escapeHtml(subscriptionFormatAmount(transaction.amount, transaction.currency))}</td>
+            <td class="text-center">${invoice}</td>
+        </tr>`;
+    }).join('') : '<tr><td colspan="5" class="text-center text-muted py-4">Todavía no hay pagos registrados.</td></tr>');
+
+    $('#subscription-settings-loading').addClass('d-none');
+    $('#subscription-settings-content').removeClass('d-none');
+}
+
+async function loadSubscriptionOverview() {
+    if (!IS_SUPERADMIN) return;
+    $('#subscription-settings-alert').addClass('d-none');
+    $('#subscription-settings-loading').removeClass('d-none');
+    try {
+        renderSubscriptionOverview(await subscriptionApi('subscription_overview'));
+    } catch (error) {
+        $('#subscription-settings-loading').addClass('d-none');
+        showSettingsAlert('#subscription-settings-alert', 'danger', error.message);
+    }
+}
+
+async function destroySubscriptionDropin() {
+    SUBSCRIPTION_PAYMENT_READY = false;
+    if (!SUBSCRIPTION_DROPIN) {
+        $('#subscription-dropin-container').empty();
+        return;
+    }
+    try { await SUBSCRIPTION_DROPIN.teardown(); } catch (ignored) {}
+    SUBSCRIPTION_DROPIN = null;
+    $('#subscription-dropin-container').empty();
+}
+
+async function initializeSubscriptionDropin() {
+    await destroySubscriptionDropin();
+    $('#subscription-dropin-loading').removeClass('d-none');
+    try {
+        if (!window.braintree || !window.braintree.dropin) throw new Error('No se pudo cargar el formulario de pago seguro.');
+        const token = await subscriptionApi('subscription_client_token');
+        SUBSCRIPTION_DROPIN = await window.braintree.dropin.create({
+            authorization: token.client_token,
+            container: '#subscription-dropin-container',
+            locale: 'es_ES',
+            threeDSecure: true
+        });
+        SUBSCRIPTION_PAYMENT_READY = true;
+        syncSubscriptionActionButton();
+    } finally {
+        $('#subscription-dropin-loading').addClass('d-none');
+    }
+}
+
+function selectedSubscriptionPlan() {
+    return (SUBSCRIPTION_OVERVIEW.plans || []).find(plan => plan.key === SUBSCRIPTION_SELECTED_PLAN_KEY) || null;
+}
+
+function renderSubscriptionPlanCards(plans, currentPlanKey = '', lockCurrent = false) {
+    $('#subscription-plan-cards').html(plans.map(plan => {
+        const selected = plan.key === SUBSCRIPTION_SELECTED_PLAN_KEY;
+        const current = plan.key === currentPlanKey;
+        const features = Array.isArray(plan.features) ? plan.features : [];
+        return `<div class="col-12 col-lg-4">
+            <article class="subscription-plan-card ${selected ? 'is-selected' : ''} ${current ? 'is-current' : ''}" data-plan-key="${escapeHtml(plan.key)}">
+                <div class="subscription-plan-card-check"><i class="bi bi-check-circle-fill"></i></div>
+                <div class="subscription-plan-card-current ${current ? '' : 'd-none'}">Plan actual</div>
+                <h5>${escapeHtml(plan.name)}</h5>
+                <div class="subscription-plan-card-price">${escapeHtml(subscriptionFormatAmount(plan.price))}<small>/mes</small></div>
+                <p>${escapeHtml(plan.tagline || '')}</p>
+                <ul>${features.map(feature => `<li><i class="bi bi-check2"></i><span>${escapeHtml(feature)}</span></li>`).join('')}</ul>
+                <button type="button" class="btn btn-sm ${selected ? 'btn-primary' : 'btn-outline-primary'} subscription-plan-card-button" ${current && lockCurrent ? 'disabled' : ''}>
+                    ${current && lockCurrent ? 'Plan actual' : 'Contratar'}
+                </button>
+            </article>
+        </div>`;
+    }).join(''));
+}
+
+function syncSubscriptionActionButton() {
+    const subscription = SUBSCRIPTION_OVERVIEW && SUBSCRIPTION_OVERVIEW.subscription;
+    const currentPlanKey = subscription ? String(subscription.plan_key || '') : '';
+    const planIsValid = SUBSCRIPTION_ACTION_MODE === 'payment'
+        || (SUBSCRIPTION_SELECTED_PLAN_KEY !== '' && !(SUBSCRIPTION_ACTION_MODE === 'change_plan' && SUBSCRIPTION_SELECTED_PLAN_KEY === currentPlanKey));
+    $('#btn-confirm-subscription-action').prop('disabled', !SUBSCRIPTION_PAYMENT_READY || !planIsValid);
+}
+
+async function openSubscriptionAction(mode) {
+    SUBSCRIPTION_ACTION_MODE = mode;
+    $('#subscription-action-alert').addClass('d-none');
+    const subscription = SUBSCRIPTION_OVERVIEW && SUBSCRIPTION_OVERVIEW.subscription;
+    const plans = SUBSCRIPTION_OVERVIEW && Array.isArray(SUBSCRIPTION_OVERVIEW.plans) ? SUBSCRIPTION_OVERVIEW.plans : [];
+    const currentPlanKey = subscription
+        ? String(subscription.plan_key || '')
+        : String((SUBSCRIPTION_OVERVIEW && SUBSCRIPTION_OVERVIEW.configured_plan_key) || '');
+    SUBSCRIPTION_SELECTED_PLAN_KEY = plans.some(plan => plan.key === currentPlanKey)
+        ? currentPlanKey
+        : String((plans[0] || {}).key || '');
+    renderSubscriptionPlanCards(plans, currentPlanKey, mode === 'change_plan');
+    $('#subscription-plan-selector').toggleClass('d-none', mode === 'payment');
+    $('#subscription-plan-help').toggleClass('d-none', mode !== 'change_plan');
+    $('#subscription-action-title').text(mode === 'payment' ? 'Cambiar forma de pago' : (mode === 'change_plan' ? 'Cambiar plan' : 'Contratar plan'));
+    $('#btn-confirm-subscription-action').text(mode === 'payment' ? 'Guardar forma de pago' : (mode === 'change_plan' ? 'Confirmar cambio' : 'Contratar')).prop('disabled', true);
+    $('body').addClass('subscription-modal-open');
+    subscriptionActionModal.show();
+    if (mode === 'create' || mode === 'payment' || mode === 'change_plan') {
+        try {
+            await initializeSubscriptionDropin();
+        } catch (error) {
+            console.error(error);
+            SUBSCRIPTION_PAYMENT_READY = false;
+            showSettingsAlert('#subscription-action-alert', 'danger', 'No se ha podido cargar la configuración. No es posible continuar con el proceso en este momento.');
+            syncSubscriptionActionButton();
+        }
+    } else {
+        await destroySubscriptionDropin();
+    }
+}
+
+async function confirmSubscriptionAction() {
+    const $button = $('#btn-confirm-subscription-action').prop('disabled', true);
+    $('#subscription-action-alert').addClass('d-none');
+    try {
+        {
+            if (!SUBSCRIPTION_DROPIN) throw new Error('La forma de pago todavía no está preparada.');
+            const plan = SUBSCRIPTION_ACTION_MODE !== 'payment' ? selectedSubscriptionPlan() : null;
+            if (SUBSCRIPTION_ACTION_MODE !== 'payment' && !plan) throw new Error('Selecciona un plan.');
+            const amount = plan ? plan.price : ((SUBSCRIPTION_OVERVIEW.subscription || {}).amount || '0.00');
+            const payload = await SUBSCRIPTION_DROPIN.requestPaymentMethod({
+                threeDSecure: { amount: String(amount), challengeRequested: true }
+            });
+            setSubscriptionProcessing(true);
+            const action = SUBSCRIPTION_ACTION_MODE === 'payment'
+                ? 'subscription_update_payment_method'
+                : (SUBSCRIPTION_ACTION_MODE === 'change_plan' ? 'subscription_change_plan' : 'subscription_create');
+            await subscriptionApi(action, 'POST', {
+                payment_method_nonce: payload.nonce,
+                plan_key: plan ? plan.key : ''
+            });
+        }
+        setSubscriptionProcessing(false);
+        subscriptionActionModal.hide();
+        await loadSubscriptionOverview();
+        showSettingsAlert('#subscription-settings-alert', 'success', 'Suscripción actualizada correctamente.');
+    } catch (error) {
+        setSubscriptionProcessing(false);
+        showSettingsAlert('#subscription-action-alert', 'danger', error.message);
+    } finally {
+        $button.prop('disabled', false);
+    }
+}
+
+$(function () {
+    const modalElement = document.getElementById('subscriptionActionModal');
+    if (!IS_SUPERADMIN || !modalElement) return;
+    subscriptionActionModal = bootstrap.Modal.getOrCreateInstance(modalElement);
+    window.addEventListener('beforeunload', subscriptionBeforeUnload);
+    $(modalElement).on('hide.bs.modal', function (event) {
+        if (SUBSCRIPTION_PROCESSING) event.preventDefault();
+    });
+
+    $('#subscription-settings-tab').on('shown.bs.tab', function () {
+        $('#settingsModal .modal-footer').addClass('d-none');
+        loadSubscriptionOverview();
+    });
+    $('#settings-tabs button[data-bs-toggle="tab"]').not('#subscription-settings-tab').on('shown.bs.tab', function () {
+        $('#settingsModal .modal-footer').removeClass('d-none');
+    });
+    $('#btn-subscription-plan').on('click', function () {
+        const subscription = SUBSCRIPTION_OVERVIEW && SUBSCRIPTION_OVERVIEW.subscription;
+        const editable = subscription && parseInt(subscription.cancel_at_period_end || 0, 10) !== 1 && ['active', 'past_due'].includes(String(subscription.status || ''));
+        openSubscriptionAction(editable ? 'change_plan' : 'create');
+    });
+    $('#btn-subscription-payment').on('click', () => openSubscriptionAction('payment'));
+    $(document).on('click', '.subscription-plan-card', function () {
+        const key = String($(this).data('plan-key') || '');
+        const subscription = SUBSCRIPTION_OVERVIEW && SUBSCRIPTION_OVERVIEW.subscription;
+        const currentKey = subscription
+            ? String(subscription.plan_key || '')
+            : String((SUBSCRIPTION_OVERVIEW && SUBSCRIPTION_OVERVIEW.configured_plan_key) || '');
+        if (SUBSCRIPTION_ACTION_MODE === 'change_plan' && key === currentKey) return;
+        SUBSCRIPTION_SELECTED_PLAN_KEY = key;
+        renderSubscriptionPlanCards(SUBSCRIPTION_OVERVIEW.plans || [], currentKey, SUBSCRIPTION_ACTION_MODE === 'change_plan');
+        syncSubscriptionActionButton();
+    });
+    $('#btn-confirm-subscription-action').on('click', confirmSubscriptionAction);
+    $('#btn-subscription-cancel').on('click', async function () {
+        const subscription = SUBSCRIPTION_OVERVIEW && SUBSCRIPTION_OVERVIEW.subscription;
+        const until = subscriptionFormatDate(subscription && subscription.current_period_ends_at);
+        if (!window.confirm(`Si cancelas tu suscripción, se detendrán los próximos cobros y conservarás el plan actual hasta ${until || 'el final del ciclo actual'}. Después pasarás a Initium, nuestro plan gratuito y limitado. ¿Seguro que quieres cancelar la suscripción?`)) return;
+        const $button = $(this).prop('disabled', true);
+        try {
+            const response = await subscriptionApi('subscription_cancel', 'POST');
+            await loadSubscriptionOverview();
+            showSettingsAlert('#subscription-settings-alert', 'success', response.message);
+        } catch (error) {
+            showSettingsAlert('#subscription-settings-alert', 'danger', error.message);
+        } finally {
+            $button.prop('disabled', false);
+        }
+    });
+    $(modalElement).on('hidden.bs.modal', async function () {
+        await destroySubscriptionDropin();
+        $('body').removeClass('subscription-modal-open');
+        if ($('#settingsModal').hasClass('show')) $('body').addClass('modal-open');
+    });
+
+    let dataExportRefreshTimer = null;
+
+    function dataExportShowAlert(type, message) {
+        $('#data-export-alert').removeClass('d-none alert-success alert-danger alert-warning alert-info')
+            .addClass(`alert-${type}`).text(message);
+    }
+
+    function dataExportFormatBytes(bytes) {
+        const value = parseInt(bytes || 0, 10);
+        if (!value) return '';
+        const units = ['B', 'KB', 'MB', 'GB'];
+        let size = value;
+        let unit = 0;
+        while (size >= 1024 && unit < units.length - 1) {
+            size /= 1024;
+            unit++;
+        }
+        return `${size.toLocaleString('es-ES', { maximumFractionDigits: unit ? 1 : 0 })} ${units[unit]}`;
+    }
+
+    function dataExportFormatDate(value) {
+        if (!value) return '';
+        const date = new Date(String(value).replace(' ', 'T'));
+        return Number.isNaN(date.getTime()) ? escapeHtml(value) : date.toLocaleString('es-ES');
+    }
+
+    function renderDataExportJobs(jobs) {
+        const rows = Array.isArray(jobs) ? jobs : [];
+        if (!rows.length) {
+            $('#data-export-jobs').html('<div class="text-center text-muted py-4">Todavía no has solicitado ninguna exportación.</div>');
+            return;
+        }
+        const labels = { queued: 'En espera', processing: 'Generando', completed: 'Disponible', failed: 'Error', expired: 'Caducada' };
+        const badges = { queued: 'text-bg-secondary', processing: 'text-bg-info', completed: 'text-bg-success', failed: 'text-bg-danger', expired: 'text-bg-light' };
+        $('#data-export-jobs').html(rows.map(job => {
+            const active = ['queued', 'processing'].includes(job.status);
+            const canDelete = job.status !== 'processing';
+            return `<div class="border rounded p-3 mb-2" data-export-job-id="${parseInt(job.id || 0, 10)}">
+                <div class="d-flex justify-content-between align-items-start gap-3">
+                    <div class="min-w-0">
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <strong>Exportación del ${dataExportFormatDate(job.created_at)}</strong>
+                            <span class="badge ${badges[job.status] || 'text-bg-secondary'}">${labels[job.status] || escapeHtml(job.status)}</span>
+                        </div>
+                        <div class="small text-muted mt-1">${escapeHtml(job.current_step || '')}${job.file_size ? ` · ${dataExportFormatBytes(job.file_size)}` : ''}</div>
+                        ${job.status === 'completed' ? `<div class="small text-success mt-1">Disponible hasta ${dataExportFormatDate(job.expires_at)}</div>` : ''}
+                        ${job.error_message ? `<div class="small text-danger mt-1">${escapeHtml(job.error_message)}</div>` : ''}
+                    </div>
+                    <div class="d-flex gap-2 flex-shrink-0">
+                        ${job.status === 'completed' ? `<a class="btn btn-primary btn-sm" href="${escapeHtml(job.download_url)}"><i class="bi bi-download me-1"></i>Descargar</a>` : ''}
+                        ${canDelete ? `<button class="btn btn-outline-danger btn-sm btn-delete-data-export" type="button" data-id="${parseInt(job.id || 0, 10)}" title="Eliminar"><i class="bi bi-trash"></i></button>` : ''}
+                    </div>
+                </div>
+                ${active ? `<div class="progress mt-2" style="height:6px"><div class="progress-bar progress-bar-striped progress-bar-animated" style="width:${Math.max(2, parseInt(job.progress_percent || 0, 10))}%"></div></div>` : ''}
+            </div>`;
+        }).join(''));
+    }
+
+    async function loadDataExports() {
+        if (!IS_SUPERADMIN || !document.getElementById('dataExportModal')) return;
+        try {
+            const response = await fetch('api/data_exports.php?action=list', { credentials: 'same-origin' });
+            const data = await response.json();
+            if (!response.ok || !data.success) throw new Error(data.error || 'No se pudieron cargar las exportaciones.');
+            renderDataExportJobs(data.jobs);
+            $('#data-export-form :input').prop('disabled', !data.configured);
+            if (!data.configured) dataExportShowAlert('warning', 'La exportación todavía no está configurada por la plataforma.');
+            else if (!data.zip_aes_available) dataExportShowAlert('warning', 'El servidor todavía no dispone del componente necesario para cifrar los ZIP.');
+            const active = (data.jobs || []).some(job => ['queued', 'processing'].includes(job.status));
+            clearTimeout(dataExportRefreshTimer);
+            if (active && $('#dataExportModal').hasClass('show')) dataExportRefreshTimer = setTimeout(loadDataExports, 4000);
+        } catch (error) {
+            dataExportShowAlert('danger', error.message);
+        }
+    }
+
+    $('#btn-open-data-export').on('click', function () {
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('dataExportModal')).show();
+    });
+    $('#dataExportModal').on('shown.bs.modal', loadDataExports).on('hidden.bs.modal', function () {
+        clearTimeout(dataExportRefreshTimer);
+        $('#data-export-password, #data-export-password-confirm').val('');
+    });
+    $('#data-export-form').on('submit', async function (event) {
+        event.preventDefault();
+        const password = String($('#data-export-password').val() || '');
+        if (password !== String($('#data-export-password-confirm').val() || '')) {
+            dataExportShowAlert('danger', 'Las contraseñas no coinciden.');
+            return;
+        }
+        const $button = $('#btn-create-data-export').prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Preparando');
+        try {
+            const body = new URLSearchParams({ zip_password: password, csrf_token: SUBSCRIPTION_CSRF_TOKEN });
+            const response = await fetch('api/data_exports.php?action=create', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' }, body });
+            const data = await response.json();
+            if (!response.ok || !data.success) throw new Error(data.error || 'No se pudo solicitar la exportación.');
+            $('#data-export-password, #data-export-password-confirm').val('');
+            dataExportShowAlert('success', 'Exportación solicitada. Puedes cerrar esta ventana; te avisaremos en el Dashboard cuando esté disponible.');
+            await loadDataExports();
+        } catch (error) {
+            dataExportShowAlert('danger', error.message);
+        } finally {
+            $button.prop('disabled', false).html('<i class="bi bi-shield-lock me-1"></i>Generar');
+        }
+    });
+    $(document).on('click', '.btn-delete-data-export', async function () {
+        const id = parseInt($(this).data('id') || 0, 10);
+        if (!id || !window.confirm('¿Eliminar esta exportación?')) return;
+        const response = await fetch('api/data_exports.php?action=delete', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' }, body: new URLSearchParams({ id: String(id), csrf_token: SUBSCRIPTION_CSRF_TOKEN }) });
+        const data = await response.json();
+        if (!response.ok || !data.success) dataExportShowAlert('danger', data.error || 'No se pudo eliminar.');
+        await loadDataExports();
+    });
+});
