@@ -14840,7 +14840,13 @@ function renderPatientFiles(files, signatureCertificates = {}) {
             ? `<span class="badge bg-light text-dark ms-1">${formatPatientDocumentStatus(file.status)}</span>`
             : '';
         const fileType = file.legacy_type === 'evolution_file' ? 'evolution_file' : 'patient_document';
-        const documentSubtitle = (file.score || file.result_label)
+        const recordingDuration = parseInt(file.recording_duration_seconds || 0, 10);
+        const recordingDurationLabel = recordingDuration > 0
+            ? `Duración: ${Math.floor(recordingDuration / 3600) > 0 ? `${Math.floor(recordingDuration / 3600)} h ` : ''}${Math.floor((recordingDuration % 3600) / 60) > 0 ? `${Math.floor((recordingDuration % 3600) / 60)} min ` : ''}${recordingDuration % 60} s`.trim()
+            : '';
+        const documentSubtitle = file.document_type === 'recording'
+            ? (recordingDurationLabel || file.description || 'Grabación de videollamada')
+            : (file.score || file.result_label)
             ? [file.score, file.result_label].filter(Boolean).join(' - ')
             : (file.file_name && String(file.file_name).trim() !== String(file.name || '').trim()
                 ? file.file_name
@@ -18830,9 +18836,11 @@ function renderAppointmentRecordings(recordings) {
     return recordings.map(function (recording) {
         const ready = parseInt(recording.document_id || 0, 10) > 0;
         const size = recording.file_size ? ` · ${formatFileSize(parseInt(recording.file_size, 10))}` : '';
+        const seconds = parseInt(recording.duration_seconds || 0, 10);
+        const duration = seconds > 0 ? ` · ${Math.floor(seconds / 3600) > 0 ? `${Math.floor(seconds / 3600)} h ` : ''}${Math.floor((seconds % 3600) / 60) > 0 ? `${Math.floor((seconds % 3600) / 60)} min ` : ''}${seconds % 60} s` : '';
         const label = recording.recording_mode === 'audio_video' ? 'Audio y vídeo' : 'Solo audio';
         return `<div class="d-flex align-items-center justify-content-between gap-3 border rounded bg-white p-2 mb-2">
-            <div><strong>${escapeHtml(recording.title || 'Grabación de videollamada')}</strong><div class="text-muted">${label}${size}</div></div>
+            <div><strong>${escapeHtml(recording.title || 'Grabación de videollamada')}</strong><div class="text-muted">${label}${duration}${size}</div></div>
             ${ready ? `<a class="btn btn-sm btn-outline-primary" href="api/admin.php?action=download_patient_document_file&id=${parseInt(recording.document_id, 10)}"><i class="bi bi-download"></i> Descargar</a>` : '<span class="badge text-bg-warning">Procesando</span>'}
         </div>`;
     }).join('');

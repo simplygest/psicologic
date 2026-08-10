@@ -1286,6 +1286,7 @@ migration_run($mysqli, 'Usar Daily como videollamada integrada predeterminada', 
 migration_run($mysqli, 'Migrar proveedores LiveKit existentes a Daily', "
     UPDATE professional_settings SET video_provider = 'daily' WHERE video_provider = 'livekit'
 ");
+migration_add_column_if_missing($mysqli, 'appointment_recordings', 'duration_seconds', "INT UNSIGNED DEFAULT NULL AFTER recording_mode");
 
 $has_errors = count(array_filter($migration_results, fn($row) => $row['status'] === 'error')) > 0;
 $summary_status = $has_errors ? 'Error' : 'OK';

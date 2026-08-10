@@ -37,11 +37,12 @@ function daily_sync_appointment_recordings($mysqli, array $appointment): array
         $status = strtolower((string) ($remote['status'] ?? 'processing'));
         $remoteType = (string) ($remote['recording_type'] ?? $remote['type'] ?? '');
         $mode = $remoteType === 'cloud-audio-only' ? 'audio' : ($remoteType === 'cloud' ? 'audio_video' : $configuredMode);
+        $durationSeconds = max(0, (int) ($remote['duration'] ?? 0));
         $started = !empty($remote['start_ts']) ? date('Y-m-d H:i:s', (int) $remote['start_ts']) : null;
-        $stmt = $mysqli->prepare("INSERT INTO appointment_recordings (tenant_id,appointment_id,patient_id,professional_id,provider,room_name,egress_id,recording_mode,status,started_at,created_by) VALUES (?,?,?,?,'daily',?,?,?,?,?,?) ON DUPLICATE KEY UPDATE status=IF(document_id IS NULL,VALUES(status),status), updated_at=CURRENT_TIMESTAMP");
+        $stmt = $mysqli->prepare("INSERT INTO appointment_recordings (tenant_id,appointment_id,patient_id,professional_id,provider,room_name,egress_id,recording_mode,duration_seconds,status,started_at,created_by) VALUES (?,?,?,?,'daily',?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE duration_seconds=COALESCE(NULLIF(VALUES(duration_seconds),0),duration_seconds), status=IF(document_id IS NULL,VALUES(status),status), updated_at=CURRENT_TIMESTAMP");
         $createdBy = (int) ($_SESSION['user_id'] ?? 0);
         $localStatus = in_array($status, ['finished', 'ready', 'completed'], true) ? 'ready_remote' : $status;
-        $stmt->bind_param('iiiisssssi', $tenantId, $appointmentId, $patientId, $professionalId, $room, $remoteId, $mode, $localStatus, $started, $createdBy);
+        $stmt->bind_param('iiiisssissi', $tenantId, $appointmentId, $patientId, $professionalId, $room, $remoteId, $mode, $durationSeconds, $localStatus, $started, $createdBy);
         $stmt->execute();
 
         $lookup = $mysqli->prepare("SELECT id,document_id FROM appointment_recordings WHERE provider='daily' AND egress_id=? LIMIT 1");
@@ -79,7 +80,7 @@ function daily_sync_appointment_recordings($mysqli, array $appointment): array
             daily_api_request('DELETE', 'recordings/' . rawurlencode($remoteId));
         } finally { if (is_file($temporary)) @unlink($temporary); }
     }
-    $stmt = $mysqli->prepare("SELECT ar.id,ar.recording_mode,ar.status,ar.started_at,ar.created_at,ar.document_id,pd.title,pd.file_size,pd.visible_to_patient FROM appointment_recordings ar LEFT JOIN patient_documents pd ON pd.tenant_id=ar.tenant_id AND pd.id=ar.document_id WHERE ar.tenant_id=? AND ar.appointment_id=? AND ar.provider='daily' ORDER BY ar.created_at DESC");
+    $stmt = $mysqli->prepare("SELECT ar.id,ar.recording_mode,ar.duration_seconds,ar.status,ar.started_at,ar.created_at,ar.document_id,pd.title,pd.file_size,pd.visible_to_patient FROM appointment_recordings ar LEFT JOIN patient_documents pd ON pd.tenant_id=ar.tenant_id AND pd.id=ar.document_id WHERE ar.tenant_id=? AND ar.appointment_id=? AND ar.provider='daily' ORDER BY ar.created_at DESC");
     $stmt->bind_param('ii',$tenantId,$appointmentId); $stmt->execute();
     return $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 }

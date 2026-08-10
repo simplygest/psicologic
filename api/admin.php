@@ -9885,6 +9885,7 @@ if ($action === 'custom_fields_list') {
     if ($filter_type !== 'all') {
         $stmt = $mysqli->prepare("
             SELECT d.*,
+                   (SELECT ar.duration_seconds FROM appointment_recordings ar WHERE ar.tenant_id=d.tenant_id AND ar.document_id=d.id LIMIT 1) AS recording_duration_seconds,
                    (SELECT COUNT(*) FROM patient_document_versions v WHERE v.tenant_id = d.tenant_id AND v.document_id = d.id) AS version_count
             FROM patient_documents d
             WHERE d.tenant_id = ?
@@ -9896,6 +9897,7 @@ if ($action === 'custom_fields_list') {
     } else {
         $stmt = $mysqli->prepare("
             SELECT d.*,
+                   (SELECT ar.duration_seconds FROM appointment_recordings ar WHERE ar.tenant_id=d.tenant_id AND ar.document_id=d.id LIMIT 1) AS recording_duration_seconds,
                    (SELECT COUNT(*) FROM patient_document_versions v WHERE v.tenant_id = d.tenant_id AND v.document_id = d.id) AS version_count
             FROM patient_documents d
             WHERE d.tenant_id = ?
@@ -9939,6 +9941,7 @@ if ($action === 'custom_fields_list') {
             'size' => (int) ($row['file_size'] ?? 0),
             'url' => $row['file_path'] ? 'api/admin.php?action=download_patient_document_file&id=' . (int) $row['id'] : '',
             'description' => $row['description'] ?? '',
+            'recording_duration_seconds' => (int) ($row['recording_duration_seconds'] ?? 0),
             'score' => $row['score'] ?? '',
             'result_label' => $row['result_label'] ?? '',
             'observations' => $row['observations'] ?? '',

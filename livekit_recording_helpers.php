@@ -54,6 +54,7 @@ function ensure_livekit_recording_schema($mysqli, $force = false)
             room_name VARCHAR(180) DEFAULT NULL,
             egress_id VARCHAR(160) DEFAULT NULL,
             recording_mode VARCHAR(20) NOT NULL DEFAULT 'audio',
+            duration_seconds INT UNSIGNED DEFAULT NULL,
             status VARCHAR(24) NOT NULL DEFAULT 'pending',
             visible_to_patient TINYINT(1) NOT NULL DEFAULT 0,
             started_at DATETIME DEFAULT NULL,
@@ -72,6 +73,7 @@ function ensure_livekit_recording_schema($mysqli, $force = false)
 
     if (function_exists('cabinet_add_column_if_missing')) {
         cabinet_add_column_if_missing($mysqli, 'appointment_recordings', 'provider', "VARCHAR(20) NOT NULL DEFAULT 'livekit' AFTER professional_id");
+        cabinet_add_column_if_missing($mysqli, 'appointment_recordings', 'duration_seconds', "INT UNSIGNED DEFAULT NULL AFTER recording_mode");
     }
 }
 
