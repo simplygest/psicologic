@@ -19,8 +19,9 @@ function showAdminActionMessage(message, type = 'success') {
 }
 
 function normalizeInitialDashboardView(value) {
-    const view = ['dashboard', 'week', 'month', 'agenda', 'patients', 'upcoming'].includes(value) ? value : 'month';
-    if (IS_ADMIN && !memberCan('agenda') && (view === 'week' || view === 'month' || view === 'agenda')) {
+    const inlineViews = ['configuration', 'questionnaires', 'team-notes', 'team-files', 'statistics'];
+    const view = ['dashboard', 'week', 'month', 'agenda', 'list', 'patients', 'upcoming', ...inlineViews].includes(value) ? value : 'month';
+    if (IS_ADMIN && !memberCan('agenda') && (view === 'week' || view === 'month' || view === 'agenda' || view === 'list')) {
         if (memberCan('patients')) return 'patients';
         if (memberCan('appointments')) return 'upcoming';
     }
@@ -33,13 +34,39 @@ function normalizeInitialDashboardView(value) {
     if (IS_ADMIN && !supportsDashboardInlineViews() && (view === 'patients' || view === 'upcoming')) {
         return memberCan('agenda') ? defaultAgendaCalendarView() : view;
     }
+    if (IS_ADMIN && !supportsDashboardInlineViews() && inlineViews.includes(view)) {
+        return memberCan('agenda') ? defaultAgendaCalendarView() : 'dashboard';
+    }
     if (IS_ADMIN && view === 'agenda' && !supportsDetailedAgendaView()) {
         return 'week';
     }
     return IS_ADMIN ? view : 'month';
 }
 
+function dashboardRefreshStorageKey() {
+    return `praxis_dashboard_refresh_view_${typeof CURRENT_USER_ID !== 'undefined' ? CURRENT_USER_ID : 0}`;
+}
+
+function restoredDashboardView(fallback) {
+    if (!IS_ADMIN || !supportsDashboardInlineViews()) return fallback;
+    const stored = sessionStorage.getItem(dashboardRefreshStorageKey()) || '';
+    if (!stored) return fallback;
+    const sidebarView = ['month', 'week', 'agenda', 'list'].includes(stored) ? 'agenda' : stored;
+    const button = document.querySelector(`.dashboard-side-nav .btn-dashboard-main-view[data-dashboard-main-view="${sidebarView}"]`);
+    if (!button || button.disabled || button.classList.contains('d-none') || button.classList.contains('plan-locked')) return fallback;
+    return stored;
+}
+
+function rememberDashboardViewForRefresh(view) {
+    if (!IS_ADMIN || !supportsDashboardInlineViews()) return;
+    const allowed = ['dashboard', 'month', 'week', 'agenda', 'list', 'patients', 'upcoming', 'configuration', 'questionnaires', 'team-notes', 'team-files', 'statistics'];
+    if (allowed.includes(view)) sessionStorage.setItem(dashboardRefreshStorageKey(), view);
+}
+
 function defaultAgendaCalendarView() {
+    if (typeof INITIAL_CALENDAR_VIEW !== 'undefined' && INITIAL_CALENDAR_VIEW === 'list') {
+        return 'list';
+    }
     if (typeof INITIAL_CALENDAR_VIEW !== 'undefined' && INITIAL_CALENDAR_VIEW === 'agenda' && supportsDetailedAgendaView()) {
         return 'agenda';
     }
@@ -54,8 +81,78 @@ function supportsDetailedAgendaView() {
     return typeof window !== 'undefined' && window.matchMedia('(min-width: 992px)').matches;
 }
 
-let currentCalendarView = normalizeInitialDashboardView(typeof INITIAL_CALENDAR_VIEW !== 'undefined' ? INITIAL_CALENDAR_VIEW : 'month');
+let mobileContentAutoScrollPending = true;
+let mobileContentAutoScrollGeneration = 0;
+let mobileContentAutoScrolledView = '';
+
+function requestMobileContentAutoScroll() {
+    if (!window.matchMedia('(max-width: 767.98px)').matches) {
+        mobileContentAutoScrollPending = false;
+        return;
+    }
+    const requestedView = String(typeof currentCalendarView !== 'undefined' ? currentCalendarView : 'initial');
+    if (mobileContentAutoScrolledView === requestedView) {
+        mobileContentAutoScrollPending = false;
+        return;
+    }
+    mobileContentAutoScrollPending = true;
+    const generation = ++mobileContentAutoScrollGeneration;
+    [80, 320, 750, 1400].forEach((delay, index, attempts) => {
+        window.setTimeout(() => {
+            if (generation !== mobileContentAutoScrollGeneration) return;
+            scrollMobileDashboardToContent(requestedView);
+            if (index === attempts.length - 1) mobileContentAutoScrollPending = false;
+        }, delay);
+    });
+}
+
+function scrollMobileDashboardToContent(requestedView) {
+    if (!mobileContentAutoScrollPending || !window.matchMedia('(max-width: 767.98px)').matches) {
+        mobileContentAutoScrollPending = false;
+        return;
+    }
+    if (String(currentCalendarView) !== requestedView || mobileContentAutoScrolledView === requestedView) {
+        mobileContentAutoScrollPending = false;
+        return;
+    }
+    const summary = document.getElementById('quick-appointments-summary');
+    const content = document.getElementById('calendar-container');
+    if (!summary || !content || summary.classList.contains('d-none') || !summary.children.length) {
+        return;
+    }
+    window.requestAnimationFrame(() => {
+        // Keep a small part of the final summary card visible so the user
+        // retains context while the actual view title starts near the top.
+        const top = Math.max(0, content.getBoundingClientRect().top + window.scrollY - 72);
+        if (Math.abs(window.scrollY - top) > 4) {
+            window.scrollTo({ top, behavior: 'smooth' });
+        }
+        mobileContentAutoScrolledView = requestedView;
+        mobileContentAutoScrollPending = false;
+    });
+}
+
+let currentCalendarView = normalizeInitialDashboardView(restoredDashboardView(typeof INITIAL_CALENDAR_VIEW !== 'undefined' ? INITIAL_CALENDAR_VIEW : 'month'));
+let lastCalendarViewSaveRequest = null;
+
+function rememberSelectedCalendarView(view) {
+    if (typeof REMEMBER_LAST_CALENDAR_VIEW === 'undefined' || !REMEMBER_LAST_CALENDAR_VIEW) return;
+    if (!['month', 'week', 'agenda', 'list'].includes(view)) return;
+    if (lastCalendarViewSaveRequest && typeof lastCalendarViewSaveRequest.abort === 'function') {
+        lastCalendarViewSaveRequest.abort();
+    }
+    lastCalendarViewSaveRequest = $.ajax({
+        url: 'api/admin.php?action=save_last_calendar_view',
+        method: 'POST',
+        dataType: 'json',
+        data: { view }
+    }).always(function () {
+        lastCalendarViewSaveRequest = null;
+    });
+}
 let currentMonthData = null;
+let CALENDAR_REMINDERS_MAP = {};
+let SHOW_CALENDAR_REMINDERS = localStorage.getItem('praxis_show_calendar_reminders') !== '0';
 let selectedMonthDay = null;
 let selectedMonthDayAnimationClass = '';
 let calendarInitialAnimationPending = true;
@@ -67,6 +164,9 @@ let dashboardPatientsLoaded = false;
 let dashboardUpcomingLoaded = false;
 let dashboardSummaryCache = {};
 let dashboardSummaryPeriod = 30;
+let WEATHER_SETTINGS = { enabled: 1, location_mode: 'auto', location_query: '', resolved_location: '', latitude: null, longitude: null };
+let WEATHER_DATA = null;
+let WEATHER_REQUEST = null;
 let PAYMENT_SETTINGS = {
     online_payment_enabled: 0,
     appointment_price: '70.00',
@@ -88,7 +188,7 @@ let PAYMENT_SETTINGS = {
     online_booking_enabled: 1,
     patient_tasks_visible_default: 0,
     work_plan_task_status_enabled: 1,
-    email_provider: 'phpmailer',
+    email_provider: 'platform',
     smtp_from_email: '',
     google_connected_email: '',
     has_google_refresh_token: 0,
@@ -103,6 +203,7 @@ let PAYMENT_SETTINGS = {
     sms_reminder_enabled: 0,
     sms_reminder_hours: 24,
     billing_enabled: 0,
+    billing_provider: 'none',
     billing_country: 'ES',
     billing_province: '',
     billing_session_concept: 'Sesión {servicio} del día {fecha} ({duracion} minutos)',
@@ -154,6 +255,7 @@ let SETTINGS_SNAPSHOTS = {
     bonuses: '',
     cabinet: ''
 };
+let CLOUD_BILLING_SETTINGS = { provider: 'none', has_api_key: false, account_name: '', verified_at: null };
 let PATIENT_BONUS_BALANCE = { bonuses_enabled: 0, total_remaining: 0, bonuses: [] };
 let isAppointmentRequestInProgress = false;
 
@@ -199,6 +301,7 @@ let CURRENT_UPCOMING_PLANNING = {
     closedDays: []
 };
 let CURRENT_CANCELLED_APPOINTMENTS = [];
+let CURRENT_PAST_APPOINTMENTS = [];
 let adminStatsModal = null;
 let bonusesModal = null;
 let invoicesModal = null;
@@ -383,6 +486,7 @@ function applyPlanFeatureVisibility() {
     const team = appFeatureEnabled('team.enabled', false);
     const uiCustomization = planFeatureEnabled('ui.customization', false);
     const effectiveDuration = appFeatureEnabled('appointments.effectiveDuration', false);
+    const apiEnabled = planFeatureEnabled('api.enabled', false);
 
     setFeatureVisible('#btn-generate-invite, #btn-mobile-generate-invite', invitations);
     setSidebarFeatureEnabled('#btn-sidebar-generate-invite', invitations);
@@ -406,7 +510,8 @@ function applyPlanFeatureVisibility() {
     setFeatureVisible('#btn-patient-portal-tasks, #btn-mobile-patient-portal-tasks', patientPortalPlan && tasksPlan);
     setFeatureVisible('#btn-patient-portal-documents, #btn-mobile-patient-portal-documents', patientPortalPlan);
     setFeatureVisible('#btn-patient-portal-reports, #btn-mobile-patient-portal-reports', patientPortalPlan && reports);
-    $('#patient-work-plan-tab').closest('.nav-item').toggleClass('d-none', !tasks);
+    $('.patient-clinical-section-btn[data-clinical-tab="patient-work-plan-tab"]').toggleClass('d-none', !tasks);
+    $('#patient-clinical-section-select option[value="patient-work-plan-tab"]').prop('disabled', !tasks).toggleClass('d-none', !tasks);
     $('#patient-work-plan-panel').toggleClass('d-none', !tasks);
     $('#appointment-session-tab').closest('.nav-item').toggleClass('d-none', !tasks);
     $('#appointment-session-panel').toggleClass('d-none', !tasks);
@@ -426,11 +531,12 @@ function applyPlanFeatureVisibility() {
     $('#calendar-settings-panel').toggleClass('d-none', !canManageTenantSettings || !calendarSync);
     $('#cabinet-settings-tab').closest('.nav-item').toggleClass('d-none', !canManageTenantSettings || !team);
     $('#cabinet-settings-panel').toggleClass('d-none', !canManageTenantSettings || !team);
-    $('#email-settings-tab, #sms-settings-tab, #interface-settings-tab, #legal-settings-tab, #signature-settings-tab, #time-tracking-settings-tab')
+    $('#email-settings-tab, #sms-settings-tab, #interface-settings-tab, #legal-settings-tab, #signature-settings-tab, #time-tracking-settings-tab, #api-settings-tab')
         .closest('.nav-item')
         .toggleClass('d-none', !canManageTenantSettings);
-    $('#email-settings-panel, #sms-settings-panel, #interface-settings-panel, #legal-settings-panel, #signature-settings-panel, #time-tracking-settings-panel')
+    $('#email-settings-panel, #sms-settings-panel, #interface-settings-panel, #legal-settings-panel, #signature-settings-panel, #time-tracking-settings-panel, #api-settings-panel')
         .toggleClass('d-none', !canManageTenantSettings);
+    $('#api-settings-tab').prop('disabled', !apiEnabled).toggleClass('plan-locked', !apiEnabled);
 
     $('#online-booking-enabled').closest('.row').toggleClass('d-none', !canManageTenantSettings || !patientPortal);
     $('#patient-registration-requires-invite').closest('.row').toggleClass('d-none', !canManageTenantSettings || !patientPortal || !invitations);
@@ -475,7 +581,9 @@ function applyPlanFeatureVisibility() {
 
     sortSettingsTabsByAvailability();
     ensureVisibleSettingsTab();
-    showFallbackTabIfHidden('#patient-work-plan-tab', '#patient-data-tab');
+    if (!tasks && $('#patient-work-plan-panel').hasClass('active')) {
+        bootstrap.Tab.getOrCreateInstance(document.getElementById('patient-clinical-summary-tab')).show();
+    }
     showFallbackTabIfHidden('#patient-bonuses-tab', '#patient-data-tab');
     showFallbackTabIfHidden('#patient-reports-tab', '#patient-data-tab');
     showFallbackTabIfHidden('#appointment-session-tab', '#appointment-detail-tab');
@@ -487,7 +595,6 @@ function applyKnowledgeBaseVisibility() {
     const $tab = $('#patient-diagnosis-tab');
     const $panel = $('#patient-diagnosis-panel');
     if (!$tab.length || !$panel.length) return;
-    $tab.closest('.nav-item').removeClass('d-none');
     $panel.removeClass('d-none');
 }
 
@@ -685,13 +792,16 @@ function calculatePatientBodyFatFromSkinfolds(age, sex) {
 }
 
 const DASHBOARD_SETTINGS_SECTIONS = [
+    { group: 'Personalización', id: 'interface-settings-tab', icon: 'bi-palette', title: 'Interfaz', description: 'Aspecto y experiencia visual de la aplicación.' },
+    { group: 'Personalización', id: 'weather-settings-tab', icon: 'bi-cloud-sun', title: 'Previsión meteorológica', description: 'Ubicación y previsión meteorológica en Praxis.' },
     { group: 'Centro y actividad', id: 'closed-days-tab', icon: 'bi-sliders', title: 'General', description: 'Datos generales y preferencias de funcionamiento.' },
     { group: 'Centro y actividad', id: 'booking-settings-tab', icon: 'bi-clock', title: 'Horarios', description: 'Disponibilidad, reservas y duración de las citas.' },
     { group: 'Centro y actividad', id: 'closures-settings-tab', icon: 'bi-calendar-x', title: 'Vacaciones y cierres', description: 'Días no laborables y periodos de cierre.' },
-    { group: 'Centro y actividad', id: 'services-settings-tab', icon: 'bi-tags', title: 'Precios', description: 'Servicios, tarifas y duraciones.' },
+    { group: 'Centro y actividad', id: 'services-settings-tab', icon: 'bi-tags', title: 'Tarifas', description: 'Servicios, tarifas y duraciones.' },
     { group: 'Centro y actividad', id: 'bonuses-settings-tab', icon: 'bi-card-list', title: 'Bonos', description: 'Bonos y sesiones incluidas.' },
     { group: 'Equipo y trabajo', id: 'cabinet-settings-tab', icon: 'bi-people', title: 'Equipo', description: 'Profesionales y organización del centro.' },
     { group: 'Equipo y trabajo', id: 'task-templates-settings-tab', icon: 'bi-list-check', title: 'Mis tareas', description: 'Plantillas reutilizables para el plan de trabajo.' },
+    { group: 'Equipo y trabajo', id: 'custom-fields-settings-tab', icon: 'bi-input-cursor-text', title: 'Campos personalizados', description: 'Datos adicionales para pacientes y citas.' },
     { group: 'Equipo y trabajo', id: 'questionnaires-settings-tab', icon: 'bi-ui-checks', title: 'Mis cuestionarios', description: 'Crea y administra cuestionarios personalizados.' },
     { group: 'Equipo y trabajo', id: 'time-tracking-settings-tab', icon: 'bi-stopwatch', title: 'Control horario', description: 'Preferencias del registro de jornada.' },
     { group: 'Comunicación', id: 'email-settings-tab', icon: 'bi-envelope', title: 'Correo electrónico', description: 'Recordatorios y comunicaciones por email.' },
@@ -701,11 +811,319 @@ const DASHBOARD_SETTINGS_SECTIONS = [
     { group: 'Gestión y seguridad', id: 'billing-settings-tab', icon: 'bi-receipt', title: 'Facturación', description: 'Datos fiscales, numeración y VeriFactu.' },
     { group: 'Gestión y seguridad', id: 'legal-settings-tab', icon: 'bi-shield-check', title: 'Legal', description: 'Datos legales y documentación del centro.' },
     { group: 'Gestión y seguridad', id: 'signature-settings-tab', icon: 'bi-patch-check', title: 'Certificado digital', description: 'Firma de documentos, informes y facturas.' },
-    { group: 'Personalización', id: 'interface-settings-tab', icon: 'bi-palette', title: 'Interfaz', description: 'Aspecto y experiencia visual de la aplicación.' },
-    { group: 'Tu cuenta', id: 'subscription-settings-tab', icon: 'bi-gem', title: 'Suscripción', description: 'Plan actual, cobros y forma de pago.' }
+    { group: 'Gestión y seguridad', id: 'api-settings-tab', icon: 'bi-braces', title: 'API', description: 'Integra Praxis con aplicaciones y servicios externos.' },
+    { group: 'Gestión y seguridad', action: 'system_status', superadminOnly: true, desktopOnly: true, icon: 'bi-activity', title: 'Estado del sistema', description: 'Comprueba servicios, integraciones y espacio disponible.' },
+    { group: 'Gestión y seguridad', action: 'data_import', superadminOnly: true, desktopOnly: true, icon: 'bi-database-up', title: 'Importar datos', description: 'Importa tus datos a SimplyGest Praxis.' },
+    { group: 'Tu cuenta', id: 'subscription-settings-tab', icon: 'bi-gem', title: 'Suscripción', description: 'Plan actual, cobros y forma de pago.' },
+    { group: 'Tu cuenta', id: 'subscription-invoices-settings-tab', icon: 'bi-receipt-cutoff', title: 'Mis facturas', description: 'Consulta y descarga las facturas de tu suscripción.' },
+    { group: 'Tu cuenta', action: 'data_export', superadminOnly: true, desktopOnly: true, icon: 'bi-file-earmark-zip', title: 'Exportar todos mis datos', description: 'Prepara una copia completa y protegida de los datos del centro.' }
 ];
 
+function weatherForecastForDate(date) {
+    const forecasts = Array.isArray(WEATHER_DATA && WEATHER_DATA.forecasts) ? WEATHER_DATA.forecasts : [];
+    return forecasts.find(item => String(item.date || '').slice(0, 10) === String(date || '').slice(0, 10)) || null;
+}
+
+function weatherTemperatureText(forecast) {
+    if (!forecast) return '';
+    const min = forecast.temperature_min;
+    const max = forecast.temperature_max;
+    if (min === null || min === undefined || max === null || max === undefined) return '';
+    return `${Math.round(Number(min))}° / ${Math.round(Number(max))}°`;
+}
+
+function weatherForecastTitle(forecast) {
+    if (!forecast) return '';
+    const phrase = String((forecast.day && forecast.day.phrase) || 'Previsión meteorológica');
+    return `${phrase}. ${weatherTemperatureText(forecast)}`.trim();
+}
+
+function weatherCompactHtml(forecast, className = '') {
+    if (!forecast || !forecast.day || !forecast.day.icon_url) return '';
+    return `<span class="weather-compact ${className}" title="${escapeHtml(weatherForecastTitle(forecast))}"><img src="${escapeHtml(forecast.day.icon_url)}" alt=""><small>${escapeHtml(weatherTemperatureText(forecast))}</small></span>`;
+}
+
+function weatherDashboardHtml() {
+    if (!WEATHER_DATA || !WEATHER_DATA.enabled || !Array.isArray(WEATHER_DATA.forecasts) || !WEATHER_DATA.forecasts.length) return '';
+    const items = WEATHER_DATA.forecasts.slice(0, 2).map((forecast, index) => {
+        const date = new Date(`${String(forecast.date).slice(0, 10)}T12:00:00`);
+        const label = index === 0 ? 'Hoy' : (index === 1 ? 'Mañana' : new Intl.DateTimeFormat('es-ES', { weekday: 'short' }).format(date));
+        return `<div class="dashboard-weather-day" title="${escapeHtml(weatherForecastTitle(forecast))}"><strong>${escapeHtml(label)}</strong><img src="${escapeHtml((forecast.day && forecast.day.icon_url) || '')}" alt=""><span>${escapeHtml(weatherTemperatureText(forecast))}</span><small>${escapeHtml((forecast.day && forecast.day.phrase) || '')}</small></div>`;
+    }).join('');
+    return `<section class="dashboard-summary-section dashboard-weather" id="dashboard-weather"><div class="dashboard-summary-section-heading"><div><h3>El tiempo</h3><p>${escapeHtml(WEATHER_DATA.location_label || '')}</p></div></div><div class="dashboard-weather-grid">${items}</div></section>`;
+}
+
+function renderNavbarWeather() {
+    const forecast = WEATHER_DATA && WEATHER_DATA.enabled ? WEATHER_DATA.forecasts?.[0] : null;
+    const $weather = $('#navbar-weather');
+    if (!$weather.length || !forecast || !forecast.day || !forecast.day.icon_url) {
+        $weather.addClass('d-none');
+        return;
+    }
+    $('#navbar-weather-icon').attr('src', forecast.day.icon_url).attr('alt', forecast.day.phrase || '');
+    $('#navbar-weather-temperature').text(weatherTemperatureText(forecast));
+    $('#navbar-weather-description').text(forecast.day.phrase || '');
+    $weather.attr('title', `${WEATHER_DATA.location_label || ''} · ${weatherForecastTitle(forecast)}`).removeClass('d-none');
+}
+
+function renderCalendarWeatherBadges() {
+    $('[data-weather-date]').each(function () {
+        const forecast = weatherForecastForDate($(this).data('weather-date'));
+        $(this).find('.weather-compact').remove();
+        if (forecast) $(this).append(weatherCompactHtml(forecast, 'calendar-weather-badge'));
+    });
+}
+
+function refreshWeatherSurfaces() {
+    renderNavbarWeather();
+    renderCalendarWeatherBadges();
+    if (currentCalendarView === 'dashboard') {
+        $('#dashboard-weather').remove();
+        const html = weatherDashboardHtml();
+        if (html) {
+            const $today = $('.dashboard-summary-today');
+            if ($today.length) $today.after(html);
+            else $('.dashboard-summary-header').after(html);
+        }
+    }
+}
+
+function setWeatherPermissionStatus(state, message = '') {
+    const labels = { granted: 'Permiso concedido', denied: 'Permiso denegado', prompt: 'Permiso pendiente', unavailable: 'No disponible' };
+    $('#weather-permission-status').removeClass('text-bg-secondary text-bg-success text-bg-danger text-bg-warning')
+        .addClass(state === 'granted' ? 'text-bg-success' : (state === 'denied' ? 'text-bg-danger' : (state === 'prompt' ? 'text-bg-warning' : 'text-bg-secondary')))
+        .text(message || labels[state] || 'Estado desconocido');
+}
+
+function updateWeatherSettingsUi() {
+    const enabled = parseInt(WEATHER_SETTINGS.enabled ?? 1, 10) === 1;
+    const mode = WEATHER_SETTINGS.location_mode === 'manual' ? 'manual' : 'auto';
+    $('#weather-enabled').prop('checked', enabled);
+    $(`input[name="weather-location-mode"][value="${mode}"]`).prop('checked', true);
+    $('#weather-settings-location-fields').toggle(enabled);
+    $('.weather-manual-location-fields').toggleClass('opacity-50', mode !== 'manual').find(':input').prop('disabled', mode !== 'manual');
+    $('#weather-location-query').val(WEATHER_SETTINGS.location_query || '');
+    $('#weather-location-latitude').val(WEATHER_SETTINGS.latitude ?? '');
+    $('#weather-location-longitude').val(WEATHER_SETTINGS.longitude ?? '');
+    $('#weather-location-resolved').val(WEATHER_SETTINGS.resolved_location || '');
+    $('#weather-center-fallback').text(WEATHER_SETTINGS.center_location ? `Ubicación alternativa del centro: ${WEATHER_SETTINGS.center_location}` : 'No hay una dirección del centro configurada como alternativa.');
+    if (mode === 'manual' && WEATHER_SETTINGS.resolved_location) {
+        $('#weather-location-result').removeClass('d-none').html(`<i class="bi bi-geo-alt-fill me-1"></i>${escapeHtml(WEATHER_SETTINGS.resolved_location)}`);
+    } else {
+        $('#weather-location-result').addClass('d-none').empty();
+    }
+}
+
+function loadWeatherSettings() {
+    return $.getJSON('api/weather.php?action=settings').then(res => {
+        if (!res.success) throw new Error(res.error || 'No se pudo cargar la configuración meteorológica.');
+        WEATHER_SETTINGS = { ...WEATHER_SETTINGS, ...(res.settings || {}) };
+        updateWeatherSettingsUi();
+        return WEATHER_SETTINGS;
+    });
+}
+
+function requestWeatherForecast(coordinates = null, force = false) {
+    if (!force && WEATHER_REQUEST) return WEATHER_REQUEST;
+    const data = coordinates ? { latitude: coordinates.latitude, longitude: coordinates.longitude } : {};
+    WEATHER_REQUEST = $.getJSON('api/weather.php?action=forecast', data).then(res => {
+        if (!res.success) throw new Error(res.error || 'No se pudo obtener la previsión meteorológica.');
+        WEATHER_DATA = res;
+        refreshWeatherSurfaces();
+        return res;
+    }).catch(error => {
+        WEATHER_DATA = null;
+        refreshWeatherSurfaces();
+        console.warn('Weather:', error && error.message ? error.message : error);
+        return null;
+    });
+    return WEATHER_REQUEST;
+}
+
+function weatherLocationDeclinedKey() {
+    return `sgpraxis-weather-location-declined-${typeof CURRENT_USER_ID !== 'undefined' ? CURRENT_USER_ID : 0}`;
+}
+
+function weatherLocationWasDeclined() {
+    try { return localStorage.getItem(weatherLocationDeclinedKey()) === '1'; } catch (_) { return false; }
+}
+
+function setWeatherLocationDeclined(declined) {
+    try {
+        if (declined) localStorage.setItem(weatherLocationDeclinedKey(), '1');
+        else localStorage.removeItem(weatherLocationDeclinedKey());
+    } catch (_) {}
+}
+
+function weatherLocationGrantedKey() {
+    return `sgpraxis-weather-location-granted-${typeof CURRENT_USER_ID !== 'undefined' ? CURRENT_USER_ID : 0}`;
+}
+
+function weatherLocationWasGranted() {
+    try { return localStorage.getItem(weatherLocationGrantedKey()) === '1'; } catch (_) { return false; }
+}
+
+function setWeatherLocationGranted(granted) {
+    try {
+        if (granted) localStorage.setItem(weatherLocationGrantedKey(), '1');
+        else localStorage.removeItem(weatherLocationGrantedKey());
+    } catch (_) {}
+}
+
+function requestBrowserWeatherLocation(manualRequest = false) {
+    return new Promise(resolve => {
+        if (manualRequest) setWeatherLocationDeclined(false);
+        if (!navigator.geolocation) {
+            setWeatherPermissionStatus('unavailable');
+            requestWeatherForecast().then(resolve);
+            return;
+        }
+        navigator.geolocation.getCurrentPosition(position => {
+            setWeatherLocationDeclined(false);
+            setWeatherLocationGranted(true);
+            setWeatherPermissionStatus('granted');
+            requestWeatherForecast({ latitude: position.coords.latitude, longitude: position.coords.longitude }, true).then(resolve);
+        }, error => {
+            if (error && error.code === 1) {
+                setWeatherLocationDeclined(true);
+                setWeatherLocationGranted(false);
+            }
+            setWeatherPermissionStatus(error && error.code === 1 ? 'denied' : 'unavailable', error && error.code === 1 ? 'Permiso denegado' : 'No se pudo obtener la ubicación');
+            requestWeatherForecast(null, true).then(resolve);
+        }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 1800000 });
+    });
+}
+
+async function initializeWeatherIntegration() {
+    if (!IS_ADMIN) return;
+    try {
+        await loadWeatherSettings();
+        if (parseInt(WEATHER_SETTINGS.enabled ?? 1, 10) !== 1) {
+            WEATHER_DATA = { enabled: false, forecasts: [] };
+            refreshWeatherSurfaces();
+            return;
+        }
+        if (WEATHER_SETTINGS.location_mode === 'manual') {
+            await requestWeatherForecast(null, true);
+            return;
+        }
+        let permissionState = '';
+        let permissionApiAvailable = false;
+        if (navigator.permissions && navigator.permissions.query) {
+            try {
+                const permission = await navigator.permissions.query({ name: 'geolocation' });
+                permissionApiAvailable = true;
+                permissionState = permission.state;
+                setWeatherPermissionStatus(permission.state);
+                if (permission.state === 'granted') {
+                    setWeatherLocationDeclined(false);
+                    setWeatherLocationGranted(true);
+                }
+                if (permission.state === 'denied') {
+                    setWeatherLocationDeclined(true);
+                    setWeatherLocationGranted(false);
+                }
+                permission.onchange = () => {
+                    setWeatherPermissionStatus(permission.state);
+                    if (permission.state === 'granted') {
+                        setWeatherLocationDeclined(false);
+                        setWeatherLocationGranted(true);
+                    } else if (permission.state === 'denied') {
+                        setWeatherLocationDeclined(true);
+                        setWeatherLocationGranted(false);
+                    }
+                };
+            } catch (_) {}
+        }
+        if (permissionState === 'granted' || (!permissionApiAvailable && weatherLocationWasGranted())) {
+            await requestBrowserWeatherLocation();
+        } else {
+            if (permissionState === 'denied' || weatherLocationWasDeclined()) {
+                setWeatherPermissionStatus('denied', 'Permiso denegado');
+            } else {
+                setWeatherPermissionStatus('prompt', 'UbicaciÃ³n precisa no activada');
+            }
+            await requestWeatherForecast(null, true);
+        }
+    } catch (error) {
+        console.warn('Weather init:', error && error.message ? error.message : error);
+    }
+}
+
+function saveWeatherSettings() {
+    const mode = $('input[name="weather-location-mode"]:checked').val() === 'manual' ? 'manual' : 'auto';
+    return new Promise((resolve, reject) => {
+        $.post('api/weather.php?action=save', {
+            csrf_token: WEATHER_CSRF_TOKEN,
+            enabled: $('#weather-enabled').is(':checked') ? '1' : '0',
+            location_mode: mode,
+            location_query: $('#weather-location-query').val().trim(),
+            resolved_location: $('#weather-location-resolved').val(),
+            latitude: $('#weather-location-latitude').val(),
+            longitude: $('#weather-location-longitude').val()
+        }, null, 'json').done(res => {
+            if (!res.success) { reject(new Error(res.error || 'No se pudo guardar la configuración meteorológica.')); return; }
+            WEATHER_SETTINGS = { ...WEATHER_SETTINGS, ...(res.settings || {}) };
+            WEATHER_REQUEST = null;
+            resolve(res);
+        }).fail(xhr => reject(new Error(xhr.responseJSON?.error || 'No se pudo guardar la configuración meteorológica.')));
+    });
+}
+
+$(document).on('change', '#weather-enabled', function () {
+    $('#weather-settings-location-fields').toggle(this.checked);
+});
+
+$(document).on('change', 'input[name="weather-location-mode"]', function () {
+    const manual = this.value === 'manual';
+    $('.weather-manual-location-fields').toggleClass('opacity-50', !manual).find(':input').prop('disabled', !manual);
+});
+
+$(document).on('input', '#weather-location-query', function () {
+    $('#weather-location-latitude, #weather-location-longitude, #weather-location-resolved').val('');
+    $('#weather-location-result').addClass('d-none').empty();
+});
+
+$(document).on('click', '#btn-weather-resolve-location', function () {
+    const query = $('#weather-location-query').val().trim();
+    if (!query) {
+        showSettingsAlert('#weather-settings-alert', 'danger', 'Escribe una ubicación para comprobarla.');
+        return;
+    }
+    const button = $(this).prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span>');
+    $('#weather-settings-alert').addClass('d-none');
+    $.getJSON('api/weather.php?action=resolve', { query }).done(res => {
+        if (!res.success || !res.location) {
+            showSettingsAlert('#weather-settings-alert', 'danger', res.error || 'No se encontró esa ubicación.');
+            return;
+        }
+        $('#weather-location-latitude').val(res.location.latitude);
+        $('#weather-location-longitude').val(res.location.longitude);
+        $('#weather-location-resolved').val(res.location.formatted_address || query);
+        $('#weather-location-result').removeClass('d-none').html(`<i class="bi bi-geo-alt-fill me-1"></i>${escapeHtml(res.location.formatted_address || query)}`);
+    }).fail(xhr => showSettingsAlert('#weather-settings-alert', 'danger', xhr.responseJSON?.error || 'No se pudo comprobar la ubicación.'))
+      .always(() => button.prop('disabled', false).text('Comprobar'));
+});
+
+$(document).on('click', '#btn-weather-request-location', function () {
+    requestBrowserWeatherLocation(true).then(() => {
+        if (WEATHER_DATA && WEATHER_DATA.source === 'device') showSettingsAlert('#weather-settings-alert', 'success', 'Ubicación obtenida correctamente.');
+        else showSettingsAlert('#weather-settings-alert', 'warning', 'Se utilizará la dirección del centro como alternativa.');
+    });
+});
+
+$(document).on('shown.bs.tab', '#weather-settings-tab', function () {
+    loadWeatherSettings().catch(error => showSettingsAlert('#weather-settings-alert', 'danger', error.message));
+});
+
+$(document).on('click', '#navbar-weather', function () {
+    openFocusedSettingsTab('weather-settings-tab', 'Previsión meteorológica');
+});
+
 function dashboardSettingAvailable(item) {
+    if (item.superadminOnly && !IS_SUPERADMIN) return false;
+    if (item.desktopOnly && !supportsDashboardInlineViews()) return false;
+    if (item.action) return true;
     const tab = document.getElementById(item.id);
     if (!tab || tab.disabled || tab.classList.contains('plan-locked') || tab.classList.contains('d-none')) return false;
     const navItem = tab.closest('.nav-item');
@@ -724,9 +1142,12 @@ function openFocusedSettingsTab(tabId, label) {
     loadClosedDays();
     loadPaymentSettings();
     loadSignatureSettings();
+    if (tabId === 'api-settings-tab') loadApiSettings();
     $('#settingsModal').addClass('settings-single-tab-mode');
     $('#settings-modal-title').text(label || $(tab).text().trim());
-    $('#settings-modal-breadcrumb').removeClass('d-none').text('Configuración');
+    $('#settings-modal-breadcrumb')
+        .toggleClass('d-none', tabId === 'subscription-invoices-settings-tab')
+        .text(tabId === 'subscription-invoices-settings-tab' ? '' : 'Configuración');
     $('#btn-settings-back-to-hub').removeClass('d-none');
     bootstrap.Tab.getOrCreateInstance(tab).show();
     settingsModal.show();
@@ -743,11 +1164,172 @@ function renderDashboardConfigurationView() {
             </div>
             <div id="dashboard-settings-groups">
                 ${groups.map(group => `<section class="dashboard-settings-group" data-settings-group><h3>${escapeHtml(group)}</h3><div class="dashboard-settings-grid">${available.filter(item => item.group === group).map(item => `
-                    <button class="dashboard-settings-card" type="button" data-settings-tab="${item.id}" data-settings-label="${escapeHtml(item.title)}" data-settings-search="${escapeHtml(`${item.title} ${item.description} ${group}`.toLowerCase())}">
+                    <button class="dashboard-settings-card" type="button" ${item.action ? `data-settings-action="${escapeHtml(item.action)}"` : `data-settings-tab="${item.id}"`} data-settings-label="${escapeHtml(item.title)}" data-settings-search="${escapeHtml(`${item.title} ${item.description} ${group}`.toLowerCase())}">
                         <span class="dashboard-settings-icon"><i class="bi ${item.icon}"></i></span><span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.description)}</small></span><i class="bi bi-chevron-right ms-auto"></i>
                     </button>`).join('')}</div></section>`).join('')}
             </div>
         </section>`);
+}
+
+const DATA_IMPORT_DEFINITIONS = {
+    patients: { label: 'Pacientes', columns: ['external_id', 'name', 'email', 'phone', 'birth_date', 'fiscal_nif', 'address', 'patient_status', 'admission_date'] },
+    professionals: { label: 'Profesionales', columns: ['external_id', 'name', 'email', 'phone', 'member_role', 'professional_title', 'license_number', 'is_active'] },
+    appointments: { label: 'Citas / Agenda', columns: ['external_id', 'patient_external_id', 'professional_external_id', 'appointment_date', 'appointment_time', 'service_key', 'duration_minutes', 'consultation_type', 'status'] }
+};
+let DATA_IMPORT_STATE = { step: 1, entity: '', hash: '', preview: null };
+
+function systemStatusBytes(bytes) {
+    let size = Math.max(0, Number(bytes || 0));
+    if (size < 1024) return `${size} B`;
+    const units = ['KB', 'MB', 'GB', 'TB']; let unit = units[0]; size /= 1024;
+    for (let i = 1; i < units.length && size >= 1024; i++) { size /= 1024; unit = units[i]; }
+    return `${size.toLocaleString('es-ES', { maximumFractionDigits: 1 })} ${unit}`;
+}
+
+function renderSystemStatus(res) {
+    const meta = {
+        ok: { label: 'Operativo', badge: 'text-bg-success', icon: 'bi-check-circle-fill', color: 'success' },
+        warning: { label: 'Requiere atención', badge: 'text-bg-warning', icon: 'bi-exclamation-triangle-fill', color: 'warning' },
+        error: { label: 'Error', badge: 'text-bg-danger', icon: 'bi-x-circle-fill', color: 'danger' },
+        disabled: { label: 'No configurado', badge: 'text-bg-secondary', icon: 'bi-dash-circle-fill', color: 'secondary' }
+    };
+    const overall = meta[res.overall] || meta.warning, counts = res.counts || {};
+    $('#system-status-checked-at').text(`Comprobado el ${String(res.checked_at || '').replace(' ', ' a las ')}`);
+    const headline = res.overall === 'ok' ? 'Todos los servicios principales están disponibles' : (res.overall === 'error' ? 'Hay servicios que requieren una actuación' : 'Hay aspectos que conviene revisar');
+    $('#system-status-overview').html(`<div class="card border-0 shadow-sm"><div class="card-body d-flex flex-wrap align-items-center gap-3"><span class="system-status-overall-icon text-${overall.color}"><i class="bi ${overall.icon}"></i></span><div class="flex-grow-1"><h5 class="mb-1">${headline}</h5><div class="text-muted small">${Number(counts.ok || 0)} operativos · ${Number(counts.warning || 0)} avisos · ${Number(counts.error || 0)} errores · ${Number(counts.disabled || 0)} no configurados</div></div><span class="badge ${overall.badge} rounded-pill px-3 py-2">${overall.label}</span></div></div>`);
+    $('#system-status-grid').html((res.services || []).map(service => {
+        const state = meta[service.state] || meta.warning;
+        const details = (service.details || []).map(detail => `<div class="d-flex justify-content-between gap-3 small border-top pt-2 mt-2"><span class="text-muted">${escapeHtml(detail.label || '')}</span><strong class="text-end">${detail.value_bytes !== undefined ? systemStatusBytes(detail.value_bytes) : escapeHtml(detail.value || '')}</strong></div>`).join('');
+        const metric = service.metric && Number(service.metric.limit_bytes || 0) > 0 ? `<div class="progress mt-3" style="height:6px"><div class="progress-bar bg-${state.color}" style="width:${Math.min(100, Number(service.metric.percent || 0))}%"></div></div>` : '';
+        return `<div class="col-md-6 col-xl-4"><article class="card h-100 border-0 shadow-sm system-status-card"><div class="card-body"><div class="d-flex align-items-start gap-3"><span class="system-status-service-icon text-${state.color}"><i class="bi ${escapeHtml(service.icon || 'bi-activity')}"></i></span><div class="flex-grow-1 min-w-0"><div class="d-flex justify-content-between align-items-start gap-2"><h6 class="mb-1">${escapeHtml(service.title || '')}</h6><span class="badge ${state.badge}">${state.label}</span></div><div class="fw-semibold small mb-1">${escapeHtml(service.label || '')}</div><p class="text-muted small mb-0">${escapeHtml(service.description || '')}</p>${metric}${details}</div></div></div></article></div>`;
+    }).join(''));
+}
+
+function loadSystemStatus() {
+    const $button = $('#btn-refresh-system-status').prop('disabled', true); $button.find('i').addClass('system-status-spin');
+    $('#system-status-alert').addClass('d-none');
+    return $.getJSON('api/admin.php?action=system_status').done(res => {
+        if (!res.success) { $('#system-status-alert').removeClass('d-none').addClass('alert-danger').text(res.error || 'No se pudo comprobar el estado del sistema.'); return; }
+        renderSystemStatus(res);
+    }).fail(xhr => $('#system-status-alert').removeClass('d-none').addClass('alert-danger').text(xhr.responseJSON?.error || 'No se pudo comprobar el estado del sistema.'))
+      .always(() => { $button.prop('disabled', false); $button.find('i').removeClass('system-status-spin'); });
+}
+
+function openSystemStatus() {
+    if (!IS_SUPERADMIN || !document.getElementById('systemStatusModal')) return;
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('systemStatusModal')).show(); loadSystemStatus();
+}
+
+$(document).on('click', '#btn-system-status', openSystemStatus);
+$(document).on('click', '#btn-refresh-system-status', loadSystemStatus);
+
+function openDataImportWizard() {
+    if (!IS_SUPERADMIN || !supportsDashboardInlineViews() || !document.getElementById('dataImportModal')) return;
+    DATA_IMPORT_STATE = { step: 1, entity: '', hash: '', preview: null };
+    $('#data-import-file').val('');
+    $('.data-import-entity').removeClass('btn-primary').addClass('btn-outline-primary');
+    $('#data-import-alert').addClass('d-none').text('');
+    setDataImportStep(1);
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('dataImportModal')).show();
+}
+
+function setDataImportStep(step) {
+    DATA_IMPORT_STATE.step = Math.max(1, Math.min(5, parseInt(step || 1, 10)));
+    $('[data-import-step]').addClass('d-none').filter(`[data-import-step="${DATA_IMPORT_STATE.step}"]`).removeClass('d-none');
+    $('[data-import-step-badge]').each(function () {
+        const active = parseInt($(this).data('import-step-badge'), 10) <= DATA_IMPORT_STATE.step;
+        $(this).toggleClass('text-bg-primary', active).toggleClass('text-bg-secondary', !active);
+    });
+    $('#btn-data-import-back').toggleClass('invisible', DATA_IMPORT_STATE.step === 1 || DATA_IMPORT_STATE.step === 5);
+    $('#btn-data-import-next').toggleClass('d-none', DATA_IMPORT_STATE.step === 5).text(DATA_IMPORT_STATE.step === 4 ? 'Confirmar e importar' : 'Continuar');
+}
+
+function dataImportAlert(type, message) {
+    $('#data-import-alert').removeClass('d-none alert-danger alert-warning alert-success alert-info').addClass(`alert-${type}`).text(message || '');
+}
+
+$(document).on('click', '.data-import-entity', function () {
+    const entity = String($(this).data('entity') || '');
+    const definition = DATA_IMPORT_DEFINITIONS[entity];
+    if (!definition) return;
+    DATA_IMPORT_STATE.entity = entity; DATA_IMPORT_STATE.hash = ''; DATA_IMPORT_STATE.preview = null;
+    $('.data-import-entity').removeClass('btn-primary').addClass('btn-outline-primary');
+    $(this).removeClass('btn-outline-primary').addClass('btn-primary');
+    $('#data-import-format-title').text(`Datos a importar: ${definition.label}. Formato: CSV UTF-8. Separador: ';'. Formato Fecha: YYYY-MM-DD`);
+    $('#data-import-template-link').attr('href', `api/admin.php?action=data_import_template&entity=${encodeURIComponent(entity)}`);
+    $('#data-import-alert').addClass('d-none').text('');
+    setDataImportStep(2);
+});
+
+$(document).on('click', '#btn-data-import-back', function () {
+    if (DATA_IMPORT_STATE.step > 1 && DATA_IMPORT_STATE.step < 5) setDataImportStep(DATA_IMPORT_STATE.step - 1);
+});
+
+$(document).on('click', '#btn-data-import-next', function () {
+    if (DATA_IMPORT_STATE.step === 1) {
+        if (!DATA_IMPORT_STATE.entity) dataImportAlert('warning', 'Selecciona una tabla para continuar.');
+        else setDataImportStep(2);
+    } else if (DATA_IMPORT_STATE.step === 2) {
+        setDataImportStep(3);
+    } else if (DATA_IMPORT_STATE.step === 3) {
+        previewDataImport();
+    } else if (DATA_IMPORT_STATE.step === 4) {
+        executeDataImport();
+    }
+});
+
+function dataImportFormData() {
+    const file = document.getElementById('data-import-file')?.files?.[0];
+    if (!file) return null;
+    const data = new FormData(); data.append('entity', DATA_IMPORT_STATE.entity); data.append('import_file', file);
+    return data;
+}
+
+function previewDataImport() {
+    const data = dataImportFormData();
+    if (!data) { dataImportAlert('warning', 'Selecciona un archivo CSV.'); return; }
+    const $button = $('#btn-data-import-next').prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Validando');
+    $('#data-import-alert').addClass('d-none').text('');
+    $.ajax({ url: 'api/admin.php?action=data_import_preview', method: 'POST', data, dataType: 'json', processData: false, contentType: false })
+        .done(function (res) {
+            if (!res.success) {
+                const errors = Array.isArray(res.errors) ? res.errors : [res.error || 'El archivo no es válido.'];
+                dataImportAlert('danger', errors.slice(0, 12).join(' · '));
+                return;
+            }
+            DATA_IMPORT_STATE.hash = res.file_hash || ''; DATA_IMPORT_STATE.preview = res;
+            const columns = Array.isArray(res.columns) ? res.columns : [];
+            const importable = parseInt(res.importable_rows || 0, 10);
+            const rejected = parseInt(res.rejected_count || 0, 10);
+            const rejectedRows = Array.isArray(res.rejected_rows) ? res.rejected_rows : [];
+            const rejectedHtml = rejectedRows.length ? `<div class="mt-4"><h6 class="text-danger">Registros que no se pueden importar (${rejected})</h6><p class="small text-muted">Estos registros se omitirán si continúas. Revisa los motivos y corrige el archivo si quieres importarlos.</p><div class="table-responsive"><table class="table table-sm table-bordered"><thead><tr><th>Fila</th><th>Registro</th><th>Motivo</th></tr></thead><tbody>${rejectedRows.map(item => {
+                const row = item.row || {};
+                const identity = row.name || row.external_id || [row.appointment_date, row.appointment_time, row.patient_email || row.patient_external_id].filter(Boolean).join(' · ') || 'Sin identificar';
+                return `<tr class="table-danger"><td>${parseInt(item.line || 0, 10)}</td><td>${escapeHtml(identity)}</td><td>${escapeHtml((item.reasons || []).join(' · '))}</td></tr>`;
+            }).join('')}</tbody></table></div></div>` : '';
+            $('#data-import-preview-summary').html(`<div class="alert ${rejected ? 'alert-warning' : 'alert-success'}"><strong>${importable} registros se pueden importar.</strong>${rejected ? ` ${rejected} se omitirán por los problemas indicados debajo.` : ''} No se ha escrito todavía ningún dato.</div>${importable > 25 ? '<div class="small text-muted mb-2">Se muestran los primeros 25 registros importables.</div>' : ''}${rejectedHtml}`);
+            $('#data-import-preview-head').html(`<tr>${columns.map(column => `<th>${escapeHtml(column)}</th>`).join('')}</tr>`);
+            $('#data-import-preview-body').html((res.rows || []).map(row => `<tr>${columns.map(column => `<td>${escapeHtml(row[column] || '')}</td>`).join('')}</tr>`).join(''));
+            setDataImportStep(4);
+            $('#btn-data-import-next').prop('disabled', res.can_import !== true).attr('title', res.can_import === true ? '' : 'No hay registros importables.');
+        }).fail(xhr => dataImportAlert('danger', xhr.responseJSON?.error || 'No se pudo validar el archivo.'))
+        .always(() => $button.prop('disabled', DATA_IMPORT_STATE.step === 4 && DATA_IMPORT_STATE.preview?.can_import !== true).text(DATA_IMPORT_STATE.step === 4 ? 'Confirmar e importar' : 'Continuar'));
+}
+
+function executeDataImport() {
+    const data = dataImportFormData();
+    if (!data || !DATA_IMPORT_STATE.hash) { dataImportAlert('danger', 'Vuelve a validar el archivo.'); setDataImportStep(3); return; }
+    data.append('file_hash', DATA_IMPORT_STATE.hash);
+    const $button = $('#btn-data-import-next').prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Importando');
+    $.ajax({ url: 'api/admin.php?action=data_import_execute', method: 'POST', data, dataType: 'json', processData: false, contentType: false })
+        .done(function (res) {
+            if (!res.success) { dataImportAlert('danger', res.error || 'No se importó ningún registro.'); return; }
+            $('#data-import-alert').addClass('d-none').text('');
+            const skipped = parseInt(res.skipped || 0, 10);
+            $('#data-import-result').html(`<i class="bi bi-check-circle-fill text-success display-3"></i><h4 class="mt-3">Importación completada</h4><p class="text-muted">Se han creado <strong>${parseInt(res.created || 0, 10)}</strong> registros.${skipped ? ` Se han omitido <strong>${skipped}</strong> registros no compatibles.` : ''} El proceso ha quedado registrado en la auditoría.</p>`);
+            setDataImportStep(5);
+        }).fail(xhr => dataImportAlert('danger', xhr.responseJSON?.error || 'No se pudo completar la importación.'))
+        .always(() => $button.prop('disabled', false).text('Confirmar e importar'));
 }
 
 function ensureQuestionnaireAssets(callback) {
@@ -767,6 +1349,245 @@ function renderDashboardQuestionnairesView() {
     $('#calendar-container').html(`<section class="dashboard-inline-page"><div class="dashboard-inline-page-header"><div><h2>Mis cuestionarios</h2><p>Crea, consulta y administra tus cuestionarios personalizados.</p></div><button class="btn btn-primary btn-sm" id="btn-dashboard-new-questionnaire"><i class="bi bi-plus-lg me-1"></i>Nuevo cuestionario</button></div><div class="alert d-none" id="questionnaires-dashboard-alert"></div><div id="questionnaires-dashboard-list"><div class="text-center text-muted py-5"><span class="spinner-border spinner-border-sm me-2"></span>Cargando cuestionarios...</div></div></section>`);
     ensureQuestionnaireAssets(() => window.SGPraxisQuestionnaires?.loadList());
 }
+
+let TEAM_NOTES_ROWS = [];
+let TEAM_FILES_ROWS = [];
+let TEAM_PATIENT_FILES_ROWS = [];
+let TEAM_PATIENT_FILES_PATIENTS = [];
+let TEAM_STORAGE_STATUS = null;
+let TEAM_MEMBERS_ROWS = [];
+
+function rebuildCalendarRemindersMap() {
+    CALENDAR_REMINDERS_MAP = {};
+    if (!SHOW_CALENDAR_REMINDERS) return;
+    TEAM_NOTES_ROWS.forEach(item => {
+        if (parseInt(item.show_in_agenda || 0, 10) !== 1 || !item.due_at || item.status === 'completed') return;
+        const value = String(item.due_at);
+        const date = value.slice(0, 10);
+        const time = value.slice(11, 16);
+        if (!date || !time) return;
+        CALENDAR_REMINDERS_MAP[date] = CALENDAR_REMINDERS_MAP[date] || {};
+        CALENDAR_REMINDERS_MAP[date][time] = CALENDAR_REMINDERS_MAP[date][time] || [];
+        CALENDAR_REMINDERS_MAP[date][time].push(item);
+    });
+}
+
+function refreshCalendarReminders() {
+    if (!IS_ADMIN || typeof TEAM_NOTES_ENABLED === 'undefined' || !TEAM_NOTES_ENABLED) {
+        CALENDAR_REMINDERS_MAP = {};
+        return $.Deferred().resolve().promise();
+    }
+    const deferred = $.Deferred();
+    teamToolsApi('notes').then(data => {
+        TEAM_NOTES_ROWS = data.items || [];
+        rebuildCalendarRemindersMap();
+        deferred.resolve(data);
+    }).catch(() => {
+        CALENDAR_REMINDERS_MAP = {};
+        deferred.resolve({ success: false });
+    });
+    return deferred.promise();
+}
+
+function calendarRemindersAt(dateStr, timeStr) {
+    const slotStart = timeToMinutes(timeStr);
+    const slotEnd = slotStart + activeScheduleSlotStep();
+    return calendarRemindersForDate(dateStr).filter(item => {
+        const reminderStart = timeToMinutes(String(item.due_at || '').slice(11, 16));
+        return reminderStart >= slotStart && reminderStart < slotEnd;
+    });
+}
+
+function calendarRemindersForDate(dateStr) {
+    return Object.values(CALENDAR_REMINDERS_MAP[dateStr] || {}).flat().sort((a, b) => String(a.due_at).localeCompare(String(b.due_at)));
+}
+
+function calendarReminderHtml(item, compact = false) {
+    const priority = item.priority === 'high' ? ' high' : (item.priority === 'low' ? ' low' : '');
+    const duration = parseInt(item.agenda_duration_minutes || 30, 10) || 30;
+    const start = String(item.due_at || '').slice(11, 16);
+    const end = minutesToTime(timeToMinutes(start) + duration);
+    return `<article class="calendar-reminder${priority}${compact ? ' compact' : ''}" role="button" tabindex="0" data-team-note-id="${parseInt(item.id, 10)}"><i class="bi bi-bell-fill"></i><span><strong>${escapeHtml(item.title)}</strong>${compact ? '' : `<small>${escapeHtml(start)} - ${escapeHtml(end)}${item.target_name ? ` · ${escapeHtml(item.target_name)}` : ''}</small>`}</span></article>`;
+}
+
+function populateTeamNoteMembers(selected = 0) {
+    $('#team-note-target').html('<option value="">Selecciona...</option>' + TEAM_MEMBERS_ROWS.map(member => `<option value="${member.id}"${parseInt(member.id, 10) === parseInt(selected, 10) ? ' selected' : ''}>${escapeHtml(member.name)}</option>`).join(''));
+}
+
+function setTeamNoteAgendaControls(show, duration = 30) {
+    $('#team-note-show-agenda').prop('checked', Boolean(show));
+    $('#team-note-agenda-options').toggleClass('d-none', !show);
+    $('#team-note-agenda-duration').val(String(duration || 30));
+}
+
+async function openTeamNoteEditor(item = null, defaults = {}) {
+    try {
+        if (!TEAM_MEMBERS_ROWS.length) {
+            const members = await teamToolsApi('members');
+            TEAM_MEMBERS_ROWS = members.members || [];
+        }
+        $('#team-note-form')[0].reset();
+        $('#team-note-id').val(item ? item.id : '0');
+        $('#team-note-type').val(item ? item.item_type : (defaults.item_type || 'alert'));
+        $('#team-note-visibility').val(item ? item.visibility : (defaults.visibility || 'private'));
+        populateTeamNoteMembers(item ? item.target_user_id : 0);
+        $('#team-note-target-wrap').toggleClass('d-none', $('#team-note-visibility').val() !== 'professional');
+        $('#team-note-title').val(item ? item.title : (defaults.title || ''));
+        $('#team-note-content').val(item ? (item.content || '') : '');
+        $('#team-note-due').val(item && item.due_at ? String(item.due_at).replace(' ', 'T').slice(0, 16) : (defaults.due_at || ''));
+        $('#team-note-priority').val(item ? item.priority : 'normal');
+        $('#team-note-pinned').prop('checked', item && parseInt(item.is_pinned, 10) === 1);
+        setTeamNoteAgendaControls(item ? parseInt(item.show_in_agenda || 0, 10) === 1 : Boolean(defaults.show_in_agenda), item ? item.agenda_duration_minutes : (defaults.agenda_duration_minutes || 30));
+        $('#team-note-modal-title').text(item ? `Editar ${item.item_type === 'task' ? 'tarea' : item.item_type === 'alert' ? 'aviso' : 'nota'}` : (defaults.show_in_agenda ? 'Nuevo recordatorio' : 'Nueva nota o tarea'));
+        $('#btn-delete-team-note-modal').toggleClass('d-none', !item || !item.can_edit).data('id', item ? item.id : 0);
+        $('#btn-save-team-note').toggleClass('d-none', Boolean(item && !item.can_edit));
+        $('#team-note-modal-alert').addClass('d-none').removeClass('alert-danger alert-success').text('');
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('teamNoteModal')).show();
+    } catch (error) {
+        window.alert(error.message || 'No se pudo abrir el recordatorio.');
+    }
+}
+
+function openAgendaSlotActions(dateStr, timeStr) {
+    if (!IS_ADMIN) {
+        if (memberCan('create_appointments')) openModal(dateStr, timeStr, 'available');
+        return;
+    }
+    let element = document.getElementById('agendaSlotActionsModal');
+    if (!element) {
+        document.body.insertAdjacentHTML('beforeend', `<div class="modal fade" id="agendaSlotActionsModal" data-help-button="off" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-dialog-centered modal-sm"><div class="modal-content"><div class="modal-header"><h5 class="modal-title mb-0">¿Qué quieres crear?</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="text-muted text-center mb-3" id="agenda-slot-actions-date"></div><div class="d-grid gap-2"><button class="btn btn-outline-primary text-start p-3" id="agenda-slot-create-appointment"><i class="bi bi-calendar-plus fs-5 me-2"></i><strong>${escapeHtml(sectorLabel('appointment', 'titleSingular', 'Cita'))}</strong></button><button class="btn btn-outline-warning text-start p-3" id="agenda-slot-create-reminder"><i class="bi bi-bell fs-5 me-2"></i><strong>Recordatorio</strong></button><button class="btn btn-outline-secondary text-start p-3" id="agenda-slot-create-block"><i class="bi bi-calendar-x fs-5 me-2"></i><strong>No disponible</strong></button></div></div></div></div></div>`);
+        element = document.getElementById('agendaSlotActionsModal');
+    }
+    element.dataset.date = dateStr;
+    element.dataset.time = timeStr;
+    $('#agenda-slot-actions-date').text(`${formatDisplayDateWithWeekday(dateStr)} · ${timeStr}`);
+    $('#agenda-slot-create-appointment').toggleClass('d-none', !memberCan('create_appointments'));
+    $('#agenda-slot-create-reminder').toggleClass('d-none', typeof TEAM_NOTES_ENABLED === 'undefined' || !TEAM_NOTES_ENABLED);
+    bootstrap.Modal.getOrCreateInstance(element).show();
+}
+
+function openAvailabilityBlockEditor(dateStr, startTime, block = null) {
+    let element = document.getElementById('availabilityBlockModal');
+    if (!element) {
+        document.body.insertAdjacentHTML('beforeend', `<div class="modal fade" id="availabilityBlockModal" data-help-button="off" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><form class="modal-content" id="availability-block-form"><div class="modal-header"><h5 class="modal-title">Marcar como no disponible</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="alert alert-danger d-none" id="availability-block-alert"></div><input type="hidden" id="availability-block-id"><div class="mb-3"><label class="form-label" for="availability-block-date">Fecha</label><input class="form-control" type="date" id="availability-block-date" required></div><div class="row g-3 mb-3"><div class="col-6"><label class="form-label" for="availability-block-start">Desde</label><input class="form-control" type="time" id="availability-block-start" required></div><div class="col-6"><label class="form-label" for="availability-block-end">Hasta</label><input class="form-control" type="time" id="availability-block-end" required></div></div><div><label class="form-label" for="availability-block-reason">Motivo</label><input class="form-control" id="availability-block-reason" maxlength="180" placeholder="Ej. Reunión, gestión personal..."></div></div><div class="modal-footer"><button type="button" class="btn btn-outline-danger me-auto d-none" id="btn-delete-availability-block"><i class="bi bi-trash"></i> Eliminar</button><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button type="submit" class="btn btn-primary" id="btn-save-availability-block">Guardar</button></div></form></div></div>`);
+        element = document.getElementById('availabilityBlockModal');
+    }
+    const start = block ? block.start_time : startTime;
+    const defaultDuration = parseInt(PAYMENT_SETTINGS.default_duration_minutes || 60, 10) || 60;
+    $('#availability-block-id').val(block ? block.id : 0);
+    $('#availability-block-date').val(block ? block.date : dateStr);
+    $('#availability-block-start').val(start);
+    $('#availability-block-end').val(block ? block.end_time : minutesToTime(timeToMinutes(start) + defaultDuration));
+    $('#availability-block-reason').val(block ? block.reason : '');
+    $('#availability-block-alert').addClass('d-none').text('');
+    $('#btn-delete-availability-block').toggleClass('d-none', !block);
+    bootstrap.Modal.getOrCreateInstance(element).show();
+}
+let TEAM_FILES_VIEW = localStorage.getItem(`sgpraxis-team-files-view-${CURRENT_USER_ID}`) === 'list' ? 'list' : 'icons';
+let TEAM_FILES_SECTION = 'mine';
+
+async function teamToolsApi(action, options = {}) {
+    const response = await fetch(`api/team_tools.php?action=${encodeURIComponent(action)}`, {
+        method: options.method || 'GET', credentials: 'same-origin', body: options.body || undefined
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.success) throw new Error(data.error || 'No se pudo completar la operación.');
+    return data;
+}
+
+function teamToolDate(value) {
+    if (!value) return '';
+    const date = new Date(String(value).replace(' ', 'T'));
+    return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function renderDashboardTeamNotesView() {
+    $('#calendar-container').html(`<section class="dashboard-inline-page"><div class="dashboard-inline-page-header"><div><h2>Notas y tareas</h2><p>Notas, avisos y tareas internas del equipo.</p></div><button class="btn btn-primary btn-sm" id="btn-new-team-note"><i class="bi bi-plus-lg me-1"></i>Nuevo</button></div><div class="d-flex gap-2 flex-wrap mb-3"><div class="input-group input-group-sm flex-grow-1" style="min-width:220px"><span class="input-group-text"><i class="bi bi-search"></i></span><input class="form-control" id="team-notes-search" placeholder="Buscar notas o tareas..."></div><select class="form-select form-select-sm w-auto" id="team-notes-type-filter"><option value="all">Todos los tipos</option><option value="note">Notas</option><option value="alert">Avisos</option><option value="task">Tareas</option></select><select class="form-select form-select-sm w-auto" id="team-notes-status-filter"><option value="pending">Pendientes</option><option value="all">Todos</option><option value="completed">Completados</option></select></div><div class="alert d-none small" id="team-notes-page-alert"></div><div class="row g-3" id="team-notes-grid"><div class="text-center text-muted py-5"><span class="spinner-border spinner-border-sm me-2"></span>Cargando...</div></div></section>`);
+    Promise.all([teamToolsApi('notes'), teamToolsApi('members')]).then(([notes, members]) => { TEAM_NOTES_ROWS=notes.items||[]; TEAM_MEMBERS_ROWS=members.members||[]; renderTeamNotesRows(); }).catch(error => $('#team-notes-page-alert').removeClass('d-none').addClass('alert-danger').text(error.message));
+}
+
+function renderDashboardStatisticsView() {
+    $('#calendar-container').html(`<section class="dashboard-inline-page"><div class="dashboard-inline-page-header"><div><h2>Estad&iacute;sticas</h2><p>Analiza pacientes, sesiones y facturaci&oacute;n desde un solo lugar.</p></div></div><div class="alert d-none" id="dashboard-statistics-alert"></div><div id="dashboard-statistics-content"><div class="text-center text-muted py-5"><span class="spinner-border spinner-border-sm me-2"></span>Cargando estad&iacute;sticas...</div></div></section>`);
+    $.ajax({url:'api/admin.php?action=admin_stats',dataType:'json'}).done(res=>{if(!res.success){$('#dashboard-statistics-alert').removeClass('d-none').addClass('alert-danger').text(res.error||'No se pudieron cargar las estad&iacute;sticas.');return;}renderAdminStats(res.stats||{},'#dashboard-statistics-content');}).fail(xhr=>$('#dashboard-statistics-alert').removeClass('d-none').addClass('alert-danger').text((xhr.responseJSON&&xhr.responseJSON.error)||'No se pudieron cargar las estad&iacute;sticas.'));
+}
+
+function renderTeamNotesRows() {
+    const query=String($('#team-notes-search').val()||'').trim().toLowerCase(), type=$('#team-notes-type-filter').val()||'all', status=$('#team-notes-status-filter').val()||'pending';
+    const rows=TEAM_NOTES_ROWS.filter(item=>(type==='all'||item.item_type===type)&&(status==='all'||item.status===status)&&(!query||`${item.title} ${item.content||''} ${item.author_name||''} ${item.target_name||''}`.toLowerCase().includes(query)));
+    if(!rows.length){$('#team-notes-grid').html('<div class="col-12"><div class="questionnaire-empty"><i class="bi bi-pin-angle fs-2 d-block mb-2"></i>No hay elementos que mostrar.</div></div>');return;}
+    const typeMeta={note:['Nota','bi-sticky','info'],alert:['Aviso','bi-exclamation-triangle','warning'],task:['Tarea','bi-check2-square','primary']};
+    $('#team-notes-grid').html(rows.map(item=>{const meta=typeMeta[item.item_type]||typeMeta.note;const due=item.due_at?teamToolDate(item.due_at):'';const overdue=item.status!=='completed'&&item.due_at&&new Date(String(item.due_at).replace(' ','T'))<new Date();const visibility=item.visibility==='team'?'Todo el equipo':item.visibility==='professional'?(item.target_name||'Profesional'):'Privado';return `<div class="col-12 col-md-6 col-xl-4"><article class="team-note-card team-note-${item.item_type}${item.status==='completed'?' is-completed':''}"><div class="d-flex gap-2 align-items-start"><span class="team-note-icon text-${meta[2]}"><i class="bi ${meta[1]}"></i></span><div class="flex-grow-1 min-w-0"><div class="d-flex gap-2 align-items-center flex-wrap"><span class="badge text-bg-${meta[2]}">${meta[0]}</span>${parseInt(item.is_pinned,10)?'<i class="bi bi-pin-angle-fill text-primary" title="Destacado"></i>':''}${item.priority==='high'?'<span class="badge text-bg-danger">Alta</span>':''}</div><h3>${escapeHtml(item.title)}</h3></div>${item.can_edit?`<div class="dropdown"><button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown"><i class="bi bi-three-dots-vertical"></i></button><ul class="dropdown-menu dropdown-menu-end"><li><button class="dropdown-item btn-edit-team-note" data-id="${item.id}"><i class="bi bi-pencil me-2"></i>Editar</button></li><li><button class="dropdown-item text-danger btn-delete-team-note" data-id="${item.id}"><i class="bi bi-trash me-2"></i>Eliminar</button></li></ul></div>`:''}</div>${item.content?`<p>${escapeHtml(item.content)}</p>`:''}<div class="team-note-meta"><span><i class="bi ${item.visibility==='private'?'bi-lock':'bi-people'}"></i> ${escapeHtml(visibility)}</span><span>${escapeHtml(item.author_name||'')}</span>${due?`<span class="${overdue?'text-danger fw-semibold':''}"><i class="bi bi-clock"></i> ${escapeHtml(due)}</span>`:''}</div>${item.item_type==='task'?`<button class="btn btn-sm ${item.status==='completed'?'btn-outline-secondary':'btn-outline-success'} btn-toggle-team-note mt-3" data-id="${item.id}"><i class="bi ${item.status==='completed'?'bi-arrow-counterclockwise':'bi-check2'}"></i> ${item.status==='completed'?'Marcar pendiente':'Completar'}</button>`:''}</article></div>`;}).join(''));
+}
+
+function teamFileIcon(extension) {
+    extension=String(extension||'').toLowerCase();
+    if(extension==='pdf')return ['bi-file-earmark-pdf-fill','text-danger'];
+    if(['doc','docx','rtf','txt'].includes(extension))return ['bi-file-earmark-word-fill','text-primary'];
+    if(['xls','xlsx','csv'].includes(extension))return ['bi-file-earmark-excel-fill','text-success'];
+    if(['jpg','jpeg','png','webp','gif'].includes(extension))return ['bi-file-earmark-image-fill','text-info'];
+    if(extension==='zip')return ['bi-file-earmark-zip-fill','text-warning'];
+    return ['bi-file-earmark-fill','text-secondary'];
+}
+
+function renderDashboardTeamFilesView() {
+    TEAM_FILES_SECTION='mine';
+    $('#calendar-container').html(`<section class="dashboard-inline-page"><div class="dashboard-inline-page-header"><div><h2>Praxis Cloud</h2><p>Todos tus documentos de trabajo y de pacientes, organizados en un solo lugar.</p></div><button class="btn btn-primary btn-sm" id="btn-upload-team-file-open"><i class="bi bi-cloud-arrow-up me-1"></i>Subir archivo</button></div><div class="d-flex flex-wrap align-items-center gap-2 mb-3"><div class="btn-group btn-group-sm"><button class="btn btn-primary team-files-section-btn" data-section="mine"><i class="bi bi-person me-1"></i>Mis archivos</button><button class="btn btn-outline-primary team-files-section-btn" data-section="shared"><i class="bi bi-people me-1"></i>Compartidos</button><button class="btn btn-outline-primary team-files-section-btn" data-section="patients"><i class="bi bi-person-vcard me-1"></i>Pacientes</button></div><div class="input-group input-group-sm flex-grow-1" style="min-width:220px"><span class="input-group-text"><i class="bi bi-search"></i></span><input class="form-control" id="team-files-search" placeholder="Buscar por nombre..."></div><select class="form-select form-select-sm d-none" id="team-files-patient-filter" style="width:auto;max-width:240px"><option value="all">Todos los pacientes</option></select><select class="form-select form-select-sm d-none" id="team-files-type-filter" style="width:auto;max-width:190px"><option value="all">Todos los tipos</option><option value="internal_note">Notas internas</option><option value="drawing">Pizarras</option><option value="report">Informes</option><option value="consent">Consentimientos</option><option value="file">Documentos</option><option value="evolution">Evolución</option></select><div class="btn-group btn-group-sm"><button class="btn ${TEAM_FILES_VIEW==='icons'?'btn-primary':'btn-outline-primary'} team-files-view-btn" data-view="icons" title="Iconos"><i class="bi bi-grid-3x3-gap"></i></button><button class="btn ${TEAM_FILES_VIEW==='list'?'btn-primary':'btn-outline-primary'} team-files-view-btn" data-view="list" title="Lista"><i class="bi bi-list-ul"></i></button></div></div><div class="small text-muted mb-3 d-none" id="team-files-storage-status"></div><div class="alert d-none small" id="team-files-page-alert"></div><div id="team-files-content"><div class="text-center text-muted py-5"><span class="spinner-border spinner-border-sm me-2"></span>Cargando...</div></div></section>`);
+    const $teamFilesSections = $('.team-files-section-btn');
+    const $teamFilesSectionGroup = $teamFilesSections.first().closest('.btn-group');
+    $teamFilesSections.eq(1).html('<i class="bi bi-people me-1"></i>Archivos del Equipo');
+    $teamFilesSections.eq(2).html('<i class="bi bi-person-vcard me-1"></i>Mis pacientes');
+    $('#team-files-patient-filter option[value="all"]').text('Todos mis pacientes');
+    $('#btn-upload-team-file-open').insertAfter($teamFilesSectionGroup).addClass('ms-auto');
+    Promise.all([teamToolsApi('files'),teamToolsApi('patient_files')]).then(([cloud,patients])=>{TEAM_FILES_ROWS=cloud.files||[];TEAM_STORAGE_STATUS=cloud.storage||null;TEAM_PATIENT_FILES_ROWS=patients.files||[];TEAM_PATIENT_FILES_PATIENTS=patients.patients||[];renderTeamFilesRows();}).catch(error=>$('#team-files-page-alert').removeClass('d-none').addClass('alert-danger').text(error.message));
+}
+
+function renderTeamFilesRows() {
+    cleanupTeamFileFloatingMenus();
+    const isPatients=TEAM_FILES_SECTION==='patients';
+    $('#btn-upload-team-file-open').toggleClass('d-none',isPatients);
+    if(TEAM_STORAGE_STATUS&&TEAM_STORAGE_STATUS.limit_bytes>0)$('#team-files-storage-status').removeClass('d-none').html(`<i class="bi bi-database me-1"></i>${formatFileSize(TEAM_STORAGE_STATUS.used_bytes)} de ${formatFileSize(TEAM_STORAGE_STATUS.limit_bytes)} utilizados`);
+    if(TEAM_STORAGE_STATUS&&TEAM_STORAGE_STATUS.limit_bytes>0){
+        const usedBytes=Math.max(0,Number(TEAM_STORAGE_STATUS.used_bytes)||0),limitBytes=Math.max(1,Number(TEAM_STORAGE_STATUS.limit_bytes)||1);
+        const usedGb=usedBytes/(1024**3),limitGb=limitBytes/(1024**3),percentage=Math.min(100,(usedBytes/limitBytes)*100);
+        const formatGb=value=>value>=10?value.toLocaleString('es-ES',{maximumFractionDigits:1}):value.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2});
+        $('#team-files-storage-status').addClass('team-files-storage-status').html(`<div><i class="bi bi-database me-1"></i>${formatGb(usedGb)} GB de ${formatGb(limitGb)} GB utilizados</div><div class="progress team-files-storage-progress" role="progressbar" aria-label="Espacio utilizado" aria-valuenow="${percentage.toFixed(2)}" aria-valuemin="0" aria-valuemax="100"><div class="progress-bar" style="width:${percentage}%"></div></div>`);
+    }
+    $('#team-files-patient-filter,#team-files-type-filter').toggleClass('d-none',!isPatients);
+    if(isPatients&&$('#team-files-patient-filter option').length===1)$('#team-files-patient-filter').append(TEAM_PATIENT_FILES_PATIENTS.map(patient=>`<option value="${patient.id}">${escapeHtml(patient.name)}</option>`).join(''));
+    const query=String($('#team-files-search').val()||'').trim().toLowerCase(),patientFilter=$('#team-files-patient-filter').val()||'all',typeFilter=$('#team-files-type-filter').val()||'all';
+    const sourceRows=isPatients?TEAM_PATIENT_FILES_ROWS:TEAM_FILES_ROWS.filter(file=>TEAM_FILES_SECTION==='shared'?file.visibility==='team':file.visibility!=='team'&&parseInt(file.author_user_id,10)===parseInt(CURRENT_USER_ID,10));
+    const rows=sourceRows.filter(file=>(!isPatients||patientFilter==='all'||parseInt(file.patient_id,10)===parseInt(patientFilter,10))&&(!isPatients||typeFilter==='all'||(typeFilter==='evolution'?file.kind==='evolution':file.document_type===typeFilter))&&(!query||`${file.title} ${file.original_file_name} ${file.author_name||''} ${file.patient_name||''} ${file.source||''}`.toLowerCase().includes(query)));
+    if(!rows.length){$('#team-files-content').html('<div class="questionnaire-empty"><i class="bi bi-cloud fs-2 d-block mb-2"></i>No hay archivos que mostrar.</div>');return;}
+    if(TEAM_FILES_VIEW==='list'){$('#team-files-content').html(`<div class="table-responsive"><table class="table align-middle"><thead><tr><th>Archivo</th><th>${isPatients?'Paciente':'Visibilidad'}</th><th>${isPatients?'Origen':'Autor'}</th><th>Fecha</th><th class="text-end"></th></tr></thead><tbody>${rows.map(file=>{const icon=teamFileIcon(file.file_extension),url=isPatients?file.download_url:`api/team_tools.php?action=download_file&id=${file.id}`;return `<tr><td><a class="text-decoration-none team-file-download" href="${url}"><i class="bi ${icon[0]} ${icon[1]} fs-4 me-2"></i>${escapeHtml(file.title)}</a>${file.file_size?`<div class="small text-muted">${formatFileSize(file.file_size)}</div>`:''}</td><td>${isPatients?escapeHtml(file.patient_name||''):(file.visibility==='team'?'<i class="bi bi-people me-1"></i>Equipo':'<i class="bi bi-lock me-1"></i>Privado')}</td><td>${escapeHtml(isPatients?(file.source||'Documento'):(file.author_name||''))}</td><td>${escapeHtml(teamToolDate(file.created_at))}</td><td class="text-end">${isPatients?patientCloudFileMenu(file):teamFileMenu(file)}</td></tr>`;}).join('')}</tbody></table></div>`);return;}
+    $('#team-files-content').html(`<div class="row g-2 team-file-grid">${rows.map(file=>{const icon=teamFileIcon(file.file_extension),url=isPatients?file.download_url:`api/team_tools.php?action=download_file&id=${file.id}`,details=isPatients?`${file.patient_name} · ${file.source}`:`${file.author_name||''}`;return `<div class="col-6 col-sm-4 col-md-3 col-lg-2 col-xl-1"><article class="team-file-tile" data-file-id="${file.id}" title="${escapeHtml(file.original_file_name||file.title)} · ${file.file_size?formatFileSize(file.file_size)+' · ':''}${escapeHtml(details)}"><div class="team-file-tile-actions">${isPatients?patientCloudFileMenu(file):teamFileMenu(file)}</div><a class="team-file-tile-link team-file-download" href="${url}"><i class="bi ${icon[0]} ${icon[1]}"></i><span>${escapeHtml(file.title)}</span></a><small>${isPatients?escapeHtml(file.patient_name||''):`<i class="bi ${file.visibility==='team'?'bi-people':'bi-lock'}"></i>`}</small></article></div>`;}).join('')}</div>`);
+}
+
+function teamFileMenu(file){return `<div class="dropdown team-file-actions-dropdown"><button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown" data-bs-boundary="viewport" title="Opciones"><i class="bi bi-three-dots-vertical"></i></button><ul class="dropdown-menu dropdown-menu-end"><li><a class="dropdown-item" href="api/team_tools.php?action=download_file&id=${file.id}"><i class="bi bi-download me-2"></i>Descargar</a></li>${file.can_edit?`<li><button class="dropdown-item btn-edit-team-file" data-id="${file.id}"><i class="bi bi-pencil me-2"></i>Renombrar / compartir</button></li><li><button class="dropdown-item text-danger btn-delete-team-file" data-id="${file.id}"><i class="bi bi-trash me-2"></i>Eliminar</button></li>`:''}</ul></div>`;}
+function patientCloudFileMenu(file){return `<div class="dropdown team-file-actions-dropdown"><button class="btn btn-sm btn-outline-secondary" data-bs-toggle="dropdown" data-bs-boundary="viewport" title="Opciones"><i class="bi bi-three-dots-vertical"></i></button><ul class="dropdown-menu dropdown-menu-end"><li><a class="dropdown-item" href="${file.download_url}"><i class="bi bi-download me-2"></i>Descargar</a></li></ul></div>`;}
+
+function cleanupTeamFileFloatingMenus() {
+    document.querySelectorAll('.team-file-actions-floating-menu').forEach(menu => {
+        const owner = menu._teamFileDropdownOwner;
+        menu.classList.remove('team-file-actions-floating-menu', 'show');
+        if (owner && owner.isConnected) owner.appendChild(menu);
+        else menu.remove();
+        delete menu._teamFileDropdownOwner;
+    });
+}
+
+$(document).on('show.bs.dropdown', '.team-file-actions-dropdown', function () {
+    const menu = this.querySelector('.dropdown-menu');
+    if (!menu) return;
+    menu._teamFileDropdownOwner = this;
+    document.body.appendChild(menu);
+    menu.classList.add('team-file-actions-floating-menu');
+}).on('hidden.bs.dropdown', '.team-file-actions-dropdown', function () {
+    const menu = document.querySelector('.team-file-actions-floating-menu');
+    if (!menu || menu._teamFileDropdownOwner !== this) return;
+    menu.classList.remove('team-file-actions-floating-menu');
+    this.appendChild(menu);
+    delete menu._teamFileDropdownOwner;
+});
 
 function renderWeekInfo() {
     if (currentCalendarView === 'agenda' && !supportsDetailedAgendaView()) {
@@ -791,6 +1612,15 @@ function renderWeekInfo() {
         if (currentCalendarView === 'questionnaires') {
             return renderDashboardQuestionnairesView();
         }
+        if (currentCalendarView === 'team-notes') {
+            return renderDashboardTeamNotesView();
+        }
+        if (currentCalendarView === 'team-files') {
+            return renderDashboardTeamFilesView();
+        }
+        if (currentCalendarView === 'statistics') {
+            return renderDashboardStatisticsView();
+        }
     }
     const quickPromise = IS_ADMIN
         ? loadQuickAppointmentsSummary(!quickAppointmentsSummaryRendered)
@@ -800,7 +1630,8 @@ function renderWeekInfo() {
         const monthStr = formatMonthStart(currentMonthDate);
         $('#calendar-container').html('<div class="text-center text-muted py-5"><div class="spinner-border text-secondary" role="status"></div><br>Cargando. Espera...</div>');
         const calendarPromise = fetchMonthCalendar(monthStr);
-        return $.when(quickPromise, calendarPromise).done(function (_quickResult, calendarResult) {
+        const remindersPromise = refreshCalendarReminders();
+        return $.when(quickPromise, calendarPromise, remindersPromise).done(function (_quickResult, calendarResult) {
             const res = Array.isArray(calendarResult) ? calendarResult[0] : calendarResult;
             applyMonthCalendarResponse(res);
         });
@@ -808,14 +1639,15 @@ function renderWeekInfo() {
     const startDateStr = formatDate(currentStartDate);
     $('#calendar-container').html('<div class="text-center text-muted py-5"><div class="spinner-border text-secondary" role="status"></div><br>Cargando. Espera...</div>');
     const calendarPromise = fetchWeekCalendar(startDateStr);
-    return $.when(quickPromise, calendarPromise).done(function (_quickResult, calendarResult) {
+    const remindersPromise = refreshCalendarReminders();
+    return $.when(quickPromise, calendarPromise, remindersPromise).done(function (_quickResult, calendarResult) {
         const res = Array.isArray(calendarResult) ? calendarResult[0] : calendarResult;
         applyWeekCalendarResponse(startDateStr, res);
     });
 }
 
 function isCalendarDashboardView() {
-    return currentCalendarView === 'month' || currentCalendarView === 'week' || currentCalendarView === 'agenda';
+    return currentCalendarView === 'month' || currentCalendarView === 'week' || currentCalendarView === 'agenda' || currentCalendarView === 'list';
 }
 
 function invalidateDashboardUpcomingAppointments() {
@@ -1135,6 +1967,9 @@ function loadAvailableProfessionalsForSlot(date, time) {
 }
 
 function selectedPatientProfessionalRequestData() {
+    if (IS_SUPERADMIN && CURRENT_AGENDA_PROFESSIONAL_ID) {
+        return { professional_id: CURRENT_AGENDA_PROFESSIONAL_ID };
+    }
     if (IS_ADMIN || !CURRENT_PATIENT_SELECTED_PROFESSIONAL_ID) {
         return {};
     }
@@ -1209,6 +2044,8 @@ function fetchWeekCalendar(startDateStr) {
 
 function applyWeekCalendarResponse(startDateStr, res) {
     if (res && res.success) {
+        updateAgendaProfessionalFilter(res);
+        CURRENT_AVAILABILITY_BLOCKS_MAP = res.availability_blocks || {};
         if (res.payment_settings) {
             PAYMENT_SETTINGS = { ...PAYMENT_SETTINGS, ...res.payment_settings };
         }
@@ -1220,6 +2057,8 @@ function applyWeekCalendarResponse(startDateStr, res) {
         togglePatientBonusActions();
         if (currentCalendarView === 'agenda' && supportsDetailedAgendaView()) {
             drawDetailedAgenda(startDateStr, res.appointments || {}, res.closed_days || {});
+        } else if (currentCalendarView === 'list') {
+            drawListAgenda(startDateStr, res.appointments || {}, res.closed_days || {});
         } else {
             drawCalendar(startDateStr, res.appointments, res.closed_days);
         }
@@ -1245,6 +2084,8 @@ function fetchMonthCalendar(monthStr) {
 
 function applyMonthCalendarResponse(res) {
     if (res && res.success) {
+        updateAgendaProfessionalFilter(res);
+        CURRENT_AVAILABILITY_BLOCKS_MAP = res.availability_blocks || {};
         if (res.payment_settings) {
             PAYMENT_SETTINGS = { ...PAYMENT_SETTINGS, ...res.payment_settings };
         }
@@ -1308,7 +2149,7 @@ function drawCalendar(startDateStr, appointmentsMap, closedDays) {
         let closedReason = isClosed ? (IS_ADMIN ? closedDays[dateStr] : 'No disponible') : '';
 
         html += `<div class="calendar-day">
-                    <div class="day-header">${daysArr[dayNumber]}<br><small class="text-muted">${displayDate}</small></div>`;
+                    <div class="day-header" data-weather-date="${dateStr}">${daysArr[dayNumber]}<br><small class="text-muted">${displayDate}</small>${weatherCompactHtml(weatherForecastForDate(dateStr), 'calendar-weather-badge')}</div>`;
 
         if (isClosed) {
             html += `<div class="alert alert-danger text-center p-2 mb-0" style="font-size:0.9em">${closedReason}</div>`;
@@ -1370,9 +2211,10 @@ function drawDetailedAgenda(startDateStr, appointmentsMap, closedDays) {
         currentDay.setDate(currentDay.getDate() + (dayNumber - 1));
         const displayDate = `${String(currentDay.getDate()).padStart(2, '0')}/${String(currentDay.getMonth() + 1).padStart(2, '0')}`;
         html += `
-            <div class="detailed-agenda-day-header">
+            <div class="detailed-agenda-day-header" data-weather-date="${formatDate(currentDay)}">
                 <span>${daysArr[dayNumber] || ''}</span>
                 <small>${displayDate}</small>
+                ${weatherCompactHtml(weatherForecastForDate(formatDate(currentDay)), 'calendar-weather-badge')}
             </div>
         `;
     });
@@ -1388,6 +2230,8 @@ function drawDetailedAgenda(startDateStr, appointmentsMap, closedDays) {
             <div class="detailed-agenda-day-column${closedReason ? ' is-closed' : ''}" style="height: var(--agenda-height);">
                 ${detailedAgendaGridLinesHtml(startMinutes, endMinutes)}
                 ${closedReason ? `<div class="detailed-agenda-closed"><i class="bi bi-lock"></i> ${escapeHtml(closedReason)}</div>` : detailedAgendaAppointmentsHtml(dateStr, appointmentsMap[dateStr] || {}, startMinutes, hourHeight)}
+                ${closedReason ? '' : (CURRENT_AVAILABILITY_BLOCKS_MAP[dateStr] || []).map(block => detailedAgendaAvailabilityBlockHtml(block, startMinutes, hourHeight)).join('')}
+                ${closedReason ? '' : calendarRemindersForDate(dateStr).map(item => detailedAgendaReminderHtml(item, startMinutes, hourHeight)).join('')}
             </div>
         `;
     });
@@ -1408,6 +2252,18 @@ function detailedAgendaBounds(appointmentsMap) {
                 end = Math.max(end, appStart + duration);
             }
         });
+    });
+    Object.values(CALENDAR_REMINDERS_MAP || {}).forEach(dayReminders => {
+        Object.values(dayReminders || {}).flat().forEach(item => {
+            const reminderStart = timeToMinutes(String(item.due_at || '').slice(11, 16));
+            const duration = parseInt(item.agenda_duration_minutes || 30, 10) || 30;
+            start = Math.min(start, reminderStart);
+            end = Math.max(end, reminderStart + duration);
+        });
+    });
+    Object.values(CURRENT_AVAILABILITY_BLOCKS_MAP || {}).flat().forEach(block => {
+        start = Math.min(start, timeToMinutes(block.start_time));
+        end = Math.max(end, timeToMinutes(block.end_time));
     });
     start = Math.max(0, Math.floor(start / 60) * 60);
     end = Math.min(24 * 60, Math.ceil(end / 60) * 60);
@@ -1475,6 +2331,136 @@ function detailedAgendaAppointmentHtml(dateStr, app, startMinutes, hourHeight) {
     `;
 }
 
+function detailedAgendaReminderHtml(item, startMinutes, hourHeight) {
+    const startTime = String(item.due_at || '').slice(11, 16);
+    const start = timeToMinutes(startTime);
+    const duration = parseInt(item.agenda_duration_minutes || 30, 10) || 30;
+    const top = Math.max(0, ((start - startMinutes) / 60) * hourHeight);
+    const height = Math.max(38, (duration / 60) * hourHeight - 5);
+    const priority = item.priority === 'high' ? ' high' : (item.priority === 'low' ? ' low' : '');
+    return `<article class="detailed-agenda-reminder${priority}" style="top:${top}px;height:${height}px" data-team-note-id="${parseInt(item.id, 10)}" role="button" tabindex="0"><i class="bi bi-bell-fill"></i><span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(startTime)} · ${duration} min</small></span></article>`;
+}
+
+function detailedAgendaAvailabilityBlockHtml(block, startMinutes, hourHeight) {
+    const start = timeToMinutes(block.start_time);
+    const duration = Math.max(5, timeToMinutes(block.end_time) - start);
+    const top = Math.max(0, ((start - startMinutes) / 60) * hourHeight);
+    const height = Math.max(34, (duration / 60) * hourHeight - 5);
+    return `<article class="detailed-agenda-availability-block" style="top:${top}px;height:${height}px" onclick="openAvailabilityBlockById('${escapeHtml(block.date)}',${parseInt(block.id,10)})" role="button" tabindex="0"><i class="bi bi-calendar-x"></i><span><strong>${escapeHtml(block.reason || 'No disponible')}</strong><small>${escapeHtml(block.start_time)} - ${escapeHtml(block.end_time)}</small></span></article>`;
+}
+
+function drawListAgenda(startDateStr, appointmentsMap, closedDays) {
+    const activeDays = getActiveWeekdays();
+    const startD = new Date(`${startDateStr}T00:00:00`);
+    const lastActiveDay = activeDays.length ? Math.max(...activeDays) : 5;
+    const endD = new Date(startD);
+    endD.setDate(startD.getDate() + (lastActiveDay - 1));
+    const weekTitle = `${formatCompactDate(startD)} - ${formatCompactDate(endD)}`;
+    let daysHtml = '';
+    let appointmentCount = 0;
+
+    activeDays.forEach(dayNumber => {
+        const currentDay = new Date(startD);
+        currentDay.setDate(currentDay.getDate() + (dayNumber - 1));
+        const dateStr = formatDate(currentDay);
+        const apps = Object.values(appointmentsMap[dateStr] || {})
+            .filter(app => app && app.time)
+            .sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
+        const reminders = calendarRemindersForDate(dateStr);
+        const availabilityBlocks = CURRENT_AVAILABILITY_BLOCKS_MAP[dateStr] || [];
+        const closedReason = closedDays[dateStr] !== undefined ? (IS_ADMIN ? closedDays[dateStr] : 'No disponible') : '';
+        if (!apps.length && !reminders.length && !availabilityBlocks.length && !closedReason) {
+            return;
+        }
+        appointmentCount += apps.length;
+        const dayName = currentDay.toLocaleDateString('es-ES', { weekday: 'long' });
+        const fullDate = currentDay.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
+        const rows = apps.map(app => ({ type: 'appointment', time: app.time, value: app }))
+            .concat(reminders.map(item => ({ type: 'reminder', time: String(item.due_at || '').slice(11, 16), value: item })))
+            .concat(availabilityBlocks.map(block => ({ type: 'block', time: block.start_time, value: block })))
+            .sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time))
+            .map(entry => entry.type === 'appointment' ? listAgendaAppointmentHtml(entry.value) : (entry.type === 'reminder' ? listAgendaReminderHtml(entry.value) : listAgendaAvailabilityBlockHtml(entry.value)))
+            .join('');
+        daysHtml += `
+            <section class="list-agenda-day">
+                <header class="list-agenda-day-header" data-weather-date="${dateStr}">
+                    <strong>${escapeHtml(dayName.charAt(0).toUpperCase() + dayName.slice(1))}</strong>
+                    <span>${escapeHtml(fullDate)}</span>
+                    ${weatherCompactHtml(weatherForecastForDate(dateStr), 'calendar-weather-badge')}
+                </header>
+                ${closedReason ? `<div class="list-agenda-closed"><i class="bi bi-lock me-2"></i>${escapeHtml(closedReason)}</div>` : ''}
+                ${rows}
+            </section>
+        `;
+    });
+
+    if (!daysHtml) {
+        daysHtml = `
+            <div class="list-agenda-empty">
+                <i class="bi bi-calendar2-check"></i>
+                <strong>No hay citas esta semana</strong>
+                <span>Utiliza las flechas para consultar otra semana.</span>
+            </div>
+        `;
+    }
+
+    const countLabel = `${appointmentCount} ${appointmentCount === 1 ? 'cita' : 'citas'}`;
+    const html = `
+        ${dashboardCalendarModeSwitcherHtml()}
+        <div class="week-calendar-nav list-agenda-nav${consumeCalendarInitialAnimationClass()}">
+            <button class="btn btn-light calendar-nav-icon" id="btn-prev-week" type="button" aria-label="Semana anterior" title="Semana anterior">
+                <i class="bi bi-chevron-left"></i>
+            </button>
+            <div class="week-calendar-title">
+                ${escapeHtml(weekTitle)}
+                <small>${escapeHtml(countLabel)}</small>
+            </div>
+            <button class="btn btn-light calendar-nav-icon" id="btn-next-week" type="button" aria-label="Semana siguiente" title="Semana siguiente">
+                <i class="bi bi-chevron-right"></i>
+            </button>
+        </div>
+        <div class="list-agenda">${daysHtml}</div>
+    `;
+    $('#calendar-container').html(html);
+}
+
+function listAgendaAppointmentHtml(app) {
+    const appointmentId = parseInt(app.id || 0, 10);
+    const userId = parseInt(app.user_id || 0, 10);
+    const duration = parseInt(app.duration_minutes || 60, 10) || 60;
+    const timeRange = displayAppointmentTimeRange(app.time || '', duration);
+    const serviceLabel = displayAppointmentServiceLabel(app);
+    const modalityClass = app.consultation_type === 'online' ? ' is-online' : ' is-presencial';
+    const paymentClass = app.payment_status === 'paid' ? ' is-paid' : (app.payment_status === 'failed' ? ' is-failed' : ' is-pending');
+    const attendanceClass = app.status === 'no_show' ? ' is-no-show' : (app.status === 'completed' ? ' is-completed' : '');
+    const patientButton = userId > 0
+        ? `<button type="button" class="btn btn-sm btn-outline-primary list-agenda-patient" onclick="event.stopPropagation(); openPatientEditorById(${userId}, this);" title="Abrir ficha" aria-label="Abrir ficha"><i class="bi bi-person-lines-fill"></i></button>`
+        : '';
+    return `
+        <article class="list-agenda-appointment${modalityClass}${paymentClass}${attendanceClass}" role="button" tabindex="0" onclick="openAppointmentPaymentModal(${appointmentId})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openAppointmentPaymentModal(${appointmentId});}">
+            <time>${escapeHtml(timeRange)}</time>
+            <span class="list-agenda-dot" aria-hidden="true"></span>
+            <div class="list-agenda-appointment-main">
+                <strong>${escapeHtml(app.name || sectorLabel('patient', 'titleSingular', 'Paciente'))}</strong>
+                ${serviceLabel ? `<small>${escapeHtml(serviceLabel)}</small>` : ''}
+            </div>
+            <div class="list-agenda-badges">${getAppointmentAttendanceBadge(app)}${getConsultationBadge(app.consultation_type)}${getPaymentBadge(app)}</div>
+            ${patientButton}
+        </article>
+    `;
+}
+
+function listAgendaReminderHtml(item) {
+    const duration = parseInt(item.agenda_duration_minutes || 30, 10) || 30;
+    const start = String(item.due_at || '').slice(11, 16);
+    const priority = item.priority === 'high' ? ' high' : (item.priority === 'low' ? ' low' : '');
+    return `<article class="list-agenda-reminder${priority}" data-team-note-id="${parseInt(item.id, 10)}" role="button" tabindex="0"><time>${escapeHtml(start)}</time><i class="bi bi-bell-fill"></i><div><strong>${escapeHtml(item.title)}</strong><small>Recordatorio · ${duration} min</small></div></article>`;
+}
+
+function listAgendaAvailabilityBlockHtml(block) {
+    return `<article class="list-agenda-availability-block" onclick="openAvailabilityBlockById('${escapeHtml(block.date)}',${parseInt(block.id,10)})" role="button" tabindex="0"><time>${escapeHtml(block.start_time)} - ${escapeHtml(block.end_time)}</time><i class="bi bi-calendar-x"></i><div><strong>${escapeHtml(block.reason || 'No disponible')}</strong><small>Franja no disponible</small></div></article>`;
+}
+
 function formatCompactDate(date) {
     return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
 }
@@ -1485,7 +2471,7 @@ function dashboardCalendarModeSwitcherHtml() {
     }
     return `
         <div class="dashboard-calendar-mode-switcher mb-3">
-            <div class="btn-group" role="group" aria-label="Modo de agenda">
+            <div class="btn-group btn-group-sm" role="group" aria-label="Modo de agenda">
                 <button class="btn btn-outline-primary btn-dashboard-calendar-mode${currentCalendarView === 'month' ? ' active btn-primary' : ''}" type="button" data-dashboard-calendar-view="month">
                     <i class="bi bi-calendar3"></i> Mensual
                 </button>
@@ -1493,11 +2479,42 @@ function dashboardCalendarModeSwitcherHtml() {
                     <i class="bi bi-calendar-week"></i> Semanal
                 </button>
                 <button class="btn btn-outline-primary btn-dashboard-calendar-mode d-none d-lg-inline-flex${currentCalendarView === 'agenda' ? ' active btn-primary' : ''}" type="button" data-dashboard-calendar-view="agenda">
-                    <i class="bi bi-layout-three-columns"></i> Agenda
+                    <i class="bi bi-layout-three-columns"></i> Columnas
+                </button>
+                <button class="btn btn-outline-primary btn-dashboard-calendar-mode${currentCalendarView === 'list' ? ' active btn-primary' : ''}" type="button" data-dashboard-calendar-view="list">
+                    <i class="bi bi-list-ul"></i> Lista
                 </button>
             </div>
+            ${agendaProfessionalFilterHtml()}
+            ${typeof TEAM_NOTES_ENABLED !== 'undefined' && TEAM_NOTES_ENABLED ? `<div class="form-check form-switch mb-0 calendar-reminder-filter"><input class="form-check-input" type="checkbox" id="show-calendar-reminders"${SHOW_CALENDAR_REMINDERS ? ' checked' : ''}><label class="form-check-label" for="show-calendar-reminders"><i class="bi bi-bell"></i> Mostrar recordatorios</label></div>` : ''}
         </div>
     `;
+}
+
+function updateAgendaProfessionalFilter(res) {
+    if (!IS_SUPERADMIN) return;
+    const contextId = parseInt(res && res.professional_context && res.professional_context.id || 0, 10);
+    if (!CURRENT_PROFESSIONAL_ID && contextId) {
+        CURRENT_PROFESSIONAL_ID = contextId;
+    }
+    if (!CURRENT_AGENDA_PROFESSIONAL_ID && contextId) {
+        CURRENT_AGENDA_PROFESSIONAL_ID = contextId;
+    }
+    if (Array.isArray(res && res.professionals)) {
+        AGENDA_PROFESSIONALS = res.professionals;
+    }
+}
+
+function agendaProfessionalFilterHtml() {
+    if (!IS_SUPERADMIN || !AGENDA_PROFESSIONALS.length) return '';
+    const selected = CURRENT_AGENDA_PROFESSIONAL_ID || CURRENT_PROFESSIONAL_ID;
+    const options = AGENDA_PROFESSIONALS.map(professional => {
+        const id = parseInt(professional.id || 0, 10);
+        const own = id === parseInt(CURRENT_PROFESSIONAL_ID || 0, 10);
+        const label = own ? `Mi agenda (${professional.display_name || ''})` : (professional.display_name || 'Sin nombre');
+        return `<option value="${id}"${id === parseInt(selected || 0, 10) ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+    }).join('');
+    return `<div class="agenda-professional-filter ms-auto"><label class="visually-hidden" for="agenda-professional-select">Agenda del profesional</label><select class="form-select form-select-sm" id="agenda-professional-select" aria-label="Agenda del profesional">${options}</select></div>`;
 }
 
 function drawMonthCalendar(monthStr, appointmentsMap, closedDays) {
@@ -1541,14 +2558,25 @@ function drawMonthCalendar(monthStr, appointmentsMap, closedDays) {
         const clickable = inMonth ? `onclick="selectMonthDay('${dateStr}')"` : '';
         const subtitle = status.available ? '' : compactMonthDayLabel(status.label);
         const appointmentCount = monthDayAppointmentCount(appointmentsMap[dateStr]);
+        const ownAppointmentCount = monthDayOwnAppointmentCount(appointmentsMap[dateStr]);
         const appointmentBadge = IS_ADMIN && appointmentCount > 0
             ? `<b class="month-day-appointment-badge" title="${appointmentCount} ${appointmentCount === 1 ? 'cita' : 'citas'}">${appointmentCount}</b>`
+            : (!IS_ADMIN && ownAppointmentCount > 0
+                ? '<b class="month-day-appointment-badge patient-own-appointment-marker" title="Tienes una cita" aria-label="Tienes una cita"></b>'
+                : '');
+        const reminderCount = calendarRemindersForDate(dateStr).length;
+        const reminderBadge = IS_ADMIN && reminderCount > 0
+            ? `<em class="month-day-reminder-badge" title="${reminderCount} ${reminderCount === 1 ? 'recordatorio' : 'recordatorios'}"><i class="bi bi-bell-fill"></i></em>`
+            : '';
+        const indicatorBadges = appointmentBadge || reminderBadge
+            ? `<span class="month-day-indicators">${reminderBadge}${appointmentBadge}</span>`
             : '';
         html += `
-            <button type="button" class="month-day ${status.className}${selected}" ${clickable}>
+            <button type="button" class="month-day ${status.className}${selected}" data-weather-date="${dateStr}" ${clickable}>
                 <span>${day.getDate()}</span>
                 <small>${subtitle}</small>
-                ${appointmentBadge}
+                ${inMonth ? weatherCompactHtml(weatherForecastForDate(dateStr), 'calendar-weather-badge') : ''}
+                ${indicatorBadges}
             </button>
         `;
     }
@@ -1813,6 +2841,30 @@ function findOverlappingAppointment(dayApps, timeStr) {
     return null;
 }
 
+function monthDayOwnAppointmentCount(dayApps) {
+    if (!dayApps) return 0;
+    const ids = new Set();
+    Object.values(dayApps).forEach(app => {
+        const isOwn = app && (app.is_own === true || app.is_own === 1 || app.is_own === '1');
+        if (app && app.id && isOwn && app.status !== 'cancelled') {
+            ids.add(String(app.id));
+        }
+    });
+    return ids.size;
+}
+
+function availabilityBlockAt(dateStr, timeStr) {
+    const slotStart = timeToMinutes(timeStr);
+    return (CURRENT_AVAILABILITY_BLOCKS_MAP[dateStr] || []).find(block =>
+        slotStart >= timeToMinutes(block.start_time) && slotStart < timeToMinutes(block.end_time)
+    ) || null;
+}
+
+function openAvailabilityBlockById(dateStr, blockId) {
+    const block = (CURRENT_AVAILABILITY_BLOCKS_MAP[dateStr] || []).find(item => parseInt(item.id, 10) === parseInt(blockId, 10));
+    if (block) openAvailabilityBlockEditor(dateStr, block.start_time, block);
+}
+
 function renderSlot(dateStr, timeStr, dayApps) {
     let app = dayApps ? dayApps[timeStr] : null;
     let overlapApp = !app ? findOverlappingAppointment(dayApps, timeStr) : null;
@@ -1821,10 +2873,16 @@ function renderSlot(dateStr, timeStr, dayApps) {
     let cls = 'available';
     let text = timeStr;
     let isBooked = false;
-    let onClick = memberCan('create_appointments') ? `openModal('${dateStr}', '${timeStr}', 'available')` : '';
+    const reminders = IS_ADMIN ? calendarRemindersAt(dateStr, timeStr) : [];
+    const availabilityBlock = availabilityBlockAt(dateStr, timeStr);
+    let onClick = memberCan('create_appointments') || (typeof TEAM_NOTES_ENABLED !== 'undefined' && TEAM_NOTES_ENABLED) ? `openAgendaSlotActions('${dateStr}', '${timeStr}')` : '';
 
     // Convert current user ID if available in session? We rely on UI vs API limits mostly.
-    if (overlapApp) {
+    if (availabilityBlock) {
+        cls = 'unavailable availability-block';
+        text = `<span class="slot-label"><i class="bi bi-calendar-x me-1"></i>${escapeHtml(timeStr)} - ${escapeHtml(availabilityBlock.reason || 'No disponible')}</span>`;
+        onClick = IS_ADMIN ? `openAvailabilityBlockById('${dateStr}',${parseInt(availabilityBlock.id, 10)})` : '';
+    } else if (overlapApp) {
         cls = 'booked';
         text = `${timeStr} - Ocupado`;
         onClick = `alert('Este horario no esta disponible')`;
@@ -1897,7 +2955,8 @@ function renderSlot(dateStr, timeStr, dayApps) {
         onClick = '';
     }
 
-    return `<div class="slot ${cls}" ${onClick ? `onclick="${onClick}"` : ''}>${text}</div>`;
+    const remindersHtml = reminders.map(item => calendarReminderHtml(item, true)).join('');
+    return `<div class="slot ${cls}" ${onClick ? `onclick="${onClick}"` : ''}>${text}</div>${remindersHtml}`;
 }
 
 function loadQuickAppointmentsSummary(animate = !quickAppointmentsSummaryRendered) {
@@ -1991,6 +3050,7 @@ function renderQuickAppointmentsSummary(current, next, waitingList = null, impor
         quickImportantNoticeIndex = 0;
     }
     if (!cards.length) {
+        mobileContentAutoScrollPending = false;
         $wrap.addClass('d-none').empty();
         return;
     }
@@ -1998,6 +3058,7 @@ function renderQuickAppointmentsSummary(current, next, waitingList = null, impor
         .removeClass('d-none')
         .html(`<div class="row g-3 mb-4${animate ? ' dashboard-enter' : ''}">${cards.join('')}</div>`);
     quickAppointmentsSummaryRendered = true;
+    requestMobileContentAutoScroll();
 }
 
 function quickAppointmentCardHtml(app, title, type) {
@@ -2159,8 +3220,10 @@ function waitingListQuickCardHtml(waitingList) {
 function importantNoticesQuickCardHtml(notices, index = 0) {
     index = Math.max(0, Math.min(parseInt(index || 0, 10), notices.length - 1));
     const primary = notices[index] || {};
-    const supportedActions = ['payment_settings', 'billing_settings', 'signature_settings', 'waiting_list', 'professional_profile', 'data_export'];
-    const actionIcon = primary.action === 'waiting_list' ? 'bi-hourglass-split' : (primary.action === 'data_export' ? 'bi-download' : 'bi-gear');
+    const supportedActions = ['payment_settings', 'billing_settings', 'billing_invoices', 'signature_settings', 'waiting_list', 'professional_profile', 'data_export', 'team_notes'];
+    const actionIcon = primary.action === 'waiting_list'
+        ? 'bi-hourglass-split'
+        : (primary.action === 'data_export' ? 'bi-download' : (primary.action === 'team_notes' ? 'bi-pin-angle' : 'bi-gear'));
     const action = supportedActions.includes(primary.action)
         ? `<button type="button" class="btn btn-outline-danger btn-sm btn-important-notice-action" data-notice-action="${escapeHtml(primary.action)}">
                 <i class="bi ${actionIcon}"></i> ${escapeHtml(primary.action_label || 'Revisar')}
@@ -2427,7 +3490,22 @@ function loadPatientPortalSummary() {
         },
         complete: function () {
             patientPortalSummaryLoading = false;
+            loadPatientPortalAppointments();
         }
+    });
+}
+
+function loadPatientPortalAppointments() {
+    if (IS_ADMIN) return;
+    $.ajax({
+        url: 'api/appointments.php?action=patient_portal_appointments',
+        method: 'GET',
+        dataType: 'json'
+    }).done(function (res) {
+        if (!res.success) return;
+        CURRENT_PATIENT_PORTAL.appointments = Array.isArray(res.appointments) ? res.appointments : [];
+        renderPatientQuickAppointment(CURRENT_PATIENT_PORTAL.appointments);
+        $('#patient-portal-appointments').html(renderPatientPortalAppointments(CURRENT_PATIENT_PORTAL.appointments));
     });
 }
 
@@ -2493,6 +3571,12 @@ function renderPatientPortalSummary(data) {
     const documents = Array.isArray(data.documents) ? data.documents : [];
     const reports = Array.isArray(data.reports) ? data.reports : [];
     const composition = data.composition || { enabled: false, current: null, history: [] };
+    const pendingTasks = tasks.filter(task => workPlanTaskStatusEnabled()
+        ? task.status !== 'completed'
+        : ((parseInt(task.requires_docx||0,10)===1 && !parseInt(task.response_docx_document_id||0,10)) || (parseInt(task.requires_drawing||0,10)===1 && !parseInt(task.response_drawing_document_id||0,10)) || (parseInt(task.requires_file||0,10)===1 && !parseInt(task.response_file_document_id||0,10)))).length;
+    $('#portal-tasks-dashboard-alert')
+        .toggleClass('d-none', pendingTasks === 0)
+        .html(pendingTasks ? `<i class="bi bi-list-check me-1"></i> Tienes <strong>${pendingTasks}</strong> tarea${pendingTasks === 1 ? '' : 's'} pendiente${pendingTasks === 1 ? '' : 's'}.` : '');
     $('#patient-portal-appointments').html(renderPatientPortalAppointments(appointments));
     $('#patient-portal-tasks').html(renderPatientPortalTasks(tasks));
     $('#patient-portal-documents').html(renderPatientPortalDocuments(documents));
@@ -2536,10 +3620,31 @@ function openPatientPortalCompositionModal() {
 }
 
 function renderPatientPortalAppointments(appointments) {
-    if (!appointments.length) {
-        return '<div class="text-muted small">Todavia no tienes citas registradas.</div>';
+    const allAppointments = Array.isArray(appointments) ? appointments : [];
+    if (!allAppointments.length) {
+        return '<div class="text-muted small">Todavía no tienes citas registradas.</div>';
     }
-    return appointments.slice(0, 8).map(app => {
+    const now = new Date();
+    const isUpcoming = app => {
+        if (app.status !== 'booked') return false;
+        const start = new Date(`${app.appointment_date || ''}T${app.appointment_time || '00:00'}:00`);
+        const duration = parseInt(app.duration_minutes || 60, 10) || 60;
+        return !Number.isNaN(start.getTime()) && start.getTime() + duration * 60000 >= now.getTime();
+    };
+    const filter = CURRENT_PATIENT_PORTAL_APPOINTMENTS_FILTER || 'all';
+    const filtered = allAppointments
+        .filter(app => filter === 'all' || (filter === 'upcoming' ? isUpcoming(app) : !isUpcoming(app)))
+        .slice();
+    if (filter === 'upcoming') {
+        filtered.sort((a, b) => new Date(`${a.appointment_date}T${a.appointment_time || '00:00'}:00`) - new Date(`${b.appointment_date}T${b.appointment_time || '00:00'}:00`));
+    }
+    const visible = CURRENT_PATIENT_PORTAL_APPOINTMENTS_EXPANDED ? filtered : filtered.slice(0, 8);
+    const filterButton = (value, label) => `<button type="button" class="btn btn-sm ${filter === value ? 'btn-primary' : 'btn-outline-primary'} patient-portal-appointments-filter" data-appointments-filter="${value}">${label}</button>`;
+    const controls = `<div class="d-flex flex-wrap align-items-center gap-2 mb-3">${filterButton('all', 'Todas')}${filterButton('upcoming', 'Próximas')}${filterButton('history', 'Historial')}<span class="small text-muted ms-sm-auto">${filtered.length} cita${filtered.length === 1 ? '' : 's'}</span></div>`;
+    if (!filtered.length) {
+        return `${controls}<div class="text-muted small py-3">No hay citas en esta sección.</div>`;
+    }
+    const rows = visible.map(app => {
         const statusLabel = {
             booked: 'Reservada',
             cancelled: 'Cancelada',
@@ -2565,6 +3670,10 @@ function renderPatientPortalAppointments(appointments) {
             </div>
         `;
     }).join('');
+    const more = filtered.length > 8
+        ? `<div class="text-center mt-3"><button type="button" class="btn btn-outline-primary btn-sm" id="btn-toggle-all-patient-appointments">${CURRENT_PATIENT_PORTAL_APPOINTMENTS_EXPANDED ? 'Mostrar menos' : `Mostrar todas (${filtered.length})`}</button></div>`
+        : '';
+    return controls + rows + more;
 }
 
 function patientPortalAppointmentPaymentHtml(app = {}) {
@@ -2609,6 +3718,12 @@ function renderPatientPortalTasks(tasks) {
         const completed = task.status === 'completed';
         const priority = workPlanPriorityLabel(task.priority);
         const isFitnessExercise = Boolean(task.fitness_exercise_id);
+        const requiresDocx = parseInt(task.requires_docx || 0, 10) === 1;
+        const requiresDrawing = parseInt(task.requires_drawing || 0, 10) === 1;
+        const requiresFile = parseInt(task.requires_file || 0, 10) === 1;
+        const docxDocumentId = parseInt(task.response_docx_document_id || 0, 10);
+        const drawingDocumentId = parseInt(task.response_drawing_document_id || 0, 10);
+        const fileDocumentId = parseInt(task.response_file_document_id || 0, 10);
         const attachmentUrl = assetUrl(task.attachment_file_path || '');
         const attachment = attachmentUrl && task.attachment_original_name
             ? `<div class="small mt-2">
@@ -2629,14 +3744,22 @@ function renderPatientPortalTasks(tasks) {
                     </div>
                     <strong>${escapeHtml(task.title || '')}</strong>
                     ${task.description ? `<div class="text-muted small">${escapeHtml(task.description)}</div>` : ''}
+                    ${(requiresDocx || requiresDrawing || requiresFile) ? `<div class="d-flex flex-wrap gap-1 mt-2">
+                        ${requiresDocx ? `<span class="badge ${docxDocumentId > 0 ? 'text-bg-success' : 'text-bg-info'}"><i class="bi bi-file-earmark-word me-1"></i>Documento ${docxDocumentId > 0 ? 'entregado' : 'pendiente'}</span>` : ''}
+                        ${requiresDrawing ? `<span class="badge ${drawingDocumentId > 0 ? 'text-bg-success' : 'text-bg-info'}"><i class="bi bi-brush me-1"></i>Pizarra ${drawingDocumentId > 0 ? 'entregada' : 'pendiente'}</span>` : ''}
+                        ${requiresFile ? `<span class="badge ${fileDocumentId > 0 ? 'text-bg-success' : 'text-bg-info'}"><i class="bi bi-paperclip me-1"></i>Archivo ${fileDocumentId > 0 ? 'entregado' : 'pendiente'}</span>` : ''}
+                    </div>` : ''}
                     ${attachment}
                     ${statusEnabled && completed && task.completed_at ? `<div class="text-muted small">Completada el ${escapeHtml(formatDateTimeLabel(task.completed_at))}</div>` : ''}
                 </div>
-                ${isFitnessExercise ? `
+                ${(isFitnessExercise || requiresDocx || requiresDrawing || requiresFile) ? `
                     <div class="patient-portal-item-actions">
-                        <button type="button" class="btn btn-outline-primary btn-sm btn-patient-portal-exercise-detail" data-task-id="${parseInt(task.id || 0, 10)}">
+                        ${isFitnessExercise ? `<button type="button" class="btn btn-outline-primary btn-sm btn-patient-portal-exercise-detail" data-task-id="${parseInt(task.id || 0, 10)}">
                             <i class="bi bi-info-circle"></i> Detalle
-                        </button>
+                        </button>` : ''}
+                        ${requiresDocx ? `<button type="button" class="btn btn-outline-primary btn-sm btn-patient-task-docx" data-task-id="${parseInt(task.id||0,10)}" data-document-id="${docxDocumentId}" data-title="${escapeHtml(task.title||'Documento')}"><i class="bi bi-file-earmark-word"></i> ${docxDocumentId?'Editar documento':'Crear documento'}</button>` : ''}
+                        ${requiresDrawing ? `<button type="button" class="btn btn-outline-primary btn-sm btn-patient-task-drawing" data-task-id="${parseInt(task.id||0,10)}" data-document-id="${drawingDocumentId}" data-title="${escapeHtml(task.title||'Pizarra')}"><i class="bi bi-brush"></i> ${drawingDocumentId?'Editar pizarra':'Usar pizarra'}</button>` : ''}
+                        ${requiresFile ? `<button type="button" class="btn btn-outline-primary btn-sm btn-patient-task-file" data-task-id="${parseInt(task.id||0,10)}"><i class="bi bi-upload"></i> ${fileDocumentId?'Sustituir archivo':'Subir archivo'}</button>` : ''}
                     </div>
                 ` : ''}
             </div>
@@ -3397,6 +4520,7 @@ let HANDWRITTEN_CONSENT_STATE = {
 };
 let patientReportConfigModal = document.getElementById('patientReportConfigModal') ? new bootstrap.Modal(document.getElementById('patientReportConfigModal')) : null;
 let patientReportSuggestionsModal = document.getElementById('patientReportSuggestionsModal') ? new bootstrap.Modal(document.getElementById('patientReportSuggestionsModal')) : null;
+let attendanceCertificateModal = document.getElementById('attendanceCertificateModal') ? new bootstrap.Modal(document.getElementById('attendanceCertificateModal')) : null;
 
 function integratedVideoCallWindowName(appointmentId) {
     return `sgpraxis_video_call_${parseInt(appointmentId || 0, 10) || 'current'}`;
@@ -3495,6 +4619,9 @@ let currentPaymentAppointmentId = null;
 let ADMIN_PATIENTS = [];
 let ADMIN_BOOKING_PATIENTS = [];
 let CURRENT_PROFESSIONAL_ID = 0;
+let CURRENT_AGENDA_PROFESSIONAL_ID = 0;
+let AGENDA_PROFESSIONALS = [];
+let CURRENT_AVAILABILITY_BLOCKS_MAP = {};
 let adminPatientsAlertTimer = null;
 let inviteAlertTimer = null;
 let CURRENT_BONUS_LIST = [];
@@ -3505,6 +4632,7 @@ let CURRENT_BONUS_LIST_URL = '';
 let CURRENT_BONUS_CAN_MANAGE = false;
 let CURRENT_UPCOMING_APPOINTMENTS = [];
 let CURRENT_PATIENT_HISTORY_ID = 0;
+let CURRENT_PATIENT_HISTORY_ROWS = [];
 let CURRENT_PATIENT_BONUSES_ID = 0;
 let CURRENT_PATIENT_EVOLUTION_ID = 0;
 let CURRENT_PATIENT_FILES_ID = 0;
@@ -3517,6 +4645,8 @@ let DRAWING_EDITOR_CLOSE_AFTER_SAVE = false;
 let LEGAL_DOCUMENTS = [];
 let CURRENT_PATIENT_LEGAL_DOCUMENTS_ID = 0;
 let CURRENT_PATIENT_LEGAL_DOCUMENTS_ROWS = [];
+let LEGAL_DOCUMENT_FROM_PATIENT = false;
+let SUGGESTED_LEGAL_DOCUMENTS_FROM_PATIENT = false;
 let CURRENT_PATIENT_REPORTS_ID = 0;
 let CURRENT_PATIENT_REPORTS_ROWS = [];
 let patientFilesAlertTimer = null;
@@ -3542,6 +4672,8 @@ let CURRENT_PATIENT_PORTAL = {
     composition: { enabled: false, current: null, history: [] }
 };
 let CURRENT_PATIENT_PORTAL_DOCUMENTS_FILTER = 'all';
+let CURRENT_PATIENT_PORTAL_APPOINTMENTS_FILTER = 'all';
+let CURRENT_PATIENT_PORTAL_APPOINTMENTS_EXPANDED = false;
 let CURRENT_PATIENT_EVOLUTION_VIEW = 'records';
 let CURRENT_PATIENT_EVOLUTION_CHART_GROUP = 'body';
 let CURRENT_PATIENT_PORTAL_COMPOSITION_CHART_GROUP = 'body';
@@ -3621,6 +4753,7 @@ function openModal(date, time, status, extraName = '', extraEmail = '', extraPho
                 const selectedPatient = bookingPatientById($('#patientSelect').val());
                 const preferredProfessionalId = (QUICK_BOOKING_MODAL_CONTEXT && QUICK_BOOKING_MODAL_CONTEXT.professionalId)
                     || (selectedPatient && selectedPatient.professional_id)
+                    || CURRENT_AGENDA_PROFESSIONAL_ID
                     || CURRENT_PROFESSIONAL_ID;
                 populateBookingProfessionalSelect(preferredProfessionalId);
                 updateBookingPatientProfessionalNote(selectedPatient);
@@ -3691,7 +4824,7 @@ function applyQuickBookingContextToModal() {
     }
     if (IS_SUPERADMIN) {
         const patient = bookingPatientById(context.patientId);
-        const professionalId = context.professionalId || (patient && patient.professional_id) || CURRENT_PROFESSIONAL_ID;
+        const professionalId = context.professionalId || (patient && patient.professional_id) || CURRENT_AGENDA_PROFESSIONAL_ID || CURRENT_PROFESSIONAL_ID;
         populateBookingProfessionalSelect(professionalId);
         updateBookingPatientProfessionalNote(patient);
     }
@@ -3934,6 +5067,29 @@ $(document).ready(function () {
         }
         renderWeekInfo();
     });
+    $('#patient-portal-tasks').on('click', '.btn-patient-task-docx', function () {
+        openDocxEditor({source:'portal-task', patientId:CURRENT_USER_ID, documentId:parseInt($(this).data('document-id')||0,10), title:$(this).data('title')||'Documento', deliverySource:'task', deliverySourceId:parseInt($(this).data('task-id')||0,10)});
+    });
+    $('#patient-portal-tasks').on('click', '.btn-patient-task-drawing', function () {
+        openDrawingEditor({source:'portal-task', patientId:CURRENT_USER_ID, documentId:parseInt($(this).data('document-id')||0,10), title:$(this).data('title')||'Pizarra', deliverySource:'task', deliverySourceId:parseInt($(this).data('task-id')||0,10)});
+    });
+    $('#patient-portal-tasks').on('click', '.btn-patient-task-file', function () {
+        const taskId=parseInt($(this).data('task-id')||0,10);if(!taskId)return;
+        const input=document.createElement('input');input.type='file';input.accept='.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,.gif';
+        input.addEventListener('change',function(){const file=this.files&&this.files[0];if(!file)return;const data=new FormData();data.append('task_id',taskId);data.append('file',file);fetch('api/appointments.php?action=patient_portal_upload_task_file',{method:'POST',credentials:'same-origin',body:data}).then(r=>r.json()).then(result=>{if(!result.success)throw new Error(result.error||'No se pudo subir el archivo.');loadPatientPortalSummary();}).catch(error=>window.alert(error.message));});
+        input.click();
+    });
+
+    $('#patient-portal-appointments').on('click', '.patient-portal-appointments-filter', function () {
+        CURRENT_PATIENT_PORTAL_APPOINTMENTS_FILTER = String($(this).data('appointments-filter') || 'all');
+        CURRENT_PATIENT_PORTAL_APPOINTMENTS_EXPANDED = false;
+        $('#patient-portal-appointments').html(renderPatientPortalAppointments(CURRENT_PATIENT_PORTAL.appointments || []));
+    });
+
+    $('#patient-portal-appointments').on('click', '#btn-toggle-all-patient-appointments', function () {
+        CURRENT_PATIENT_PORTAL_APPOINTMENTS_EXPANDED = !CURRENT_PATIENT_PORTAL_APPOINTMENTS_EXPANDED;
+        $('#patient-portal-appointments').html(renderPatientPortalAppointments(CURRENT_PATIENT_PORTAL.appointments || []));
+    });
 
     $(document).on('click', '#btn-open-month-picker', function () {
         openMonthPickerModal();
@@ -3984,14 +5140,11 @@ $(document).ready(function () {
             currentCalendarView = 'month';
             currentMonthDate = new Date(currentStartDate);
             selectedMonthDay = null;
-        } else if (view === 'week' || view === 'agenda') {
+        } else if (view === 'week' || view === 'agenda' || view === 'list') {
             if (view === 'agenda' && !supportsDetailedAgendaView()) {
                 return;
             }
-            currentCalendarView = 'week';
-            if (view === 'agenda') {
-                currentCalendarView = 'agenda';
-            }
+            currentCalendarView = view;
             if (selectedMonthDay) {
                 currentStartDate = getMonday(new Date(`${selectedMonthDay}T00:00:00`));
             }
@@ -4001,6 +5154,8 @@ $(document).ready(function () {
             }
             currentCalendarView = view;
         }
+        rememberSelectedCalendarView(currentCalendarView);
+        rememberDashboardViewForRefresh(currentCalendarView);
         renderWeekInfo();
     });
 
@@ -4016,24 +5171,22 @@ $(document).ready(function () {
         }
         if (nextView === currentCalendarView) {
             updateCalendarNavigationLabels();
+            requestMobileContentAutoScroll();
             return;
         }
         if (nextView === 'month') {
             currentCalendarView = 'month';
             currentMonthDate = new Date(currentStartDate);
             selectedMonthDay = null;
-        } else if (nextView === 'week' || nextView === 'agenda') {
+        } else if (nextView === 'week' || nextView === 'agenda' || nextView === 'list') {
             if (nextView === 'agenda' && !supportsDetailedAgendaView()) {
                 return;
             }
-            currentCalendarView = 'week';
-            if (nextView === 'agenda') {
-                currentCalendarView = 'agenda';
-            }
+            currentCalendarView = nextView;
             if (selectedMonthDay) {
                 currentStartDate = getMonday(new Date(`${selectedMonthDay}T00:00:00`));
             }
-        } else if (nextView === 'dashboard' || nextView === 'patients' || nextView === 'upcoming' || nextView === 'configuration' || nextView === 'questionnaires') {
+        } else if (nextView === 'dashboard' || nextView === 'patients' || nextView === 'upcoming' || nextView === 'configuration' || nextView === 'questionnaires' || nextView === 'team-notes' || nextView === 'team-files' || nextView === 'statistics') {
             if (nextView === 'questionnaires' && !supportsDashboardInlineViews()) {
                 openFocusedSettingsTab('questionnaires-settings-tab', 'Mis cuestionarios');
                 return;
@@ -4043,6 +5196,7 @@ $(document).ready(function () {
             }
             currentCalendarView = nextView;
         }
+        rememberDashboardViewForRefresh(currentCalendarView);
         renderWeekInfo();
     });
 
@@ -4058,18 +5212,17 @@ $(document).ready(function () {
             currentCalendarView = 'month';
             currentMonthDate = new Date(currentStartDate);
             selectedMonthDay = null;
-        } else if (view === 'week' || view === 'agenda') {
+        } else if (view === 'week' || view === 'agenda' || view === 'list') {
             if (view === 'agenda' && !supportsDetailedAgendaView()) {
                 return;
             }
-            currentCalendarView = 'week';
-            if (view === 'agenda') {
-                currentCalendarView = 'agenda';
-            }
+            currentCalendarView = view;
             if (selectedMonthDay) {
                 currentStartDate = getMonday(new Date(`${selectedMonthDay}T00:00:00`));
             }
         }
+        rememberSelectedCalendarView(currentCalendarView);
+        rememberDashboardViewForRefresh(currentCalendarView);
         renderWeekInfo();
     });
 
@@ -4245,6 +5398,9 @@ $(document).ready(function () {
     $('#cancelled-appointments-search').on('input', function () {
         renderCancelledAppointments(CURRENT_CANCELLED_APPOINTMENTS);
     });
+    $('#past-appointments-search').on('input', function () {
+        renderPastAppointments(CURRENT_PAST_APPOINTMENTS);
+    });
 
     $('#upcoming-appointments-scope').on('change', function () {
         loadUpcomingAppointments();
@@ -4255,6 +5411,9 @@ $(document).ready(function () {
     });
 
     $('#upcoming-appointments-professional').on('change', function () {
+        loadUpcomingAppointments();
+    });
+    $('#past-appointments-professional').on('change', function () {
         loadUpcomingAppointments();
     });
 
@@ -4351,6 +5510,11 @@ $(document).ready(function () {
         setAppointmentSessionTaskStatus(this);
     });
 
+    $('#btn-appointment-attendance-certificate').on('click', function () {
+        const app = CURRENT_APPOINTMENT_PAYMENT_DETAIL || {};
+        openAttendanceCertificate(app.id);
+    });
+
     $(document).on('click', '.btn-open-task-docx-editor', function () {
         const $button = $(this);
         openDocxEditor({
@@ -4377,6 +5541,19 @@ $(document).ready(function () {
         });
     });
 
+    $('#appointmentPaymentModal').on('click', '#btn-create-appointment-internal-note', function () {
+        if (this.disabled) return;
+        const patientId = parseInt(CURRENT_APPOINTMENT_SESSION.patient_id || (CURRENT_APPOINTMENT_PAYMENT_DETAIL && CURRENT_APPOINTMENT_PAYMENT_DETAIL.patient_id) || 0, 10);
+        const appointmentId = parseInt(CURRENT_APPOINTMENT_SESSION.appointment_id || (CURRENT_APPOINTMENT_PAYMENT_DETAIL && CURRENT_APPOINTMENT_PAYMENT_DETAIL.id) || 0, 10);
+        openDocxEditor({
+            source: 'appointment',
+            patientId,
+            appointmentId,
+            documentType: 'internal_note',
+            title: `Nota interna ${new Date().toLocaleDateString('es-ES')}`
+        });
+    });
+
     $('#appointmentPaymentModal').on('click', '.btn-show-task-file', function () {
         const documentId = parseInt($(this).data('document-id') || 0, 10);
         const filesTab = document.getElementById('appointment-files-tab');
@@ -4392,6 +5569,9 @@ $(document).ready(function () {
             }
         }, 120);
     });
+
+    $('#appointment-files-tab').on('shown.bs.tab', function () { loadAppointmentRecordings(false); });
+    $('#appointmentPaymentModal').on('click', '#btn-refresh-appointment-recordings', function () { loadAppointmentRecordings(true); });
 
     $('#appointmentPaymentModal').on('click', '#btn-create-appointment-drawing', function () {
         const patientId = parseInt(CURRENT_APPOINTMENT_SESSION.patient_id || (CURRENT_APPOINTMENT_PAYMENT_DETAIL && CURRENT_APPOINTMENT_PAYMENT_DETAIL.patient_id) || 0, 10);
@@ -4495,6 +5675,18 @@ $(document).ready(function () {
 
     $('#appointmentPaymentModal').on('hidden.bs.modal', function () {
         $('body').removeClass('appointment-payment-secondary-modal-open');
+        $(this).css('z-index', '');
+        if (document.querySelector('.modal.show')) document.body.classList.add('modal-open');
+    });
+
+    $('#appointmentPaymentModal').on('shown.bs.modal', function () {
+        if (!$('body').hasClass('appointment-payment-secondary-modal-open')) return;
+        const parentZ = Math.max(1055, ...Array.from(document.querySelectorAll('.modal.show'))
+            .filter(modal => modal !== this)
+            .map(modal => parseInt(window.getComputedStyle(modal).zIndex, 10) || 1055));
+        const modalZ = parentZ + 20;
+        $(this).css('z-index', modalZ);
+        $('.modal-backdrop').last().css('z-index', modalZ - 10);
     });
 
     $('#appointmentSessionNoteModal').on('show.bs.modal', function () {
@@ -4723,6 +5915,40 @@ $(document).ready(function () {
         openPatientInviteModal($(this).data('patient-id'), this);
     });
 
+    $('#patient-clinical-history-tab').on('click', function () {
+        bootstrap.Tab.getOrCreateInstance(document.getElementById('patient-clinical-summary-tab')).show();
+    });
+
+    $('#patient-clinical-summary-tab').on('shown.bs.tab', function () {
+        const patientId = parseInt((CURRENT_PATIENT_EDITOR || {}).id || $('#patient-editor-id').val() || 0, 10);
+        if (patientId > 0) loadPatientDiagnoses(patientId);
+        renderPatientClinicalSummary();
+    });
+
+    $(document).on('click', '.patient-clinical-section-btn', function () {
+        const tabId = String($(this).data('clinical-tab') || 'patient-clinical-summary-tab');
+        const tab = document.getElementById(tabId);
+        if (tab && !tab.disabled) bootstrap.Tab.getOrCreateInstance(tab).show();
+    });
+
+    $('#patient-clinical-section-select').on('change', function () {
+        const tab = document.getElementById(String($(this).val() || 'patient-clinical-summary-tab'));
+        if (tab && !tab.disabled) bootstrap.Tab.getOrCreateInstance(tab).show();
+    });
+
+    $('#patient-editor-tabs button[data-bs-toggle="tab"]').on('shown.bs.tab', function () {
+        const clinicalTabs = ['patient-clinical-summary-tab', 'patient-diagnosis-tab', 'patient-work-plan-tab', 'patient-evolution-tab', 'patient-history-tab'];
+        const activeId = this.id;
+        const clinicalActive = clinicalTabs.includes(activeId);
+        $('#patient-clinical-navigation').toggleClass('d-none', !clinicalActive);
+        $('#patient-clinical-history-tab').toggleClass('clinical-active', clinicalActive).attr('aria-selected', clinicalActive ? 'true' : 'false');
+        if (!clinicalActive) return;
+        $('.patient-clinical-section-btn').removeClass('btn-primary').addClass('btn-outline-primary');
+        $(`.patient-clinical-section-btn[data-clinical-tab="${activeId}"]`).removeClass('btn-outline-primary').addClass('btn-primary');
+        $('#patient-clinical-section-select').val(activeId);
+        renderPatientClinicalSummary();
+    });
+
     $('#btn-use-knowledge-base').on('click', function () { openKnowledgeWizard({ mode: 'diagnosis' }); });
     $('#btn-add-manual-diagnosis').on('click', saveManualDiagnosis);
     $('#patient-manual-diagnosis').on('keydown', function (event) {
@@ -4856,6 +6082,7 @@ $(document).ready(function () {
     $(document).on('click', '#btn-open-waiting-list-patients', function () {
         dashboardPatientsWaitingOnly = true;
         currentCalendarView = 'patients';
+        requestMobileContentAutoScroll();
         renderWeekInfo();
     });
 
@@ -4876,7 +6103,17 @@ $(document).ready(function () {
             return;
         }
         if (action === 'data_export') {
-            $('#btn-open-data-export').trigger('click');
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('dataExportModal')).show();
+            return;
+        }
+        if (action === 'billing_invoices') {
+            const modalElement = document.getElementById('invoicesModal');
+            if (modalElement) bootstrap.Modal.getOrCreateInstance(modalElement).show();
+            return;
+        }
+        if (action === 'team_notes') {
+            currentCalendarView = 'team-notes';
+            renderWeekInfo();
             return;
         }
         const tabIds = {
@@ -5025,6 +6262,20 @@ $(document).ready(function () {
         loadPatientLegalDocuments(patientId);
     });
 
+    $('#btn-new-patient-legal-document').on('click', function () {
+        if (this.disabled) return;
+        LEGAL_DOCUMENT_FROM_PATIENT = true;
+        $('body').addClass('patient-editor-secondary-modal-open');
+        showLegalDocumentForm();
+    });
+
+    $('#btn-suggested-patient-legal-documents').on('click', function () {
+        if (this.disabled) return;
+        SUGGESTED_LEGAL_DOCUMENTS_FROM_PATIENT = true;
+        $('body').addClass('patient-editor-secondary-modal-open');
+        showSuggestedLegalDocumentsModal();
+    });
+
     $('#patient-reports-tab').on('shown.bs.tab', function () {
         const patientId = parseInt($('#patient-editor-id').val() || '0', 10);
         loadPatientReports(patientId);
@@ -5040,6 +6291,23 @@ $(document).ready(function () {
 
     $('#btn-show-suggested-patient-reports').on('click', function () {
         showPatientReportSuggestions();
+    });
+
+    $('#btn-show-attendance-certificate').on('click', showAttendanceCertificateModal);
+    $('#attendance-certificate-appointment').on('change', function () {
+        $('#btn-generate-attendance-certificate').prop('disabled', !parseInt($(this).val() || 0, 10));
+    });
+    $('#btn-generate-attendance-certificate').on('click', generateAttendanceCertificate);
+    $('#attendanceCertificateModal').on('shown.bs.modal', function () {
+        const parent = document.getElementById('patientEditorModal');
+        if (!parent || !parent.classList.contains('show')) return;
+        const parentZ = parseInt(window.getComputedStyle(parent).zIndex, 10) || 1055;
+        const modalZ = parentZ + 20;
+        $(this).css('z-index', modalZ);
+        $('.modal-backdrop').last().css('z-index', modalZ - 10);
+    }).on('hidden.bs.modal', function () {
+        $(this).css('z-index', '');
+        if ($('#patientEditorModal').hasClass('show')) document.body.classList.add('modal-open');
     });
 
     $('#patient-report-suggestions-problem').on('change', function () {
@@ -5233,8 +6501,8 @@ $(document).ready(function () {
 
     $('#btn-drawing-editor-new').on('click', function () {
         postDrawingEditorCommand('new', { title: `Dibujo ${new Date().toLocaleDateString('es-ES')}` });
-        $('#drawing-editor-modal-title').text('Nuevo dibujo');
-        setDrawingEditorFooterStatus('Dibujo en blanco preparado.', 'success');
+        $('#drawing-editor-modal-title').text('Nueva pizarra');
+        setDrawingEditorFooterStatus('Pizarra en blanco preparada.', 'success');
     });
 
     $('#drawingEditorModal').on('hidden.bs.modal', function () {
@@ -5331,6 +6599,34 @@ $(document).ready(function () {
         if (document) {
             openHandwrittenConsentWizard(document);
         }
+    });
+
+    $('#legalDocumentModal').on('shown.bs.modal', function () {
+        if (!LEGAL_DOCUMENT_FROM_PATIENT) return;
+        const parentZ = parseInt(window.getComputedStyle(document.getElementById('patientEditorModal')).zIndex, 10) || 1055;
+        const modalZ = parentZ + 20;
+        $(this).css('z-index', modalZ);
+        $('.modal-backdrop').last().css('z-index', modalZ - 10);
+    }).on('hidden.bs.modal', function () {
+        if (!LEGAL_DOCUMENT_FROM_PATIENT) return;
+        LEGAL_DOCUMENT_FROM_PATIENT = false;
+        $(this).css('z-index', '');
+        $('body').removeClass('patient-editor-secondary-modal-open');
+        if ($('#patientEditorModal').hasClass('show')) document.body.classList.add('modal-open');
+    });
+
+    $('#suggestedLegalDocumentsModal').on('shown.bs.modal', function () {
+        if (!SUGGESTED_LEGAL_DOCUMENTS_FROM_PATIENT) return;
+        const parentZ = parseInt(window.getComputedStyle(document.getElementById('patientEditorModal')).zIndex, 10) || 1055;
+        const modalZ = parentZ + 20;
+        $(this).css('z-index', modalZ);
+        $('.modal-backdrop').last().css('z-index', modalZ - 10);
+    }).on('hidden.bs.modal', function () {
+        if (!SUGGESTED_LEGAL_DOCUMENTS_FROM_PATIENT) return;
+        SUGGESTED_LEGAL_DOCUMENTS_FROM_PATIENT = false;
+        $(this).css('z-index', '');
+        $('body').removeClass('patient-editor-secondary-modal-open');
+        if ($('#patientEditorModal').hasClass('show')) document.body.classList.add('modal-open');
     });
 
     $('#patient-legal-document-form').on('submit', function (e) {
@@ -5597,6 +6893,18 @@ $(document).ready(function () {
     });
 
     $(document).on('click', '.dashboard-settings-card', function () {
+        if (String($(this).data('settings-action') || '') === 'system_status') {
+            openSystemStatus();
+            return;
+        }
+        if (String($(this).data('settings-action') || '') === 'data_import') {
+            openDataImportWizard();
+            return;
+        }
+        if (String($(this).data('settings-action') || '') === 'data_export') {
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('dataExportModal')).show();
+            return;
+        }
         openFocusedSettingsTab(String($(this).data('settings-tab') || ''), String($(this).data('settings-label') || 'Configuración'));
     });
 
@@ -6017,6 +7325,13 @@ $(document).ready(function () {
 
     $('#verifactu-taxpayer-type, #verifactu-activation-mode').change(function () {
         syncVerifactuSettings();
+    });
+
+    $(document).on('change', '.billing-provider-option', syncBillingProviderUi);
+    $(document).on('click', '#btn-verify-cloud-billing', function () {
+        verifyCloudBillingConnection().catch(error => {
+            $('#cloud-billing-connection-status').removeClass('alert-secondary alert-success').addClass('alert-danger').text(error.message);
+        });
     });
 
     $(document).on('change', '.billing-service-tax-mode', function () {
@@ -8006,13 +9321,16 @@ function sendInviteEmail(button) {
         success: function (res) {
             if (res.success) {
                 $('#invite-email').val('');
-                showInviteAlert('success', res.message || 'Invitacion enviada correctamente.');
+                showInviteAlert('success', res.message || 'Invitación enviada correctamente.');
             } else {
-                showInviteAlert('danger', res.error || 'No se pudo enviar la invitacion.');
+                showInviteAlert('danger', res.error || 'No se pudo enviar la invitación.');
             }
         },
-        error: function () {
-            showInviteAlert('danger', 'Error de conexion al enviar la invitacion.');
+        error: function (xhr) {
+            const serverError = xhr.responseJSON && xhr.responseJSON.error
+                ? xhr.responseJSON.error
+                : (String(xhr.responseText || '').trim().slice(0, 500) || 'Error de conexión al enviar la invitación.');
+            showInviteAlert('danger', serverError);
         },
         complete: function () {
             $button.prop('disabled', false).html(original);
@@ -8105,9 +9423,7 @@ function populatePatientEditorProfessionalSelect(patient = null) {
     const $select = $('#patient-editor-professional');
     if (!$select.length) return;
     const patientSingular = sectorLabel('patient', 'singular', 'paciente');
-    const selected = patient
-        ? String(patient.professional_id || '')
-        : String(CURRENT_PROFESSIONAL_ID || '');
+    const selected = patient ? String(patient.professional_id || '') : '';
     $select.html(`<option value="">Permitir elegir profesional al ${escapeHtml(patientSingular)}</option>`);
     CABINET_PROFESSIONALS
         .filter(professional => professional.is_active != 0)
@@ -8260,7 +9576,9 @@ function renderAdminPatients(patients) {
             patient.phone ? `<small class="text-muted">${escapeHtml(patient.phone)}${patientContactActionsHtml(patient.phone, 'ms-1')}</small>` : ''
         ].join('');
         const accessBadge = patientPortalStatusIcon(patient);
-        const inviteButton = isRetentionBlocked || parseInt(patient.has_portal_access || 0, 10) === 1
+        const invitationsEnabled = appFeatureEnabled('patientPortal.enabled', false)
+            && appFeatureEnabled('patientPortal.invitations', false);
+        const inviteButton = !invitationsEnabled || isRetentionBlocked || parseInt(patient.has_portal_access || 0, 10) === 1
             ? ''
             : `<button class="btn btn-outline-primary btn-sm btn-send-patient-invite" type="button" data-patient-id="${patient.id}" title="Enviar invitacion de registro"><i class="bi bi-envelope"></i></button>`;
         const documentLink = patient.document_path
@@ -8551,6 +9869,7 @@ function renderDashboardSummaryContent(data) {
                 </div>
             </header>
             ${todayHtml}
+            ${weatherDashboardHtml()}
             ${metrics.length ? `
                 <section class="dashboard-summary-section">
                     <div class="dashboard-summary-section-heading">
@@ -8801,7 +10120,9 @@ function renderDashboardPatients(patients) {
             patient.phone ? `<small class="text-muted">${escapeHtml(patient.phone)}${patientContactActionsHtml(patient.phone, 'ms-1')}</small>` : ''
         ].join('');
         const accessBadge = patientPortalStatusIcon(patient);
-        const inviteButton = isRetentionBlocked || parseInt(patient.has_portal_access || 0, 10) === 1
+        const invitationsEnabled = appFeatureEnabled('patientPortal.enabled', false)
+            && appFeatureEnabled('patientPortal.invitations', false);
+        const inviteButton = !invitationsEnabled || isRetentionBlocked || parseInt(patient.has_portal_access || 0, 10) === 1
             ? ''
             : `<button class="btn btn-outline-primary btn-sm btn-dashboard-send-patient-invite" type="button" data-patient-id="${patient.id}" title="Enviar invitacion de registro"><i class="bi bi-envelope"></i></button>`;
         const documentLink = patient.document_path
@@ -9090,6 +10411,7 @@ function applyPatientDiagnosesState(diagnoses) {
     }
     $('#patient-editor-knowledge-problem').val(knowledgeProblemId || '');
     syncProgressiveKnowledgeUi();
+    renderPatientClinicalSummary();
 }
 
 function showKnowledgeDiagnosisInfo(problemId) {
@@ -10934,6 +12256,9 @@ function openPatientEditorModal(patient = null) {
     $('#patient-editor-form')[0].reset();
     $('#patient-editor-title').text(patient ? `Editar ${patientSingular}` : `Nuevo ${patientSingular}`);
     $('#patient-editor-id').val(patient ? patient.id : '');
+    if (typeof window.loadPatientCustomFields === 'function') {
+        window.loadPatientCustomFields();
+    }
     $('#btn-export-patient-json').toggleClass('d-none', !(patient && patient.id));
     $('#btn-book-patient-appointment').toggleClass(
         'd-none',
@@ -10964,6 +12289,7 @@ function openPatientEditorModal(patient = null) {
     $('#patient-editor-status').val(patient ? patient.patient_status || 'active' : 'active');
     $('#patient-editor-waiting-list').prop('checked', patient ? parseInt(patient.waiting_list || 0, 10) === 1 : false);
     $('#patient-editor-birth-date').val(patient ? patient.birth_date || '' : '');
+    $('#patient-editor-sex').val(patient ? patient.sex || '' : '');
     $('#patient-editor-referral-source').val(patient ? patient.referral_source || '' : '');
     $('#patient-editor-address').val(patient ? patient.address || '' : '');
     $('#patient-editor-knowledge-problem').val(patient ? patient.knowledge_problem_id || '' : '');
@@ -11051,12 +12377,46 @@ function openPatientEditorModal(patient = null) {
 function resetPatientAppointmentHistory(patientId = 0) {
     const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     CURRENT_PATIENT_HISTORY_ID = parseInt(patientId || 0, 10);
+    CURRENT_PATIENT_HISTORY_ROWS = [];
     $('#patient-history-count').text('');
     if (!patientId) {
         $('#patient-history-body').html(`<tr><td colspan="7" class="text-center text-muted py-4">Guarda el ${patientSingular} para ver su historial de citas.</td></tr>`);
         return;
     }
     $('#patient-history-body').html('<tr><td colspan="7" class="text-center text-muted py-4">Cargando historial...</td></tr>');
+}
+
+function renderPatientClinicalSummary() {
+    const patient = CURRENT_PATIENT_EDITOR || null;
+    const patientSingular = sectorLabel('patient', 'singular', 'paciente');
+    if (!patient || !patient.id) {
+        $('#patient-clinical-summary-content').html(`<div class="text-center text-muted py-4">Guarda primero el ${escapeHtml(patientSingular)} para consultar su historia clínica.</div>`);
+        return;
+    }
+    const diagnoses = Array.isArray(CURRENT_PATIENT_DIAGNOSES) ? CURRENT_PATIENT_DIAGNOSES : [];
+    const tasks = Array.isArray(CURRENT_PATIENT_WORK_PLAN_ROWS) ? CURRENT_PATIENT_WORK_PLAN_ROWS : [];
+    const evolutions = Array.isArray(CURRENT_PATIENT_EVOLUTION_ROWS) ? CURRENT_PATIENT_EVOLUTION_ROWS : [];
+    const sessions = Array.isArray(CURRENT_PATIENT_HISTORY_ROWS) ? CURRENT_PATIENT_HISTORY_ROWS : [];
+    const pendingTasks = tasks.filter(task => task.status !== 'completed').length;
+    const completedSessions = sessions.filter(session => session.status === 'completed').length;
+    const primaryDiagnosis = diagnoses.find(item => parseInt(item.is_primary || 0, 10) === 1) || diagnoses[0] || null;
+    const latestEvolution = evolutions.slice().sort((a, b) => String(b.note_date || '').localeCompare(String(a.note_date || '')))[0] || null;
+    const initialReason = String($('#patient-editor-initial-reason').val() || patient.initial_consultation_reason || '').trim();
+    const diagnosisLabel = primaryDiagnosis ? primaryDiagnosis.label : 'Sin información registrada';
+    const diagnosisTitle = (typeof BODY_MAP_ENABLED !== 'undefined' && BODY_MAP_ENABLED) ? 'Valoración principal' : 'Diagnóstico principal';
+    $('#patient-clinical-summary-content').html(`
+        <div class="patient-clinical-summary-grid mb-4">
+            <div class="patient-clinical-summary-stat"><i class="bi bi-clipboard2-pulse"></i><div><strong>${diagnoses.length}</strong><span>${diagnoses.length === 1 ? 'diagnóstico' : 'diagnósticos'}</span></div></div>
+            <div class="patient-clinical-summary-stat"><i class="bi bi-list-check"></i><div><strong>${pendingTasks}</strong><span>tareas pendientes</span></div></div>
+            <div class="patient-clinical-summary-stat"><i class="bi bi-graph-up-arrow"></i><div><strong>${evolutions.length}</strong><span>registros de evolución</span></div></div>
+            <div class="patient-clinical-summary-stat"><i class="bi bi-calendar2-check"></i><div><strong>${completedSessions}</strong><span>sesiones realizadas</span></div></div>
+        </div>
+        <div class="row g-3">
+            <div class="col-lg-6"><section class="patient-clinical-summary-card"><span>Motivo inicial de consulta</span><p>${initialReason ? escapeHtml(initialReason) : '<em>Sin información registrada</em>'}</p></section></div>
+            <div class="col-lg-6"><section class="patient-clinical-summary-card"><span>${escapeHtml(diagnosisTitle)}</span><p>${escapeHtml(diagnosisLabel)}</p>${diagnoses.length > 1 ? `<small>${diagnoses.length - 1} diagnóstico${diagnoses.length === 2 ? '' : 's'} adicional${diagnoses.length === 2 ? '' : 'es'}</small>` : ''}</section></div>
+            <div class="col-12"><section class="patient-clinical-summary-card"><span>Última evolución</span>${latestEvolution ? `<p><strong>${escapeHtml(latestEvolution.title || 'Evolución')}</strong>${latestEvolution.note_date ? ` · ${formatDisplayDate(latestEvolution.note_date)}` : ''}</p>${latestEvolution.description ? `<small>${escapeHtml(truncateText(latestEvolution.description, 240))}</small>` : ''}` : '<p><em>Sin registros de evolución</em></p>'}</section></div>
+        </div>
+    `);
 }
 
 function loadPatientAppointmentHistory(patientId) {
@@ -11092,9 +12452,11 @@ function loadPatientAppointmentHistory(patientId) {
 function renderPatientAppointmentHistory(appointments) {
     const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     const rows = Array.isArray(appointments) ? appointments : [];
+    CURRENT_PATIENT_HISTORY_ROWS = rows;
     if (!rows.length) {
         $('#patient-history-body').html(`<tr><td colspan="7" class="text-center text-muted py-4">Este ${patientSingular} todavía no tiene citas registradas.</td></tr>`);
         $('#patient-history-count').text('');
+        renderPatientClinicalSummary();
         return;
     }
 
@@ -11115,6 +12477,7 @@ function renderPatientAppointmentHistory(appointments) {
 
     $('#patient-history-body').html(html);
     $('#patient-history-count').text(`${rows.length} ${rows.length === 1 ? 'cita' : 'citas'}`);
+    renderPatientClinicalSummary();
 }
 
 function resetPatientWorkPlan(patientId = 0) {
@@ -11172,6 +12535,7 @@ function renderPatientWorkPlan(tasks) {
         $('#patient-work-plan-pending').html(renderPatientWorkPlanList(rows, 'all'));
         $('#patient-work-plan-completed-list').html('');
         $('#patient-work-plan-count').text(rows.length ? `${rows.length} tarea${rows.length === 1 ? '' : 's'}` : '');
+        renderPatientClinicalSummary();
         return;
     }
     const pending = rows.filter(task => task.status !== 'completed');
@@ -11181,6 +12545,7 @@ function renderPatientWorkPlan(tasks) {
     const pendingText = `${pending.length} pendiente${pending.length === 1 ? '' : 's'}`;
     const completedText = `${completed.length} completada${completed.length === 1 ? '' : 's'}`;
     $('#patient-work-plan-count').text(rows.length ? `${pendingText} · ${completedText}` : '');
+    renderPatientClinicalSummary();
 }
 
 function renderPatientWorkPlanList(tasks, listType) {
@@ -11350,6 +12715,9 @@ function openWorkPlanTaskModal(options = {}) {
     $('#patient-work-plan-title').val(task ? task.title || '' : '');
     $('#patient-work-plan-description').val(task ? task.description || '' : '');
     $('#patient-work-plan-priority').val(task ? String(task.priority || 2) : '2');
+    $('#patient-work-plan-delivery-type').val(task && parseInt(task.requires_docx || 0, 10) === 1
+        ? 'docx'
+        : (task && parseInt(task.requires_drawing || 0, 10) === 1 ? 'drawing' : (task && parseInt(task.requires_file || 0, 10) === 1 ? 'file' : 'none')));
     $('#patient-work-plan-completed').prop('checked', workPlanTaskStatusEnabled() && Boolean(task && task.status === 'completed'));
     $('#patient-work-plan-visible').prop('checked', task ? task.visible_to_patient == 1 : PAYMENT_SETTINGS.patient_tasks_visible_default == 1);
     syncPatientWorkPlanStatusUi();
@@ -11400,6 +12768,7 @@ function resetPatientWorkPlanFormFields() {
     WORK_PLAN_IMPORT_LOADING = false;
     $('#patient-work-plan-template-block').removeClass('d-none');
     $('#patient-work-plan-priority').val('2');
+    $('#patient-work-plan-delivery-type').val('none');
     $('#patient-work-plan-completed').prop('checked', false);
     $('#patient-work-plan-visible').prop('checked', false);
     CURRENT_WORK_PLAN_FORM_CONTEXT = { source: 'patient', patientId: 0, appointmentId: 0, mode: 'manual' };
@@ -11487,7 +12856,8 @@ function savePatientWorkPlanTask(form) {
         description: $('#patient-work-plan-description').val() || '',
         priority: $('#patient-work-plan-priority').val() || 2,
         status: workPlanTaskStatusEnabled() && $('#patient-work-plan-completed').is(':checked') ? 'completed' : 'pending',
-        visible_to_patient: $('#patient-work-plan-visible').is(':checked') ? 1 : 0
+        visible_to_patient: $('#patient-work-plan-visible').is(':checked') ? 1 : 0,
+        delivery_type: $('#patient-work-plan-delivery-type').val() || 'none'
     };
     if (context.source === 'appointment-session' && context.appointmentId) {
         payload.appointment_id = context.appointmentId;
@@ -11738,6 +13108,11 @@ function renderWorkPlanTaskTemplates() {
                             <span class="badge ${priority.className}">${priority.label}</span>
                             <strong>${escapeHtml(item.title || '')}</strong>
                             ${item.description ? `<div class="small text-muted mt-1">${escapeHtml(item.description)}</div>` : ''}
+                            <div class="d-flex flex-wrap gap-1 mt-1">
+                                ${parseInt(item.requires_docx || 0, 10) === 1 ? '<span class="badge text-bg-info"><i class="bi bi-file-earmark-word me-1"></i>Documento</span>' : ''}
+                                ${parseInt(item.requires_drawing || 0, 10) === 1 ? '<span class="badge text-bg-info"><i class="bi bi-brush me-1"></i>Pizarra</span>' : ''}
+                                ${parseInt(item.requires_file || 0, 10) === 1 ? '<span class="badge text-bg-info"><i class="bi bi-paperclip me-1"></i>Otro archivo</span>' : ''}
+                            </div>
                             ${attachment}
                         </div>
                         <div class="task-template-actions">
@@ -11852,6 +13227,7 @@ function resetWorkPlanTaskTemplateItemForm() {
     $('#task-template-item-template-id').val('');
     $('#task-template-item-priority').val('2');
     $('#task-template-item-file').val('');
+    $('#task-template-item-delivery-type').val('none');
     $('#task-template-item-current-file').addClass('d-none').empty();
 }
 
@@ -11861,6 +13237,9 @@ function fillWorkPlanTaskTemplateItemForm(task, templateId = 0) {
     $('#task-template-item-title').val(task.title || '');
     $('#task-template-item-description').val(task.description || '');
     $('#task-template-item-priority').val(String(task.priority || 2));
+    $('#task-template-item-delivery-type').val(parseInt(task.requires_docx || 0, 10) === 1
+        ? 'docx'
+        : (parseInt(task.requires_drawing || 0, 10) === 1 ? 'drawing' : (parseInt(task.requires_file || 0, 10) === 1 ? 'file' : 'none')));
     const attachmentUrl = assetUrl(task.attachment_file_path || '');
     if (attachmentUrl && task.attachment_original_name) {
         $('#task-template-item-current-file')
@@ -11922,6 +13301,7 @@ function saveWorkPlanTaskTemplateItem() {
     formData.append('title', $('#task-template-item-title').val() || '');
     formData.append('description', $('#task-template-item-description').val() || '');
     formData.append('priority', $('#task-template-item-priority').val() || 2);
+    formData.append('delivery_type', $('#task-template-item-delivery-type').val() || 'none');
     const fileInput = document.getElementById('task-template-item-file');
     if (fileInput && fileInput.files && fileInput.files[0]) {
         formData.append('attachment', fileInput.files[0]);
@@ -12275,6 +13655,7 @@ function renderPatientEvolution(notes) {
     if (!rows.length) {
         $('#patient-evolution-list').html(`<div class="text-center text-muted py-4">Este ${patientSingular} todavía no tiene registros de evolución.</div>`);
         $('#patient-evolution-count').text('');
+        renderPatientClinicalSummary();
         return;
     }
 
@@ -12310,6 +13691,7 @@ function renderPatientEvolution(notes) {
 
     $('#patient-evolution-list').html(html);
     $('#patient-evolution-count').text(`${rows.length} ${rows.length === 1 ? 'registro' : 'registros'}`);
+    renderPatientClinicalSummary();
 }
 
 function showPatientEvolutionForm(note = null) {
@@ -12412,6 +13794,7 @@ function resetPatientReports(patientId = 0) {
     $('#patient-reports-count').text('');
     $('#btn-refresh-patient-reports').prop('disabled', !patientId);
     $('#btn-show-custom-patient-report').prop('disabled', !patientId);
+    $('#btn-show-attendance-certificate').prop('disabled', !patientId);
     updatePatientReportSuggestionButton();
     if (!patientId) {
         $('#patient-reports-body').html(`<tr><td colspan="5" class="text-center text-muted py-4">Guarda el ${patientSingular} para ver sus informes.</td></tr>`);
@@ -12447,6 +13830,7 @@ function loadPatientReports(patientId) {
     $('#patient-reports-count').text('');
     $('#btn-refresh-patient-reports').prop('disabled', false);
     $('#btn-show-custom-patient-report').prop('disabled', false);
+    $('#btn-show-attendance-certificate').prop('disabled', false);
     updatePatientReportSuggestionButton();
     $.ajax({
         url: 'api/admin.php?action=patient_reports',
@@ -12645,6 +14029,72 @@ function signatureButtonHtml(baseUrl, certificates, iconClass = 'bi-patch-check'
         title="Firmar PDF"><i class="bi ${iconClass}"></i></button>`;
 }
 
+function showAttendanceCertificateModal() {
+    const patientId = CURRENT_PATIENT_REPORTS_ID || parseInt($('#patient-editor-id').val() || '0', 10);
+    if (!patientId || !attendanceCertificateModal) return;
+    const $select = $('#attendance-certificate-appointment');
+    $('#attendance-certificate-alert').addClass('d-none').text('');
+    $select.prop('disabled', true).html('<option value="">Cargando citas...</option>');
+    $('#btn-generate-attendance-certificate').prop('disabled', true);
+    attendanceCertificateModal.show();
+    $.ajax({
+        url: 'api/admin.php?action=attendance_certificate_appointments',
+        dataType: 'json',
+        data: { patient_id: patientId },
+        success: function (res) {
+            if (!res.success) {
+                $('#attendance-certificate-alert').removeClass('d-none').addClass('alert-danger').text(res.error || 'No se pudieron cargar las citas.');
+                return;
+            }
+            const rows = Array.isArray(res.appointments) ? res.appointments : [];
+            if (!rows.length) {
+                $select.html('<option value="">No hay citas que cumplan los requisitos</option>');
+                $('#attendance-certificate-alert').removeClass('d-none alert-danger').addClass('alert-info').text('El justificante estará disponible cuando una cita esté marcada como realizada.');
+                return;
+            }
+            $select.html('<option value="">Selecciona una cita</option>' + rows.map(item =>
+                `<option value="${parseInt(item.id, 10)}">${escapeHtml(formatDisplayDate(item.appointment_date))} · ${escapeHtml(String(item.appointment_time || '').slice(0, 5))} · ${escapeHtml(item.service_name || 'Consulta')} · ${escapeHtml(item.professional_name || '')}</option>`
+            ).join('')).prop('disabled', false);
+        },
+        error: function () {
+            $('#attendance-certificate-alert').removeClass('d-none').addClass('alert-danger').text('Error de conexión al cargar las citas.');
+        }
+    });
+}
+
+function generateAttendanceCertificate() {
+    const patientId = CURRENT_PATIENT_REPORTS_ID || parseInt($('#patient-editor-id').val() || '0', 10);
+    const appointmentId = parseInt($('#attendance-certificate-appointment').val() || 0, 10);
+    if (!patientId || !appointmentId) return;
+    const viewer = window.open('', '_blank');
+    const $button = $('#btn-generate-attendance-certificate');
+    const original = $button.html();
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Generando');
+    $.ajax({
+        url: 'api/admin.php?action=attendance_certificate&register=1',
+        data: { patient_id: patientId, appointment_id: appointmentId },
+        method: 'GET',
+        xhrFields: { responseType: 'blob' },
+        success: function (blob) {
+            const pdfUrl = URL.createObjectURL(blob);
+            if (viewer) viewer.location.href = pdfUrl;
+            else window.open(pdfUrl, '_blank', 'noopener');
+            setTimeout(() => URL.revokeObjectURL(pdfUrl), 60000);
+            attendanceCertificateModal.hide();
+            loadPatientReports(patientId);
+            showPatientReportsAlert('success', 'Justificante generado y añadido a los informes.', true);
+        },
+        error: function (xhr) {
+            if (viewer) viewer.close();
+            const message = xhr.response instanceof Blob
+                ? 'No se pudo generar y guardar el justificante.'
+                : (xhr.responseJSON?.error || 'No se pudo generar y guardar el justificante.');
+            $('#attendance-certificate-alert').removeClass('d-none alert-info').addClass('alert-danger').text(message);
+        },
+        complete: function () { $button.prop('disabled', false).html(original); }
+    });
+}
+
 function signedStatusButtonHtml(iconClass = 'bi-patch-check-fill') {
     return `<button type="button" class="btn btn-success btn-sm" disabled aria-disabled="true" title="PDF firmado">
         <i class="bi ${iconClass}"></i>
@@ -12684,12 +14134,12 @@ function requestPdfSignature(baseUrl, hasProfessional, hasTenant) {
     openSignedPdf(baseUrl, hasProfessional ? 'professional' : 'tenant');
 }
 
-function rowActionsDropdown(items, dangerItems = []) {
+function rowActionsDropdown(items, dangerItems = [], dropdownClass = '') {
     const regular = (Array.isArray(items) ? items : []).filter(Boolean);
     const danger = (Array.isArray(dangerItems) ? dangerItems : []).filter(Boolean);
     if (!regular.length && !danger.length) return '';
     return `
-        <div class="dropdown">
+        <div class="dropdown ${escapeHtml(dropdownClass)}">
             <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="dropdown" data-bs-boundary="viewport" aria-expanded="false" title="Opciones">
                 <i class="bi bi-three-dots-vertical"></i>
                 <span class="visually-hidden">Opciones</span>
@@ -12745,7 +14195,8 @@ function renderPatientReports(reports, signatureAvailable = false, signatureCert
         </tr>
         `;
     });
-    const customRows = rows.filter(report => report.report_key === 'custom_upload').map(report => {
+    const customRows = rows.filter(report => ['custom_upload', 'attendance_certificate'].includes(report.report_key)).map(report => {
+        const isAttendanceCertificate = report.report_key === 'attendance_certificate';
         const statusLabel = patientReportStatusLabel(report.status);
         const paymentLabel = patientReportPaymentLabel(report);
         const statusBadge = `<span class="badge bg-light text-dark">${escapeHtml(statusLabel)}</span>`;
@@ -12759,8 +14210,9 @@ function renderPatientReports(reports, signatureAvailable = false, signatureCert
         const finalItem = report.final_url
             ? `<li><a class="dropdown-item" href="${escapeHtml(report.final_url)}" target="_blank" rel="noopener"><i class="bi bi-download me-2"></i>Descargar informe final</a></li>`
             : '';
-        const configItem = `<li><button type="button" class="dropdown-item btn-configure-patient-report" data-report-id="${parseInt(report.id || 0, 10)}"><i class="bi bi-gear me-2"></i>Configurar informe</button></li>`;
-        const deleteItem = `<li><button type="button" class="dropdown-item text-danger btn-delete-custom-patient-report" data-report-id="${parseInt(report.id || 0, 10)}"><i class="bi bi-trash me-2"></i>Eliminar informe</button></li>`;
+        const configLabel = isAttendanceCertificate ? 'Configurar / mostrar en el portal' : 'Configurar informe';
+        const configItem = `<li><button type="button" class="dropdown-item btn-configure-patient-report" data-report-id="${parseInt(report.id || 0, 10)}"><i class="bi bi-gear me-2"></i>${configLabel}</button></li>`;
+        const deleteItem = isAttendanceCertificate ? '' : `<li><button type="button" class="dropdown-item text-danger btn-delete-custom-patient-report" data-report-id="${parseInt(report.id || 0, 10)}"><i class="bi bi-trash me-2"></i>Eliminar informe</button></li>`;
         const portalBadge = parseInt(report.portal_available || 0, 10) === 1
             ? '<br><span class="badge bg-info text-dark mt-1">Portal</span>'
             : '';
@@ -12873,7 +14325,8 @@ function patientReportTypeLabel(reportKey) {
         patient_summary: `Resumen para el ${patientSingular}`,
         clinical_summary: 'Informe clínico',
         evolution_report: 'Informe de evolución',
-        custom_upload: 'Plantilla de informe'
+        custom_upload: 'Plantilla de informe',
+        attendance_certificate: 'Justificante de asistencia'
     };
     return labels[reportKey] || reportKey || 'Informe';
 }
@@ -13155,6 +14608,10 @@ function docxEditorBuildUrl(context = {}) {
     if (context.patientId) params.set('patient_id', parseInt(context.patientId, 10));
     if (context.appointmentId) params.set('appointment_id', parseInt(context.appointmentId, 10));
     if (context.title) params.set('title', context.title);
+    if (context.documentType) params.set('document_type', context.documentType);
+    if (context.deliverySource) params.set('delivery_source', context.deliverySource);
+    if (context.deliverySourceId) params.set('delivery_source_id', parseInt(context.deliverySourceId, 10));
+    if (context.deliveryQuestionId) params.set('delivery_question_id', context.deliveryQuestionId);
     return `docx_editor.php?${params.toString()}`;
 }
 
@@ -13176,9 +14633,15 @@ function openDocxEditor(context = {}) {
         patientId,
         appointmentId: parseInt(context.appointmentId || 0, 10),
         documentId: parseInt(context.documentId || 0, 10),
-        title: defaultTitle
+        title: defaultTitle,
+        documentType: context.documentType || 'file',
+        deliverySource: context.deliverySource || '',
+        deliverySourceId: parseInt(context.deliverySourceId || 0, 10),
+        deliveryQuestionId: context.deliveryQuestionId || ''
     };
-    $('#docx-editor-modal-title').text(CURRENT_DOCX_EDITOR_CONTEXT.documentId ? defaultTitle : 'Nuevo documento DOCX');
+    $('#docx-editor-modal-title').text(CURRENT_DOCX_EDITOR_CONTEXT.documentId
+        ? defaultTitle
+        : (CURRENT_DOCX_EDITOR_CONTEXT.documentType === 'internal_note' ? 'Nueva nota interna' : 'Nuevo Documento'));
     $('#docx-editor-modal-status').text('Preparando editor...');
     setDocxEditorFooterStatus('Los cambios se autoguardan mientras editas.', 'muted');
     $('#btn-docx-editor-save').prop('disabled', false).html('<i class="bi bi-check2"></i> Guardar cambios');
@@ -13198,6 +14661,10 @@ function refreshDocxEditorContext() {
         if (patientId) {
             loadPatientFiles(patientId);
         }
+    }
+    if (context.source === 'portal-task' || context.source === 'portal-questionnaire' || context.source === 'questionnaire-delivery') {
+        if (context.source !== 'questionnaire-delivery') loadPatientPortalSummary();
+        $(document).trigger('patient-delivery-saved');
     }
 }
 
@@ -13233,6 +14700,9 @@ function drawingEditorBuildUrl(context = {}) {
     if (context.patientId) params.set('patient_id', parseInt(context.patientId, 10));
     if (context.appointmentId) params.set('appointment_id', parseInt(context.appointmentId, 10));
     if (context.title) params.set('title', context.title);
+    if (context.deliverySource) params.set('delivery_source', context.deliverySource);
+    if (context.deliverySourceId) params.set('delivery_source_id', parseInt(context.deliverySourceId, 10));
+    if (context.deliveryQuestionId) params.set('delivery_question_id', context.deliveryQuestionId);
     return `drawing_editor.php?${params.toString()}`;
 }
 
@@ -13245,18 +14715,21 @@ function postDrawingEditorCommand(type, payload = {}) {
 function openDrawingEditor(context = {}) {
     const patientId = parseInt(context.patientId || CURRENT_PATIENT_FILES_ID || $('#patient-editor-id').val() || 0, 10);
     if (!patientId) {
-        showPatientFilesAlert('danger', `Guarda el ${sectorLabel('patient', 'singular', 'paciente')} antes de crear dibujos.`);
+        showPatientFilesAlert('danger', `Guarda el ${sectorLabel('patient', 'singular', 'paciente')} antes de usar la pizarra.`);
         return;
     }
-    const defaultTitle = context.title || `Dibujo ${new Date().toLocaleDateString('es-ES')}`;
+    const defaultTitle = context.title || `Pizarra ${new Date().toLocaleDateString('es-ES')}`;
     CURRENT_DRAWING_EDITOR_CONTEXT = {
         source: context.source || 'patient',
         patientId,
         appointmentId: parseInt(context.appointmentId || 0, 10),
         documentId: parseInt(context.documentId || 0, 10),
-        title: defaultTitle
+        title: defaultTitle,
+        deliverySource: context.deliverySource || '',
+        deliverySourceId: parseInt(context.deliverySourceId || 0, 10),
+        deliveryQuestionId: context.deliveryQuestionId || ''
     };
-    $('#drawing-editor-modal-title').text(CURRENT_DRAWING_EDITOR_CONTEXT.documentId ? defaultTitle : 'Nuevo dibujo');
+    $('#drawing-editor-modal-title').text(CURRENT_DRAWING_EDITOR_CONTEXT.documentId ? defaultTitle : 'Nueva pizarra');
     $('#drawing-editor-modal-status').text('Preparando editor...');
     setDrawingEditorFooterStatus('Los cambios se autoguardan mientras dibujas.', 'muted');
     $('#btn-drawing-editor-save').prop('disabled', false).html('<i class="bi bi-check2"></i> Guardar cambios');
@@ -13276,6 +14749,10 @@ function refreshDrawingEditorContext() {
         if (patientId) {
             loadPatientFiles(patientId);
         }
+    }
+    if (context.source === 'portal-task' || context.source === 'portal-questionnaire' || context.source === 'questionnaire-delivery') {
+        if (context.source !== 'questionnaire-delivery') loadPatientPortalSummary();
+        $(document).trigger('patient-delivery-saved');
     }
 }
 
@@ -13353,9 +14830,12 @@ function renderPatientFiles(files, signatureCertificates = {}) {
     const html = rows.map(file => {
         const isQuestionnaire = file.type === 'questionnaire';
         const isDrawing = file.type === 'drawing';
+        const isInternalNote = file.type === 'internal_note' || file.document_type === 'internal_note';
         const typeBadge = isQuestionnaire
             ? '<span class="badge bg-info text-dark">Cuestionario</span>'
-            : (isDrawing ? '<span class="badge bg-primary">Dibujo</span>' : '<span class="badge bg-secondary">Archivo</span>');
+            : (isDrawing
+                ? '<span class="badge bg-primary">Dibujo</span>'
+                : (isInternalNote ? '<span class="badge bg-secondary"><i class="bi bi-lock me-1"></i>Nota interna</span>' : '<span class="badge bg-secondary">Archivo</span>'));
         const statusBadge = isQuestionnaire && file.status
             ? `<span class="badge bg-light text-dark ms-1">${formatPatientDocumentStatus(file.status)}</span>`
             : '';
@@ -13387,11 +14867,11 @@ function renderPatientFiles(files, signatureCertificates = {}) {
         const drawingEditItem = parseInt(file.can_edit_drawing || 0, 10) === 1
             ? `<li><button type="button" class="dropdown-item btn-open-drawing-editor" data-document-id="${parseInt(file.id || 0, 10)}"><i class="bi bi-brush me-2"></i>Editar dibujo</button></li>`
             : '';
-        const editItem = file.can_delete
+        const editItem = file.can_delete && !isInternalNote
             && fileType === 'patient_document'
             ? `<li><button type="button" class="dropdown-item btn-edit-patient-document" data-document-id="${parseInt(file.id || 0, 10)}"><i class="bi bi-pencil me-2"></i>Editar datos</button></li>`
             : '';
-        const portalButton = parseInt(file.id || 0, 10) > 0
+        const portalButton = parseInt(file.id || 0, 10) > 0 && !isInternalNote
             ? patientFilePortalButton(fileType, file.id, file.visible_to_patient)
             : '';
         const deleteItem = file.can_delete
@@ -13406,7 +14886,7 @@ function renderPatientFiles(files, signatureCertificates = {}) {
             <td>${file.date ? formatDateTimeLabel(file.date) : '-'}</td>
             <td class="text-center">${portalButton}</td>
             <td class="text-end">
-                <div class="d-flex justify-content-end">${rowActionsDropdown([downloadItem, ...signItems, docxEditItem, drawingEditItem, editItem], [deleteItem])}</div>
+                <div class="d-flex justify-content-end">${rowActionsDropdown([downloadItem, ...signItems, docxEditItem, drawingEditItem, editItem], [deleteItem], 'patient-document-actions-dropdown')}</div>
             </td>
         </tr>
     `;
@@ -13414,6 +14894,34 @@ function renderPatientFiles(files, signatureCertificates = {}) {
     $('#patient-files-body').html(html);
     $('#patient-files-count').text(`${rows.length} ${rows.length === 1 ? 'documento' : 'documentos'}`);
 }
+
+function cleanupPatientDocumentFloatingMenus() {
+    document.querySelectorAll('.patient-document-actions-floating-menu').forEach(menu => {
+        const owner = menu._patientDocumentDropdownOwner;
+        menu.classList.remove('patient-document-actions-floating-menu', 'show');
+        if (owner && owner.isConnected) owner.appendChild(menu);
+        else menu.remove();
+        delete menu._patientDocumentDropdownOwner;
+    });
+}
+
+$(document).on('show.bs.dropdown', '.patient-document-actions-dropdown', function () {
+    cleanupPatientDocumentFloatingMenus();
+    const menu = this.querySelector('.dropdown-menu');
+    if (!menu) return;
+    menu._patientDocumentDropdownOwner = this;
+    document.body.appendChild(menu);
+    menu.classList.add('patient-document-actions-floating-menu');
+}).on('hidden.bs.dropdown', '.patient-document-actions-dropdown', function () {
+    const menu = document.querySelector('.patient-document-actions-floating-menu');
+    if (!menu || menu._patientDocumentDropdownOwner !== this) return;
+    menu.classList.remove('patient-document-actions-floating-menu');
+    this.appendChild(menu);
+    delete menu._patientDocumentDropdownOwner;
+});
+
+$('#patientEditorModal').on('hidden.bs.modal', cleanupPatientDocumentFloatingMenus);
+$('#patient-files-panel .table-responsive').on('scroll', cleanupPatientDocumentFloatingMenus);
 
 function formatPatientDocumentStatus(status) {
     const labels = {
@@ -14190,11 +15698,16 @@ function saveLegalDocument(form) {
                 $('#legal-document-alert').removeClass('d-none alert-success').addClass('alert-danger').text(res.error || 'No se pudo guardar el documento legal.');
                 return;
             }
+            const createdFromPatient = LEGAL_DOCUMENT_FROM_PATIENT;
             if (legalDocumentModal) {
                 legalDocumentModal.hide();
             }
             showSettingsAlert('#legal-settings-alert', 'success', res.message || 'Documento legal guardado.');
             loadLegalDocuments();
+            if (createdFromPatient) {
+                loadPatientLegalDocuments(CURRENT_PATIENT_LEGAL_DOCUMENTS_ID || parseInt($('#patient-editor-id').val() || '0', 10));
+                showPatientLegalDocumentsAlert('success', res.message || 'Consentimiento creado correctamente.');
+            }
         },
         error: function () {
             $('#legal-document-alert').removeClass('d-none alert-success').addClass('alert-danger').text('Error de conexion al guardar el documento legal.');
@@ -14266,7 +15779,7 @@ function renderSuggestedLegalDocuments(suggestions) {
         const previewUrl = `api/admin.php?action=preview_suggested_legal_document&key=${encodeURIComponent(item.key || '')}`;
         return `
             <div class="col-md-6">
-                <div class="border rounded p-3 h-100 d-flex flex-column suggested-legal-document-option${alreadyAdded ? ' bg-light' : ''}">
+                <div class="border rounded p-3 h-100 d-flex flex-column suggested-legal-document-option${alreadyAdded ? ' bg-light already-added' : ''}">
                     <label class="d-flex gap-2 cursor-pointer mb-3">
                         <input class="form-check-input mt-1" type="checkbox" name="suggested_legal_document_keys[]" value="${key}" ${alreadyAdded ? 'disabled' : 'checked'}>
                         <span>
@@ -14288,6 +15801,14 @@ function renderSuggestedLegalDocuments(suggestions) {
     $('#suggested-legal-documents-list').html(html);
     $('#btn-create-suggested-legal-documents').prop('disabled', rows.every(item => parseInt(item.already_added || 0, 10) === 1));
 }
+
+$(document).on('click', '.suggested-legal-document-option.already-added', function (event) {
+    if ($(event.target).closest('a').length) return;
+    $('#suggested-legal-documents-alert')
+        .removeClass('d-none alert-danger alert-success')
+        .addClass('alert-warning')
+        .text('Este consentimiento ya está añadido y no puede volver a incorporarse.');
+});
 
 function createSuggestedLegalDocuments() {
     const keys = $('#suggested-legal-documents-form input[name="suggested_legal_document_keys[]"]:checked')
@@ -14311,11 +15832,16 @@ function createSuggestedLegalDocuments() {
                 $('#suggested-legal-documents-alert').removeClass('d-none alert-success').addClass('alert-danger').text(res.error || 'No se pudieron anadir las plantillas sugeridas.');
                 return;
             }
+            const createdFromPatient = SUGGESTED_LEGAL_DOCUMENTS_FROM_PATIENT;
             if (suggestedLegalDocumentsModal) {
                 suggestedLegalDocumentsModal.hide();
             }
             showSettingsAlert('#legal-settings-alert', 'success', res.message || 'Plantillas sugeridas anadidas correctamente.');
             loadLegalDocuments();
+            if (createdFromPatient) {
+                loadPatientLegalDocuments(CURRENT_PATIENT_LEGAL_DOCUMENTS_ID || parseInt($('#patient-editor-id').val() || '0', 10));
+                showPatientLegalDocumentsAlert('success', res.message || 'Plantillas sugeridas añadidas correctamente.');
+            }
         },
         error: function () {
             $('#suggested-legal-documents-alert').removeClass('d-none alert-success').addClass('alert-danger').text('Error de conexion al generar las plantillas sugeridas.');
@@ -14397,9 +15923,9 @@ function renderPatientLegalDocuments(documents, signatureCertificates = {}) {
         const requiredBadge = globallyRequired
             ? '<span class="badge bg-warning text-dark ms-1">Obligatorio</span>'
             : (serviceRequired ? '<span class="badge bg-warning text-dark ms-1">Requerido por servicio</span>' : '');
-        const requiredServiceLine = serviceRequired && document.required_service_names
-            ? `<br><small class="text-warning-emphasis">Servicio: ${escapeHtml(document.required_service_names)}</small>`
-            : '';
+        const documentContext = serviceRequired && document.required_service_names
+            ? `Servicio: ${document.required_service_names}`
+            : (document.category || 'Consentimiento');
         const status = hasSigned
             ? (document.signature_method === 'handwritten'
                 ? '<span class="badge bg-success">Firmado presencialmente</span>'
@@ -14408,14 +15934,17 @@ function renderPatientLegalDocuments(documents, signatureCertificates = {}) {
                     : '<span class="badge bg-success">PDF firmado subido</span>'))
             : (accepted ? '<span class="badge bg-info text-dark">Aceptado fuera de SGPraxis</span>' : '<span class="badge bg-danger">Pendiente</span>');
         const signedLine = hasSigned
-            ? `<a href="${escapeHtml(document.signed_url || '#')}" target="_blank" rel="noopener">${escapeHtml(document.signed_file_name)}</a>${document.signed_file_size ? ` <small class="text-muted">(${formatFileSize(document.signed_file_size)})</small>` : ''}`
-            : '<span class="text-muted">Sin PDF firmado</span>';
+            ? '<span class="badge bg-success" title="Firmado" aria-label="Firmado"><i class="bi bi-check-lg"></i></span>'
+            : '<span class="badge bg-danger" title="No firmado" aria-label="No firmado"><i class="bi bi-x-lg"></i></span>';
         const acceptedMeta = accepted
             ? `<br><small class="text-muted">${document.accepted_at ? formatDateTimeLabel(document.accepted_at) : ''}${document.accepted_by_name ? ` - ${escapeHtml(document.accepted_by_name)}` : ''}</small>`
             : '';
         const noteLine = document.acceptance_note ? `<br><small class="text-muted">${escapeHtml(truncateText(document.acceptance_note, 90))}</small>` : '';
         const actionItems = [
             `<li><a class="dropdown-item" href="${escapeHtml(document.template_url || '#')}" target="_blank" rel="noopener"><i class="bi bi-eye me-2"></i>Leer documento</a></li>`,
+            ...(hasSigned && document.signed_url
+                ? [`<li><a class="dropdown-item" href="${escapeHtml(document.signed_url)}" target="_blank" rel="noopener"><i class="bi bi-file-earmark-check me-2"></i>Ver documento firmado</a></li>`]
+                : []),
             ...(planFeatureEnabled('legalConsents.handwrittenSignature', false)
                 ? [`<li><button type="button" class="dropdown-item btn-handwritten-consent" data-legal-document-id="${parseInt(document.legal_document_id || 0, 10)}"><i class="bi bi-pen me-2"></i>Firma presencial</button></li>`]
                 : []),
@@ -14426,12 +15955,10 @@ function renderPatientLegalDocuments(documents, signatureCertificates = {}) {
                 <td>
                     <strong>${escapeHtml(document.title || 'Documento legal')}</strong>${requiredBadge}
                     ${templateDigitallySigned ? '<span class="badge bg-success ms-1"><i class="bi bi-patch-check-fill me-1"></i>Firmado</span>' : ''}
-                    ${document.category ? `<br><small class="text-muted">${escapeHtml(document.category)}</small>` : ''}
-                    ${document.version_label ? `<br><small class="text-muted">${escapeHtml(document.version_label)}</small>` : ''}
-                    ${requiredServiceLine}
+                    <br><small class="text-muted">${escapeHtml(documentContext)}</small>
                 </td>
                 <td>${status}${acceptedMeta}${noteLine}</td>
-                <td>${signedLine}</td>
+                <td class="text-center">${signedLine}</td>
                 <td class="text-end">
                     ${rowActionsDropdown(actionItems)}
                 </td>
@@ -15258,6 +16785,7 @@ function patientEditorSnapshot(patientId) {
         patient_status: $('#patient-editor-status').val() || 'active',
         waiting_list: $('#patient-editor-waiting-list').is(':checked') ? 1 : 0,
         birth_date: $('#patient-editor-birth-date').val() || '',
+        sex: $('#patient-editor-sex').val() || '',
         referral_source: $('#patient-editor-referral-source').val() || '',
         address: $('#patient-editor-address').val() || '',
         knowledge_problem_id: parseInt($('#patient-editor-knowledge-problem').val() || 0, 10),
@@ -15434,11 +16962,14 @@ $(document).on('click', '#btn-send-post-create-patient-invite', function () {
                 loadDashboardPatients();
             }
         },
-        error: function () {
+        error: function (xhr) {
+            const serverError = xhr.responseJSON && xhr.responseJSON.error
+                ? xhr.responseJSON.error
+                : (String(xhr.responseText || '').trim().slice(0, 500) || 'Error de conexión al enviar la invitación.');
             $('#post-create-patient-invite-alert')
                 .removeClass('d-none alert-success')
                 .addClass('alert-danger')
-                .text('Error de conexión al enviar la invitación.');
+                .text(serverError);
         },
         complete: function () {
             $button.prop('disabled', false).html(original);
@@ -15853,6 +17384,7 @@ function openUpcomingAppointmentsModal() {
     $('#upcoming-appointments-alert').addClass('d-none').text('');
     $('#upcoming-appointments-search').val('');
     $('#cancelled-appointments-search').val('');
+    $('#past-appointments-search').val('');
     $('#upcoming-appointments-scope').val('limit10');
     $('#upcoming-planning-scope').val('3days');
     upcomingAppointmentsInitialLoad = true;
@@ -15861,6 +17393,8 @@ function openUpcomingAppointmentsModal() {
     $('#upcoming-appointments-count').text('');
     $('#cancelled-appointments-body').html('<tr><td colspan="7" class="text-center text-muted py-4">Cargando...</td></tr>');
     $('#cancelled-appointments-count').text('');
+    $('#past-appointments-body').html('<tr><td colspan="8" class="text-center text-muted py-4">Cargando...</td></tr>');
+    $('#past-appointments-count').text('');
     $('#upcoming-planning-wrap').html('<div class="text-center text-muted py-4">Cargando planning...</div>');
     upcomingAppointmentsModal.show();
     loadUpcomingAppointments();
@@ -15872,6 +17406,8 @@ function loadUpcomingAppointments() {
     $('#upcoming-appointments-count').text('');
     $('#cancelled-appointments-body').html('<tr><td colspan="7" class="text-center text-muted py-4">Cargando...</td></tr>');
     $('#cancelled-appointments-count').text('');
+    $('#past-appointments-body').html('<tr><td colspan="8" class="text-center text-muted py-4">Cargando...</td></tr>');
+    $('#past-appointments-count').text('');
     $('#upcoming-planning-wrap').html('<div class="text-center text-muted py-4">Cargando planning...</div>');
     const hasProfessionalFilter = $('#upcoming-appointments-professional').length > 0;
     const professionalFilterValue = hasProfessionalFilter && upcomingAppointmentsInitialLoad
@@ -15882,7 +17418,10 @@ function loadUpcomingAppointments() {
         data: {
             scope: $('#upcoming-appointments-scope').val() || 'limit10',
             planning_scope: $('#upcoming-planning-scope').val() || '3days',
-            professional_id: professionalFilterValue
+            professional_id: professionalFilterValue,
+            past_professional_id: $('#past-appointments-professional').length
+                ? (upcomingAppointmentsInitialLoad ? 'current' : ($('#past-appointments-professional').val() || 'all'))
+                : professionalFilterValue
         },
         dataType: 'json',
         success: function (res) {
@@ -15896,6 +17435,7 @@ function loadUpcomingAppointments() {
             upcomingAppointmentsInitialLoad = false;
             CURRENT_UPCOMING_APPOINTMENTS = Array.isArray(res.appointments) ? res.appointments : [];
             CURRENT_CANCELLED_APPOINTMENTS = Array.isArray(res.cancelled_appointments) ? res.cancelled_appointments : [];
+            CURRENT_PAST_APPOINTMENTS = Array.isArray(res.past_appointments) ? res.past_appointments : [];
             CURRENT_UPCOMING_PLANNING = {
                 appointments: Array.isArray(res.planning_appointments) ? res.planning_appointments : [],
                 settings: res.planning_settings || {},
@@ -15903,6 +17443,7 @@ function loadUpcomingAppointments() {
             };
             renderUpcomingAppointments(CURRENT_UPCOMING_APPOINTMENTS);
             renderCancelledAppointments(CURRENT_CANCELLED_APPOINTMENTS);
+            renderPastAppointments(CURRENT_PAST_APPOINTMENTS);
             renderUpcomingPlanning();
         },
         error: function () {
@@ -15912,22 +17453,17 @@ function loadUpcomingAppointments() {
 }
 
 function populateUpcomingProfessionalsFilter(professionals = null, preferredProfessionalId = null) {
-    const $select = $('#upcoming-appointments-professional');
-    if (!$select.length) return;
-    const selected = $select.val() || '';
-    $select.html('<option value="all">Todos los profesionales</option>');
     const source = Array.isArray(professionals) ? professionals : CABINET_PROFESSIONALS;
-    source
-        .filter(professional => professional.is_active != 0)
-        .forEach(professional => {
+    $('#upcoming-appointments-professional, #past-appointments-professional').each(function () {
+        const $select = $(this), selected = $select.val() || '';
+        $select.html('<option value="all">Todos los profesionales</option>');
+        source.filter(professional => professional.is_active != 0).forEach(professional => {
             $select.append(`<option value="${professional.id}">${escapeHtml(professional.display_name || 'Sin nombre')}</option>`);
         });
-    const preferred = preferredProfessionalId ? String(preferredProfessionalId) : '';
-    if (preferred && $select.find(`option[value="${preferred}"]`).length) {
-        $select.val(preferred);
-    } else if (selected && $select.find(`option[value="${selected}"]`).length) {
-        $select.val(selected);
-    }
+        const preferred = preferredProfessionalId ? String(preferredProfessionalId) : '';
+        if (preferred && $select.find(`option[value="${preferred}"]`).length) $select.val(preferred);
+        else if (selected && $select.find(`option[value="${selected}"]`).length) $select.val(selected);
+    });
 }
 
 function renderUpcomingAppointments(appointments) {
@@ -16000,6 +17536,23 @@ function renderCancelledAppointments(appointments) {
 
 function upcomingProfessionalCell(app = {}) {
     return professionalCellHtml(app, 'professional_name', 'professional_photo_path');
+}
+
+function renderPastAppointments(appointments) {
+    const rows = filterPastAppointments(appointments);
+    if (!appointments.length) {
+        $('#past-appointments-body').html('<tr><td colspan="8" class="text-center text-muted py-4">No hay citas anteriores.</td></tr>');
+        $('#past-appointments-count').text(''); return;
+    }
+    if (!rows.length) {
+        $('#past-appointments-body').html('<tr><td colspan="8" class="text-center text-muted py-4">No hay citas anteriores que coincidan con la búsqueda.</td></tr>');
+        $('#past-appointments-count').text(''); return;
+    }
+    $('#past-appointments-body').html(rows.map(app => {
+        const contact = patientContactSummaryHtml(app.patient_email, app.patient_phone);
+        return `<tr data-appointment-id="${parseInt(app.id || 0, 10)}"><td><strong>${formatDisplayDate(app.appointment_date)}</strong><br><small class="text-muted">${escapeHtml(displayAppointmentTimeRange(app.appointment_time || '', app.duration_minutes || 60))}</small></td><td>${upcomingProfessionalCell(app)}</td><td>${escapeHtml(app.patient_name || '')}${contact ? `<br><small class="text-muted">${contact}</small>` : ''}</td><td>${escapeHtml(displayAppointmentServiceLabel(app))}</td><td>${consultationTypeLabel(app.consultation_type)}</td><td>${appointmentStatusLabel(app.status || 'booked')}</td><td>${adminPaymentLabel(app)}</td><td class="text-end no-export">${appointmentPaymentButton(app)}</td></tr>`;
+    }).join(''));
+    $('#past-appointments-count').text(`${rows.length} ${rows.length === 1 ? 'cita anterior' : 'citas anteriores'}`);
 }
 
 function parseDateKey(dateStr) {
@@ -16233,6 +17786,21 @@ function filterCancelledAppointments(appointments) {
     return rows;
 }
 
+function filterPastAppointments(appointments) {
+    const search = ($('#past-appointments-search').val() || '').trim().toLowerCase();
+    let rows = Array.isArray(appointments) ? [...appointments] : [];
+    if (search) {
+        rows = rows.filter(app => {
+            const statusText = { booked: 'reservada', completed: 'realizada asistió', no_show: 'no asistió' }[app.status] || app.status || '';
+            return [app.appointment_date, app.appointment_time, app.patient_name, app.patient_email, app.patient_phone,
+                app.professional_name, app.service_label, consultationTypeLabel(app.consultation_type), statusText,
+                app.payment_status, app.payment_method].join(' ').toLowerCase().includes(search);
+        });
+    }
+    rows.sort((a, b) => `${b.appointment_date || ''} ${b.appointment_time || ''}`.localeCompare(`${a.appointment_date || ''} ${a.appointment_time || ''}`));
+    return rows;
+}
+
 function adminPaymentLabel(app) {
     if (app.payment_status === 'paid') {
         return app.payment_method === 'bonus'
@@ -16262,11 +17830,23 @@ function appointmentPaymentButton(app = {}) {
     if (!IS_ADMIN || !app.id) {
         return '';
     }
-    return `
-        <button class="btn btn-outline-primary btn-sm" type="button" onclick="openAppointmentPaymentModal(${parseInt(app.id, 10)})" title="Ver detalles">
-            <i class="bi bi-eye"></i>
-        </button>
-    `;
+    const appointmentId = parseInt(app.id, 10);
+    const certificateItem = app.status === 'completed' && memberCan('issue_attendance_certificates')
+        ? `<li><button class="dropdown-item" type="button" onclick="openAttendanceCertificate(${appointmentId})"><i class="bi bi-file-earmark-check me-2"></i>Justificante de asistencia</button></li>`
+        : '';
+    if (!certificateItem) {
+        return `<button class="btn btn-outline-primary btn-sm" type="button" onclick="openAppointmentPaymentModal(${appointmentId})" title="Ver detalles"><i class="bi bi-eye"></i></button>`;
+    }
+    return rowActionsDropdown([
+        `<li><button class="dropdown-item" type="button" onclick="openAppointmentPaymentModal(${appointmentId})"><i class="bi bi-eye me-2"></i>Ver detalles</button></li>`,
+        certificateItem
+    ]);
+}
+
+function openAttendanceCertificate(appointmentId) {
+    appointmentId = parseInt(appointmentId || 0, 10);
+    if (!appointmentId || !memberCan('issue_attendance_certificates')) return;
+    window.open(`api/admin.php?action=attendance_certificate&register=1&appointment_id=${appointmentId}`, '_blank', 'noopener');
 }
 
 function showAppointmentPaymentAlert(type, message) {
@@ -16436,9 +18016,11 @@ function renderAppointmentKnowledgeProblemCard(app = {}) {
     }
 
     const diagnosisLabel = capitalizeFirst(sectorText('clinicalTerms.diagnosis', 'diagnostico'));
-    const problemTitle = problem.status === 'assigned'
+    const hasAssignedProblem = problem.status === 'assigned';
+    const hasConsultationReason = problem.status === 'consultation_reason';
+    const problemTitle = hasAssignedProblem
         ? (problem.name || problem.short_name || diagnosisLabel)
-        : `${diagnosisLabel} pendiente`;
+        : (hasConsultationReason ? problem.consultation_reason : `${diagnosisLabel} pendiente`);
     const meta = [];
     if (problem.area) meta.push(problem.area);
     if (problem.category) meta.push(problem.category);
@@ -16450,8 +18032,9 @@ function renderAppointmentKnowledgeProblemCard(app = {}) {
             <div>
                 <span>${escapeHtml(diagnosisLabel)}</span>
                 <strong>${escapeHtml(problemTitle)}</strong>
-                ${problem.status === 'assigned' && meta.length ? `<small>${escapeHtml(meta.join(' · '))}</small>` : ''}
-                ${problem.status !== 'assigned' ? `<small>Este ${escapeHtml(patientSingular)} todavia no tiene un problema u objetivo vinculado en su ficha.</small>` : ''}
+                ${hasAssignedProblem && meta.length ? `<small>${escapeHtml(meta.join(' · '))}</small>` : ''}
+                ${hasConsultationReason ? '<small>Motivo indicado en la ficha del paciente.</small>' : ''}
+                ${!hasAssignedProblem && !hasConsultationReason ? `<small>Este ${escapeHtml(patientSingular)} todavia no tiene un problema u objetivo vinculado en su ficha.</small>` : ''}
             </div>
         </div>
     `;
@@ -16573,6 +18156,7 @@ function resetAppointmentSessionPanel(message = 'Cargando sesión...') {
     $('#appointment-session-alert, #appointment-files-alert, #appointment-private-notes-alert').addClass('d-none').text('');
     $('#appointment-session-content').html(`<div class="text-center text-muted py-4">${message}</div>`);
     $('#appointment-files-content').html('<div class="text-center text-muted py-4">Cargando archivos...</div>');
+    $('#appointment-recordings-section').addClass('d-none').data('loaded', false);
     $('#appointment-private-session-notes').val('').prop('disabled', true);
     $('#appointment-payment-modal-title').text('Detalle de la cita');
     $('#appointment-session-tab').text('Tareas');
@@ -16606,6 +18190,9 @@ function loadAppointmentSession(app = CURRENT_APPOINTMENT_PAYMENT_DETAIL) {
                 files: Array.isArray(res.files) ? res.files : []
             };
             renderAppointmentSession(app);
+            if (typeof window.loadAppointmentCustomFields === 'function') {
+                window.loadAppointmentCustomFields(CURRENT_APPOINTMENT_SESSION.appointment_id);
+            }
         },
         error: function () {
             showAppointmentSessionAlert('danger', 'Error de conexión al cargar la sesión.');
@@ -16626,7 +18213,8 @@ function updateAppointmentSessionTabLabel(app = {}) {
     }
     const now = new Date();
     const isCurrent = start && end && start <= now && end >= now;
-    $title.text(isCurrent ? 'Sesión en curso' : 'Preparar esta sesión');
+    const isPast = end && end < now;
+    $title.text(isCurrent ? 'Sesión en curso' : (isPast ? 'Detalle de la cita' : 'Preparar esta sesión'));
 }
 
 function parseAppointmentDateTime(dateStr, timeStr) {
@@ -16639,8 +18227,17 @@ function parseAppointmentDateTime(dateStr, timeStr) {
 function renderAppointmentSession(app = CURRENT_APPOINTMENT_PAYMENT_DETAIL) {
     const patientSingular = sectorLabel('patient', 'singular', 'paciente');
     const knowledgeEnabled = knowledgeBaseEnabled();
+    const customFieldsEnabled = appFeatureEnabled('customFields.enabled', false);
     $('#appointment-session-content').html(`
         <div class="row g-3">
+            ${customFieldsEnabled ? `
+            <div class="col-12">
+                <section class="appointment-session-box">
+                    <div class="d-flex justify-content-between align-items-center gap-2 mb-3"><div><h6 class="mb-0">Campos personalizados</h6><div class="small text-muted">Información adicional de esta cita o sesión.</div></div><button class="btn btn-primary btn-sm d-none" type="button" id="btn-save-appointment-custom-fields"><i class="bi bi-check2"></i> Guardar campos</button></div>
+                    <form id="appointment-custom-fields-form"><input type="hidden" name="entity_id" value="${CURRENT_APPOINTMENT_SESSION.appointment_id}"><div class="row g-3" id="appointment-custom-fields"><div class="col-12 text-muted small">Cargando campos...</div></div></form>
+                </section>
+            </div>
+            ` : ''}
             <div class="col-lg-5">
                 <section class="appointment-session-box">
                     <h6>Nueva tarea de esta sesión</h6>
@@ -16745,7 +18342,7 @@ function renderAppointmentSessionTasks(tasks) {
         const documentId = parseInt(task.document_id || 0, 10);
         const attachment = documentId
             ? `<button type="button" class="btn btn-link btn-sm p-0 text-start btn-show-task-file"
-                       data-document-id="${documentId}" title="Ver el archivo asociado en la pestaña Archivos">
+                       data-document-id="${documentId}" title="Ver el archivo asociado en Notas y archivos">
                     <i class="bi bi-paperclip me-1"></i>
                     ${escapeHtml(attachmentName || 'Archivo asociado')} · Ver en Archivos
                </button>`
@@ -17118,7 +18715,11 @@ function removeAppointmentSessionActivityItem($item, noteId) {
         CURRENT_APPOINTMENT_SESSION.notes = CURRENT_APPOINTMENT_SESSION.notes.filter(note => parseInt(note.id || 0, 10) !== noteId);
     }
     if (!$item || !$item.length) {
-        $('#appointment-session-activity').html(renderAppointmentSessionActivity(CURRENT_APPOINTMENT_SESSION.notes, CURRENT_APPOINTMENT_SESSION.files));
+        $('#appointment-session-activity').html(renderAppointmentSessionActivity(
+            CURRENT_APPOINTMENT_SESSION.notes,
+            CURRENT_APPOINTMENT_SESSION.files,
+            (CURRENT_APPOINTMENT_PAYMENT_DETAIL && CURRENT_APPOINTMENT_PAYMENT_DETAIL.session_notes) || ''
+        ));
         return;
     }
     $item
@@ -17192,6 +18793,8 @@ function renderAppointmentSession(app = CURRENT_APPOINTMENT_PAYMENT_DETAIL) {
             </div>
         </div>
     `);
+    const onlineEditorEnabled = planFeatureEnabled('documents.onlineEditor', false);
+    const drawingBoardEnabled = planFeatureEnabled('documents.drawingBoard', false);
     $('#appointment-files-content').html(`
         <section class="appointment-session-box">
             <div class="appointment-session-section-header">
@@ -17199,22 +18802,59 @@ function renderAppointmentSession(app = CURRENT_APPOINTMENT_PAYMENT_DETAIL) {
                     <h6>Notas y archivos de la sesi&oacute;n</h6>
                 </div>
                 <div class="d-flex gap-2 flex-wrap">
-                    ${planFeatureEnabled('documents.onlineEditor', false) ? `
-                    <button class="btn btn-outline-primary btn-sm" type="button" id="btn-create-appointment-docx">
-                        <i class="bi bi-file-earmark-plus"></i> Crear documento
-                    </button>` : ''}
-                    ${planFeatureEnabled('documents.drawingBoard', false) ? `
-                    <button class="btn btn-outline-primary btn-sm" type="button" id="btn-create-appointment-drawing">
-                        <i class="bi bi-brush"></i> Crear dibujo
-                    </button>` : ''}
+                    <button class="btn ${onlineEditorEnabled ? 'btn-outline-primary' : 'btn-secondary plan-locked'} btn-sm" type="button" id="btn-create-appointment-docx"
+                        ${onlineEditorEnabled ? '' : 'disabled title="Disponible en el plan Summum"'}>
+                        <i class="bi ${onlineEditorEnabled ? 'bi-file-earmark-plus' : 'bi-lock-fill'}"></i> Crear documento
+                    </button>
+                    <button class="btn ${drawingBoardEnabled ? 'btn-outline-primary' : 'btn-secondary plan-locked'} btn-sm" type="button" id="btn-create-appointment-drawing"
+                        ${drawingBoardEnabled ? '' : 'disabled title="Disponible en el plan Summum"'}>
+                        <i class="bi ${drawingBoardEnabled ? 'bi-brush' : 'bi-lock-fill'}"></i> Usar pizarra
+                    </button>
                     <button class="btn btn-outline-primary btn-sm" type="button" id="btn-toggle-appointment-session-note">
                         <i class="bi bi-journal-plus"></i> Nueva nota / archivo
                     </button>
+                    <button class="btn ${onlineEditorEnabled ? 'btn-outline-primary' : 'btn-secondary plan-locked'} btn-sm" type="button" id="btn-create-appointment-internal-note"
+                        ${onlineEditorEnabled ? '' : 'disabled title="Disponible en el plan Summum"'}>
+                        <i class="bi ${onlineEditorEnabled ? 'bi-lock' : 'bi-lock-fill'}"></i> Nota interna
+                    </button>
                 </div>
             </div>
-            <div id="appointment-session-activity">${renderAppointmentSessionActivity(CURRENT_APPOINTMENT_SESSION.notes, CURRENT_APPOINTMENT_SESSION.files)}</div>
+            <div class="alert alert-light border small py-2 mb-3"><i class="bi bi-lock me-1"></i> Las notas internas nunca se muestran en el Portal.</div>
+            <div id="appointment-session-activity">${renderAppointmentSessionActivity(CURRENT_APPOINTMENT_SESSION.notes, CURRENT_APPOINTMENT_SESSION.files, app.session_notes || '')}</div>
         </section>
     `);
+}
+
+function renderAppointmentRecordings(recordings) {
+    if (!recordings.length) return '<div class="text-muted">Todavía no hay grabaciones disponibles para esta cita.</div>';
+    return recordings.map(function (recording) {
+        const ready = parseInt(recording.document_id || 0, 10) > 0;
+        const size = recording.file_size ? ` · ${formatFileSize(parseInt(recording.file_size, 10))}` : '';
+        const label = recording.recording_mode === 'audio_video' ? 'Audio y vídeo' : 'Solo audio';
+        return `<div class="d-flex align-items-center justify-content-between gap-3 border rounded bg-white p-2 mb-2">
+            <div><strong>${escapeHtml(recording.title || 'Grabación de videollamada')}</strong><div class="text-muted">${label}${size}</div></div>
+            ${ready ? `<a class="btn btn-sm btn-outline-primary" href="api/admin.php?action=download_patient_document_file&id=${parseInt(recording.document_id, 10)}"><i class="bi bi-download"></i> Descargar</a>` : '<span class="badge text-bg-warning">Procesando</span>'}
+        </div>`;
+    }).join('');
+}
+
+function loadAppointmentRecordings(force = false) {
+    const app = CURRENT_APPOINTMENT_PAYMENT_DETAIL || {};
+    const $section = $('#appointment-recordings-section');
+    if (app.consultation_type !== 'online' || app.video_provider !== 'daily' || app.video_recording_enabled != 1) {
+        $section.addClass('d-none'); return;
+    }
+    if (!force && $section.data('loaded')) return;
+    $section.removeClass('d-none').data('loaded', true);
+    $('#appointment-recordings-content').html('<span class="spinner-border spinner-border-sm me-2"></span>Consultando e importando grabaciones disponibles...');
+    $.ajax({
+        url: 'api/admin.php?action=daily_appointment_recordings', dataType: 'json', data: { appointment_id: app.id },
+        success: function (res) {
+            if (!res.success) { $section.data('loaded', false); $('#appointment-recordings-content').html(`<div class="text-danger">${escapeHtml(res.error || 'No se pudieron consultar las grabaciones.')}</div>`); return; }
+            $('#appointment-recordings-content').html(renderAppointmentRecordings(Array.isArray(res.recordings) ? res.recordings : []));
+        },
+        error: function () { $section.data('loaded', false); $('#appointment-recordings-content').html('<div class="text-danger">Error de conexión al consultar las grabaciones.</div>'); }
+    });
 }
 
 function renderAppointmentSessionTasks(tasks) {
@@ -17231,7 +18871,7 @@ function renderAppointmentSessionTasks(tasks) {
         const documentId = parseInt(task.document_id || 0, 10);
         const attachment = documentId
             ? `<button type="button" class="btn btn-link btn-sm p-0 text-start btn-show-task-file"
-                       data-document-id="${documentId}" title="Ver el archivo asociado en la pestaña Archivos">
+                       data-document-id="${documentId}" title="Ver el archivo asociado en Notas y archivos">
                     <i class="bi bi-paperclip me-1"></i>
                     ${escapeHtml(attachmentName || 'Archivo asociado')} · Ver en Archivos
                </button>`
@@ -17268,7 +18908,7 @@ function renderAppointmentSessionTasks(tasks) {
     }).join('');
 }
 
-function renderAppointmentSessionActivity(notes, files) {
+function renderAppointmentSessionActivity(notes, files, legacyPrivateNote = '') {
     const rows = Array.isArray(notes) ? notes : [];
     const items = rows.map(note => {
         const noteFiles = Array.isArray(note.files) ? note.files : [];
@@ -17300,15 +18940,31 @@ function renderAppointmentSessionActivity(notes, files) {
             `
         };
     });
+    if (String(legacyPrivateNote || '').trim()) {
+        items.push({
+            date: (CURRENT_APPOINTMENT_PAYMENT_DETAIL && CURRENT_APPOINTMENT_PAYMENT_DETAIL.appointment_date) || '',
+            html: `
+                <div class="appointment-session-activity-item">
+                    <i class="bi bi-lock"></i>
+                    <small class="appointment-session-activity-date">Anterior</small>
+                    <div class="appointment-session-activity-body">
+                        <strong>Nota interna anterior</strong>
+                        <div class="small text-muted mt-1">${escapeHtml(truncateText(legacyPrivateNote, 220))}</div>
+                    </div>
+                </div>
+            `
+        });
+    }
     (Array.isArray(files) ? files : [])
         .filter(file => file.type === 'patient_document')
         .forEach(file => {
+            const internalNote = String(file.document_type || '') === 'internal_note';
             const canEditDocx = parseInt(file.can_edit_docx || 0, 10) === 1;
             const canEditDrawing = parseInt(file.can_edit_drawing || 0, 10) === 1;
             const versionLine = parseInt(file.version_count || 0, 10) > 1
                 ? ` · ${parseInt(file.version_count, 10)} versiones`
                 : '';
-            const itemIcon = canEditDrawing ? 'bi-brush' : 'bi-file-earmark-text';
+            const itemIcon = internalNote ? 'bi-lock' : (canEditDrawing ? 'bi-brush' : 'bi-file-earmark-text');
             const fallbackFileName = canEditDrawing ? 'PNG' : 'DOCX';
             items.push({
                 date: file.date || '',
@@ -17317,11 +18973,11 @@ function renderAppointmentSessionActivity(notes, files) {
                         <i class="bi ${itemIcon}"></i>
                         <small class="appointment-session-activity-date">${file.date ? formatDateTimeLabel(file.date) : ''}</small>
                         <div class="appointment-session-activity-body">
-                            <strong>${escapeHtml(file.name || 'Documento')}</strong>
+                            <strong>${escapeHtml(file.name || (internalNote ? 'Nota interna' : 'Documento'))}${internalNote ? ' <span class="badge bg-secondary ms-1">Interna</span>' : ''}</strong>
                             <div class="small text-muted mt-1">${escapeHtml(file.file_name || fallbackFileName)}${file.size ? ` · ${formatFileSize(file.size)}` : ''}${versionLine}</div>
                         </div>
                         <div class="appointment-session-activity-actions">
-                            ${patientFilePortalButton('patient_document', file.id, file.visible_to_patient)}
+                            ${internalNote ? '' : patientFilePortalButton('patient_document', file.id, file.visible_to_patient)}
                             ${rowActionsDropdown([
                                 file.url ? `<li><a class="dropdown-item" href="${escapeHtml(file.url)}" target="_blank" rel="noopener"><i class="bi bi-download me-2"></i>Descargar archivo</a></li>` : '',
                                 canEditDocx ? `<li><button class="dropdown-item btn-open-appointment-docx-editor" type="button" data-document-id="${parseInt(file.id || 0, 10)}"><i class="bi bi-file-earmark-word me-2"></i>Editar DOCX</button></li>` : '',
@@ -17458,7 +19114,7 @@ function updateAppointmentOnlineDetails(consultationType, onlineUrl, button, suc
                 location_type: res.location_type || '',
                 online_session_url: res.online_session_url || '',
                 livekit_enabled: res.livekit_enabled === undefined ? app.livekit_enabled : res.livekit_enabled,
-                video_provider: res.video_provider || app.video_provider || 'livekit',
+                video_provider: res.video_provider || app.video_provider || 'daily',
                 can_online_appointment: app.can_online_appointment,
                 can_presential_appointment: app.can_presential_appointment,
                 patient_address: app.patient_address || '',
@@ -17583,6 +19239,10 @@ function sendManualAppointmentReminder(button) {
     const app = CURRENT_APPOINTMENT_PAYMENT_DETAIL || {};
     const appointmentId = parseInt(app.id || $('#appointment-payment-id').val() || 0, 10);
     const channel = String($(button).data('channel') || 'email').toLowerCase();
+    if (button.disabled || String($(button).data('configured')) !== '1') {
+        showAppointmentPaymentAlert('warning', channel === 'sms' ? 'El envío de SMS no está configurado.' : 'El envío de emails no está configurado.');
+        return;
+    }
     if (!appointmentId || !['email', 'sms'].includes(channel)) {
         showAppointmentPaymentAlert('danger', 'No se ha podido preparar el recordatorio.');
         return;
@@ -17634,6 +19294,7 @@ function openAppointmentPaymentModal(appointmentId) {
         return;
     }
     CURRENT_APPOINTMENT_PAYMENT_DETAIL = null;
+    $('#appointment-payment-modal-title').text('Detalle de la cita');
     resetAppointmentSessionPanel();
     $('#appointment-payment-id').val(appointmentId);
     if (appointmentPaymentAlertTimer) {
@@ -17678,6 +19339,8 @@ function openAppointmentPaymentModal(appointmentId) {
             $('#btn-save-appointment-payment').toggleClass('d-none', locked).prop('disabled', locked);
             $('#btn-cancel-appointment-from-detail').toggleClass('d-none', app.status !== 'booked' || !memberCan('cancel_appointments')).prop('disabled', app.status !== 'booked' || !memberCan('cancel_appointments'));
             $('#btn-open-patient-from-appointment-detail').toggleClass('d-none', !app.patient_id).prop('disabled', !app.patient_id);
+            const canIssueCertificate = app.status === 'completed' && memberCan('issue_attendance_certificates');
+            $('#btn-appointment-attendance-certificate').toggleClass('d-none', !canIssueCertificate).prop('disabled', !canIssueCertificate);
             const canBookAnother = QUICK_PATIENT_BOOKING_ENABLED && memberCan('create_appointments') && !!app.patient_id;
             $('#btn-book-another-appointment').toggleClass('d-none', !canBookAnother).prop('disabled', !canBookAnother);
             $('#appointment-reminder-dropdown').toggleClass('d-none', app.status !== 'booked');
@@ -17693,6 +19356,7 @@ function openAppointmentPaymentModal(appointmentId) {
             $('#appointment-status-editor').addClass('d-none');
             $('#btn-cancel-appointment-from-detail').addClass('d-none').prop('disabled', true);
             $('#btn-open-patient-from-appointment-detail').addClass('d-none').prop('disabled', true);
+            $('#btn-appointment-attendance-certificate').addClass('d-none').prop('disabled', true);
             $('#btn-book-another-appointment').addClass('d-none').prop('disabled', true);
         }
     });
@@ -17799,7 +19463,7 @@ function showUpcomingAppointmentsAlert(type, message) {
 }
 
 function openInvoicesModal() {
-    if (!IS_ADMIN || !memberCan('billing') || PAYMENT_SETTINGS.billing_enabled != 1) return;
+    if (!IS_ADMIN || !memberCan('billing')) return;
     const modalElement = document.getElementById('invoicesModal');
     if (!modalElement || !window.bootstrap) return;
     invoicesModal = invoicesModal || bootstrap.Modal.getOrCreateInstance(modalElement);
@@ -17814,6 +19478,9 @@ function initializeInvoicesModalFilters() {
     $('#invoices-search').val('');
     $('#invoices-date-from').val(formatDate(fromDate));
     $('#invoices-date-to').val(today);
+    $('#billing-payments-search').val('');
+    $('#billing-payments-date-from').val(formatDate(fromDate));
+    $('#billing-payments-date-to').val(today);
 }
 
 function loadInvoicesList() {
@@ -17856,17 +19523,20 @@ function renderInvoicesList(invoices) {
         $body.html('<tr><td colspan="7" class="text-center text-muted py-4">Todavia no hay facturas emitidas.</td></tr>');
         return;
     }
-    $body.html(invoices.map(invoice => `
+    $body.html(invoices.map(invoice => {
+        const cloudManaged = invoice.billing_provider === 'simplygest_cloud';
+        return `
         <tr>
-            <td><strong>${escapeHtml(invoice.numero_factura || '')}</strong></td>
+            <td><strong>${escapeHtml(invoice.numero_factura || '')}</strong>${cloudManaged ? '<span class="badge text-bg-info ms-2">Cloud</span>' : ''}</td>
             <td>${escapeHtml(formatInvoiceDate(invoice.fecha || ''))}</td>
             <td>
                 <div>${escapeHtml(invoice.destinatario_nombre || '')}</div>
             </td>
             <td>${escapeHtml(invoice.concepto || '')}</td>
             <td class="text-end">${escapeHtml(invoice.total || '0.00')} &euro;</td>
-            <td>${escapeHtml(invoice.verifactu_estado || '')}</td>
+            <td>${cloudManaged ? '<span class="badge text-bg-secondary">Gestionado en Cloud</span>' : escapeHtml(invoice.verifactu_estado || '')}</td>
             <td class="text-end">
+                ${cloudManaged ? '<span class="text-muted small">Consulta la factura en SimplyGest Cloud</span>' : `
                 <div class="dropdown invoice-actions-dropdown">
                     <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-boundary="viewport" aria-expanded="false" title="Opciones">
                         <i class="bi bi-three-dots-vertical"></i>
@@ -17888,10 +19558,183 @@ function renderInvoicesList(invoices) {
                         </li>
                     </ul>
                 </div>
+                `}
             </td>
         </tr>
-    `).join(''));
+    `}).join(''));
 }
+
+let financialConnectionModal = null;
+let financialSelectedConnections = { bank: 0, utility: 0 };
+let financialSelectedProducts = { bank: '', utility: '' };
+let billingPaymentsSearchTimer = null;
+const billingHubAlertTimers = {};
+
+function billingHubAlert(type, kind, message, autoHide = false) {
+    const id = kind === 'bank' ? '#billing-banks-alert' : (kind === 'utility' ? '#billing-utilities-alert' : '#billing-payments-alert');
+    if (billingHubAlertTimers[kind]) clearTimeout(billingHubAlertTimers[kind]);
+    $(id).toggleClass('d-none', !message).removeClass('alert-danger alert-success alert-warning').addClass(`alert-${type}`).text(message || '');
+    if (message && (autoHide || type === 'success')) {
+        billingHubAlertTimers[kind] = setTimeout(() => {
+            $(id).addClass('d-none').text('');
+            billingHubAlertTimers[kind] = null;
+        }, 3000);
+    }
+}
+
+function loadBillingPayments() {
+    $('#billing-payments-list').html('<tr><td colspan="7" class="text-center text-muted py-4">Cargando cobros...</td></tr>');
+    billingHubAlert('danger', 'payments', '');
+    $.getJSON('api/financial_hub.php?action=payments', {
+        search: ($('#billing-payments-search').val() || '').trim(),
+        date_from: $('#billing-payments-date-from').val() || '',
+        date_to: $('#billing-payments-date-to').val() || ''
+    }).done(function (res) {
+        if (!res.success) { billingHubAlert('danger', 'payments', res.error || 'No se pudieron cargar los cobros.'); return; }
+        const labels = { appointment: 'Cita', bonus: 'Bono', report: 'Informe' };
+        const rows = res.payments || [];
+        $('#billing-payments-list').html(rows.length ? rows.map(row => `
+            <tr><td>${escapeHtml(formatInvoiceDate((row.paid_at || '').slice(0, 10)))}</td><td>${escapeHtml(row.patient_name || '')}</td><td>${escapeHtml(row.concept || '')}</td><td>${escapeHtml(labels[row.source_type] || row.source_type || '')}</td><td>${escapeHtml(paymentMethodLabel(row.payment_method || '') || row.payment_method || 'Manual')}</td><td>${row.invoice_id ? `<a href="api/admin.php?action=invoice_pdf&download=1&id=${encodeURIComponent(row.invoice_id)}">${escapeHtml(row.numero_factura || 'Ver factura')}</a>` : '<span class="text-muted">Sin factura</span>'}</td><td class="text-end fw-semibold">${Number(row.amount || 0).toLocaleString('es-ES', {minimumFractionDigits:2,maximumFractionDigits:2})} &euro;</td></tr>
+        `).join('') : '<tr><td colspan="7" class="text-center text-muted py-4">No hay cobros en el periodo seleccionado.</td></tr>');
+    }).fail(function (xhr) { $('#billing-payments-list').empty(); billingHubAlert('danger', 'payments', xhr.responseJSON?.error || 'Error al cargar los cobros.'); });
+}
+
+let financialWizard = { step: 'provider', providers: [], selected: null };
+
+function financialProviderOptions(data) {
+    const source = data?.data || data || [];
+    return (Array.isArray(source) ? source : []).filter(item => item && item.service).map(item => ({
+        ...item,
+        service: String(item.service),
+        label: String(item.fullname || item.description || item.name || item.service),
+        image: String(item.imageSVG || item.image || '')
+    })).sort((a,b) => a.label.localeCompare(b.label, 'es'));
+}
+
+function showFinancialWizardStep(step) {
+    financialWizard.step = step;
+    $('.financial-wizard-step').addClass('d-none');
+    $(`#financial-step-${step}`).removeClass('d-none');
+    $('#btn-financial-back').toggleClass('d-none', step === 'provider');
+    $('#btn-save-financial-connection').toggleClass('d-none', step === 'provider').text(step === 'products' ? 'Añadir seleccionados' : (step === 'challenge' ? 'Continuar' : 'Acceder'));
+}
+
+function setFinancialWizardLoading(loading, title = 'Conectando con tu entidad...') {
+    $('#financial-wizard-loading-title').text(title);
+    $('#financial-wizard-loading').toggleClass('d-none', !loading);
+    $('#financialConnectionModal').attr('aria-busy', loading ? 'true' : 'false');
+}
+
+function renderFinancialProviders() {
+    const query = ($('#financial-provider-search').val() || '').trim().toLocaleLowerCase('es');
+    const rows = financialWizard.providers.filter(item => !query || item.label.toLocaleLowerCase('es').includes(query));
+    $('#financial-provider-list').html(rows.length ? rows.map(item => `<button class="financial-provider-row" type="button" data-service="${escapeHtml(item.service)}"><span class="financial-provider-logo">${item.image ? `<img src="${escapeHtml(item.image)}" alt="" loading="lazy">` : '<i class="bi bi-bank"></i>'}</span><span><strong>${escapeHtml(item.label)}</strong>${String(item.business) === '1' ? '<small>Empresas</small>' : ''}</span><i class="bi bi-chevron-right ms-auto"></i></button>`).join('') : '<div class="text-center text-muted py-5">No se encontraron entidades.</div>');
+}
+
+function selectFinancialProvider(service) {
+    const provider = financialWizard.providers.find(item => item.service === service); if (!provider) return;
+    financialWizard.selected = provider; $('#financial-service').val(provider.service); $('#financial-display-name').val(provider.label);
+    $('#financial-selected-provider').html(`<span class="financial-provider-logo">${provider.image ? `<img src="${escapeHtml(provider.image)}" alt="">` : '<i class="bi bi-bank"></i>'}</span><div><strong>${escapeHtml(provider.label)}</strong><div class="small text-muted">Inicio de sesión seguro</div></div>`);
+    const fields = [];
+    if (provider.documenttype && provider.documenttype !== '0') { const options=String(provider.documenttype).split('|'); fields.push(`<div class="col-md-6"><label class="form-label">Tipo de documento</label><select class="form-select" name="documentType">${options.map((label,index)=>`<option value="${index}">${escapeHtml(label)}</option>`).join('')}</select></div>`); }
+    ['user','pass','pass2','pass3'].forEach(key => { const label=String(provider[key]||'').trim(); if(!label||label==='0')return; const optional=/opcional/i.test(label); const apiType=String(provider[`${key}type`]||'text'); const type=key==='user'?(apiType==='tel'?'tel':apiType==='date'?'date':apiType==='email'?'email':'text'):(apiType==='date'?'date':'password'); const help=String(provider[`${key}desc`]||''); fields.push(`<div class="col-md-6"><label class="form-label" for="financial-${key}">${escapeHtml(label)}</label><input class="form-control" id="financial-${key}" name="${key}" type="${type}" ${optional?'':'required'} autocomplete="${key==='user'?'off':'new-password'}">${help?`<div class="form-text">${escapeHtml(help)}</div>`:''}</div>`); });
+    $('#financial-credential-fields').html(fields.join('')); showFinancialWizardStep('credentials');
+}
+
+function openFinancialConnection(type) {
+    if (!FINANCIAL_HUB_ENABLED) return;
+    const isBank = type === 'bank';
+    $('#financial-connection-form')[0]?.reset();
+    $('#financial-connection-type').val(isBank ? 'bank' : 'utility');
+    $('#financial-connection-title').text(isBank ? 'Añadir banco' : 'Añadir suministro');
+    $('#financial-connection-alert').addClass('d-none').text('');
+    financialWizard = { step: 'provider', providers: [], selected: null }; setFinancialWizardLoading(false); $('#financial-provider-search').val('').attr('placeholder', isBank ? 'Buscar banco...' : 'Buscar proveedor...'); $('#financial-provider-list').html('<div class="text-center text-muted py-5">Cargando opciones...</div>'); showFinancialWizardStep('provider');
+    financialConnectionModal = financialConnectionModal || bootstrap.Modal.getOrCreateInstance(document.getElementById('financialConnectionModal'));
+    financialConnectionModal.show();
+    $.getJSON(`api/financial_hub.php?action=providers&type=${encodeURIComponent(isBank ? 'bank' : 'utility')}`).done(function (res) {
+        financialWizard.providers = financialProviderOptions(res.result); renderFinancialProviders();
+        if (!financialWizard.providers.length) $('#financial-connection-alert').removeClass('d-none').addClass('alert-warning').text('No se recibieron opciones disponibles.');
+    }).fail(function (xhr) { $('#financial-provider-list').html('<div class="text-center text-danger py-5">No se pudieron cargar las opciones.</div>'); $('#financial-connection-alert').removeClass('d-none').addClass('alert-danger').text(xhr.responseJSON?.error || 'No se pudieron cargar las entidades.'); });
+}
+
+function loadFinancialConnections(type) {
+    if (!FINANCIAL_HUB_ENABLED) return;
+    const plural = type === 'bank' ? 'banks' : 'utilities';
+    const $container = $(`#billing-${plural}-connections`);
+    $container.html('<span class="d-inline-flex align-items-center gap-2 text-muted small"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span>Cargando conexiones...</span>');
+    $.getJSON(`api/financial_hub.php?action=connections&type=${encodeURIComponent(type)}`).done(function (res) {
+        const connections = res.connections || [];
+        if (!connections.length) {
+            $container.html('<span class="text-muted small">Todavía no hay conexiones guardadas.</span>');
+            $(`#billing-${plural}-items`).html(`<tr><td colspan="4" class="text-center text-muted py-4">${type === 'bank' ? 'Añade o selecciona un banco.' : 'Añade o selecciona un suministro.'}</td></tr>`);
+            return;
+        }
+        const choices=connections.flatMap(item=>(item.products||[]).map(product=>({connection:item,product})));
+        if(type==='bank'){
+            if(!choices.some(choice=>choice.connection.id===financialSelectedConnections.bank&&choice.product.id===financialSelectedProducts.bank)){
+                financialSelectedConnections.bank=choices[0]?.connection.id||0;financialSelectedProducts.bank=choices[0]?.product.id||'';
+            }
+            $container.html(choices.map(({connection:item,product})=>{const active=item.id===financialSelectedConnections.bank&&product.id===financialSelectedProducts.bank;const identifier=product.iban||product.id||'';const suffix=identifier.slice(-4);return `<div class="btn-group" role="group"><button type="button" class="btn btn-sm text-start ${active?'btn-primary':'btn-outline-primary'} btn-financial-select" data-type="bank" data-id="${item.id}" data-product-id="${escapeHtml(product.id)}"><strong class="d-block">${escapeHtml(item.display_name)}${item.status==='error'?' · Error':''}</strong><small class="d-block">${escapeHtml(product.type_label||'Producto')}${suffix?` · •••• ${escapeHtml(suffix)}`:''}</small></button><button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown"><span class="visually-hidden">Opciones</span></button><ul class="dropdown-menu dropdown-menu-end"><li><button class="dropdown-item btn-financial-sync" type="button" data-type="bank" data-id="${item.id}" data-product-id="${escapeHtml(product.id)}"><i class="bi bi-arrow-repeat me-2"></i>Actualizar</button></li><li><button class="dropdown-item text-danger btn-financial-disconnect-product" type="button" data-type="bank" data-id="${item.id}" data-product-id="${escapeHtml(product.id)}"><i class="bi bi-trash me-2"></i>Desconectar producto</button></li></ul></div>`;}).join(''));
+            if(financialSelectedConnections.bank)loadFinancialItems('bank',financialSelectedConnections.bank,financialSelectedProducts.bank);return;
+        }
+        if(!choices.some(choice=>choice.connection.id===financialSelectedConnections.utility&&choice.product.id===financialSelectedProducts.utility)){financialSelectedConnections.utility=choices[0]?.connection.id||0;financialSelectedProducts.utility=choices[0]?.product.id||'';}
+        $container.html(choices.map(({connection:item,product})=>{const active=item.id===financialSelectedConnections.utility&&product.id===financialSelectedProducts.utility;const suffix=String(product.id||'').slice(-4);const detail=[product.detail,suffix?`•••• ${suffix}`:''].filter(Boolean).join(' · ');return `<div class="btn-group" role="group"><button type="button" class="btn btn-sm text-start ${active?'btn-primary':'btn-outline-primary'} btn-financial-select" data-type="utility" data-id="${item.id}" data-product-id="${escapeHtml(product.id)}"><strong class="d-block">${escapeHtml(item.display_name)}${item.status==='error'?' · Error':''}</strong><small class="d-block">${escapeHtml(detail||product.type_label||'Contrato')}</small></button><button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown"><span class="visually-hidden">Opciones</span></button><ul class="dropdown-menu dropdown-menu-end"><li><button class="dropdown-item text-danger btn-financial-disconnect-product" type="button" data-type="utility" data-id="${item.id}" data-product-id="${escapeHtml(product.id)}"><i class="bi bi-trash me-2"></i>Quitar contrato</button></li></ul></div>`;}).join(''));
+        if(financialSelectedConnections.utility)loadFinancialItems('utility',financialSelectedConnections.utility,financialSelectedProducts.utility);
+    }).fail(function (xhr) { $container.empty(); billingHubAlert('danger', type, xhr.responseJSON?.error || 'No se pudieron cargar las conexiones.'); });
+}
+
+function loadFinancialItems(type, connectionId, productId = '') {
+    const plural = type === 'bank' ? 'banks' : 'utilities'; const columns = 4;
+    $(`#billing-${plural}-items`).html(`<tr><td colspan="${columns}" class="text-center text-muted py-5"><span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>${type==='bank'?'Consultando movimientos...':'Cargando datos...'}</td></tr>`);
+    $.getJSON(`api/financial_hub.php?action=items&connection_id=${encodeURIComponent(connectionId)}&product_id=${encodeURIComponent(productId)}`).done(function (res) {
+        const rows = res.items || [];
+        $(`#billing-${plural}-items`).html(rows.length ? rows.map(item => type === 'bank' ? `<tr><td>${escapeHtml(formatInvoiceDate(item.occurred_on || ''))}</td><td>${escapeHtml(item.description || '')}</td><td class="text-end ${Number(item.amount)<0?'text-danger':'text-success'}">${Number(item.amount || 0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})} ${escapeHtml(item.currency || 'EUR')}</td><td class="text-end">${item.balance === null ? '' : Number(item.balance).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>` : `<tr><td>${escapeHtml(formatInvoiceDate(item.occurred_on || ''))}</td><td>${escapeHtml(item.description || '')}</td><td class="text-end ${Number(item.amount)<0?'text-success':'text-danger'}">${item.amount === null ? '' : Number(item.amount).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' ' + escapeHtml(item.currency || 'EUR')}</td><td class="text-end">${item.download_url?`<a class="btn btn-sm btn-outline-primary" href="${escapeHtml(item.download_url)}" target="_blank" rel="noopener noreferrer" title="Abrir factura original"><i class="bi bi-download"></i><span class="visually-hidden">Abrir factura original</span></a>`:''}</td></tr>`).join('') : `<tr><td colspan="${columns}" class="text-center text-muted py-4">${type==='bank'?'No hay movimientos en los últimos 30 días.':'No hay datos disponibles todavía.'}</td></tr>`);
+    }).fail(function (xhr) { $(`#billing-${plural}-items`).empty(); billingHubAlert('danger', type, xhr.responseJSON?.error || 'No se pudieron cargar los datos.'); });
+}
+
+$(document).on('shown.bs.tab', '[data-bs-target="#billing-payments-panel"]', loadBillingPayments);
+$(document).on('shown.bs.tab', '[data-bs-target="#billing-banks-panel"]', function(){ loadFinancialConnections('bank'); });
+$(document).on('shown.bs.tab', '[data-bs-target="#billing-utilities-panel"]', function(){ loadFinancialConnections('utility'); });
+$(document).on('click', '.btn-financial-connect', function(){ openFinancialConnection($(this).data('type')); });
+$(document).on('click', '.btn-financial-select', function(){ const type=$(this).data('type'), id=parseInt($(this).data('id'),10); financialSelectedConnections[type]=id;financialSelectedProducts[type]=String($(this).data('product-id')||'');loadFinancialConnections(type); });
+$(document).on('click', '.btn-financial-sync', function(){ const type=$(this).data('type');if(type==='bank'){financialSelectedConnections.bank=parseInt($(this).data('id'),10);financialSelectedProducts.bank=String($(this).data('product-id')||'');loadFinancialConnections('bank');return;}const button=$(this).prop('disabled',true); $.post('api/financial_hub.php?action=sync',{csrf_token:FINANCIAL_HUB_CSRF_TOKEN,connection_id:$(this).data('id')},null,'json').done(res=>{billingHubAlert('success',type,res.message||'Datos actualizados.');loadFinancialConnections(type);}).fail(xhr=>billingHubAlert('danger',type,xhr.responseJSON?.error||'No se pudo actualizar.')).always(()=>button.prop('disabled',false)); });
+$(document).on('click', '.btn-financial-disconnect', function(){ if(!window.confirm('¿Desconectar y eliminar los datos importados de esta conexión?'))return; const type=$(this).data('type'), plural=type==='bank'?'banks':'utilities'; $.post('api/financial_hub.php?action=disconnect',{csrf_token:FINANCIAL_HUB_CSRF_TOKEN,connection_id:$(this).data('id')},null,'json').done(()=>{financialSelectedConnections[type]=0;if(type==='bank')financialSelectedProducts.bank='';$(`#billing-${plural}-items`).html('<tr><td colspan="4" class="text-center text-muted py-4">Actualizando...</td></tr>');loadFinancialConnections(type);}).fail(xhr=>billingHubAlert('danger',type,xhr.responseJSON?.error||'No se pudo desconectar.')); });
+$(document).on('click', '.btn-financial-disconnect-product', function(){const type=String($(this).data('type')||'bank');if(!window.confirm(type==='utility'?'¿Quitar este contrato?':'¿Desconectar esta cuenta o tarjeta?'))return;$.post('api/financial_hub.php?action=disconnect_product',{csrf_token:FINANCIAL_HUB_CSRF_TOKEN,connection_id:$(this).data('id'),product_id:String($(this).data('product-id')||'')},null,'json').done(res=>{financialSelectedConnections[type]=0;financialSelectedProducts[type]='';$(`#billing-${type==='bank'?'banks':'utilities'}-items`).html('<tr><td colspan="4" class="text-center text-muted py-4">Actualizando...</td></tr>');billingHubAlert('success',type,res.message||(type==='utility'?'Contrato eliminado.':'Producto desconectado.'));loadFinancialConnections(type);}).fail(xhr=>billingHubAlert('danger',type,xhr.responseJSON?.error||(type==='utility'?'No se pudo quitar el contrato.':'No se pudo desconectar el producto.')));});
+$(document).on('input', '#financial-provider-search', renderFinancialProviders);
+$(document).on('click', '.financial-provider-row', function(){ selectFinancialProvider(String($(this).data('service'))); });
+$('#btn-financial-back').on('click', function(){ if(financialWizard.step==='credentials')showFinancialWizardStep('provider'); else if(financialWizard.step==='challenge')showFinancialWizardStep('credentials'); });
+$('#financial-connection-form').on('submit', function(event){
+    event.preventDefault(); const button=$('#btn-save-financial-connection').prop('disabled',true); $('#financial-connection-alert').addClass('d-none').text('');
+    if(financialWizard.step==='products'){
+        const products=$('#financial-products-list input:checked').map(function(){return String(this.value);}).get();
+        setFinancialWizardLoading(true, 'Guardando la conexión...'); $.post('api/financial_hub.php?action=save_connection',{csrf_token:FINANCIAL_HUB_CSRF_TOKEN,products:JSON.stringify(products)},null,'json').done(function(res){const type=$('#financial-connection-type').val();financialConnectionModal?.hide();financialSelectedConnections[type]=res.connection_id;loadFinancialConnections(type);billingHubAlert('success',type,res.message||'Conexión guardada.');}).fail(xhr=>$('#financial-connection-alert').removeClass('d-none').addClass('alert-danger').text(xhr.responseJSON?.error||'No se pudo guardar la conexión.')).always(()=>{setFinancialWizardLoading(false);button.prop('disabled',false);}); return;
+    }
+    const data=new FormData(this); data.append('csrf_token',FINANCIAL_HUB_CSRF_TOKEN);
+    setFinancialWizardLoading(true);
+    $.ajax({url:'api/financial_hub.php?action=connect',method:'POST',data,processData:false,contentType:false,dataType:'json'}).done(function(res){
+        if(res.requires_action==='products'){
+            const products=res.products||[], preferredIndex=products.length===1?0:products.findIndex(item=>item.kind==='account'); $('#financial-products-list').html(products.length?products.map((item,index)=>`<label class="financial-product-row"><input class="form-check-input" type="checkbox" value="${escapeHtml(item.id)}" ${index===preferredIndex?'checked':''}><span><strong>${escapeHtml(item.label||item.iban||item.id)}</strong><small>${escapeHtml([item.type_label,item.detail,item.iban].filter(Boolean).join(' · '))}</small></span>${item.balance===null?'':`<span class="ms-auto fw-semibold">${Number(item.balance).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})} ${escapeHtml(item.currency||'EUR')}</span>`}</label>`).join(''):'<div class="alert alert-warning">No se encontraron cuentas bancarias ni tarjetas para añadir.</div>'); showFinancialWizardStep('products'); return;
+        }
+    }).fail(function(xhr){
+        const res=xhr.responseJSON||{}, context=res.authentication_context||{}; $('#financial-session-id').val(context.session_id||''); $('#financial-counter-id').val(context.counter_id||'');
+        if(res.requires_action==='account'&&Array.isArray(context.accounts)){ $('#financial-challenge-content').html('<h6>Selecciona el contrato</h6><div class="list-group">'+context.accounts.map(item=>`<button type="button" class="list-group-item list-group-item-action btn-financial-account" data-id="${escapeHtml(item.account_id)}">${escapeHtml(item.description||item.name||item.account_id)}</button>`).join('')+'</div>'); showFinancialWizardStep('challenge'); }
+        else if(res.requires_action==='otp'){ $('#financial-challenge-content').html('<h6>Verificación adicional</h6><p class="text-muted">Introduce el código que te ha enviado tu entidad.</p><label class="form-label" for="financial-otp">Código de verificación</label><input class="form-control" id="financial-otp" name="OTP" inputmode="numeric" autocomplete="one-time-code" required>'); showFinancialWizardStep('challenge'); }
+        else if(res.requires_action==='push'){ $('#financial-challenge-content').html('<h6>Confirma el acceso</h6><p>Abre la aplicación de tu entidad y autoriza la conexión. Cuando termines, pulsa Continuar.</p>'); showFinancialWizardStep('challenge'); }
+        $('#financial-connection-alert').removeClass('d-none alert-warning alert-danger').addClass(res.requires_action?'alert-warning':'alert-danger').text(res.error||'No se pudo completar la conexión.');
+    }).always(()=>{setFinancialWizardLoading(false);button.prop('disabled',false);});
+});
+$(document).on('click','.btn-financial-account',function(){ $('#financial-account-id').val($(this).data('id')); $('#financial-connection-form').trigger('submit'); });
+$('#financialConnectionModal').on('shown.bs.modal', function(){
+    document.body.classList.add('financial-connection-modal-open');
+    const backdrops = document.querySelectorAll('.modal-backdrop');
+    backdrops[backdrops.length - 1]?.classList.add('financial-connection-backdrop');
+}).on('hidden.bs.modal', function(){
+    document.body.classList.remove('financial-connection-modal-open');
+    document.querySelectorAll('.financial-connection-backdrop').forEach(backdrop => backdrop.remove());
+    if (document.getElementById('invoicesModal')?.classList.contains('show')) document.body.classList.add('modal-open');
+});
+$('#billing-payments-search').on('input', function(){clearTimeout(billingPaymentsSearchTimer);billingPaymentsSearchTimer=setTimeout(loadBillingPayments,250);});
+$('#billing-payments-date-from, #billing-payments-date-to').on('change', loadBillingPayments);
 
 $(document).on('show.bs.dropdown', '.invoice-actions-dropdown', function () {
     const menu = this.querySelector('.dropdown-menu');
@@ -17934,7 +19777,11 @@ function attachInvoicesModalLoader() {
     modalElement.dataset.invoiceLoaderAttached = '1';
     modalElement.addEventListener('shown.bs.modal', function () {
         initializeInvoicesModalFilters();
-        loadInvoicesList();
+        const target = document.querySelector('#billing-hub-tabs .nav-link.active')?.getAttribute('data-bs-target');
+        if (target === '#billing-payments-panel') loadBillingPayments();
+        else if (target === '#billing-banks-panel') loadFinancialConnections('bank');
+        else if (target === '#billing-utilities-panel') loadFinancialConnections('utility');
+        else loadInvoicesList();
     });
 }
 
@@ -17985,7 +19832,7 @@ $('#send-invoice-email-form').on('submit', function (event) {
 });
 
 function openAppLogModal() {
-    if (!IS_SUPERADMIN || !appLogModal) return;
+    if (!IS_ADMIN || !appLogModal) return;
     initializeAppLogModalFilters();
     appLogModal.show();
 }
@@ -18290,6 +20137,103 @@ function saveTimeTrackingSettings() {
     });
 }
 
+function apiSettingsFormatDate(value) {
+    if (!value) return 'Nunca';
+    const parsed = new Date(String(value).replace(' ', 'T'));
+    return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString('es-ES');
+}
+
+function apiSettingsShowAlert(type, message) {
+    $('#api-settings-alert').removeClass('d-none alert-success alert-danger alert-warning alert-info').addClass(`alert-${type}`).text(message);
+}
+
+function renderApiSettings(data) {
+    const key = data && data.api_key ? data.api_key : null;
+    $('#api-key-empty').toggleClass('d-none', !!key);
+    $('#api-key-active').toggleClass('d-none', !key);
+    $('#btn-revoke-api-key').toggleClass('d-none', !key);
+    $('#btn-generate-api-key span').text(key ? 'Renovar API Key' : 'Generar API Key');
+    if (!key) return;
+    $('#api-key-prefix').text(key.key_prefix || 'sgp_live_');
+    $('#api-access-mode').val(key.access_mode === 'read_write' ? 'read_write' : 'read');
+    const mode = key.access_mode === 'read_write' ? 'Lectura y escritura' : 'Solo lectura';
+    $('#api-key-meta').text(`${mode} · Creada: ${apiSettingsFormatDate(key.created_at)} · Último uso: ${apiSettingsFormatDate(key.last_used_at)}`);
+}
+
+async function loadApiSettings() {
+    if (!IS_SUPERADMIN || !$('#api-settings-panel').length || $('#api-settings-tab').prop('disabled')) return;
+    try {
+        const response = await fetch('api/api_keys.php', { credentials: 'same-origin' });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.success) throw new Error(data.error || 'No se pudo cargar la configuración de la API.');
+        renderApiSettings(data);
+    } catch (error) {
+        apiSettingsShowAlert('danger', error.message);
+    }
+}
+
+async function updateApiKey(action) {
+    const response = await fetch('api/api_keys.php', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body: new URLSearchParams({
+            csrf_token: API_KEYS_CSRF_TOKEN,
+            action,
+            access_mode: $('#api-access-mode').val() || 'read'
+        })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.success) throw new Error(data.error || 'No se pudo actualizar la API Key.');
+    return data;
+}
+
+async function copyApiSettingsValue(selector, button) {
+    const value = $(selector).val() || $(selector).text();
+    if (!value) return;
+    await navigator.clipboard.writeText(value);
+    const original = $(button).html();
+    $(button).html('<i class="bi bi-check-lg"></i> Copiado');
+    window.setTimeout(() => $(button).html(original), 1600);
+}
+
+$(function () {
+    $('#api-settings-tab').on('shown.bs.tab', function () {
+        $('#settingsModal .modal-footer').addClass('d-none');
+        loadApiSettings();
+    });
+    $('#btn-generate-api-key').on('click', async function () {
+        const replacing = !$('#api-key-active').hasClass('d-none');
+        if (replacing && !window.confirm('La clave actual dejará de funcionar inmediatamente. ¿Generar una nueva API Key?')) return;
+        const $button = $(this).prop('disabled', true);
+        try {
+            const data = await updateApiKey('generate');
+            $('#api-key-value').val((data.generated || {}).api_key || '');
+            $('#api-key-generated').removeClass('d-none');
+            apiSettingsShowAlert('success', data.message || 'API Key generada correctamente.');
+            await loadApiSettings();
+        } catch (error) {
+            apiSettingsShowAlert('danger', error.message);
+        } finally {
+            $button.prop('disabled', false);
+        }
+    });
+    $('#btn-revoke-api-key').on('click', async function () {
+        if (!window.confirm('La integración dejará de funcionar inmediatamente. ¿Revocar la API Key?')) return;
+        const $button = $(this).prop('disabled', true);
+        try {
+            const data = await updateApiKey('revoke');
+            $('#api-key-generated').addClass('d-none');
+            apiSettingsShowAlert('success', data.message || 'API Key revocada.');
+            await loadApiSettings();
+        } catch (error) {
+            apiSettingsShowAlert('danger', error.message);
+        } finally {
+            $button.prop('disabled', false);
+        }
+    });
+    $('#btn-copy-api-key').on('click', function () { copyApiSettingsValue('#api-key-value', this).catch(() => apiSettingsShowAlert('warning', 'No se pudo copiar automáticamente. Selecciona la clave y cópiala manualmente.')); });
+});
+
 $(function () {
     updateTimeTrackingClock();
     if (typeof INITIAL_TIME_TRACKING_ENABLED !== 'undefined' && INITIAL_TIME_TRACKING_ENABLED) {
@@ -18364,7 +20308,7 @@ function formatAppLogDate(value) {
 }
 
 function loadAppLogsList() {
-    if (!IS_SUPERADMIN) return;
+    if (!IS_ADMIN) return;
     $('#app-log-alert').addClass('d-none').removeClass('alert-danger').text('');
     $('#app-log-list-body').html('<tr><td colspan="6" class="text-center text-muted py-4">Cargando log...</td></tr>');
     $.ajax({
@@ -18390,6 +20334,55 @@ function loadAppLogsList() {
             $('#app-log-list-body').empty();
         }
     });
+}
+
+function incidentActionButtonHtml(incident) {
+    const action = String(incident.action || '');
+    if (!action) return '';
+    const labels = { billing_invoices: 'Abrir Facturaci\u00f3n', billing_settings: 'Revisar facturaci\u00f3n', payment_settings: 'Revisar pagos', communication_settings: 'Configurar correo', data_export: 'Ver exportaciones', app_log: 'Ver Log' };
+    return `<button type="button" class="btn btn-sm btn-outline-primary btn-incident-action" data-incident-action="${escapeHtml(action)}">${escapeHtml(labels[action] || 'Revisar')}</button>`;
+}
+
+function renderAppIncidents(incidents) {
+    const $list = $('#app-incidents-list');
+    const count = incidents.reduce((total, item) => total + Math.max(1, parseInt(item.count || 1, 10)), 0);
+    $('#app-incidents-count').toggleClass('d-none', count < 1).text(count || '');
+    if (!incidents.length) {
+        $list.html('<div class="alert alert-success mb-0"><i class="bi bi-check-circle-fill me-2"></i><strong>No hay incidencias pendientes.</strong><div class="small mt-1">Los servicios y datos comprobados no requieren atenci\u00f3n.</div></div>');
+        return;
+    }
+    $list.html(`<div class="row g-3">${incidents.map(item => {
+        const danger = item.level === 'danger';
+        return `<div class="col-12 col-lg-6"><article class="card h-100 border-${danger ? 'danger' : 'warning'}"><div class="card-body">
+            <div class="d-flex justify-content-between gap-3"><div><span class="badge text-bg-${danger ? 'danger' : 'warning'} mb-2">${danger ? 'Cr\u00edtica' : 'Revisar'}</span><h6 class="mb-1">${escapeHtml(item.title || '')}</h6></div><span class="badge rounded-pill text-bg-light fs-6 align-self-start">${parseInt(item.count || 1, 10)}</span></div>
+            <p class="small text-muted mb-3">${escapeHtml(item.description || '')}</p>
+            <div class="alert alert-light border small py-2 mb-3"><i class="bi bi-lightbulb me-1"></i><strong>C\u00f3mo resolverlo:</strong> ${escapeHtml(item.advice || '')}</div>
+            ${incidentActionButtonHtml(item)}
+        </div></article></div>`;
+    }).join('')}</div>`);
+}
+
+function updateAppIncidentsNavIndicator(incidents) {
+    const $indicator = $('#app-incidents-nav-indicator');
+    if (!$indicator.length) return;
+    const hasCritical = incidents.some(item => String(item.level || '') === 'danger');
+    const hasIncidents = incidents.length > 0;
+    $indicator
+        .toggleClass('d-none', !hasIncidents)
+        .toggleClass('text-danger', hasCritical)
+        .toggleClass('text-warning', hasIncidents && !hasCritical)
+        .attr('title', hasCritical ? 'Hay incidencias importantes' : (hasIncidents ? 'Hay incidencias pendientes' : ''))
+        .html(hasCritical ? '<i class="bi bi-circle-fill" style="font-size:.55rem"></i>' : '<i class="bi bi-exclamation-triangle-fill"></i>');
+}
+
+function loadAppIncidents() {
+    $('#app-incidents-list').html('<div class="text-center text-muted py-5"><span class="spinner-border spinner-border-sm me-2"></span>Comprobando incidencias...</div>');
+    $.getJSON('api/admin.php?action=list_incidents').done(res => {
+        if (!res.success) throw new Error(res.error || 'No se pudieron comprobar las incidencias.');
+        const incidents = res.incidents || [];
+        updateAppIncidentsNavIndicator(incidents);
+        renderAppIncidents(incidents);
+    }).fail(xhr => $('#app-incidents-list').html(`<div class="alert alert-danger">${escapeHtml(xhr.responseJSON?.error || 'No se pudieron comprobar las incidencias.')}</div>`));
 }
 
 function renderAppLogsList(logs) {
@@ -18419,6 +20412,36 @@ function attachAppLogModalLoader() {
     modalElement.dataset.appLogLoaderAttached = '1';
     modalElement.addEventListener('shown.bs.modal', function () {
         loadAppLogsList();
+        loadAppIncidents();
+    });
+    $('#app-incidents-tab').on('shown.bs.tab', loadAppIncidents);
+    $('#btn-refresh-app-incidents').on('click', loadAppIncidents);
+    $(document).on('click', '.btn-incident-action', function () {
+        const action = String($(this).data('incident-action') || '');
+        if (action === 'app_log') {
+            bootstrap.Tab.getOrCreateInstance(document.getElementById('app-log-tab')).show();
+            return;
+        }
+        if (action === 'billing_invoices') {
+            appLogModal.hide();
+            window.setTimeout(() => bootstrap.Modal.getOrCreateInstance(document.getElementById('invoicesModal')).show(), 180);
+            return;
+        }
+        if (action === 'data_export') {
+            appLogModal.hide();
+            window.setTimeout(() => bootstrap.Modal.getOrCreateInstance(document.getElementById('dataExportModal')).show(), 180);
+            return;
+        }
+        if (action === 'communication_settings') {
+            appLogModal.hide();
+            window.setTimeout(() => openFocusedSettingsTab('email-settings-tab', 'Correo electr\u00f3nico'), 180);
+            return;
+        }
+        if (action === 'billing_settings' || action === 'payment_settings') {
+            appLogModal.hide();
+            const tabId = action === 'billing_settings' ? 'billing-settings-tab' : 'payment-settings-tab';
+            window.setTimeout(() => openFocusedSettingsTab(tabId, action === 'billing_settings' ? 'Facturaci\u00f3n' : 'Pagos'), 180);
+        }
     });
     $('#app-log-date-from, #app-log-date-to').on('change', function () {
         loadAppLogsList();
@@ -18434,10 +20457,12 @@ if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function () {
         attachInvoicesModalLoader();
         attachAppLogModalLoader();
+        if (document.getElementById('app-incidents-nav-indicator')) loadAppIncidents();
     });
 } else {
     attachInvoicesModalLoader();
     attachAppLogModalLoader();
+    if (document.getElementById('app-incidents-nav-indicator')) loadAppIncidents();
 }
 
 function openAdminStatsModal() {
@@ -18445,6 +20470,8 @@ function openAdminStatsModal() {
     $('#admin-stats-alert').addClass('d-none').text('');
     $('#admin-stats-content').html('<div class="text-center text-muted py-4">Cargando...</div>');
     $('#admin-reports-content').html('<div class="text-center text-muted py-4">Cargando informes...</div>');
+    $('#admin-reports-tabs, #admin-reports-panel').addClass('d-none');
+    $('#admin-stats-panel').addClass('show active');
     adminStatsModal.show();
 
     $.ajax({
@@ -18464,7 +20491,9 @@ function openAdminStatsModal() {
     });
 }
 
-function renderAdminStats(stats) {
+let adminStatsCharts = [];
+
+function renderAdminStats(stats, targetSelector = '#admin-stats-content') {
     const topPatients = Array.isArray(stats.top_patients) ? stats.top_patients : [];
     const professionalSummary = Array.isArray(stats.professional_summary) ? stats.professional_summary : [];
     const revenue = stats.payment_revenue_month || {};
@@ -18513,22 +20542,73 @@ function renderAdminStats(stats) {
         `
         : '';
 
-    $('#admin-stats-content').html(`
-        <div class="stats-summary-grid mb-4">
-            <div class="stats-summary-card"><span>Hoy</span><strong>${parseInt(stats.today_count || 0, 10)}</strong><small>citas</small></div>
-            <div class="stats-summary-card"><span>Pr&oacute;ximas</span><strong>${parseInt(stats.upcoming_count || 0, 10)}</strong><small>citas</small></div>
-            <div class="stats-summary-card"><span>Este mes</span><strong>${parseInt(stats.month_count || 0, 10)}</strong><small>citas</small></div>
-            <div class="stats-summary-card"><span>Pacientes</span><strong>${parseInt(stats.patient_count || 0, 10)}</strong><small>fichas</small></div>
-            <div class="stats-summary-card"><span>Ingresos online</span><strong>${formatPrice(stats.online_revenue_month || 0)} &euro;</strong><small>este mes</small></div>
-            <div class="stats-summary-card"><span>Pendientes pago</span><strong>${parseInt(stats.pending_payment_count || 0, 10)}</strong><small>citas</small></div>
-            <div class="stats-summary-card"><span>Bonos activos</span><strong>${parseInt(stats.active_bonus_count || 0, 10)}</strong><small>${parseInt(stats.active_bonus_sessions || 0, 10)} sesiones</small></div>
-            ${revenueCards}
+    const $target = $(targetSelector);
+    $target.html(`
+        <ul class="nav nav-tabs stats-section-tabs mb-4" role="tablist">
+            <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#${$target.attr('id')}-patients" type="button">Pacientes</button></li>
+            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#${$target.attr('id')}-sessions" type="button">Sesiones</button></li>
+            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#${$target.attr('id')}-billing" type="button">Facturaci&oacute;n</button></li>
+        </ul>
+        <div class="tab-content">
+            <div class="tab-pane fade show active" id="${$target.attr('id')}-patients">
+                <div class="stats-summary-grid mb-4"><div class="stats-summary-card"><span>Pacientes</span><strong>${parseInt(stats.patient_count || 0, 10)}</strong><small>fichas</small></div></div>
+                <div class="row g-3 mb-4">
+                    <div class="col-12 col-lg-7"><div class="stats-chart-card"><h6>Pacientes por tramo de edad</h6><canvas data-stats-chart="patients-age"></canvas></div></div>
+                    <div class="col-12 col-lg-5"><div class="stats-chart-card"><h6>Pacientes por estado</h6><canvas data-stats-chart="patients-status"></canvas></div></div>
+                </div>
+                <h6 class="mb-3">Pacientes con m&aacute;s sesiones</h6><div class="stats-bars">${bars}</div>
+            </div>
+            <div class="tab-pane fade" id="${$target.attr('id')}-sessions">
+                <div class="stats-summary-grid mb-4">
+                    <div class="stats-summary-card"><span>Hoy</span><strong>${parseInt(stats.today_count || 0, 10)}</strong><small>citas</small></div>
+                    <div class="stats-summary-card"><span>Pr&oacute;ximas</span><strong>${parseInt(stats.upcoming_count || 0, 10)}</strong><small>citas</small></div>
+                    <div class="stats-summary-card"><span>Este mes</span><strong>${parseInt(stats.month_count || 0, 10)}</strong><small>citas</small></div>
+                </div>
+                <div class="row g-3 mb-4">
+                    <div class="col-12"><div class="stats-chart-card"><h6>Evoluci&oacute;n de sesiones</h6><canvas data-stats-chart="sessions-month"></canvas></div></div>
+                    <div class="col-12 col-lg-7"><div class="stats-chart-card"><h6>Sesiones por servicio</h6><canvas data-stats-chart="sessions-service"></canvas></div></div>
+                    <div class="col-12 col-lg-5"><div class="stats-chart-card"><h6>Modalidad</h6><canvas data-stats-chart="sessions-communication"></canvas></div></div>
+                </div>${teamSummary}
+            </div>
+            <div class="tab-pane fade" id="${$target.attr('id')}-billing">
+                <div class="stats-summary-grid mb-4">
+                    <div class="stats-summary-card"><span>Ingresos online</span><strong>${formatPrice(stats.online_revenue_month || 0)} &euro;</strong><small>este mes</small></div>
+                    <div class="stats-summary-card"><span>Pendientes pago</span><strong>${parseInt(stats.pending_payment_count || 0, 10)}</strong><small>citas</small></div>
+                    <div class="stats-summary-card"><span>Bonos activos</span><strong>${parseInt(stats.active_bonus_count || 0, 10)}</strong><small>${parseInt(stats.active_bonus_sessions || 0, 10)} sesiones</small></div>
+                    ${revenueCards}
+                </div>
+                <div class="stats-chart-card"><h6>Cobrado frente a pendiente</h6><canvas data-stats-chart="billing-month"></canvas></div>
+            </div>
         </div>
-        ${teamSummary}
-        <h6 class="mb-3">Pacientes con m&aacute;s sesiones</h6>
-        <div class="stats-bars">${bars}</div>
     `);
+    renderAdminStatsCharts($target[0], stats);
 }
+
+function renderAdminStatsCharts(root, stats) {
+    if (!root || typeof Chart === 'undefined') return;
+    adminStatsCharts = adminStatsCharts.filter(chart => {
+        if (!root.contains(chart.canvas)) return true;
+        chart.destroy();
+        return false;
+    });
+    const primary = getComputedStyle(document.documentElement).getPropertyValue('--primary-color').trim() || '#4285f4';
+    const palette = [primary, '#20c997', '#f0ad4e', '#dc3545', '#6f42c1', '#0dcaf0', '#adb5bd'];
+    const rows = key => Array.isArray(stats[key]) ? stats[key] : [];
+    const monthLabel = value => { const parts=String(value||'').split('-'); return parts.length===2 ? new Date(Number(parts[0]),Number(parts[1])-1,1).toLocaleDateString('es-ES',{month:'short',year:'2-digit'}) : value; };
+    const create = (name, config) => { const canvas=root.querySelector(`[data-stats-chart="${name}"]`); if(canvas) adminStatsCharts.push(new Chart(canvas,config)); };
+    const common = {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}};
+    const bar = (data, horizontal=false) => ({type:'bar',data:{labels:data.map(item=>item.label),datasets:[{data:data.map(item=>Number(item.value)||0),backgroundColor:palette.map(color=>color+'cc'),borderRadius:5}]},options:{...common,indexAxis:horizontal?'y':'x',scales:{y:{beginAtZero:true,ticks:{precision:0}},x:{beginAtZero:horizontal,ticks:{precision:horizontal?0:undefined}}}}});
+    create('patients-age',bar(rows('patients_by_age')));
+    create('patients-status',{type:'doughnut',data:{labels:rows('patients_by_status').map(item=>item.label),datasets:[{data:rows('patients_by_status').map(item=>Number(item.value)||0),backgroundColor:palette}]},options:{...common,plugins:{legend:{display:true,position:'bottom'}}}});
+    create('sessions-service',bar(rows('sessions_by_service'),true));
+    create('sessions-communication',{type:'doughnut',data:{labels:rows('sessions_by_communication').map(item=>item.label),datasets:[{data:rows('sessions_by_communication').map(item=>Number(item.value)||0),backgroundColor:palette}]},options:{...common,plugins:{legend:{display:true,position:'bottom'}}}});
+    create('sessions-month',{type:'line',data:{labels:rows('sessions_by_month').map(item=>monthLabel(item.label)),datasets:[{label:'Sesiones',data:rows('sessions_by_month').map(item=>Number(item.value)||0),borderColor:primary,backgroundColor:primary+'22',fill:true,tension:.3}]},options:{...common,scales:{y:{beginAtZero:true,ticks:{precision:0}}}}});
+    create('billing-month',{type:'bar',data:{labels:rows('billing_by_month').map(item=>monthLabel(item.label)),datasets:[{label:'Cobrado',data:rows('billing_by_month').map(item=>Number(item.collected)||0),backgroundColor:'#198754cc',borderRadius:4},{label:'Pendiente',data:rows('billing_by_month').map(item=>Number(item.pending)||0),backgroundColor:'#dc3545bb',borderRadius:4}]},options:{...common,plugins:{legend:{display:true,position:'bottom'}},scales:{y:{beginAtZero:true,ticks:{callback:value=>`${value} €`}}}}});
+}
+
+$(document).on('shown.bs.tab', '.stats-section-tabs [data-bs-toggle="tab"]', function () {
+    adminStatsCharts.forEach(chart => chart.resize());
+});
 
 function patientNameWithOptionalContactHtml(name, email, phone) {
     const contact = patientContactSummaryHtml(email, phone);
@@ -19444,7 +21524,7 @@ function populateInitialOnboarding(state) {
     $('#onboarding-site-phone').val(values.site_phone || '');
     syncOnboardingColor(values.primary_color || '#4285f4');
     $('#onboarding-initial-view').val(
-        ['dashboard', 'month', 'week', 'patients', 'upcoming'].includes(values.initial_calendar_view)
+        ['dashboard', 'month', 'week', 'agenda', 'list', 'patients', 'upcoming', 'remember'].includes(values.initial_calendar_view)
             ? values.initial_calendar_view
             : 'month'
     );
@@ -19621,6 +21701,8 @@ async function initializeAdminDashboardSettings() {
         const settingsPromise = loadPaymentSettings();
         const dashboardPromise = renderWeekInfo();
         await $.when(settingsPromise, dashboardPromise);
+        await loadCloudBillingSettings();
+        await initializeWeatherIntegration();
         applyPlanFeatureVisibility();
         applyKnowledgeBaseVisibility();
         startQuickAppointmentsAutoRefresh();
@@ -19637,6 +21719,81 @@ async function initializeAdminDashboardSettings() {
             .text(message);
         console.error(err);
     }
+}
+
+function selectedBillingProvider() {
+    return $('input[name="billing-provider"]:checked').val() || CLOUD_BILLING_SETTINGS.provider || 'none';
+}
+
+function syncBillingProviderUi() {
+    const provider = selectedBillingProvider();
+    $('#praxis-billing-settings-block').toggleClass('d-none', provider !== 'praxis');
+    $('#cloud-billing-settings-block').toggleClass('d-none', provider !== 'simplygest_cloud');
+    $('#billing-enabled').prop('checked', provider !== 'none');
+    $('.billing-provider-card').removeClass('border-primary bg-primary-subtle');
+    $(`input[name="billing-provider"][value="${provider}"]`).closest('.billing-provider-card').addClass('border-primary bg-primary-subtle');
+}
+
+function renderCloudBillingConnectionStatus() {
+    const connected = CLOUD_BILLING_SETTINGS.has_api_key && CLOUD_BILLING_SETTINGS.account_name;
+    $('#cloud-billing-api-key').val('');
+    $('#cloud-billing-api-key-help').text(CLOUD_BILLING_SETTINGS.has_api_key
+        ? 'Ya hay una API Key protegida. Escribe otra solo si quieres sustituirla.'
+        : 'Debe permitir lectura y creación de ingresos/ventas.');
+    $('#cloud-billing-connection-status')
+        .toggleClass('alert-success', Boolean(connected))
+        .toggleClass('alert-secondary', !connected)
+        .text(connected
+            ? `Conectado con ${CLOUD_BILLING_SETTINGS.account_name}. Última comprobación: ${CLOUD_BILLING_SETTINGS.verified_at || 'ahora'}.`
+            : 'Todavía no se ha comprobado la conexión.');
+}
+
+function loadCloudBillingSettings() {
+    return new Promise((resolve, reject) => {
+        $.getJSON('api/cloud_billing.php?action=settings')
+            .done(res => {
+                if (!res.success) return reject(new Error(res.error || 'No se pudo cargar el sistema de facturación.'));
+                CLOUD_BILLING_SETTINGS = Object.assign({}, CLOUD_BILLING_SETTINGS, res.settings || {});
+                PAYMENT_SETTINGS.billing_provider = CLOUD_BILLING_SETTINGS.provider;
+                $(`input[name="billing-provider"][value="${CLOUD_BILLING_SETTINGS.provider}"]`).prop('checked', true);
+                syncBillingProviderUi();
+                renderCloudBillingConnectionStatus();
+                resolve(res);
+            })
+            .fail(xhr => reject(new Error(xhr.responseJSON?.error || 'No se pudo cargar el sistema de facturación.')));
+    });
+}
+
+function verifyCloudBillingConnection() {
+    const $button = $('#btn-verify-cloud-billing');
+    $button.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Comprobando...');
+    return new Promise((resolve, reject) => {
+        $.post('api/cloud_billing.php?action=verify', {
+            csrf_token: BILLING_CLOUD_CSRF_TOKEN,
+            api_key: $('#cloud-billing-api-key').val().trim()
+        }).done(res => {
+            if (!res.success) return reject(new Error(res.error || 'No se pudo comprobar la conexión.'));
+            $('#cloud-billing-connection-status').removeClass('alert-secondary alert-danger').addClass('alert-success').text(`Conexión correcta con ${res.account?.name || 'SimplyGest Cloud'}. Guarda los cambios para activarla.`);
+            resolve(res);
+        }).fail(xhr => reject(new Error(xhr.responseJSON?.error || 'No se pudo comprobar la conexión.')))
+          .always(() => $button.prop('disabled', false).html('<i class="bi bi-shield-check me-1"></i>Comprobar conexión'));
+    });
+}
+
+function saveCloudBillingSettings() {
+    return new Promise((resolve, reject) => {
+        $.post('api/cloud_billing.php?action=save', {
+            csrf_token: BILLING_CLOUD_CSRF_TOKEN,
+            provider: selectedBillingProvider(),
+            api_key: $('#cloud-billing-api-key').val().trim()
+        }).done(res => {
+            if (!res.success) return reject(new Error(res.error || 'No se pudo guardar el sistema de facturación.'));
+            CLOUD_BILLING_SETTINGS = Object.assign({}, CLOUD_BILLING_SETTINGS, res.settings || {});
+            PAYMENT_SETTINGS.billing_provider = CLOUD_BILLING_SETTINGS.provider;
+            PAYMENT_SETTINGS.billing_enabled = CLOUD_BILLING_SETTINGS.provider === 'none' ? 0 : 1;
+            resolve(res);
+        }).fail(xhr => reject(new Error(xhr.responseJSON?.error || 'No se pudo guardar el sistema de facturación.')));
+    });
 }
 
 function loadPaymentSettings() {
@@ -19721,7 +21878,7 @@ function loadPaymentSettings() {
             renderServicesSettings();
             syncPatientBillingTabVisibility();
             togglePatientInvoiceAltFields();
-            const initialView = ['dashboard', 'week', 'month', 'patients', 'upcoming'].includes(settings.initial_calendar_view) ? settings.initial_calendar_view : 'month';
+            const initialView = ['dashboard', 'week', 'month', 'agenda', 'list', 'patients', 'upcoming', 'remember'].includes(settings.initial_calendar_view) ? settings.initial_calendar_view : 'month';
             $('#initial-calendar-view').val(initialView);
             LOADED_DASHBOARD_CONFIG_MODE = ['simple', 'advanced', 'custom'].includes(settings.dashboard_config_mode) ? settings.dashboard_config_mode : 'simple';
             $('#dashboard-config-mode').val(LOADED_DASHBOARD_CONFIG_MODE);
@@ -19787,7 +21944,7 @@ function loadPaymentSettings() {
             $('#appointment-second-reminder-enabled').prop('checked', settings.appointment_second_reminder_enabled == 1);
             $('#appointment-second-reminder-hours').val(settings.appointment_second_reminder_hours || '48');
             toggleSecondReminderSettings();
-            $('#email-provider').val(settings.email_provider || 'phpmailer');
+            $('#email-provider').val(settings.email_provider || 'platform');
             $('#smtp-host').val(settings.smtp_host || '');
             $('#smtp-port').val(settings.smtp_port || '587');
             $('#smtp-username').val(settings.smtp_username || '');
@@ -19876,7 +22033,8 @@ function beginOauthRedirect(provider, redirectUrl, alertSelector, button, sectio
 }
 
 function toggleEmailProviderSettings() {
-    let provider = $('#email-provider').val();
+    let provider = $('#email-provider').val() || 'platform';
+    $('#platform-email-settings-block').toggle(provider === 'platform');
     $('#smtp-settings-block').toggle(provider === 'phpmailer');
     $('#google-email-settings-block').toggle(provider === 'google');
     updateGoogleConnectionUi();
@@ -19965,7 +22123,7 @@ function updateGoogleConnectionUi() {
     const hasToken = PAYMENT_SETTINGS.has_google_refresh_token == 1;
     const oauthConfigured = PAYMENT_SETTINGS.google_oauth_configured === undefined || PAYMENT_SETTINGS.google_oauth_configured == 1;
     const isConnected = Boolean(connectedEmail && hasToken);
-    const emailProvider = $('#email-provider').val() || PAYMENT_SETTINGS.email_provider || 'phpmailer';
+    const emailProvider = $('#email-provider').val() || PAYMENT_SETTINGS.email_provider || 'platform';
     const calendarProvider = $('#calendar-provider').val() || PAYMENT_SETTINGS.calendar_provider || 'none';
     const connectedText = connectedEmail ? `Google conectado: ${connectedEmail}` : 'No hay ninguna cuenta Google conectada.';
     const missingConfigText = 'Faltan las credenciales Google OAuth en el servidor.';
@@ -19992,7 +22150,7 @@ function updateGoogleConnectionUi() {
 }
 
 function patientCalendarEmailSettingsReady() {
-    const provider = $('#email-provider').val() || PAYMENT_SETTINGS.email_provider || 'phpmailer';
+    const provider = $('#email-provider').val() || PAYMENT_SETTINGS.email_provider || 'platform';
     if (provider === 'google') {
         return Boolean(($('#google-connected-email').val() || '').trim() && PAYMENT_SETTINGS.has_google_refresh_token == 1);
     }
@@ -20014,8 +22172,15 @@ function toggleBonusesSettings() {
 
 function toggleDiscountPeriodSettings() {
     const enabled = $('#discount-period-enabled').is(':checked');
+    const showDiscountColumn = enabled && planFeatureEnabled('catalog.discounts', false);
     $('.discount-period-field').toggleClass('opacity-50', !enabled);
     $('#discount-period-start-date, #discount-period-end-date, #discount-show-public').prop('disabled', !enabled);
+    $('.services-discount-column').toggleClass('d-none', !showDiscountColumn);
+    $('.service-group-row > .service-group-title:first-child').attr('colspan', 4 + (showDiscountColumn ? 1 : 0));
+    $('#services-settings-body > tr > td.text-muted[colspan]').attr(
+        'colspan',
+        4 + (showDiscountColumn ? 1 : 0) + (billingPlanEnabled() ? 1 : 0)
+    );
 }
 
 function defaultBillingExemptionReason(system) {
@@ -20107,7 +22272,8 @@ function renderServicesSettings() {
     }
     const showTax = billingPlanEnabled();
     const showDiscounts = planFeatureEnabled('catalog.discounts', false);
-    const columnCount = 4 + (showDiscounts ? 1 : 0) + (showTax ? 1 : 0);
+    const showDiscountColumn = showDiscounts && $('#discount-period-enabled').is(':checked');
+    const columnCount = 4 + (showDiscountColumn ? 1 : 0) + (showTax ? 1 : 0);
     if (!APPOINTMENT_SERVICES.length) {
         $body.html(`<tr><td colspan="${columnCount}" class="text-muted text-center py-4">No hay precios configurados.</td></tr>`);
         return;
@@ -20135,7 +22301,7 @@ function renderServicesSettings() {
             : ((PAYMENT_SETTINGS.billing_default_tax_mode || 'exempt') === 'taxed' ? 'taxed' : 'exempt');
         html += `
             <tr class="service-group-row" data-service-id="${service.id || 0}" data-service-key="${escapeHtml(serviceKey)}">
-                <td colspan="${4 + (showDiscounts ? 1 : 0)}" class="service-group-title">${escapeHtml(service.name || '')}</td>
+                <td colspan="${4 + (showDiscountColumn ? 1 : 0)}" class="service-group-title">${escapeHtml(service.name || '')}</td>
                 ${showTax ? `<td class="service-group-title">
                     <select class="form-select form-select-sm billing-service-tax-mode" aria-label="${tax.label} de ${escapeHtml(service.name || '')}">
                         <option value="exempt"${storedMode === 'exempt' ? ' selected' : ''}>Exento</option>
@@ -20157,7 +22323,7 @@ function renderServicesSettings() {
                             <span class="input-group-text">€</span>
                         </div>
                     </td>
-                    ${showDiscounts ? `<td>
+                    ${showDiscounts ? `<td class="services-discount-column${showDiscountColumn ? '' : ' d-none'}">
                         <div class="input-group input-group-sm">
                             <input type="number" class="form-control option-discount-input" min="0" max="100" step="0.01" value="${option.discount_percentage || '0.00'}">
                             <span class="input-group-text">%</span>
@@ -20512,7 +22678,7 @@ function normalizeProfessional(professional = {}) {
         facebook_url: professional.facebook_url || '',
         tiktok_url: professional.tiktok_url || '',
         appointment_summary_email_mode: professional.appointment_summary_email_mode || 'on_booking',
-        initial_calendar_view_override: ['dashboard', 'week', 'month', 'patients', 'upcoming'].includes(professional.initial_calendar_view_override) ? professional.initial_calendar_view_override : '',
+        initial_calendar_view_override: ['dashboard', 'week', 'month', 'agenda', 'list', 'patients', 'upcoming', 'remember'].includes(professional.initial_calendar_view_override) ? professional.initial_calendar_view_override : '',
         timezone_override: professional.timezone_override || '',
         notify_new_appointments: professional.notify_new_appointments == 0 ? 0 : 1,
         notify_cancellations: professional.notify_cancellations == 0 ? 0 : 1,
@@ -20528,12 +22694,12 @@ function normalizeProfessional(professional = {}) {
         default_appointment_location: professional.default_appointment_location || '',
         default_location_id: parseInt(professional.default_location_id || 0, 10),
         livekit_enabled: professional.livekit_enabled === undefined ? 1 : (professional.livekit_enabled == 1 ? 1 : 0),
-        video_provider: ['livekit', 'daily', 'manual'].includes(professional.video_provider)
+        video_provider: ['daily', 'manual'].includes(professional.video_provider)
             ? professional.video_provider
-            : (professional.livekit_enabled == 0 ? 'manual' : 'livekit'),
+            : (professional.livekit_enabled == 0 ? 'manual' : 'daily'),
         livekit_recording_enabled: professional.livekit_recording_enabled == 1 ? 1 : 0,
         livekit_recording_mode: ['audio', 'audio_video'].includes(professional.livekit_recording_mode) ? professional.livekit_recording_mode : 'audio',
-        knowledge_sector_mode: ['own', 'related', 'custom'].includes(professional.knowledge_sector_mode) ? professional.knowledge_sector_mode : 'own',
+        knowledge_sector_mode: ['own', 'tenant', 'related', 'custom'].includes(professional.knowledge_sector_mode) ? professional.knowledge_sector_mode : 'own',
         knowledge_sector_keys: normalizeKnowledgeSectorKeys(professional.knowledge_sector_keys || []),
         role,
         member_permissions: memberPermissions,
@@ -20589,8 +22755,12 @@ function teamMemberPermissionKeys() {
         'billing_own_patients',
         'reports',
         'private_patient_data',
+        'ai_tools',
+        'team_notes',
+        'team_files',
         'create_appointments',
         'cancel_appointments',
+        'issue_attendance_certificates',
         'create_patients'
     ];
 }
@@ -20614,8 +22784,12 @@ function defaultMemberPermissionsForRole(role) {
             billing_own_patients: false,
             reports: false,
             private_patient_data: false,
+            ai_tools: false,
+            team_notes: false,
+            team_files: false,
             create_appointments: true,
             cancel_appointments: true,
+            issue_attendance_certificates: true,
             create_patients: true
         };
     }
@@ -20632,8 +22806,12 @@ function defaultMemberPermissionsForRole(role) {
             billing_own_patients: false,
             reports: false,
             private_patient_data: false,
+            ai_tools: false,
+            team_notes: false,
+            team_files: false,
             create_appointments: true,
             cancel_appointments: true,
+            issue_attendance_certificates: true,
             create_patients: true
         };
     }
@@ -20650,8 +22828,12 @@ function defaultMemberPermissionsForRole(role) {
             billing_own_patients: false,
             reports: false,
             private_patient_data: false,
+            ai_tools: false,
+            team_notes: false,
+            team_files: false,
             create_appointments: false,
             cancel_appointments: false,
+            issue_attendance_certificates: false,
             create_patients: false
         };
     }
@@ -20717,10 +22899,12 @@ function ensureProfessionalExtraFieldsPanel() {
 }
 
 function professionalSummaryEmailReady() {
-    const provider = $('#email-provider').val() || PAYMENT_SETTINGS.email_provider || 'phpmailer';
+    const provider = $('#email-provider').val() || PAYMENT_SETTINGS.email_provider || 'platform';
     const professionalEmail = ($('#professional-editor-email').val() || '').trim();
     let systemReady = false;
-    if (provider === 'google') {
+    if (provider === 'platform') {
+        systemReady = PAYMENT_SETTINGS.platform_email_configured == 1;
+    } else if (provider === 'google') {
         systemReady = Boolean((PAYMENT_SETTINGS.google_connected_email || $('#google-connected-email').val() || '').trim()
             && PAYMENT_SETTINGS.has_google_refresh_token == 1);
     } else {
@@ -20875,6 +23059,14 @@ function renderProfessionalKnowledgeSectorsModal() {
     const $list = $('#professional-knowledge-sectors-list');
     if (!$list.length) return;
     const main = KNOWLEDGE_SECTOR_OPTIONS.main_sector || APP_CURRENT_SECTOR_KEY || '';
+    const tenantSectors = normalizeKnowledgeSectorKeys(KNOWLEDGE_SECTOR_OPTIONS.tenant_sectors || []);
+    const mainName = knowledgeSectorName(main);
+    const tenantNames = tenantSectors.map(knowledgeSectorName).filter(Boolean);
+    $('#professional-knowledge-sectors-info').html(
+        `La interfaz est&aacute; adaptada a <strong>${escapeHtml(mainName)}</strong>. `
+        + (tenantNames.length ? `El centro ha seleccionado: ${tenantNames.map(escapeHtml).join(', ')}. ` : '')
+        + 'Desde aqu&iacute; puedes decidir qu&eacute; bases de conocimiento utilizar&aacute; este profesional.'
+    );
     const selected = professionalEditorSelectedKnowledgeKeys();
     const sectors = Array.isArray(KNOWLEDGE_SECTOR_OPTIONS.sectors) ? KNOWLEDGE_SECTOR_OPTIONS.sectors : [];
     if (!sectors.length) {
@@ -20949,10 +23141,13 @@ function renderProfessionalsSettings() {
 }
 
 function updateProfessionalLivekitRecordingUi() {
-    const livekitPlanEnabled = planFeatureEnabled('livekit.enabled', false);
-    const recordingPlanEnabled = planFeatureEnabled('livekit.recording', false);
+    const livekitPlanEnabled = planFeatureEnabled('videoCalls.integrated', planFeatureEnabled('livekit.enabled', false));
+    const recordingPlanEnabled = planFeatureEnabled('videoCalls.recordingAudio', planFeatureEnabled('livekit.recording', false));
+    const videoRecordingEnabled = planFeatureEnabled('videoCalls.recordingVideo', false);
     const provider = $('#professional-editor-video-provider').val() || 'manual';
-    const canUseRecording = provider === 'livekit' && livekitPlanEnabled && recordingPlanEnabled;
+    const canUseRecording = provider === 'daily' && livekitPlanEnabled && recordingPlanEnabled;
+    $('#professional-editor-livekit-recording-mode option[value="audio_video"]').prop('disabled', !videoRecordingEnabled).toggleClass('d-none', !videoRecordingEnabled);
+    if (!videoRecordingEnabled && $('#professional-editor-livekit-recording-mode').val() === 'audio_video') $('#professional-editor-livekit-recording-mode').val('audio');
     $('#professional-editor-livekit-recording-enabled').prop('disabled', !canUseRecording);
     $('#professional-editor-livekit-recording-mode').prop('disabled', !canUseRecording || !$('#professional-editor-livekit-recording-enabled').is(':checked'));
     if (!canUseRecording) {
@@ -21100,15 +23295,16 @@ function openProfessionalEditor(index = -1, certificateOnly = false) {
     renderProfessionalSessionControls(professional);
     $('#professional-editor-default-location').val(professional.default_appointment_location || '');
     renderProfessionalLocationSelect(professional.default_location_id || 0);
-    const livekitPlanEnabled = planFeatureEnabled('livekit.enabled', false);
-    const livekitRecordingPlanEnabled = planFeatureEnabled('livekit.recording', false);
-    let videoProvider = professional.video_provider || (professional.livekit_enabled == 0 ? 'manual' : 'livekit');
-    if (!['livekit', 'daily', 'manual'].includes(videoProvider)) videoProvider = 'livekit';
+    const livekitPlanEnabled = planFeatureEnabled('videoCalls.integrated', planFeatureEnabled('livekit.enabled', false));
+    const livekitRecordingPlanEnabled = planFeatureEnabled('videoCalls.recordingAudio', planFeatureEnabled('livekit.recording', false));
+    let videoProvider = professional.video_provider || (professional.livekit_enabled == 0 ? 'manual' : 'daily');
+    if (videoProvider === 'livekit') videoProvider = 'daily';
+    if (!['daily', 'manual'].includes(videoProvider)) videoProvider = 'daily';
     if (!livekitPlanEnabled) videoProvider = 'manual';
     $('#professional-editor-video-provider').val(videoProvider).prop('disabled', !livekitPlanEnabled);
     $('#professional-editor-livekit-help').text(livekitPlanEnabled
-        ? 'Elige LiveKit, Daily o un enlace manual de Zoom, Teams u otro proveedor.'
-        : 'Disponible solo en el plan Summum.');
+        ? 'Usa la videollamada integrada o un enlace propio de Zoom, Teams u otro proveedor.'
+        : 'La videollamada integrada está disponible en los planes Magister y Summum.');
     $('#professional-editor-livekit-recording-enabled')
         .prop('checked', livekitPlanEnabled && livekitRecordingPlanEnabled && professional.livekit_recording_enabled == 1);
     $('#professional-editor-livekit-recording-mode').val(professional.livekit_recording_mode || 'audio');
@@ -21613,7 +23809,7 @@ function saveCabinetSettings(button = null, options = {}) {
             success: function (res) {
                 if (res.success) {
                     if (!options.silentSuccess) {
-                        showSettingsAlert('#cabinet-settings-alert', 'success', res.message || 'Equipo guardado correctamente.');
+                        showSettingsAlert('#cabinet-settings-alert', res.email_warning ? 'warning' : 'success', res.message || 'Equipo guardado correctamente.');
                     }
                     if (res.settings && typeof res.settings.allow_patient_transfer !== 'undefined') {
                         PAYMENT_SETTINGS.allow_patient_transfer = res.settings.allow_patient_transfer;
@@ -21722,6 +23918,8 @@ async function saveAllSettings(button = null) {
             skipReload: true,
             skipCalendarRefresh: true
         });
+        await saveCloudBillingSettings();
+        await saveWeatherSettings();
 
         if (typeof IS_SUPERADMIN !== 'undefined' && IS_SUPERADMIN) {
             await saveSignatureSettings();
@@ -21752,6 +23950,9 @@ async function saveAllSettings(button = null) {
         }
 
         await loadPaymentSettings();
+        await loadCloudBillingSettings();
+        WEATHER_REQUEST = null;
+        await initializeWeatherIntegration();
         if (previousDashboardConfigMode !== selectedDashboardConfigMode) {
             showSettingsAlert(alertSelector, 'success', 'Cambios guardados. Recargando dashboard...');
             window.location.reload();
@@ -21817,6 +24018,7 @@ function savePaymentSettings(alertSelector = '#payment-settings-alert', onSucces
     formData.append('legal_uses_non_technical_cookies', $('#legal-uses-non-technical-cookies').is(':checked') ? '1' : '0');
     formData.append('legal_terms_notes', $('#legal-terms-notes').val().trim());
     formData.append('billing_enabled', billingPlanEnabled() && $('#billing-enabled').is(':checked') ? '1' : '0');
+    formData.append('billing_provider_managed', '1');
     const billingCountry = legalCountry;
     formData.append('billing_country', billingCountry);
     formData.append('billing_province', billingCountry === 'ES' ? legalProvince : '');
@@ -22082,11 +24284,14 @@ function renderSubscriptionOverview(data) {
     $('#subscription-payment-method').text(paymentText);
 
     const editable = subscription && !canceledAtPeriodEnd && ['active', 'past_due'].includes(String(subscription.status || ''));
+    const courtesy = !subscription && Boolean(grantedPlan);
     $('#btn-subscription-payment').toggleClass('d-none', !editable);
     $('#btn-subscription-cancel').toggleClass('d-none', !editable);
     $('#btn-subscription-plan').html(editable
         ? '<i class="bi bi-arrow-repeat"></i> Cambiar plan'
-        : '<i class="bi bi-check-circle"></i> Contratar plan');
+        : '<i class="bi bi-check-circle"></i> Contratar plan')
+        .prop('disabled', courtesy)
+        .attr('title', courtesy ? 'No necesitas contratar un plan mientras dispongas de una suscripción de cortesía.' : '');
 
     const rows = Array.isArray(SUBSCRIPTION_OVERVIEW.transactions) ? SUBSCRIPTION_OVERVIEW.transactions : [];
     $('#subscription-history-body').html(rows.length ? rows.map(transaction => {
@@ -22105,6 +24310,23 @@ function renderSubscriptionOverview(data) {
 
     $('#subscription-settings-loading').addClass('d-none');
     $('#subscription-settings-content').removeClass('d-none');
+}
+
+async function loadSubscriptionInvoices() {
+    if (!IS_SUPERADMIN) return;
+    $('#subscription-invoices-alert').addClass('d-none');
+    $('#subscription-invoices-body').html('<tr><td colspan="7" class="text-center text-muted py-5"><span class="spinner-border spinner-border-sm me-2"></span>Cargando facturas...</td></tr>');
+    try {
+        const data = await subscriptionApi('subscription_invoices');
+        const invoices = data.invoices || [];
+        $('#subscription-invoices-body').html(invoices.length ? invoices.map(invoice => {
+            const tax = invoice.tax_name === 'IGIC' ? `IGIC ${Number(invoice.tax_rate || 0).toLocaleString('es-ES')} % · ${subscriptionFormatAmount(invoice.tax_amount, invoice.currency)}` : 'No sujeto';
+            return `<tr><td class="fw-semibold">${escapeHtml(invoice.full_invoice_number || '')}</td><td>${escapeHtml(subscriptionFormatDate(invoice.issued_at) || '')}</td><td>${escapeHtml(invoice.concept || '')}</td><td class="text-end">${escapeHtml(subscriptionFormatAmount(invoice.taxable_base, invoice.currency))}</td><td class="text-end small">${escapeHtml(tax)}</td><td class="text-end fw-semibold">${escapeHtml(subscriptionFormatAmount(invoice.total, invoice.currency))}</td><td class="text-end"><a class="btn btn-sm btn-outline-primary" href="subscription_invoice_pdf.php?id=${parseInt(invoice.id,10)}" target="_blank"><i class="bi bi-file-earmark-pdf me-1"></i>PDF</a></td></tr>`;
+        }).join('') : '<tr><td colspan="7" class="text-center text-muted py-5">Todavía no hay facturas emitidas.</td></tr>');
+    } catch (error) {
+        $('#subscription-invoices-body').empty();
+        $('#subscription-invoices-alert').removeClass('d-none').addClass('alert-danger').text(error.message);
+    }
 }
 
 async function loadSubscriptionOverview() {
@@ -22260,10 +24482,18 @@ $(function () {
         $('#settingsModal .modal-footer').addClass('d-none');
         loadSubscriptionOverview();
     });
-    $('#settings-tabs button[data-bs-toggle="tab"]').not('#subscription-settings-tab').on('shown.bs.tab', function () {
+    $('#subscription-invoices-settings-tab').on('shown.bs.tab', function () {
+        $('#settingsModal .modal-footer').addClass('d-none'); loadSubscriptionInvoices();
+    });
+    $('#btn-refresh-subscription-invoices').on('click', loadSubscriptionInvoices);
+    $(document).on('click', '.btn-subscription-invoice', function () {
+        const id = parseInt($(this).data('id') || 0, 10); if (id) window.open(`subscription_invoice_pdf.php?id=${id}`, '_blank', 'noopener');
+    });
+    $('#settings-tabs button[data-bs-toggle="tab"]').not('#subscription-settings-tab, #subscription-invoices-settings-tab, #api-settings-tab').on('shown.bs.tab', function () {
         $('#settingsModal .modal-footer').removeClass('d-none');
     });
     $('#btn-subscription-plan').on('click', function () {
+        if (SUBSCRIPTION_OVERVIEW && SUBSCRIPTION_OVERVIEW.granted_plan && !SUBSCRIPTION_OVERVIEW.subscription) return;
         const subscription = SUBSCRIPTION_OVERVIEW && SUBSCRIPTION_OVERVIEW.subscription;
         const editable = subscription && parseInt(subscription.cancel_at_period_end || 0, 10) !== 1 && ['active', 'past_due'].includes(String(subscription.status || ''));
         openSubscriptionAction(editable ? 'change_plan' : 'create');
@@ -22415,4 +24645,290 @@ $(function () {
         if (!response.ok || !data.success) dataExportShowAlert('danger', data.error || 'No se pudo eliminar.');
         await loadDataExports();
     });
+
+    const patientAiContexts = {
+        clinical_report: {
+            title: 'Generar informe con IA',
+            subtitle: 'Prepara un borrador clínico a partir de la información registrada.',
+            reportType: 'clinical_report',
+            showReportType: true
+        },
+        evolution_summary: {
+            title: 'Resumir evolución con IA',
+            subtitle: 'Sintetiza la evolución registrada y sus cambios más relevantes.',
+            reportType: 'evolution_summary'
+        },
+        next_session: {
+            title: 'Preparar sesión con IA',
+            subtitle: 'Obtén un resumen práctico para orientar la próxima sesión.',
+            reportType: 'next_session'
+        },
+        tasks_summary: {
+            title: 'Resumir plan de trabajo con IA',
+            subtitle: 'Resume las tareas, su estado y las líneas de trabajo abiertas.',
+            reportType: 'tasks_summary'
+        },
+        questionnaires_summary: {
+            title: 'Resumir cuestionarios con IA',
+            subtitle: 'Sintetiza las respuestas, puntuaciones y resultados disponibles.',
+            reportType: 'questionnaires_summary'
+        }
+    };
+    let currentPatientAiRequest = { patientId: 0, appointmentId: 0, context: 'clinical_report', reportType: 'clinical_report' };
+    let patientAiProgressTimer = null;
+
+    function patientAiPatientId($sourceButton) {
+        const explicit = parseInt($sourceButton.data('patient-id') || 0, 10);
+        if (explicit > 0) return explicit;
+        if ($sourceButton.closest('#appointmentPaymentModal').length) {
+            return parseInt(CURRENT_APPOINTMENT_SESSION.patient_id || (CURRENT_APPOINTMENT_PAYMENT_DETAIL && CURRENT_APPOINTMENT_PAYMENT_DETAIL.patient_id) || 0, 10);
+        }
+        return parseInt((CURRENT_PATIENT_EDITOR || {}).id || $('#patient-editor-id').val() || 0, 10);
+    }
+
+    function patientAiShowForm() {
+        clearInterval(patientAiProgressTimer);
+        $('#patient-ai-form-view').removeClass('d-none');
+        $('#patient-ai-loading-view, #patient-ai-result-view, #btn-copy-patient-ai, #patient-ai-actions-wrap').addClass('d-none');
+        $('#btn-generate-patient-ai').removeClass('d-none').prop('disabled', false).html('<i class="bi bi-stars"></i> Generar borrador');
+        $('#patient-ai-alert').addClass('d-none').text('');
+    }
+
+    $(document).on('click', '.btn-open-patient-ai', function () {
+        if (!AI_TOOLS_ENABLED || this.disabled) return;
+        const $button = $(this);
+        const context = String($button.data('ai-context') || 'clinical_report');
+        const config = patientAiContexts[context] || patientAiContexts.clinical_report;
+        const patientId = patientAiPatientId($button);
+        if (!patientId) {
+            window.alert('Guarda o selecciona primero el paciente.');
+            return;
+        }
+        const fromAppointment = $button.closest('#appointmentPaymentModal').length > 0;
+        const appointmentId = fromAppointment
+            ? parseInt(CURRENT_APPOINTMENT_SESSION.appointment_id || (CURRENT_APPOINTMENT_PAYMENT_DETAIL && CURRENT_APPOINTMENT_PAYMENT_DETAIL.id) || 0, 10)
+            : 0;
+        currentPatientAiRequest = { patientId, appointmentId, context, reportType: config.reportType };
+        $('#patient-ai-title').text(config.title);
+        $('#patient-ai-subtitle').text(config.subtitle);
+        $('#patient-ai-report-type-wrap').toggleClass('d-none', !config.showReportType);
+        $('#patient-ai-report-type').val(config.reportType);
+        $('#patient-ai-instructions, #patient-ai-result').val('');
+        patientAiShowForm();
+        $('#patient-ai-save-appointment-item').toggleClass('d-none', appointmentId <= 0);
+        $('body').addClass(fromAppointment ? 'appointment-payment-secondary-modal-open' : 'patient-editor-secondary-modal-open');
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('patientAiModal')).show();
+    });
+
+    $('#patientAiModal').on('shown.bs.modal', function () {
+        const parentZ = Math.max(1055, ...Array.from(document.querySelectorAll('.modal.show'))
+            .filter(modal => modal !== this)
+            .map(modal => parseInt(window.getComputedStyle(modal).zIndex, 10) || 1055));
+        const modalZ = parentZ + 20;
+        $(this).css('z-index', modalZ);
+        $('.modal-backdrop').last().css('z-index', modalZ - 10);
+    }).on('hidden.bs.modal', function () {
+        clearInterval(patientAiProgressTimer);
+        $(this).css('z-index', '');
+        $('body').removeClass('patient-editor-secondary-modal-open appointment-payment-secondary-modal-open');
+        if (document.querySelector('.modal.show')) $('body').addClass('modal-open');
+    });
+
+    $('#btn-open-patient-ai-notice').on('click', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('patientAiNoticeModal')).show();
+    });
+
+    $('#patientAiNoticeModal').on('shown.bs.modal', function () {
+        const parentZ = Math.max(1055, ...Array.from(document.querySelectorAll('.modal.show'))
+            .filter(modal => modal !== this)
+            .map(modal => parseInt(window.getComputedStyle(modal).zIndex, 10) || 1055));
+        const modalZ = parentZ + 20;
+        $(this).css('z-index', modalZ);
+        $('.modal-backdrop').last().css('z-index', modalZ - 10);
+    }).on('hidden.bs.modal', function () {
+        $(this).css('z-index', '');
+        if (document.querySelector('.modal.show')) $('body').addClass('modal-open');
+    });
+
+    $('#btn-generate-patient-ai').on('click', async function () {
+        const config = patientAiContexts[currentPatientAiRequest.context] || patientAiContexts.clinical_report;
+        const reportType = config.showReportType ? String($('#patient-ai-report-type').val() || config.reportType) : config.reportType;
+        currentPatientAiRequest.reportType = reportType;
+        $('#patient-ai-form-view, #patient-ai-result-view, #patient-ai-alert, #btn-copy-patient-ai').addClass('d-none');
+        $('#patient-ai-loading-view').removeClass('d-none');
+        $(this).prop('disabled', true);
+        let progress = 15;
+        const loadingTexts = ['Preparando la información...', 'Revisando la evolución...', 'Redactando el borrador...'];
+        let textIndex = 0;
+        $('#patient-ai-progress').css('width', progress + '%');
+        $('#patient-ai-loading-text').text(loadingTexts[0]);
+        patientAiProgressTimer = setInterval(function () {
+            progress = Math.min(88, progress + 8);
+            if (progress > 35 && textIndex === 0) textIndex = 1;
+            if (progress > 65 && textIndex === 1) textIndex = 2;
+            $('#patient-ai-progress').css('width', progress + '%');
+            $('#patient-ai-loading-text').text(loadingTexts[textIndex]);
+        }, 900);
+        try {
+            const response = await fetch('api/admin.php?action=generate_patient_ai_content', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+                body: new URLSearchParams({
+                    patient_id: String(currentPatientAiRequest.patientId),
+                    report_type: reportType,
+                    instructions: String($('#patient-ai-instructions').val() || ''),
+                    csrf_token: AI_CSRF_TOKEN
+                })
+            });
+            const data = await response.json();
+            if (!response.ok || !data.success) throw new Error(data.error || 'No se pudo generar el borrador.');
+            clearInterval(patientAiProgressTimer);
+            $('#patient-ai-progress').css('width', '100%');
+            $('#patient-ai-result').val(data.text || '');
+            $('#patient-ai-loading-view').addClass('d-none');
+            $('#patient-ai-result-view, #btn-copy-patient-ai, #patient-ai-actions-wrap').removeClass('d-none');
+            $('#btn-generate-patient-ai').addClass('d-none').prop('disabled', false);
+        } catch (error) {
+            clearInterval(patientAiProgressTimer);
+            $('#patient-ai-loading-view').addClass('d-none');
+            $('#patient-ai-form-view').removeClass('d-none');
+            $('#patient-ai-alert').removeClass('d-none alert-success').addClass('alert-danger').text(error.message);
+            $('#btn-generate-patient-ai').prop('disabled', false).html('<i class="bi bi-stars"></i> Generar borrador');
+        }
+    });
+
+    $('#btn-copy-patient-ai').on('click', async function () {
+        const text = String($('#patient-ai-result').val() || '');
+        try {
+            await navigator.clipboard.writeText(text);
+        } catch (error) {
+            const field = document.getElementById('patient-ai-result');
+            field.focus(); field.select(); document.execCommand('copy');
+        }
+        const $button = $(this).html('<i class="bi bi-check2"></i> Copiado');
+        window.setTimeout(() => $button.html('<i class="bi bi-clipboard"></i> Copiar'), 1800);
+    });
+
+    function patientAiReviewedContent() {
+        return String($('#patient-ai-result').val() || '').trim();
+    }
+
+    $(document).on('click', '.patient-ai-save-document', async function () {
+        const content = patientAiReviewedContent();
+        if (!content) return;
+        const associate = String($(this).data('associate-appointment')) === '1';
+        const $button = $(this);
+        const original = $button.html();
+        $('.patient-ai-save-document').prop('disabled', true);
+        $button.html('<span class="spinner-border spinner-border-sm me-2"></span>Guardando');
+        try {
+            const response = await fetch('api/admin.php?action=save_patient_ai_document', {
+                method: 'POST', credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+                body: new URLSearchParams({
+                    patient_id: String(currentPatientAiRequest.patientId),
+                    appointment_id: String(associate ? currentPatientAiRequest.appointmentId : 0),
+                    report_type: currentPatientAiRequest.reportType,
+                    content,
+                    csrf_token: AI_CSRF_TOKEN
+                })
+            });
+            const data = await response.json();
+            if (!response.ok || !data.success) throw new Error(data.error || 'No se pudo guardar el documento.');
+            $('#patient-ai-alert').removeClass('d-none alert-danger').addClass('alert-success').text(data.message || 'Documento guardado.');
+            if (typeof loadPatientFiles === 'function' && parseInt($('#patient-editor-id').val() || 0, 10) === currentPatientAiRequest.patientId) loadPatientFiles(currentPatientAiRequest.patientId);
+            if (associate && typeof loadAppointmentSession === 'function') loadAppointmentSession(CURRENT_APPOINTMENT_PAYMENT_DETAIL);
+        } catch (error) {
+            $('#patient-ai-alert').removeClass('d-none alert-success').addClass('alert-danger').text(error.message);
+        } finally {
+            $('.patient-ai-save-document').prop('disabled', false);
+            $button.html(original);
+        }
+    });
+
+    $('#btn-download-patient-ai-pdf').on('click', function () {
+        const content = patientAiReviewedContent();
+        if (!content) return;
+        const form = document.createElement('form');
+        form.method = 'POST'; form.target = '_blank'; form.action = 'api/admin.php?action=export_patient_ai_pdf';
+        const values = { patient_id: currentPatientAiRequest.patientId, appointment_id: 0, report_type: currentPatientAiRequest.reportType, content, csrf_token: AI_CSRF_TOKEN };
+        Object.entries(values).forEach(([name, value]) => { const input=document.createElement('input'); input.type='hidden'; input.name=name; input.value=String(value); form.appendChild(input); });
+        document.body.appendChild(form); form.submit(); form.remove();
+    });
+
+    $('#btn-print-patient-ai').on('click', function () {
+        const content = patientAiReviewedContent();
+        if (!content) return;
+        const title = String($('#patient-ai-title').text() || 'Documento');
+        const popup = window.open('', '_blank');
+        if (!popup) { window.alert('Permite las ventanas emergentes para imprimir el documento.'); return; }
+        popup.opener = null;
+        const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char]));
+        popup.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${escape(title)}</title><style>body{font-family:Arial,sans-serif;color:#1f2937;line-height:1.55;margin:28mm 22mm}h1{font-size:22px;border-bottom:2px solid #8f7abd;padding-bottom:10px}.content{white-space:pre-wrap}@media print{body{margin:18mm}}</style></head><body><h1>${escape(title)}</h1><div class="content">${escape(content)}</div><script>window.onload=()=>window.print()<\/script></body></html>`);
+        popup.document.close();
+    });
+
+    $(document).on('input change', '#team-notes-search, #team-notes-type-filter, #team-notes-status-filter', renderTeamNotesRows);
+    $(document).on('input change', '#team-files-search, #team-files-patient-filter, #team-files-type-filter', renderTeamFilesRows);
+    $(document).on('click', '.team-files-section-btn', function () {
+        TEAM_FILES_SECTION=String($(this).data('section')||'mine');
+        $('.team-files-section-btn').removeClass('btn-primary').addClass('btn-outline-primary');
+        $(this).removeClass('btn-outline-primary').addClass('btn-primary');
+        $('#team-files-search').val('');
+        renderTeamFilesRows();
+    });
+    $(document).on('click', '.team-files-view-btn', function () {
+        TEAM_FILES_VIEW=String($(this).data('view'))==='list'?'list':'icons';
+        localStorage.setItem(`sgpraxis-team-files-view-${CURRENT_USER_ID}`,TEAM_FILES_VIEW);
+        $('.team-files-view-btn').removeClass('btn-primary').addClass('btn-outline-primary');$(this).addClass('btn-primary').removeClass('btn-outline-primary');renderTeamFilesRows();
+    });
+
+    function fillTeamMemberOptions(selected=0){$('#team-note-target').html('<option value="">Selecciona...</option>'+TEAM_MEMBERS_ROWS.map(member=>`<option value="${member.id}"${parseInt(member.id,10)===parseInt(selected,10)?' selected':''}>${escapeHtml(member.name)}</option>`).join(''));}
+    $(document).on('change','#team-note-visibility',function(){$('#team-note-target-wrap').toggleClass('d-none',$(this).val()!=='professional');});
+    $(document).on('change','#team-note-show-agenda',function(){setTeamNoteAgendaControls($(this).is(':checked'),$('#team-note-agenda-duration').val()||30);if($(this).is(':checked')&&!$('#team-note-due').val())$('#team-note-due').trigger('focus');});
+    $(document).on('click','#show-calendar-reminders',function(){SHOW_CALENDAR_REMINDERS=$(this).is(':checked');localStorage.setItem('praxis_show_calendar_reminders',SHOW_CALENDAR_REMINDERS?'1':'0');rebuildCalendarRemindersMap();if(currentCalendarView==='month'&&currentMonthData){drawMonthCalendar(currentMonthData.month,currentMonthData.appointments||{},currentMonthData.closed_days||{});}else{renderWeekInfo();}});
+    $(document).on('change', '#agenda-professional-select', function () {
+        if (!IS_SUPERADMIN) return;
+        CURRENT_AGENDA_PROFESSIONAL_ID = parseInt($(this).val() || CURRENT_PROFESSIONAL_ID || 0, 10);
+        selectedMonthDay = null;
+        renderWeekInfo();
+    });
+    $(document).on('click keydown','[data-team-note-id]',function(event){if(event.type==='keydown'&&event.key!=='Enter'&&event.key!==' ')return;event.preventDefault();event.stopPropagation();const item=TEAM_NOTES_ROWS.find(row=>parseInt(row.id,10)===parseInt($(this).data('team-note-id'),10));if(item)openTeamNoteEditor(item);});
+    $(document).on('click','#agenda-slot-create-appointment',function(){const modal=document.getElementById('agendaSlotActionsModal');const date=modal.dataset.date,time=modal.dataset.time;bootstrap.Modal.getInstance(modal)?.hide();openModal(date,time,'available');});
+    $(document).on('click','#agenda-slot-create-reminder',function(){const modal=document.getElementById('agendaSlotActionsModal');const date=modal.dataset.date,time=modal.dataset.time;bootstrap.Modal.getInstance(modal)?.hide();openTeamNoteEditor(null,{item_type:'alert',due_at:`${date}T${time}`,show_in_agenda:true,agenda_duration_minutes:30});});
+    $(document).on('click','#agenda-slot-create-block',function(){const modal=document.getElementById('agendaSlotActionsModal');const date=modal.dataset.date,time=modal.dataset.time;bootstrap.Modal.getInstance(modal)?.hide();openAvailabilityBlockEditor(date,time);});
+    $(document).on('submit','#availability-block-form',function(event){
+        event.preventDefault();
+        const $button=$('#btn-save-availability-block').prop('disabled',true);
+        $.ajax({url:'api/appointments.php?action=save_availability_block',method:'POST',dataType:'json',data:{id:$('#availability-block-id').val()||0,professional_id:CURRENT_AGENDA_PROFESSIONAL_ID||CURRENT_PROFESSIONAL_ID||0,date:$('#availability-block-date').val(),start_time:$('#availability-block-start').val(),end_time:$('#availability-block-end').val(),reason:$('#availability-block-reason').val()}})
+            .done(res=>{if(!res.success){$('#availability-block-alert').removeClass('d-none').text(res.error||'No se pudo guardar el bloqueo.');return;}bootstrap.Modal.getInstance(document.getElementById('availabilityBlockModal'))?.hide();renderWeekInfo();})
+            .fail(xhr=>$('#availability-block-alert').removeClass('d-none').text((xhr.responseJSON&&xhr.responseJSON.error)||'Error de conexión al guardar.'))
+            .always(()=>$button.prop('disabled',false));
+    });
+    $(document).on('click','#btn-delete-availability-block',function(){
+        const id=parseInt($('#availability-block-id').val()||0,10);if(!id||!window.confirm('¿Eliminar esta franja no disponible?'))return;
+        $(this).prop('disabled',true);
+        $.ajax({url:'api/appointments.php?action=delete_availability_block',method:'POST',dataType:'json',data:{id,professional_id:CURRENT_AGENDA_PROFESSIONAL_ID||CURRENT_PROFESSIONAL_ID||0}})
+            .done(res=>{if(!res.success){$('#availability-block-alert').removeClass('d-none').text(res.error||'No se pudo eliminar el bloqueo.');return;}bootstrap.Modal.getInstance(document.getElementById('availabilityBlockModal'))?.hide();renderWeekInfo();})
+            .fail(xhr=>$('#availability-block-alert').removeClass('d-none').text((xhr.responseJSON&&xhr.responseJSON.error)||'Error de conexión al eliminar.'))
+            .always(()=>$('#btn-delete-availability-block').prop('disabled',false));
+    });
+    $(document).on('click','#btn-delete-team-note-modal',async function(){const id=parseInt($(this).data('id')||0,10);if(!id||!window.confirm('¿Eliminar este elemento?'))return;try{await teamToolsApi('delete_note',{method:'POST',body:new URLSearchParams({csrf_token:TEAM_TOOLS_CSRF_TOKEN,id:String(id)})});bootstrap.Modal.getInstance(document.getElementById('teamNoteModal'))?.hide();if(isCalendarDashboardView()){await refreshCalendarReminders();renderWeekInfo();}else{renderDashboardTeamNotesView();}}catch(error){window.alert(error.message);}});
+    $(document).on('click','#btn-new-team-note',function(){
+        $('#team-note-form')[0].reset();$('#team-note-id').val('0');$('#team-note-priority').val('normal');$('#team-note-target-wrap,#team-note-modal-alert').addClass('d-none');setTeamNoteAgendaControls(false,30);$('#team-note-modal-title').text('Nueva nota o tarea');fillTeamMemberOptions();
+        const modal=bootstrap.Modal.getOrCreateInstance(document.getElementById('teamNoteModal'));modal.show();document.getElementById('teamNoteModal').addEventListener('shown.bs.modal',()=>$('#team-note-title').trigger('focus'),{once:true});
+    });
+    $(document).on('click','.btn-edit-team-note',function(){const item=TEAM_NOTES_ROWS.find(row=>parseInt(row.id,10)===parseInt($(this).data('id'),10));if(item)openTeamNoteEditor(item);});
+    $('#team-note-form').on('submit',async function(event){event.preventDefault();const button=$('#btn-save-team-note').prop('disabled',true);try{const body=new URLSearchParams({csrf_token:TEAM_TOOLS_CSRF_TOKEN,id:$('#team-note-id').val()||'0',item_type:$('#team-note-type').val(),visibility:$('#team-note-visibility').val(),target_user_id:$('#team-note-target').val()||'0',title:$('#team-note-title').val(),content:$('#team-note-content').val(),due_at:$('#team-note-due').val(),priority:$('#team-note-priority').val(),is_pinned:$('#team-note-pinned').is(':checked')?'1':'0',show_in_agenda:$('#team-note-show-agenda').is(':checked')?'1':'0',agenda_duration_minutes:$('#team-note-agenda-duration').val()||'30'});await teamToolsApi('save_note',{method:'POST',body});bootstrap.Modal.getInstance(document.getElementById('teamNoteModal'))?.hide();if(isCalendarDashboardView()){await refreshCalendarReminders();renderWeekInfo();}else{renderDashboardTeamNotesView();}}catch(error){$('#team-note-modal-alert').removeClass('d-none').addClass('alert-danger').text(error.message);}finally{button.prop('disabled',false);}});
+    $(document).on('click','.btn-toggle-team-note',async function(){try{await teamToolsApi('toggle_note',{method:'POST',body:new URLSearchParams({csrf_token:TEAM_TOOLS_CSRF_TOKEN,id:String($(this).data('id'))})});const data=await teamToolsApi('notes');TEAM_NOTES_ROWS=data.items||[];renderTeamNotesRows();}catch(error){window.alert(error.message);}});
+    $(document).on('click','.btn-delete-team-note',async function(){if(!window.confirm('¿Eliminar este elemento?'))return;try{await teamToolsApi('delete_note',{method:'POST',body:new URLSearchParams({csrf_token:TEAM_TOOLS_CSRF_TOKEN,id:String($(this).data('id'))})});const data=await teamToolsApi('notes');TEAM_NOTES_ROWS=data.items||[];renderTeamNotesRows();}catch(error){window.alert(error.message);}});
+
+    $(document).on('click','#btn-upload-team-file-open',function(){$('#team-file-upload-form')[0].reset();$('#team-file-visibility').val(TEAM_FILES_SECTION==='shared'?'team':'private');$('#team-file-upload-alert').addClass('d-none');bootstrap.Modal.getOrCreateInstance(document.getElementById('teamFileUploadModal')).show();});
+    $('#team-file-upload-form').on('submit',async function(event){event.preventDefault();const file=$('#team-file-input')[0].files[0];if(!file)return;const body=new FormData();body.append('csrf_token',TEAM_TOOLS_CSRF_TOKEN);body.append('file',file);body.append('title',$('#team-file-title').val());body.append('description',$('#team-file-description').val());body.append('visibility',$('#team-file-visibility').val());const button=$('#btn-upload-team-file').prop('disabled',true).html('<span class="spinner-border spinner-border-sm me-1"></span>Subiendo');try{await teamToolsApi('upload_file',{method:'POST',body});bootstrap.Modal.getInstance(document.getElementById('teamFileUploadModal'))?.hide();const data=await teamToolsApi('files');TEAM_FILES_ROWS=data.files||[];TEAM_STORAGE_STATUS=data.storage||TEAM_STORAGE_STATUS;renderTeamFilesRows();}catch(error){$('#team-file-upload-alert').removeClass('d-none').addClass('alert-danger').text(error.message);}finally{button.prop('disabled',false).html('<i class="bi bi-cloud-arrow-up"></i> Subir');}});
+    $(document).on('click','.btn-edit-team-file',function(){const file=TEAM_FILES_ROWS.find(row=>parseInt(row.id,10)===parseInt($(this).data('id'),10));if(!file)return;$('#team-file-edit-id').val(file.id);$('#team-file-edit-title').val(file.title);$('#team-file-edit-visibility').val(file.visibility);bootstrap.Modal.getOrCreateInstance(document.getElementById('teamFileEditModal')).show();});
+    $('#team-file-edit-form').on('submit',async function(event){event.preventDefault();try{await teamToolsApi('update_file',{method:'POST',body:new URLSearchParams({csrf_token:TEAM_TOOLS_CSRF_TOKEN,id:$('#team-file-edit-id').val(),title:$('#team-file-edit-title').val(),visibility:$('#team-file-edit-visibility').val()})});bootstrap.Modal.getInstance(document.getElementById('teamFileEditModal'))?.hide();const data=await teamToolsApi('files');TEAM_FILES_ROWS=data.files||[];TEAM_STORAGE_STATUS=data.storage||TEAM_STORAGE_STATUS;renderTeamFilesRows();}catch(error){window.alert(error.message);}});
+    $(document).on('click','.btn-delete-team-file',async function(){if(!window.confirm('¿Eliminar este archivo definitivamente?'))return;try{await teamToolsApi('delete_file',{method:'POST',body:new URLSearchParams({csrf_token:TEAM_TOOLS_CSRF_TOKEN,id:String($(this).data('id'))})});const data=await teamToolsApi('files');TEAM_FILES_ROWS=data.files||[];TEAM_STORAGE_STATUS=data.storage||TEAM_STORAGE_STATUS;renderTeamFilesRows();}catch(error){window.alert(error.message);}});
 });

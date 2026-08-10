@@ -67,6 +67,16 @@ if (!$stmt) {
 $stmt->bind_param('ii', $tenant_id, $appointment_id);
 $stmt->execute();
 $appointment = $stmt->get_result()->fetch_assoc();
+if ($appointment) {
+    $stmt = $mysqli->prepare('SELECT photo_path FROM patient_profiles WHERE tenant_id = ? AND user_id = ? LIMIT 1');
+    if ($stmt) {
+        $patient_user_id = (int) ($appointment['user_id'] ?? 0);
+        $stmt->bind_param('ii', $tenant_id, $patient_user_id);
+        $stmt->execute();
+        $patient_profile = $stmt->get_result()->fetch_assoc();
+        $appointment['patient_photo_path'] = $patient_profile['photo_path'] ?? '';
+    }
+}
 $video_provider = $appointment ? video_provider_for_professional($mysqli, (int) ($appointment['professional_id'] ?? 0)) : 'manual';
 if (!$appointment || ($appointment['consultation_type'] ?? '') !== 'online' || ($appointment['status'] ?? '') !== 'booked' || !livekit_appointment_enabled($mysqli, $appointment)) {
     livekit_call_error_page('Videollamada no disponible', 'Esta cita no dispone de una videollamada activa.', 404);
@@ -99,20 +109,56 @@ if (!$has_session_access && !$has_email_access) {
 if ($has_email_access) {
     $viewer_name = trim((string) ($appointment['patient_name'] ?? 'Paciente'));
 }
+$identity_prefix = $has_session_access && $role !== 'patient' ? 'professional' : 'patient';
+$is_professional_viewer = $identity_prefix === 'professional';
+$recording_mode = in_array($appointment['livekit_recording_mode'] ?? 'audio', ['audio', 'audio_video'], true) ? $appointment['livekit_recording_mode'] : 'audio';
+if (!video_recording_video_plan_enabled($mysqli)) $recording_mode = 'audio';
+$professional_recording_enabled = livekit_recording_enabled_for_professional($mysqli, (int) ($appointment['professional_id'] ?? 0));
+
+$presence_active = false;
+$presence_stmt = $mysqli->prepare("SELECT 1 FROM appointment_video_presence
+    WHERE tenant_id = ? AND appointment_id = ? AND last_seen_at >= DATE_SUB(NOW(), INTERVAL 90 SECOND) LIMIT 1");
+if ($presence_stmt) {
+    $presence_stmt->bind_param('ii', $tenant_id, $appointment_id);
+    $presence_stmt->execute();
+    $presence_active = (bool) $presence_stmt->get_result()->fetch_row();
+}
+
+$presence_action = trim((string) ($_GET['presence'] ?? ''));
+if ($presence_action !== '') {
+    header('Content-Type: application/json; charset=UTF-8');
+    header('Cache-Control: no-store');
+    if ($presence_action === 'heartbeat' && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && $is_professional_viewer) {
+        $professional_id = (int) ($appointment['professional_id'] ?? 0);
+        $stmt = $mysqli->prepare("INSERT INTO appointment_video_presence
+            (tenant_id, appointment_id, professional_id, last_seen_at) VALUES (?, ?, ?, NOW())
+            ON DUPLICATE KEY UPDATE professional_id = VALUES(professional_id), last_seen_at = NOW()");
+        if ($stmt) {
+            $stmt->bind_param('iii', $tenant_id, $appointment_id, $professional_id);
+            $stmt->execute();
+        }
+        echo json_encode(['success' => true, 'professional_present' => true]);
+        exit;
+    }
+    echo json_encode(['success' => true, 'professional_present' => $presence_active]);
+    exit;
+}
 
 $start_time = strtotime($appointment['appointment_date'] . ' ' . $appointment['appointment_time']);
 $end_time = $start_time + ((int) $appointment['duration_minutes'] * 60);
-$can_join_now = !$has_email_access || (time() >= $start_time - 1800 && time() <= $end_time + 5400);
+$within_patient_window = time() >= $start_time - 1800 && time() <= $end_time + 5400;
+$can_join_now = $is_professional_viewer || $within_patient_window || $presence_active;
 $room = livekit_room_name($tenant_id, $appointment_id);
-$identity_prefix = $has_session_access && $role !== 'patient' ? 'professional' : 'patient';
-$is_professional_viewer = $identity_prefix === 'professional';
-$identity = $identity_prefix . '-' . $tenant_id . '-' . $appointment_id . '-' . $viewer_id . '-' . bin2hex(random_bytes(4));
+$identity_subject = $is_professional_viewer
+    ? ($viewer_id > 0 ? $viewer_id : (int) $appointment['professional_id'])
+    : (int) $appointment['user_id'];
+$identity = $identity_prefix . '-' . $tenant_id . '-' . $appointment_id . '-' . $identity_subject;
 $connection_url = '';
 $token = '';
 if ($can_join_now && $video_provider === 'daily') {
     try {
         $daily_identity = substr($identity_prefix . '-' . hash('sha256', $identity), 0, 36);
-        $connection_url = daily_ensure_room($room, $end_time + 5400);
+        $connection_url = daily_ensure_room($room, $end_time + 5400, $professional_recording_enabled ? $recording_mode : '');
         $token = daily_meeting_token($room, $daily_identity, $viewer_name ?: 'Participante', $is_professional_viewer, $end_time + 5400);
     } catch (Throwable $e) {
         error_log('Daily: ' . $e->getMessage());
@@ -122,18 +168,22 @@ if ($can_join_now && $video_provider === 'daily') {
     $connection_url = livekit_config_value('livekit_url');
     $token = livekit_access_token($room, $identity, $viewer_name ?: 'Participante');
 }
-$recording_allowed = $video_provider === 'livekit' && $is_professional_viewer && livekit_recording_enabled_for_professional($mysqli, (int) ($appointment['professional_id'] ?? 0));
-$recording_storage_ready = livekit_recording_storage_configured();
-$recording_mode = in_array($appointment['livekit_recording_mode'] ?? 'audio', ['audio', 'audio_video'], true) ? $appointment['livekit_recording_mode'] : 'audio';
+$recording_allowed = in_array($video_provider, ['livekit', 'daily'], true) && $is_professional_viewer && $professional_recording_enabled;
+$recording_storage_ready = $video_provider === 'daily' ? true : livekit_recording_storage_configured();
 $branding = get_public_branding_settings($mysqli);
 $app_name = trim((string) ($branding['app_name'] ?? '')) ?: 'SimplyGest Praxis';
 $primary_color = preg_match('/^#[0-9a-fA-F]{6}$/', (string) ($branding['primary_color'] ?? ''))
     ? strtolower((string) $branding['primary_color'])
     : '#4285f4';
-$professional_name = trim((string) ($appointment['professional_name'] ?? '')) ?: 'tu profesional';
+$professional_name = $is_professional_viewer
+    ? (trim((string) ($appointment['patient_name'] ?? '')) ?: 'Paciente')
+    : (trim((string) ($appointment['professional_name'] ?? '')) ?: 'tu profesional');
+$counterpart_photo_path = $is_professional_viewer
+    ? trim((string) ($appointment['patient_photo_path'] ?? ''))
+    : trim((string) ($appointment['professional_photo_path'] ?? ''));
 $professional_photo_url = '';
-if (trim((string) ($appointment['professional_photo_path'] ?? '')) !== '') {
-    $professional_photo_url = app_upload_asset_url($appointment['professional_photo_path']);
+if ($counterpart_photo_path !== '') {
+    $professional_photo_url = app_upload_asset_url($counterpart_photo_path);
     if (!preg_match('#^(?:https?:)?//#i', $professional_photo_url)) {
         $tenant_asset_prefix = function_exists('tenant_public_base_url') ? tenant_public_base_url() : '';
         $professional_photo_url = $tenant_asset_prefix . ltrim($professional_photo_url, '/');
@@ -223,7 +273,7 @@ $dashboard_session_url = tenant_public_base_url() . 'dashboard.php?open_appointm
         </section>
 
         <?php if (!$can_join_now): ?>
-            <div class="alert alert-info mb-4">La videollamada estará disponible 30 minutos antes de la cita.</div>
+            <div class="alert alert-info mb-4">La videollamada estará disponible 30 minutos antes de la cita o cuando el profesional entre en la sala.</div>
         <?php endif; ?>
 
         <div class="alert alert-danger recording-alert d-none mb-4" id="recording-alert">
@@ -242,8 +292,8 @@ $dashboard_session_url = tenant_public_base_url() . 'dashboard.php?open_appointm
                 <button type="button" class="btn btn-primary" id="btn-join" <?= $can_join_now ? '' : 'disabled' ?>><i class="bi bi-camera-video me-1"></i> Entrar a la videollamada</button>
                 <button type="button" class="btn btn-outline-secondary" id="btn-mic" disabled><i class="bi bi-mic me-1"></i> Silenciar</button>
                 <button type="button" class="btn btn-outline-secondary" id="btn-camera" disabled><i class="bi bi-camera-video me-1"></i> Apagar cámara</button>
-                <?php if ($recording_allowed): ?>
-                    <button type="button" class="btn btn-outline-danger" id="btn-recording" <?= $recording_storage_ready ? '' : 'disabled' ?> title="<?= $recording_storage_ready ? 'Iniciar grabación' : 'Pendiente de configurar LiveKit Egress y almacenamiento' ?>"><i class="bi bi-record-circle me-1"></i> Iniciar grabación</button>
+                <?php if (in_array($video_provider, ['livekit', 'daily'], true) && $is_professional_viewer): ?>
+                    <button type="button" class="btn btn-outline-danger <?= $recording_allowed ? '' : 'd-none' ?>" id="btn-recording" <?= $recording_storage_ready ? '' : 'disabled' ?> title="<?= $recording_storage_ready ? 'Iniciar grabación' : 'Pendiente de configurar LiveKit Egress y almacenamiento' ?>"><i class="bi bi-record-circle me-1"></i> Iniciar grabación</button>
                 <?php endif; ?>
                 <button type="button" class="btn btn-outline-danger" id="btn-leave" disabled><i class="bi bi-telephone-x me-1"></i> Salir</button>
             </div>
@@ -265,6 +315,8 @@ $dashboard_session_url = tenant_public_base_url() . 'dashboard.php?open_appointm
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
         let room = null;
         let localTracks = [];
+        let leaving = false;
+        const renderedTracks = new Map();
         const grid = document.getElementById('video-grid');
         const status = document.getElementById('call-status');
         const joinButton = document.getElementById('btn-join');
@@ -276,6 +328,37 @@ $dashboard_session_url = tenant_public_base_url() . 'dashboard.php?open_appointm
         const fullscreenButton = document.getElementById('btn-fullscreen');
         const recordingButton = document.getElementById('btn-recording');
         const recordingAlert = document.getElementById('recording-alert');
+        let recordingStarted = false;
+        let recordingStatusRequest = null;
+
+        function applyRecordingStatus(settings) {
+            if (!recordingButton) return;
+            connection.recordingAllowed = settings.allowed ? 1 : 0;
+            connection.recordingReady = settings.storage_ready ? 1 : 0;
+            connection.recordingMode = ['audio', 'audio_video'].includes(settings.mode) ? settings.mode : 'audio';
+            recordingButton.classList.toggle('d-none', !connection.recordingAllowed && !recordingStarted);
+            recordingButton.disabled = recordingStarted || !connection.recordingReady;
+            recordingButton.title = connection.recordingReady
+                ? `Iniciar grabación (${connection.recordingMode === 'audio_video' ? 'audio y vídeo' : 'solo audio'})`
+                : 'Pendiente de configurar LiveKit Egress y almacenamiento';
+        }
+
+        async function refreshRecordingStatus() {
+            if (!recordingButton || recordingStatusRequest || recordingStarted) return;
+            recordingStatusRequest = fetch(`api/admin.php?action=livekit_recording_status&appointment_id=${encodeURIComponent(connection.appointmentId)}`, {
+                cache: 'no-store',
+                headers: { 'Accept': 'application/json' }
+            });
+            try {
+                const response = await recordingStatusRequest;
+                const settings = await response.json();
+                if (settings.success) applyRecordingStatus(settings);
+            } catch (error) {
+                console.warn('No se pudo actualizar la configuración de grabación.', error);
+            } finally {
+                recordingStatusRequest = null;
+            }
+        }
 
         function updateCurrentTime() {
             currentTime.textContent = new Intl.DateTimeFormat('es-ES', {
@@ -283,6 +366,7 @@ $dashboard_session_url = tenant_public_base_url() . 'dashboard.php?open_appointm
                 minute: '2-digit',
                 second: '2-digit'
             }).format(new Date());
+            window.refreshCallAvailability?.();
         }
 
         function setMicButton(muted) {
@@ -318,11 +402,27 @@ $dashboard_session_url = tenant_public_base_url() . 'dashboard.php?open_appointm
             recordingAlert?.classList.remove('d-none');
         }
 
-        function addTrack(track, label) {
+        function renderedTrackKey(track, participantIdentity, publication = null) {
+            const source = publication?.source || track.source || publication?.trackSid || track.sid || track.mediaStreamTrack?.id || 'track';
+            return `${participantIdentity || 'participant'}:${source}`;
+        }
+
+        function removeRenderedTrack(key, track = null) {
+            const rendered = renderedTracks.get(key);
+            if (track) track.detach().forEach((element) => element.remove());
+            if (rendered) rendered.remove();
+            renderedTracks.delete(key);
+        }
+
+        function addTrack(track, label, participantIdentity, publication = null) {
+            const key = renderedTrackKey(track, participantIdentity, publication);
+            removeRenderedTrack(key);
             const element = track.attach();
             element.autoplay = true;
+            element.dataset.participantIdentity = participantIdentity || '';
             if (element.tagName.toLowerCase() === 'audio') {
                 document.body.appendChild(element);
+                renderedTracks.set(key, element);
                 return;
             }
             element.playsInline = true;
@@ -333,17 +433,36 @@ $dashboard_session_url = tenant_public_base_url() . 'dashboard.php?open_appointm
             badge.textContent = label;
             tile.append(element, badge);
             grid.appendChild(tile);
+            tile.dataset.participantIdentity = participantIdentity || '';
+            renderedTracks.set(key, tile);
         }
 
-        function removeTrack(track) {
-            track.detach().forEach((element) => element.closest('.video-tile')?.remove() || element.remove());
+        function removeTrack(track, participantIdentity, publication = null) {
+            removeRenderedTrack(renderedTrackKey(track, participantIdentity, publication), track);
+        }
+
+        function removeParticipant(participant) {
+            for (const [key, element] of renderedTracks.entries()) {
+                if (element.dataset.participantIdentity === participant.identity) {
+                    element.remove();
+                    renderedTracks.delete(key);
+                }
+            }
         }
 
         async function leave() {
-            if (room) room.disconnect();
+            if (leaving) return;
+            leaving = true;
+            const roomToClose = room;
+            room = null;
+            if (roomToClose) {
+                roomToClose.removeAllListeners?.();
+                roomToClose.disconnect();
+            }
             localTracks.forEach((track) => { track.stop(); track.detach().forEach((element) => element.remove()); });
             localTracks = [];
-            room = null;
+            renderedTracks.forEach((element) => element.remove());
+            renderedTracks.clear();
             grid.innerHTML = '<div class="video-tile"><div class="empty-video">Has salido de la videollamada.</div></div>';
             joinButton.disabled = false;
             leaveButton.disabled = true;
@@ -352,16 +471,27 @@ $dashboard_session_url = tenant_public_base_url() . 'dashboard.php?open_appointm
             setMicButton(false);
             setCameraButton(false);
             setStatus('Desconectado');
+            window.stopVideoCallPresence?.();
+            leaving = false;
         }
 
         async function join() {
             try {
                 joinButton.disabled = true;
                 setStatus('Conectando...', 'warning');
-                room = new Room();
-                room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => addTrack(track, participant.name || participant.identity));
-                room.on(RoomEvent.TrackUnsubscribed, (track) => removeTrack(track));
-                room.on(RoomEvent.DataReceived, (payload) => {
+                const joiningRoom = new Room();
+                room = joiningRoom;
+                joiningRoom.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+                    if (room === joiningRoom && !leaving) addTrack(track, participant.name || participant.identity, participant.identity, publication);
+                });
+                joiningRoom.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
+                    if (room === joiningRoom && !leaving) removeTrack(track, participant.identity, publication);
+                });
+                joiningRoom.on(RoomEvent.ParticipantDisconnected, (participant) => {
+                    if (room === joiningRoom && !leaving) removeParticipant(participant);
+                });
+                joiningRoom.on(RoomEvent.DataReceived, (payload) => {
+                    if (room !== joiningRoom || leaving) return;
                     try {
                         const data = JSON.parse(new TextDecoder().decode(payload));
                         if (data && data.type === 'recording_started') {
@@ -371,12 +501,17 @@ $dashboard_session_url = tenant_public_base_url() . 'dashboard.php?open_appointm
                         console.warn('Mensaje LiveKit no reconocido.', error);
                     }
                 });
-                room.on(RoomEvent.Disconnected, () => { if (room) leave(); });
-                await room.connect(connection.url, connection.token);
+                joiningRoom.on(RoomEvent.Disconnected, () => { if (room === joiningRoom && !leaving) leave(); });
+                await joiningRoom.connect(connection.url, connection.token);
+                if (room !== joiningRoom || leaving) return;
                 localTracks = await createLocalTracks({ audio: true, video: true });
                 for (const track of localTracks) {
-                    await room.localParticipant.publishTrack(track);
-                    addTrack(track, connection.name);
+                    if (room !== joiningRoom || leaving) {
+                        track.stop();
+                        continue;
+                    }
+                    const publication = await joiningRoom.localParticipant.publishTrack(track);
+                    addTrack(track, connection.name, joiningRoom.localParticipant.identity, publication);
                 }
                 grid.querySelector('#empty-video')?.closest('.video-tile')?.remove();
                 leaveButton.disabled = false;
@@ -385,6 +520,7 @@ $dashboard_session_url = tenant_public_base_url() . 'dashboard.php?open_appointm
                 setMicButton(false);
                 setCameraButton(false);
                 setStatus('En la videollamada', 'success');
+                window.startVideoCallPresence?.();
             } catch (error) {
                 console.error(error);
                 await leave();
@@ -413,6 +549,7 @@ $dashboard_session_url = tenant_public_base_url() . 'dashboard.php?open_appointm
                     return;
                 }
                 showRecordingAlert();
+                recordingStarted = true;
                 setStatus('Grabando', 'danger');
                 if (room) {
                     await room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify({ type: 'recording_started' })), { reliable: true });
@@ -422,9 +559,12 @@ $dashboard_session_url = tenant_public_base_url() . 'dashboard.php?open_appointm
                 alert('Error de conexión al iniciar la grabación.');
             } finally {
                 recordingButton.innerHTML = original;
-                recordingButton.disabled = true;
+                recordingButton.disabled = recordingStarted || !connection.recordingReady;
             }
         });
+        refreshRecordingStatus();
+        window.setInterval(refreshRecordingStatus, 15000);
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshRecordingStatus(); });
         fullscreenButton.addEventListener('click', async () => {
             try {
                 if (document.fullscreenElement === videoStage) {
@@ -465,12 +605,14 @@ $dashboard_session_url = tenant_public_base_url() . 'dashboard.php?open_appointm
     </script>
     <?php else: ?>
     <script type="module">
-        import DailyIframe from 'https://esm.sh/@daily-co/daily-js@0.79.0';
+        import DailyIframe from 'https://esm.sh/@daily-co/daily-js@0.81.0';
 
         const connection = <?= json_encode([
             'url' => $connection_url,
             'token' => $token,
-            'name' => $viewer_name ?: 'Participante'
+            'name' => $viewer_name ?: 'Participante',
+            'recordingAllowed' => $recording_allowed ? 1 : 0,
+            'recordingMode' => $recording_mode
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
         let call = null;
         let leaving = false;
@@ -485,6 +627,30 @@ $dashboard_session_url = tenant_public_base_url() . 'dashboard.php?open_appointm
         const currentTime = document.getElementById('current-time');
         const videoStage = document.getElementById('video-stage');
         const fullscreenButton = document.getElementById('btn-fullscreen');
+        const recordingButton = document.getElementById('btn-recording');
+        const recordingAlert = document.getElementById('recording-alert');
+        let recordingStarted = false;
+        let recordingProcessing = false;
+        let recordingPendingAction = '';
+        let recordingProcessingTimer = null;
+
+        function finishDailyRecordingProcessing() {
+            recordingProcessing = false;
+            recordingPendingAction = '';
+            if (recordingProcessingTimer) window.clearTimeout(recordingProcessingTimer);
+            recordingProcessingTimer = null;
+        }
+
+        function updateDailyRecordingButton() {
+            if (!recordingButton) return;
+            recordingButton.classList.toggle('d-none', !connection.recordingAllowed);
+            recordingButton.disabled = !call || !connection.recordingAllowed || recordingProcessing;
+            recordingButton.innerHTML = recordingProcessing
+                ? `<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span> ${recordingPendingAction === 'stop' ? 'Deteniendo...' : 'Iniciando...'}`
+                : (recordingStarted
+                    ? '<i class="bi bi-stop-circle me-1"></i> Detener grabación'
+                    : '<i class="bi bi-record-circle me-1"></i> Iniciar grabación');
+        }
 
         function setStatus(text, type = 'light') {
             status.textContent = text;
@@ -492,14 +658,15 @@ $dashboard_session_url = tenant_public_base_url() . 'dashboard.php?open_appointm
         }
         function updateClock() {
             currentTime.textContent = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date());
+            window.refreshCallAvailability?.();
         }
         function updateControls() {
             micButton.innerHTML = micEnabled ? '<i class="bi bi-mic me-1"></i> Silenciar' : '<i class="bi bi-mic-mute me-1"></i> Activar micrófono';
             cameraButton.innerHTML = cameraEnabled ? '<i class="bi bi-camera-video me-1"></i> Apagar cámara' : '<i class="bi bi-camera-video-off me-1"></i> Activar cámara';
         }
-        function renderParticipants() {
-            if (!call) return;
-            const participants = call.participants();
+        function renderParticipants(activeCall = call) {
+            if (!activeCall || activeCall !== call || leaving) return;
+            const participants = activeCall.participants();
             grid.innerHTML = '';
             Object.values(participants).forEach((participant) => {
                 const tile = document.createElement('div');
@@ -536,51 +703,183 @@ $dashboard_session_url = tenant_public_base_url() . 'dashboard.php?open_appointm
         async function leave() {
             if (leaving) return;
             leaving = true;
-            if (call) {
-                try { await call.leave(); } catch (error) { console.warn(error); }
-                call.destroy();
-            }
+            const callToClose = call;
             call = null;
+            if (callToClose) {
+                if (recordingStarted) {
+                    try { await callToClose.stopRecording(); } catch (error) { console.warn('Daily recording:', error); }
+                }
+                try { await callToClose.leave(); } catch (error) { console.warn(error); }
+                callToClose.destroy();
+            }
+            recordingStarted = false;
+            finishDailyRecordingProcessing();
+            recordingAlert?.classList.add('d-none');
+            updateDailyRecordingButton();
             grid.innerHTML = '<div class="video-tile"><div class="empty-video">Has salido de la videollamada.</div></div>';
             joinButton.disabled = false;
             leaveButton.disabled = micButton.disabled = cameraButton.disabled = true;
             setStatus('Desconectado');
+            window.stopVideoCallPresence?.();
             leaving = false;
         }
         async function join() {
             try {
                 joinButton.disabled = true;
                 setStatus('Conectando...', 'warning');
-                call = DailyIframe.createCallObject({ audioSource: true, videoSource: true });
-                ['participant-joined', 'participant-updated', 'participant-left', 'track-started', 'track-stopped'].forEach(event => call.on(event, renderParticipants));
-                call.on('error', event => console.error('Daily:', event));
-                call.on('left-meeting', () => { if (call) leave(); });
-                await call.join({ url: connection.url, token: connection.token, userName: connection.name });
-                renderParticipants();
+                const joiningCall = DailyIframe.createCallObject();
+                call = joiningCall;
+                ['participant-joined', 'participant-updated', 'participant-left', 'track-started', 'track-stopped'].forEach(event => joiningCall.on(event, () => {
+                    if (call === joiningCall && !leaving) renderParticipants(joiningCall);
+                }));
+                joiningCall.on('error', event => console.error('Daily:', event));
+                joiningCall.on('recording-started', () => {
+                    if (call !== joiningCall || leaving) return;
+                    recordingStarted = true;
+                    finishDailyRecordingProcessing();
+                    recordingAlert?.classList.remove('d-none');
+                    setStatus('Grabando', 'danger');
+                    updateDailyRecordingButton();
+                });
+                joiningCall.on('recording-stopped', () => {
+                    if (call !== joiningCall || leaving) return;
+                    recordingStarted = false;
+                    finishDailyRecordingProcessing();
+                    recordingAlert?.classList.add('d-none');
+                    setStatus('En la videollamada', 'success');
+                    updateDailyRecordingButton();
+                });
+                joiningCall.on('recording-error', event => {
+                    if (call !== joiningCall || leaving) return;
+                    console.error('Daily recording:', event);
+                    recordingStarted = false;
+                    finishDailyRecordingProcessing();
+                    recordingAlert?.classList.add('d-none');
+                    updateDailyRecordingButton();
+                    alert(`No se pudo grabar con Daily: ${event?.errorMsg || event?.message || 'error de grabación'}`);
+                });
+                joiningCall.on('left-meeting', () => { if (call === joiningCall && !leaving) leave(); });
+                await joiningCall.join({ url: connection.url, token: connection.token, userName: connection.name });
+                if (call !== joiningCall || leaving) return;
+                renderParticipants(joiningCall);
                 leaveButton.disabled = micButton.disabled = cameraButton.disabled = false;
                 micEnabled = cameraEnabled = true;
                 updateControls();
                 setStatus('En la videollamada', 'success');
+                window.startVideoCallPresence?.();
+                updateDailyRecordingButton();
             } catch (error) {
                 console.error(error);
                 await leave();
                 setStatus('No se pudo conectar', 'danger');
-                alert('No se ha podido acceder a la videollamada. Comprueba los permisos de cámara y micrófono.');
+                const dailyMessage = String(error?.errorMsg || error?.msg || error?.message || '').trim();
+                alert(dailyMessage
+                    ? `No se ha podido acceder a la videollamada con Daily: ${dailyMessage}`
+                    : 'No se ha podido acceder a la videollamada con Daily. Comprueba los permisos de cámara y micrófono.');
             }
         }
         joinButton.addEventListener('click', join);
         leaveButton.addEventListener('click', leave);
+        recordingButton?.addEventListener('click', async () => {
+            if (!call || !connection.recordingAllowed || recordingProcessing) return;
+            recordingProcessing = true;
+            recordingPendingAction = recordingStarted ? 'stop' : 'start';
+            recordingProcessingTimer = window.setTimeout(() => {
+                finishDailyRecordingProcessing();
+                updateDailyRecordingButton();
+            }, 20000);
+            updateDailyRecordingButton();
+            try {
+                if (recordingStarted) {
+                    await call.stopRecording();
+                } else {
+                    const options = connection.recordingMode === 'audio_video'
+                        ? { type: 'cloud', layout: { preset: 'default' } }
+                        : { type: 'cloud-audio-only' };
+                    await call.startRecording(options);
+                }
+            } catch (error) {
+                console.error('Daily recording:', error);
+                finishDailyRecordingProcessing();
+                alert(`No se pudo ${recordingStarted ? 'detener' : 'iniciar'} la grabación con Daily: ${error?.errorMsg || error?.message || 'error desconocido'}`);
+            } finally {
+                updateDailyRecordingButton();
+            }
+        });
         micButton.addEventListener('click', async () => { if (!call) return; micEnabled = !micEnabled; await call.setLocalAudio(micEnabled); updateControls(); });
-        cameraButton.addEventListener('click', async () => { if (!call) return; cameraEnabled = !cameraEnabled; await call.setLocalVideo(cameraEnabled); updateControls(); renderParticipants(); });
+        cameraButton.addEventListener('click', async () => { if (!call) return; cameraEnabled = !cameraEnabled; await call.setLocalVideo(cameraEnabled); updateControls(); renderParticipants(call); });
         fullscreenButton.addEventListener('click', async () => document.fullscreenElement === videoStage ? document.exitFullscreen() : videoStage.requestFullscreen());
         document.addEventListener('fullscreenchange', () => { fullscreenButton.innerHTML = document.fullscreenElement === videoStage ? '<i class="bi bi-fullscreen-exit"></i>' : '<i class="bi bi-fullscreen"></i>'; });
         window.addEventListener('beforeunload', () => { if (call) call.destroy(); });
         updateClock();
         window.setInterval(updateClock, 1000);
         updateControls();
+        updateDailyRecordingButton();
     </script>
     <?php endif; ?>
     <script>
+        <?php if ($is_professional_viewer): ?>
+        (() => {
+            const heartbeatUrl = new URL(window.location.href);
+            heartbeatUrl.searchParams.set('presence', 'heartbeat');
+            let heartbeatTimer = null;
+            const heartbeat = () => fetch(heartbeatUrl, {
+                method: 'POST',
+                cache: 'no-store',
+                credentials: 'same-origin',
+                headers: { 'Accept': 'application/json' }
+            }).catch(() => {});
+            window.startVideoCallPresence = () => {
+                if (heartbeatTimer) return;
+                heartbeat();
+                heartbeatTimer = window.setInterval(heartbeat, 15000);
+            };
+            window.stopVideoCallPresence = () => {
+                if (heartbeatTimer) window.clearInterval(heartbeatTimer);
+                heartbeatTimer = null;
+            };
+        })();
+        <?php elseif (!$can_join_now): ?>
+        (() => {
+            const statusUrl = new URL(window.location.href);
+            statusUrl.searchParams.set('presence', 'status');
+            let checkingPresence = false;
+            const checkPresence = async () => {
+                if (checkingPresence) return;
+                checkingPresence = true;
+                try {
+                    const response = await fetch(statusUrl, { cache: 'no-store', credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
+                    const state = await response.json();
+                    if (state.success && state.professional_present) window.location.reload();
+                } catch (error) {
+                    console.warn('No se pudo comprobar si el profesional ha entrado en la sala.', error);
+                } finally {
+                    checkingPresence = false;
+                }
+            };
+            checkPresence();
+            window.setInterval(checkPresence, 10000);
+            document.addEventListener('visibilitychange', () => { if (!document.hidden) checkPresence(); });
+        })();
+        <?php endif; ?>
+        <?php if (!$can_join_now): ?>
+        (() => {
+            const availableAt = <?= (int) (($start_time - 1800) * 1000) ?>;
+            const serverTimeAtLoad = <?= (int) (time() * 1000) ?>;
+            const performanceAtLoad = performance.now();
+            let refreshing = false;
+            window.refreshCallAvailability = () => {
+                const estimatedServerTime = serverTimeAtLoad + (performance.now() - performanceAtLoad);
+                if (!refreshing && estimatedServerTime >= availableAt) {
+                    refreshing = true;
+                    window.location.reload();
+                }
+            };
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) window.refreshCallAvailability();
+            });
+        })();
+        <?php endif; ?>
         (() => {
             const appointmentId = <?= (int) $appointment_id ?>;
             const storageKey = `sgpraxis_video_call_open_${appointmentId}`;

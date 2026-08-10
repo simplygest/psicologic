@@ -11,6 +11,7 @@ require_once '../google_helpers.php';
 require_once '../microsoft_helpers.php';
 require_once '../livekit_helpers.php';
 require_once '../livekit_recording_helpers.php';
+require_once '../daily_recording_helpers.php';
 require_once '../invoice_helpers.php';
 require_once '../message_template_helpers.php';
 require_once '../app_log_helpers.php';
@@ -25,10 +26,22 @@ require_once '../export_helpers.php';
 require_once '../time_tracking_helpers.php';
 require_once '../braintree_subscription_service.php';
 require_once '../subscription_email_helpers.php';
+require_once '../subscription_invoice_helpers.php';
+require_once '../patient_delivery_helpers.php';
+require_once '../ai_report_helpers.php';
+require_once '../custom_fields_helpers.php';
+require_once '../tenant_storage_helpers.php';
+require_once '../file_storage_helpers.php';
+require_once '../data_import_helpers.php';
 header('Content-Type: application/json');
 
+$action = $_GET['action'] ?? '';
+$session_role = (string) ($_SESSION['role'] ?? '');
+$patient_delivery_actions = ['load_docx_patient_document','save_docx_patient_document','load_drawing_patient_document','save_drawing_patient_document'];
+$is_patient_delivery_request = $session_role === 'patient' && in_array($action, $patient_delivery_actions, true);
+$has_delivery_context = in_array($action, $patient_delivery_actions, true) && !empty($_GET['delivery_source']) && (int)($_GET['delivery_source_id']??0)>0;
 $is_superadmin = ($_SESSION['role'] ?? '') === 'superadmin';
-if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['admin', 'superadmin', 'reception', 'administration', 'technical'], true)) {
+if (!isset($_SESSION['user_id']) || (!in_array($session_role, ['admin', 'superadmin', 'reception', 'administration', 'technical'], true) && !$is_patient_delivery_request)) {
     echo json_encode(['success' => false, 'error' => 'No autorizado']);
     exit;
 }
@@ -51,7 +64,6 @@ if (function_exists('app_auto_schema_migrations_enabled') && app_auto_schema_mig
     ensure_knowledge_base_sector_schema($mysqli);
 }
 
-$action = $_GET['action'] ?? '';
 $tenant_id = current_tenant_id();
 $member_permissions = cabinet_member_permissions_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0), $_SESSION['role'] ?? '');
 
@@ -74,7 +86,8 @@ if (in_array($action, [
 
 function require_member_permission($permission, $error = 'No tienes permiso para realizar esta accion.')
 {
-    global $is_superadmin, $member_permissions;
+    global $is_superadmin, $member_permissions, $is_patient_delivery_request;
+    if ($is_patient_delivery_request) return;
     if ($is_superadmin || !empty($member_permissions[$permission])) {
         return;
     }
@@ -96,6 +109,7 @@ $report_actions = [
 ];
 $billing_actions = ['list_invoices', 'export_invoices', 'invoice_pdf', 'send_invoice_email'];
 $patient_actions = [
+    'custom_field_values', 'save_custom_field_values',
     'get_patients', 'list_patients', 'waiting_list_patients', 'patient_reports', 'create_patient_report',
     'create_custom_patient_report', 'patient_report_suggestions', 'add_suggested_patient_report',
     'update_patient_report', 'delete_custom_patient_report', 'patient_report', 'patient_evolution', 'save_patient_evolution',
@@ -114,17 +128,20 @@ $patient_actions = [
     'patient_contacts', 'save_patient_contact', 'delete_patient_contact',
     'knowledge_search', 'apply_knowledge_selection', 'save_manual_diagnosis',
     'patient_diagnoses', 'set_primary_patient_diagnosis', 'archive_patient_diagnosis',
-    'move_patient_diagnosis'
+    'move_patient_diagnosis', 'generate_patient_ai_content', 'save_patient_ai_document', 'export_patient_ai_pdf'
 ];
 $appointment_actions = [
+    'appointment_custom_field_values', 'save_appointment_custom_field_values',
     'appointment_payment_detail', 'appointment_session', 'update_appointment_payment',
     'update_appointment_status', 'update_appointment_session_notes', 'update_appointment_online_details',
     'send_appointment_online_link', 'send_manual_appointment_reminder', 'regenerate_appointment_livekit_link',
-    'start_livekit_recording', 'quick_appointments',
+    'livekit_recording_status', 'start_livekit_recording', 'daily_appointment_recordings', 'quick_appointments',
     'upcoming_appointments', 'list_closed_days', 'add_closed_day', 'delete_closed_day', 'delete_closed_range',
     'export_appointments'
 ];
+$attendance_certificate_actions = ['attendance_certificate_appointments', 'attendance_certificate'];
 $settings_actions = [
+    'custom_fields_list', 'save_custom_field', 'archive_custom_field',
     'save_dashboard_custom_config', 'save_bonuses', 'create_service_catalog_item',
     'delete_service_catalog_item', 'create_location_catalog_item', 'delete_location_catalog_item',
     'save_services', 'save_payment_settings', 'get_message_template', 'save_message_template',
@@ -134,6 +151,8 @@ $settings_actions = [
     'create_suggested_legal_documents', 'delete_legal_document', 'sign_uploaded_pdf',
     'signature_settings', 'save_signature_settings'
 ];
+$data_import_actions = ['data_import_template', 'data_import_preview', 'data_import_execute'];
+$system_status_actions = ['system_status'];
 if (in_array($action, $statistics_actions, true)) {
     require_member_permission('statistics', 'No tienes permiso para acceder a estadisticas.');
 }
@@ -149,8 +168,19 @@ if (in_array($action, $patient_actions, true)) {
 if (in_array($action, $appointment_actions, true)) {
     require_member_permission('appointments', 'No tienes permiso para acceder a citas.');
 }
+if (in_array($action, $attendance_certificate_actions, true)) {
+    require_member_permission('issue_attendance_certificates', 'No tienes permiso para emitir justificantes de asistencia.');
+}
 if (in_array($action, $settings_actions, true)) {
     require_member_permission('settings', 'No tienes permiso para modificar la configuracion.');
+}
+if (in_array($action, $data_import_actions, true) && !$is_superadmin) {
+    echo json_encode(['success' => false, 'error' => 'Solo el superadministrador puede importar datos.']);
+    exit;
+}
+if (in_array($action, $system_status_actions, true) && !$is_superadmin) {
+    echo json_encode(['success' => false, 'error' => 'Solo el superadministrador puede consultar el estado del sistema.']);
+    exit;
 }
 $tenant_global_settings_actions = [
     'get_message_template', 'save_message_template',
@@ -162,6 +192,7 @@ $tenant_global_settings_actions = [
     'signature_settings', 'save_signature_settings',
     'subscription_overview', 'subscription_client_token', 'subscription_create',
     'subscription_change_plan', 'subscription_update_payment_method', 'subscription_cancel',
+    'subscription_invoices',
 ];
 if (in_array($action, $tenant_global_settings_actions, true) && !$is_superadmin) {
     echo json_encode([
@@ -173,7 +204,7 @@ if (in_array($action, $tenant_global_settings_actions, true) && !$is_superadmin)
 if ($action === 'generate_invite' || $action === 'send_invite_email') {
     require_member_permission('create_patients', 'No tienes permiso para crear nuevos pacientes.');
 }
-if (in_array($action, ['list_app_logs', 'export_app_logs'], true) && !$is_superadmin) {
+if (in_array($action, ['list_app_logs', 'export_app_logs', 'list_incidents'], true) && !$is_superadmin && $session_role !== 'admin') {
     echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede consultar el log.']);
     exit;
 }
@@ -776,6 +807,15 @@ function normalize_knowledge_sector_keys($keys)
     return $normalized;
 }
 
+function tenant_knowledge_sector_keys($mysqli)
+{
+    $main = current_knowledge_sector_key($mysqli);
+    $tenant = current_tenant();
+    $keys = normalize_knowledge_sector_keys(is_array($tenant) ? ($tenant['knowledge_sector_keys_json'] ?? '') : '');
+    if (!$keys) $keys = [$main];
+    return array_values(array_unique($keys));
+}
+
 function current_professional_knowledge_settings($mysqli, $professional_id = 0)
 {
     $professional_id = $professional_id > 0
@@ -808,7 +848,7 @@ function current_professional_knowledge_settings($mysqli, $professional_id = 0)
         return $settings;
     }
     $mode = (string) ($row['knowledge_sector_mode'] ?? 'own');
-    if (!in_array($mode, ['own', 'related', 'custom'], true)) {
+    if (!in_array($mode, ['own', 'tenant', 'related', 'custom'], true)) {
         $mode = 'own';
     }
     return [
@@ -827,7 +867,9 @@ function allowed_knowledge_sector_keys($mysqli, $professional_id = 0)
     $keys = [$main_sector];
     if (knowledge_multi_sector_enabled($mysqli)) {
         $settings = current_professional_knowledge_settings($mysqli, $professional_id);
-        if ($settings['mode'] === 'related') {
+        if ($settings['mode'] === 'tenant') {
+            $keys = tenant_knowledge_sector_keys($mysqli);
+        } elseif ($settings['mode'] === 'related') {
             $related = knowledge_related_sector_presets()[$main_sector] ?? [];
             $keys = array_merge($keys, $related);
         } elseif ($settings['mode'] === 'custom') {
@@ -1367,7 +1409,8 @@ function admin_can_manage_appointment_payment($mysqli, $appointment_id)
                u.name AS patient_name, u.email AS patient_email, u.phone AS patient_phone,
                pp.address AS patient_address,
                al.name AS location_name, al.location_type,
-               p.display_name AS professional_name
+               p.display_name AS professional_name, p.public_email AS professional_public_email,
+               pu.email AS professional_user_email
         FROM appointments a
         LEFT JOIN appointment_service_options so ON so.id = a.service_option_id AND so.tenant_id = a.tenant_id
         LEFT JOIN appointment_services s ON s.id = so.service_id AND s.tenant_id = a.tenant_id
@@ -1375,6 +1418,7 @@ function admin_can_manage_appointment_payment($mysqli, $appointment_id)
         LEFT JOIN patient_profiles pp ON pp.user_id = u.id AND pp.tenant_id = u.tenant_id
         LEFT JOIN appointment_locations al ON al.id = a.location_id AND al.tenant_id = a.tenant_id
         LEFT JOIN professionals p ON p.id = a.professional_id AND p.tenant_id = a.tenant_id
+        LEFT JOIN users pu ON pu.id = p.user_id AND pu.tenant_id = p.tenant_id
         WHERE a.tenant_id = ?
           AND a.id = ?
         LIMIT 1
@@ -1459,6 +1503,9 @@ function admin_appointment_reminder_context($mysqli, array $appointment, array $
         );
         $online_link = livekit_patient_join_url($appointment);
     }
+    $public_online_link = $online_link !== ''
+        ? urlme_shorten_url($online_link, 'Videollamada SimplyGest Praxis')
+        : '';
     $patient_name = trim((string) ($appointment['patient_name'] ?? ''));
     $patient_short = message_template_first_name($patient_name) ?: $patient_name;
     $name_for_template = $short_patient_name ? $patient_short : $patient_name;
@@ -1488,14 +1535,14 @@ function admin_appointment_reminder_context($mysqli, array $appointment, array $
             'modalidad' => $consultation_text,
             'servicio' => $service_text,
             'lugar' => $place,
-            'link' => $online_link,
+            'link' => $public_online_link,
             'enlace_gestion' => $manage_link,
             'nombre_centro' => $settings['app_name'] ?? '',
             'telefono_centro' => $settings['site_phone'] ?? '',
             'importe' => $price . ' EUR'
         ],
         'manage_link' => $manage_link,
-        'online_link' => $online_link,
+        'online_link' => $public_online_link,
         'consultation_text' => $consultation_text,
         'service_text' => $service_text,
         'price' => $price
@@ -1542,29 +1589,42 @@ function appointment_patient_knowledge_problem_payload($mysqli, $patient_id)
 
     $tenant_id = current_tenant_id();
     $stmt = $mysqli->prepare("
-        SELECT kp.id, kp.sector_key, kp.name, kp.alias AS short_name, ka.name AS area, kp.population AS category, kp.risk_level, kp.population AS target_population
+        SELECT pp.initial_consultation_reason,
+               pd.id AS diagnosis_id, pd.source_type, pd.manual_label, pd.selected_objective,
+               kp.id, kp.sector_key, kp.name, kp.alias AS short_name, ka.name AS area, kp.population AS category, kp.risk_level, kp.population AS target_population
         FROM patient_profiles pp
+        LEFT JOIN patient_diagnoses pd
+          ON pd.tenant_id = pp.tenant_id
+         AND pd.patient_id = pp.user_id
+         AND pd.status = 'active'
         LEFT JOIN knowledge_problems kp
-          ON kp.id = pp.knowledge_problem_id
+          ON kp.id = COALESCE(pd.knowledge_problem_id, pp.knowledge_problem_id)
          AND kp.sector_key IN (" . knowledge_sector_in_sql($mysqli, $allowed_sectors) . ")
         LEFT JOIN knowledge_areas ka
           ON ka.id = kp.area_id
          AND ka.sector_key = kp.sector_key
         WHERE pp.tenant_id = ?
           AND pp.user_id = ?
+        ORDER BY pd.is_primary DESC, pd.sort_order ASC, pd.id ASC
         LIMIT 1
     ");
     $stmt->bind_param("ii", $tenant_id, $patient_id);
     $stmt->execute();
     $problem = $stmt->get_result()->fetch_assoc();
-    if (!$problem || empty($problem['id'])) {
+    $diagnosis_name = trim((string) ($problem['name'] ?? ''));
+    if ($diagnosis_name === '') {
+        $diagnosis_name = trim((string) ($problem['manual_label'] ?? ''));
+    }
+    if ($diagnosis_name === '') {
+        $consultation_reason = trim((string) ($problem['initial_consultation_reason'] ?? ''));
         return [
             'enabled' => true,
-            'status' => 'pending',
+            'status' => $consultation_reason !== '' ? 'consultation_reason' : 'pending',
             'sector_key' => current_knowledge_sector_key($mysqli),
             'id' => 0,
             'name' => '',
             'short_name' => '',
+            'consultation_reason' => $consultation_reason,
             'area' => '',
             'category' => '',
             'risk_level' => '',
@@ -1576,9 +1636,13 @@ function appointment_patient_knowledge_problem_payload($mysqli, $patient_id)
         'enabled' => true,
         'status' => 'assigned',
         'sector_key' => $problem['sector_key'] ?? current_knowledge_sector_key($mysqli),
-        'id' => (int) $problem['id'],
-        'name' => $problem['name'] ?? '',
-        'short_name' => $problem['short_name'] ?? '',
+        'id' => (int) ($problem['id'] ?? 0),
+        'diagnosis_id' => (int) ($problem['diagnosis_id'] ?? 0),
+        'source_type' => $problem['source_type'] ?? (!empty($problem['id']) ? 'knowledge' : 'manual'),
+        'name' => $diagnosis_name,
+        'short_name' => $problem['short_name'] ?: $diagnosis_name,
+        'selected_objective' => trim((string) ($problem['selected_objective'] ?? '')),
+        'consultation_reason' => trim((string) ($problem['initial_consultation_reason'] ?? '')),
         'area' => $problem['area'] ?? '',
         'category' => $problem['category'] ?? '',
         'risk_level' => $problem['risk_level'] ?? '',
@@ -1588,11 +1652,14 @@ function appointment_patient_knowledge_problem_payload($mysqli, $patient_id)
 
 function admin_can_access_patient($mysqli, $patient_id)
 {
-    global $is_superadmin;
+    global $is_superadmin, $is_patient_delivery_request;
     $tenant_id = current_tenant_id();
     $patient_id = (int) $patient_id;
     if ($patient_id <= 0) {
         return false;
+    }
+    if ($is_patient_delivery_request) {
+        return $patient_id === (int) ($_SESSION['user_id'] ?? 0);
     }
     $professional_id = current_professional_id_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0));
     if ($is_superadmin) {
@@ -1620,6 +1687,29 @@ function admin_can_access_patient($mysqli, $patient_id)
     $stmt->bind_param("iii", $tenant_id, $patient_id, $professional_id);
     $stmt->execute();
     return (bool) $stmt->get_result()->fetch_assoc();
+}
+
+$patient_delivery_context = null;
+$patient_delivery_type = '';
+if ($is_patient_delivery_request || $has_delivery_context) {
+    $patient_delivery_type = str_contains($action, 'docx') ? 'document' : 'drawing';
+    $delivery_patient_id = $is_patient_delivery_request ? (int)$_SESSION['user_id'] : (int)($_GET['patient_id']??0);
+    $patient_delivery_context = patient_delivery_request_context($mysqli, $tenant_id, $delivery_patient_id, $patient_delivery_type, $is_patient_delivery_request);
+    if (!$patient_delivery_context) {
+        echo json_encode(['success' => false, 'error' => 'Esta entrega no está disponible.']);
+        exit;
+    }
+    $requested_document_id = (int) ($_GET['document_id'] ?? 0);
+    $allowed_document_id = (int) ($patient_delivery_context['document_id'] ?? 0);
+    if ($requested_document_id > 0 && $requested_document_id !== $allowed_document_id) {
+        echo json_encode(['success' => false, 'error' => 'No autorizado para acceder a este documento.']);
+        exit;
+    }
+    $_GET['patient_id'] = (int) $patient_delivery_context['patient_id'];
+    $_GET['appointment_id'] = (int) ($patient_delivery_context['appointment_id'] ?? 0);
+    $_GET['document_id'] = $allowed_document_id;
+    $_GET['visible_to_patient'] = 1;
+    if (trim((string) ($_GET['title'] ?? '')) === '') $_GET['title'] = (string) ($patient_delivery_context['title'] ?? 'Entrega');
 }
 
 function knowledge_priority_to_work_plan($priority)
@@ -1815,11 +1905,12 @@ function send_professional_password_setup_email($mysqli, $user_id, $name, $email
     $stmt->bind_param("iis", $tenant_id, $user_id, $token_hash);
     $stmt->execute();
 
+    $password_link = app_public_base_url() . 'reset_password.php?t=' . urlencode($token);
     $reset_link = urlme_shorten_url(
-        app_public_base_url() . 'reset_password.php?t=' . urlencode($token),
-        'Crear contrasena acceso SimplyGest Praxis',
+        $password_link,
+        'Crear contraseña acceso SimplyGest Praxis',
         date('Y-m-d H:i:s', strtotime('+24 hours'))
-    );
+    ) ?: $password_link;
 
     return send_app_email(
         $email,
@@ -1896,7 +1987,7 @@ function ensure_payment_settings_table($mysqli)
             break_start_time TIME DEFAULT '15:00:00',
             break_end_time TIME DEFAULT '16:00:00',
             available_weekdays VARCHAR(32) NOT NULL DEFAULT '1,2,3,4,5',
-            email_provider ENUM('phpmailer', 'google') NOT NULL DEFAULT 'phpmailer',
+            email_provider ENUM('platform', 'phpmailer', 'google') NOT NULL DEFAULT 'platform',
             smtp_host VARCHAR(255) DEFAULT NULL,
             smtp_port INT UNSIGNED DEFAULT 587,
             smtp_username VARCHAR(255) DEFAULT NULL,
@@ -1957,7 +2048,7 @@ function ensure_payment_settings_table($mysqli)
     ensure_bonus_tables($mysqli);
 
     $columns = [
-        'email_provider' => "ALTER TABLE payment_settings ADD email_provider ENUM('phpmailer', 'google') NOT NULL DEFAULT 'phpmailer' AFTER admin_notification_email",
+        'email_provider' => "ALTER TABLE payment_settings ADD email_provider ENUM('platform', 'phpmailer', 'google') NOT NULL DEFAULT 'platform' AFTER admin_notification_email",
         'app_name' => "ALTER TABLE payment_settings ADD app_name VARCHAR(255) DEFAULT 'SimplyGest Praxis' AFTER id",
         'site_tagline' => "ALTER TABLE payment_settings ADD site_tagline VARCHAR(255) DEFAULT NULL AFTER app_name",
         'site_phone' => "ALTER TABLE payment_settings ADD site_phone VARCHAR(40) DEFAULT NULL AFTER site_tagline",
@@ -2195,6 +2286,7 @@ function ensure_patient_management_tables($mysqli)
         'deletion_reason' => "ALTER TABLE patient_profiles ADD deletion_reason VARCHAR(500) DEFAULT NULL AFTER deletion_requested_at",
         'deletion_mode' => "ALTER TABLE patient_profiles ADD deletion_mode VARCHAR(24) DEFAULT NULL AFTER deletion_reason",
         'birth_date' => "ALTER TABLE patient_profiles ADD birth_date DATE DEFAULT NULL AFTER patient_status",
+        'sex' => "ALTER TABLE patient_profiles ADD sex VARCHAR(24) DEFAULT NULL AFTER birth_date",
         'referral_source' => "ALTER TABLE patient_profiles ADD referral_source VARCHAR(80) DEFAULT NULL AFTER birth_date",
         'knowledge_problem_id' => "ALTER TABLE patient_profiles ADD knowledge_problem_id INT UNSIGNED DEFAULT NULL AFTER referral_source",
         'manual_diagnosis' => "ALTER TABLE patient_profiles ADD manual_diagnosis VARCHAR(500) DEFAULT NULL AFTER knowledge_problem_id",
@@ -2711,6 +2803,12 @@ function ensure_patient_work_plan_tables($mysqli)
             status VARCHAR(20) NOT NULL DEFAULT 'pending',
             priority TINYINT UNSIGNED NOT NULL DEFAULT 2,
             visible_to_patient TINYINT(1) NOT NULL DEFAULT 0,
+            requires_docx TINYINT(1) NOT NULL DEFAULT 0,
+            requires_drawing TINYINT(1) NOT NULL DEFAULT 0,
+            requires_file TINYINT(1) NOT NULL DEFAULT 0,
+            response_docx_document_id INT UNSIGNED DEFAULT NULL,
+            response_drawing_document_id INT UNSIGNED DEFAULT NULL,
+            response_file_document_id INT UNSIGNED DEFAULT NULL,
             fitness_exercise_id VARCHAR(40) DEFAULT NULL,
             document_id INT UNSIGNED DEFAULT NULL,
             created_by INT UNSIGNED DEFAULT NULL,
@@ -2734,6 +2832,12 @@ function ensure_patient_work_plan_tables($mysqli)
         'fitness_exercise_id' => "ALTER TABLE patient_work_plan_tasks ADD fitness_exercise_id VARCHAR(40) DEFAULT NULL AFTER visible_to_patient"
         ,'document_id' => "ALTER TABLE patient_work_plan_tasks ADD document_id INT UNSIGNED DEFAULT NULL AFTER fitness_exercise_id"
         ,'patient_diagnosis_id' => "ALTER TABLE patient_work_plan_tasks ADD patient_diagnosis_id INT UNSIGNED DEFAULT NULL AFTER patient_id"
+        ,'requires_docx' => "ALTER TABLE patient_work_plan_tasks ADD requires_docx TINYINT(1) NOT NULL DEFAULT 0 AFTER visible_to_patient"
+        ,'requires_drawing' => "ALTER TABLE patient_work_plan_tasks ADD requires_drawing TINYINT(1) NOT NULL DEFAULT 0 AFTER requires_docx"
+        ,'requires_file' => "ALTER TABLE patient_work_plan_tasks ADD requires_file TINYINT(1) NOT NULL DEFAULT 0 AFTER requires_drawing"
+        ,'response_docx_document_id' => "ALTER TABLE patient_work_plan_tasks ADD response_docx_document_id INT UNSIGNED DEFAULT NULL AFTER requires_file"
+        ,'response_drawing_document_id' => "ALTER TABLE patient_work_plan_tasks ADD response_drawing_document_id INT UNSIGNED DEFAULT NULL AFTER response_docx_document_id"
+        ,'response_file_document_id' => "ALTER TABLE patient_work_plan_tasks ADD response_file_document_id INT UNSIGNED DEFAULT NULL AFTER response_drawing_document_id"
     ];
     foreach ($columns as $column => $sql) {
         $res = $mysqli->query("SHOW COLUMNS FROM patient_work_plan_tasks LIKE '$column'");
@@ -2791,6 +2895,9 @@ function ensure_work_plan_task_template_tables($mysqli)
             title VARCHAR(180) NOT NULL,
             description LONGTEXT DEFAULT NULL,
             priority TINYINT UNSIGNED NOT NULL DEFAULT 2,
+            requires_docx TINYINT(1) NOT NULL DEFAULT 0,
+            requires_drawing TINYINT(1) NOT NULL DEFAULT 0,
+            requires_file TINYINT(1) NOT NULL DEFAULT 0,
             fitness_exercise_id VARCHAR(40) DEFAULT NULL,
             attachment_file_path VARCHAR(500) DEFAULT NULL,
             attachment_original_name VARCHAR(255) DEFAULT NULL,
@@ -2811,6 +2918,15 @@ function ensure_work_plan_task_template_tables($mysqli)
     }
     if (!column_exists($mysqli, 'work_plan_task_template_items', 'fitness_exercise_id')) {
         $mysqli->query("ALTER TABLE work_plan_task_template_items ADD fitness_exercise_id VARCHAR(40) DEFAULT NULL AFTER priority");
+    }
+    if (!column_exists($mysqli, 'work_plan_task_template_items', 'requires_docx')) {
+        $mysqli->query("ALTER TABLE work_plan_task_template_items ADD requires_docx TINYINT(1) NOT NULL DEFAULT 0 AFTER priority");
+    }
+    if (!column_exists($mysqli, 'work_plan_task_template_items', 'requires_drawing')) {
+        $mysqli->query("ALTER TABLE work_plan_task_template_items ADD requires_drawing TINYINT(1) NOT NULL DEFAULT 0 AFTER requires_docx");
+    }
+    if (!column_exists($mysqli, 'work_plan_task_template_items', 'requires_file')) {
+        $mysqli->query("ALTER TABLE work_plan_task_template_items ADD requires_file TINYINT(1) NOT NULL DEFAULT 0 AFTER requires_drawing");
     }
     $attachment_columns = [
         'attachment_file_path' => "VARCHAR(500) DEFAULT NULL AFTER fitness_exercise_id",
@@ -2850,17 +2966,19 @@ function save_work_plan_template_attachment($file)
         throw new \Exception('Formato no valido. Usa PDF, DOCX o una imagen.');
     }
     plan_usage_assert_uploads_enabled($GLOBALS['mysqli']);
+    tenant_storage_assert_can_accept($GLOBALS['mysqli'], current_tenant_id(), (int) ($file['size'] ?? 0));
     $upload_dir = app_tenant_protected_upload_dir('task-templates');
     if (!app_ensure_dir($upload_dir)) {
         throw new \Exception('No se pudo crear la carpeta de adjuntos de plantillas.');
     }
     $safe_extension = $extension === 'jpeg' ? 'jpg' : $extension;
     $stored_name = 'task_' . bin2hex(random_bytes(12)) . '.' . $safe_extension;
-    if (!move_uploaded_file($file['tmp_name'], $upload_dir . '/' . $stored_name)) {
+    $relative_path = app_tenant_protected_upload_relative_path('task-templates', $stored_name);
+    if (!praxis_storage_move_uploaded_file($file['tmp_name'], $relative_path, $upload_dir . '/' . $stored_name, $allowed[$extension])) {
         throw new \Exception('No se pudo guardar el archivo de la tarea.');
     }
     return [
-        'path' => app_tenant_protected_upload_relative_path('task-templates', $stored_name),
+        'path' => $relative_path,
         'name' => basename((string) $file['name']),
         'size' => (int) ($file['size'] ?? 0),
         'mime' => $allowed[$extension]
@@ -2880,13 +2998,13 @@ function import_task_attachment_as_patient_document($mysqli, array $item, $patie
     }
     $stored_name = 'document_' . (int) $patient_id . '_' . bin2hex(random_bytes(12)) . '.' . $extension;
     $destination = $upload_dir . '/' . $stored_name;
-    if (!copy($source, $destination)) {
+    $path = app_tenant_protected_upload_relative_path('documents', $stored_name);
+    $mime = (string) ($item['attachment_mime_type'] ?? 'application/octet-stream');
+    if (!praxis_storage_copy_local($source, $path, $destination, $mime)) {
         throw new \Exception('No se pudo copiar el adjunto de la plantilla.');
     }
-    $path = app_tenant_protected_upload_relative_path('documents', $stored_name);
     $name = (string) ($item['attachment_original_name'] ?? basename($source));
     $size = (int) filesize($destination);
-    $mime = (string) ($item['attachment_mime_type'] ?? 'application/octet-stream');
     $editable_path = $extension === 'docx' ? $path : null;
     $editable_mime = $extension === 'docx' ? $mime : null;
     $tenant_id = current_tenant_id();
@@ -2925,13 +3043,11 @@ function delete_linked_patient_document($mysqli, $tenant_id, $patient_id, $docum
         return;
     }
     $paths = array_unique(array_filter([
-        stored_upload_full_path($document['file_path'] ?? ''),
-        stored_upload_full_path($document['editable_file_path'] ?? '')
+        $document['file_path'] ?? '',
+        $document['editable_file_path'] ?? ''
     ]));
     foreach ($paths as $path) {
-        if (is_file($path)) {
-            @unlink($path);
-        }
+        praxis_storage_delete((string) $path);
     }
     $stmt = $mysqli->prepare("DELETE FROM patient_documents WHERE tenant_id = ? AND patient_id = ? AND id = ?");
     $stmt->bind_param("iii", $tenant_id, $patient_id, $document_id);
@@ -3293,7 +3409,7 @@ function stored_upload_full_path($relative_path)
     if ($relative_path === '') {
         return '';
     }
-    return app_protected_path_from_relative($relative_path);
+    return praxis_storage_resolve_local_path($relative_path);
 }
 
 function ensure_document_signatures_schema($mysqli)
@@ -3366,11 +3482,11 @@ function sign_pdf_contents_once(string $pdf_contents, string $original_name, arr
     }
     $stored_name = 'signed_' . preg_replace('/[^a-z0-9_-]+/i', '_', $source_type) . '_' . $source_id . '_' . bin2hex(random_bytes(10)) . '.pdf';
     $destination = $upload_dir . '/' . $stored_name;
-    if (file_put_contents($destination, $signed_pdf, LOCK_EX) === false) {
+    $relative_path = app_tenant_protected_upload_relative_path('signed_documents', $stored_name);
+    if (praxis_storage_write_contents($relative_path, $destination, $signed_pdf, 'application/pdf') === false) {
         throw new \RuntimeException('No se pudo guardar el documento firmado.');
     }
     @chmod($destination, 0600);
-    $relative_path = app_tenant_protected_upload_relative_path('signed_documents', $stored_name);
     $signed_sha256 = hash('sha256', $signed_pdf);
     $fingerprint = stampbyme_selected_certificate_fingerprint($tenant_id, $professional_id > 0 ? $professional_id : null, $owner);
     $signed_by = (int) ($_SESSION['user_id'] ?? 0);
@@ -3506,12 +3622,13 @@ function save_patient_document_upload($file, $patient_id)
 
     $filename = 'patient_' . (int) $patient_id . '_' . bin2hex(random_bytes(8)) . '.' . $allowed[$extension];
     $destination = $upload_dir . '/' . $filename;
-    if (!move_uploaded_file($file['tmp_name'], $destination)) {
+    $relative_path = app_tenant_protected_upload_relative_path('patients', $filename);
+    if (!praxis_storage_move_uploaded_file($file['tmp_name'], $relative_path, $destination)) {
         throw new \Exception('No se pudo guardar el documento.');
     }
 
     return [
-        'path' => app_tenant_protected_upload_relative_path('patients', $filename),
+        'path' => $relative_path,
         'name' => basename($file['name'])
     ];
 }
@@ -3574,6 +3691,7 @@ function save_patient_evolution_uploads($mysqli, $files, $note_id, $patient_id, 
         }
 
         plan_usage_assert_uploads_enabled($mysqli);
+        tenant_storage_assert_can_accept($mysqli, current_tenant_id(), (int) ($file['size'] ?? 0));
         $extension = strtolower(pathinfo($file['name'] ?? '', PATHINFO_EXTENSION));
         if (!isset($allowed_extensions[$extension])) {
             throw new \Exception('Formato no valido. Usa PDF, Excel o imagen.');
@@ -3582,11 +3700,11 @@ function save_patient_evolution_uploads($mysqli, $files, $note_id, $patient_id, 
         $mime = $allowed_extensions[$extension];
         $stored_name = 'evolution_' . (int) $patient_id . '_' . (int) $note_id . '_' . bin2hex(random_bytes(12)) . '.' . ($extension === 'jpeg' ? 'jpg' : $extension);
         $destination = $upload_dir . '/' . $stored_name;
-        if (!move_uploaded_file($file['tmp_name'], $destination)) {
+        $relative_path = app_tenant_protected_upload_relative_path('evolution', $stored_name);
+        if (!praxis_storage_move_uploaded_file($file['tmp_name'], $relative_path, $destination, $mime)) {
             throw new \Exception('No se pudo guardar uno de los archivos.');
         }
 
-        $relative_path = app_tenant_protected_upload_relative_path('evolution', $stored_name);
         $original_name = basename($file['name']);
         $file_size = (int) ($file['size'] ?? 0);
         $uploaded_by = (int) ($_SESSION['user_id'] ?? 0);
@@ -3630,6 +3748,7 @@ function save_patient_document_file_upload($file, $patient_id)
     ];
 
     plan_usage_assert_uploads_enabled($GLOBALS['mysqli']);
+    tenant_storage_assert_can_accept($GLOBALS['mysqli'], current_tenant_id(), (int) ($file['size'] ?? 0));
     $extension = strtolower(pathinfo($file['name'] ?? '', PATHINFO_EXTENSION));
     if (!isset($allowed_extensions[$extension])) {
         throw new \Exception('Formato no valido. Usa PDF, DOC, DOCX, Excel o imagen.');
@@ -3643,12 +3762,13 @@ function save_patient_document_file_upload($file, $patient_id)
     $safe_extension = $extension === 'jpeg' ? 'jpg' : $extension;
     $stored_name = 'document_' . (int) $patient_id . '_' . bin2hex(random_bytes(12)) . '.' . $safe_extension;
     $destination = $upload_dir . '/' . $stored_name;
-    if (!move_uploaded_file($file['tmp_name'], $destination)) {
+    $relative_path = app_tenant_protected_upload_relative_path('documents', $stored_name);
+    if (!praxis_storage_move_uploaded_file($file['tmp_name'], $relative_path, $destination, $allowed_extensions[$extension])) {
         throw new \Exception('No se pudo guardar el archivo.');
     }
 
     return [
-        'path' => app_tenant_protected_upload_relative_path('documents', $stored_name),
+        'path' => $relative_path,
         'name' => basename($file['name']),
         'size' => (int) ($file['size'] ?? 0),
         'mime' => $allowed_extensions[$extension]
@@ -3674,12 +3794,13 @@ function save_docx_document_buffer($buffer, $patient_id)
 
     $stored_name = 'document_' . (int) $patient_id . '_' . bin2hex(random_bytes(12)) . '.docx';
     $destination = $upload_dir . '/' . $stored_name;
-    if (file_put_contents($destination, $buffer, LOCK_EX) === false) {
+    $relative_path = app_tenant_protected_upload_relative_path('documents', $stored_name);
+    if (praxis_storage_write_contents($relative_path, $destination, $buffer, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') === false) {
         throw new \Exception('No se pudo guardar el documento DOCX.');
     }
 
     return [
-        'path' => app_tenant_protected_upload_relative_path('documents', $stored_name),
+        'path' => $relative_path,
         'name' => $stored_name,
         'size' => strlen($buffer),
         'mime' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -3742,20 +3863,22 @@ function save_drawing_document_files($scene_json, $png_data_url, $patient_id)
     $png_destination = $upload_dir . '/' . $png_name;
     $json_destination = $upload_dir . '/' . $json_name;
 
-    if (file_put_contents($png_destination, $png_buffer, LOCK_EX) === false) {
+    $png_relative = app_tenant_protected_upload_relative_path('documents', $png_name);
+    $json_relative = app_tenant_protected_upload_relative_path('documents', $json_name);
+    if (praxis_storage_write_contents($png_relative, $png_destination, $png_buffer, 'image/png') === false) {
         throw new \Exception('No se pudo guardar la imagen del dibujo.');
     }
-    if (file_put_contents($json_destination, $scene_json, LOCK_EX) === false) {
-        @unlink($png_destination);
+    if (praxis_storage_write_contents($json_relative, $json_destination, $scene_json, 'application/vnd.excalidraw+json') === false) {
+        praxis_storage_delete($png_relative);
         throw new \Exception('No se pudo guardar el dibujo editable.');
     }
 
     return [
-        'path' => app_tenant_protected_upload_relative_path('documents', $png_name),
+        'path' => $png_relative,
         'name' => $png_name,
         'size' => strlen($png_buffer),
         'mime' => 'image/png',
-        'editable_path' => app_tenant_protected_upload_relative_path('documents', $json_name),
+        'editable_path' => $json_relative,
         'editable_name' => $json_name,
         'editable_size' => strlen($scene_json),
         'editable_mime' => 'application/vnd.excalidraw+json'
@@ -3786,12 +3909,13 @@ function save_legal_pdf_upload($file, $category, $prefix)
 
     $stored_name = preg_replace('/[^a-z0-9_]/', '_', strtolower($prefix)) . '_' . bin2hex(random_bytes(12)) . '.pdf';
     $destination = $upload_dir . '/' . $stored_name;
-    if (!move_uploaded_file($file['tmp_name'], $destination)) {
+    $relative_path = app_tenant_protected_upload_relative_path($category, $stored_name);
+    if (!praxis_storage_move_uploaded_file($file['tmp_name'], $relative_path, $destination, 'application/pdf')) {
         throw new \Exception('No se pudo guardar el PDF.');
     }
 
     return [
-        'path' => app_tenant_protected_upload_relative_path($category, $stored_name),
+        'path' => $relative_path,
         'name' => basename($file['name']),
         'size' => (int) ($file['size'] ?? 0),
         'mime' => 'application/pdf'
@@ -4743,9 +4867,11 @@ function create_suggested_legal_document_pdf(array $definition)
     $mpdf->SetTitle((string) ($definition['title'] ?? 'Documento legal'));
     $mpdf->WriteHTML(pdf_prepare_html($html));
     $mpdf->Output($destination, \Mpdf\Output\Destination::FILE);
+    $relative_path = app_tenant_protected_upload_relative_path('legal_templates', $stored_name);
+    praxis_storage_register_generated_file($relative_path, $destination, 'application/pdf');
 
     return [
-        'path' => app_tenant_protected_upload_relative_path('legal_templates', $stored_name),
+        'path' => $relative_path,
         'name' => pdf_safe_filename((string) ($definition['title'] ?? 'documento-legal')),
         'size' => is_file($destination) ? filesize($destination) : 0,
         'mime' => 'application/pdf'
@@ -4838,9 +4964,11 @@ function create_handwritten_signed_consent_pdf(
     $mpdf->WriteHTML(pdf_prepare_html($html));
     $mpdf->SetTitle($document_title . ' - firmado');
     $mpdf->Output($destination, \Mpdf\Output\Destination::FILE);
+    $relative_path = app_tenant_protected_upload_relative_path('legal_signed', $stored_name);
+    praxis_storage_register_generated_file($relative_path, $destination, 'application/pdf');
 
     return [
-        'path' => app_tenant_protected_upload_relative_path('legal_signed', $stored_name),
+        'path' => $relative_path,
         'name' => pdf_safe_filename($document_title . '-firmado'),
         'size' => is_file($destination) ? filesize($destination) : 0,
         'mime' => 'application/pdf',
@@ -4879,11 +5007,12 @@ function save_patient_photo_upload($file, $patient_id)
 
     $filename = 'patient_photo_' . (int) $patient_id . '_' . bin2hex(random_bytes(8)) . '.' . $extensions[$image_info['mime']];
     $destination = $upload_dir . '/' . $filename;
-    if (!move_uploaded_file($file['tmp_name'], $destination)) {
+    $relative_path = app_tenant_public_upload_relative_path('patients', $filename);
+    if (!praxis_storage_move_uploaded_file($file['tmp_name'], $relative_path, $destination, $image_info['mime'])) {
         throw new \Exception('No se pudo guardar la foto del paciente.');
     }
 
-    return app_tenant_public_upload_relative_path('patients', $filename);
+    return $relative_path;
 }
 
 function normalize_time_field($value, $default = '')
@@ -5092,11 +5221,12 @@ function save_uploaded_settings_image($file, $prefix)
 
     $filename = $prefix . '_' . bin2hex(random_bytes(8)) . '.' . $extensions[$image_info['mime']];
     $destination = $upload_dir . '/' . $filename;
-    if (!move_uploaded_file($file['tmp_name'], $destination)) {
+    $relative_path = app_tenant_public_upload_relative_path('settings', $filename);
+    if (!praxis_storage_move_uploaded_file($file['tmp_name'], $relative_path, $destination, $image_info['mime'])) {
         throw new \Exception('No se pudo guardar la imagen.');
     }
 
-    return app_tenant_public_upload_relative_path('settings', $filename);
+    return $relative_path;
 }
 
 function save_uploaded_professional_photo($file, $professional_id)
@@ -5137,16 +5267,91 @@ function save_uploaded_professional_photo($file, $professional_id)
 
     $filename = 'professional_' . (int) $professional_id . '_' . bin2hex(random_bytes(8)) . '.' . $extensions[$image_info['mime']];
     $destination = $upload_dir . '/' . $filename;
-    if (!move_uploaded_file($file['tmp_name'], $destination)) {
+    $relative_path = app_tenant_public_upload_relative_path('professionals', $filename);
+    if (!praxis_storage_move_uploaded_file($file['tmp_name'], $relative_path, $destination, $image_info['mime'])) {
         throw new \Exception('No se pudo guardar la foto del profesional.');
     }
 
-    return app_tenant_public_upload_relative_path('professionals', $filename);
+    return $relative_path;
 }
 
-if ($action === 'generate_invite') {
+if ($action === 'custom_fields_list') {
+    $enabled = plan_config_feature_enabled(plan_usage_current_config($mysqli), 'customFields.enabled', false);
+    $limit = (int) plan_usage_limit($mysqli, 'maxCustomFields', 0);
+    echo json_encode([
+        'success' => true,
+        'enabled' => $enabled ? 1 : 0,
+        'limit' => $limit,
+        'fields' => $enabled ? custom_field_definitions($mysqli, $tenant_id, null, false) : []
+    ]);
+} elseif ($action === 'save_custom_field') {
+    if (!$is_superadmin) {
+        echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede configurar estos campos.']); exit;
+    }
+    if (!plan_config_feature_enabled(plan_usage_current_config($mysqli), 'customFields.enabled', false)) {
+        echo json_encode(['success' => false, 'error' => 'Los campos personalizados no están disponibles en este plan.']); exit;
+    }
+    ensure_custom_fields_schema($mysqli);
+    $id = max(0, (int) ($_POST['id'] ?? 0));
+    $name = trim((string) ($_POST['name'] ?? ''));
+    $entityType = (string) ($_POST['entity_type'] ?? 'patient');
+    $fieldType = (string) ($_POST['field_type'] ?? 'text');
+    $required = !empty($_POST['is_required']) ? 1 : 0;
+    $sortOrder = (int) ($_POST['sort_order'] ?? 0);
+    $options = custom_field_options($_POST['options'] ?? []);
+    if ($name === '' || !in_array($entityType, ['patient', 'appointment'], true) || !in_array($fieldType, ['text', 'number', 'date', 'boolean', 'select'], true)) {
+        echo json_encode(['success' => false, 'error' => 'Revisa el nombre, ámbito y tipo del campo.']); exit;
+    }
+    if ($fieldType === 'select' && !$options) {
+        echo json_encode(['success' => false, 'error' => 'Añade al menos una opción a la lista.']); exit;
+    }
+    $limit = (int) plan_usage_limit($mysqli, 'maxCustomFields', 0);
+    if ($id <= 0 && $limit > 0) {
+        $stmt = $mysqli->prepare("SELECT COUNT(*) total FROM custom_field_definitions WHERE tenant_id = ? AND is_active = 1");
+        $stmt->bind_param('i', $tenant_id); $stmt->execute();
+        if ((int) ($stmt->get_result()->fetch_assoc()['total'] ?? 0) >= $limit) {
+            echo json_encode(['success' => false, 'error' => 'Tu plan permite crear un máximo de ' . $limit . ' campos personalizados.']); exit;
+        }
+    }
+    $optionsJson = $fieldType === 'select' ? json_encode($options, JSON_UNESCAPED_UNICODE) : null;
+    $userId = (int) ($_SESSION['user_id'] ?? 0);
+    if ($id > 0) {
+        $stmt = $mysqli->prepare("UPDATE custom_field_definitions SET name=?, entity_type=?, field_type=?, options_json=?, is_required=?, sort_order=? WHERE tenant_id=? AND id=? AND is_active=1");
+        $stmt->bind_param('ssssiiii', $name, $entityType, $fieldType, $optionsJson, $required, $sortOrder, $tenant_id, $id);
+    } else {
+        $stmt = $mysqli->prepare("INSERT INTO custom_field_definitions (tenant_id,name,entity_type,field_type,options_json,is_required,sort_order,created_by) VALUES (?,?,?,?,?,?,?,?)");
+        $stmt->bind_param('issssiii', $tenant_id, $name, $entityType, $fieldType, $optionsJson, $required, $sortOrder, $userId);
+    }
+    $stmt->execute();
+    echo json_encode(['success' => true, 'message' => 'Campo personalizado guardado.']);
+} elseif ($action === 'archive_custom_field') {
+    if (!$is_superadmin) { echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede archivar campos.']); exit; }
+    ensure_custom_fields_schema($mysqli);
+    $id = max(0, (int) ($_POST['id'] ?? 0));
+    $stmt = $mysqli->prepare("UPDATE custom_field_definitions SET is_active=0 WHERE tenant_id=? AND id=?");
+    $stmt->bind_param('ii', $tenant_id, $id); $stmt->execute();
+    echo json_encode(['success' => true, 'message' => 'Campo archivado. Los valores históricos se conservan.']);
+} elseif ($action === 'custom_field_values' || $action === 'appointment_custom_field_values') {
+    $entityType = $action === 'custom_field_values' ? 'patient' : 'appointment';
+    $entityId = max(0, (int) ($_GET['entity_id'] ?? 0));
+    if (!plan_config_feature_enabled(plan_usage_current_config($mysqli), 'customFields.enabled', false)) {
+        echo json_encode(['success' => true, 'fields' => [], 'values' => []]); exit;
+    }
+    if ($entityType === 'patient' && $entityId > 0 && !admin_can_access_patient($mysqli, $entityId)) { echo json_encode(['success'=>false,'error'=>'No autorizado.']); exit; }
+    if ($entityType === 'appointment') {
+        [$allowed] = admin_can_manage_appointment_payment($mysqli, $entityId);
+        if (!$allowed) { echo json_encode(['success'=>false,'error'=>'No autorizado.']); exit; }
+    }
+    echo json_encode(['success'=>true, 'fields'=>custom_field_definitions($mysqli,$tenant_id,$entityType,true), 'values'=>$entityId > 0 ? custom_field_values($mysqli,$tenant_id,$entityType,$entityId) : []]);
+} elseif ($action === 'save_appointment_custom_field_values') {
+    $entityId = max(0, (int) ($_POST['entity_id'] ?? 0));
+    [$allowed] = admin_can_manage_appointment_payment($mysqli, $entityId);
+    if (!$allowed) { echo json_encode(['success'=>false,'error'=>'No autorizado.']); exit; }
+    [$ok,$error] = save_custom_field_values($mysqli,$tenant_id,'appointment',$entityId,is_array($_POST['custom_fields']??null)?$_POST['custom_fields']:[],(int)$_SESSION['user_id']);
+    echo json_encode($ok ? ['success'=>true,'message'=>'Campos de la cita guardados.'] : ['success'=>false,'error'=>$error]);
+} elseif ($action === 'generate_invite') {
     if (!app_feature_enabled_from_db($mysqli, 'patientPortal.enabled', false) || !app_feature_enabled_from_db($mysqli, 'patientPortal.invitations', false)) {
-        echo json_encode(['success' => false, 'error' => 'Las invitaciones del portal no estan disponibles en este plan.']);
+        echo json_encode(['success' => false, 'error' => 'Las invitaciones del Portal no están disponibles en este plan.']);
         exit;
     }
     $token = bin2hex(random_bytes(32));
@@ -5534,7 +5739,7 @@ if ($action === 'generate_invite') {
                pp.invoice_use_alt_data, pp.invoice_tax_exempt, pp.invoice_name, pp.invoice_nif, pp.invoice_email, pp.invoice_phone, pp.invoice_address,
                pp.timezone AS patient_timezone,
                pp.patient_status, pp.deletion_requested_at, pp.deletion_reason, pp.deletion_mode,
-               pp.waiting_list, pp.birth_date, pp.referral_source, pp.knowledge_problem_id, pp.manual_diagnosis, pp.initial_consultation_reason,
+               pp.waiting_list, pp.birth_date, pp.sex, pp.referral_source, pp.knowledge_problem_id, pp.manual_diagnosis, pp.initial_consultation_reason,
                pp.background_notes, pp.support_network_notes, pp.habits, pp.smoker, pp.alcohol_consumption, pp.preferred_service_option_id,
                pp.emergency_contact_name, pp.emergency_contact_nif, pp.emergency_contact_phone, pp.emergency_contact_relation, pp.address,
                pp.admission_date, pp.notes, pp.physical_sex,
@@ -5638,6 +5843,7 @@ if ($action === 'generate_invite') {
             'deletion_mode' => $row['deletion_mode'] ?? '',
             'waiting_list' => (int) ($row['waiting_list'] ?? 0),
             'birth_date' => $row['birth_date'] ?? '',
+            'sex' => $row['sex'] ?? '',
             'referral_source' => $row['referral_source'] ?? '',
             'knowledge_problem_id' => (int) ($row['knowledge_problem_id'] ?? 0),
             'manual_diagnosis' => $row['manual_diagnosis'] ?? '',
@@ -6122,6 +6328,68 @@ if ($action === 'generate_invite') {
         return array_map(function ($key) use ($row) { return $row[$key] ?? ''; }, $headers);
     }, $records);
     export_output_xlsx('log-' . $date_from . '-' . $date_to, $headers, $rows, 'Log');
+} elseif ($action === 'list_incidents') {
+    ensure_invoice_schema($mysqli);
+    ensure_appointment_payment_columns($mysqli);
+    ensure_app_logs_table($mysqli);
+    $incidents = [];
+    $add_incident = static function (string $type, string $level, string $title, string $description, string $advice, int $count = 1, string $action = '') use (&$incidents): void {
+        $incidents[] = compact('type', 'level', 'title', 'description', 'advice', 'count', 'action');
+    };
+
+    if (!app_email_is_configured($mysqli)) {
+        $add_incident('email_not_configured', 'danger', "Correo electr\u{00F3}nico no configurado", 'Praxis no puede enviar recordatorios, invitaciones, facturas ni documentos por email.', "Configura un proveedor de correo en Configuraci\u{00F3}n > Comunicaciones y realiza un env\u{00ED}o de prueba.", 1, 'communication_settings');
+    }
+
+    $settings_res = $mysqli->query("SELECT online_payment_enabled, environment, billing_enabled, billing_provider, billing_country, billing_province, legal_owner_name, legal_nif, legal_address, legal_city, legal_postal_code, verifactu_enabled FROM payment_settings WHERE tenant_id = $tenant_id LIMIT 1");
+    $settings = $settings_res ? ($settings_res->fetch_assoc() ?: []) : [];
+    if ((int) ($settings['online_payment_enabled'] ?? 0) === 1 && (string) ($settings['environment'] ?? 'sandbox') === 'sandbox') {
+        $add_incident('online_payments_sandbox', 'danger', 'Pagos online en modo de prueba', "Los cobros realizados por los clientes son simulaciones y no ingresar\u{00E1}n dinero.", "Cuando termines las pruebas, configura las credenciales de producci\u{00F3}n y cambia el entorno desde Configuraci\u{00F3}n > Pagos.", 1, 'payment_settings');
+    }
+    if ((int) ($settings['billing_enabled'] ?? 0) === 1) {
+        $missing_fiscal = [];
+        foreach (['legal_owner_name' => 'nombre fiscal', 'legal_nif' => 'NIF', 'legal_address' => 'domicilio', 'legal_city' => 'municipio', 'legal_postal_code' => "c\u{00F3}digo postal"] as $field => $label) {
+            if (trim((string) ($settings[$field] ?? '')) === '') $missing_fiscal[] = $label;
+        }
+        if (strtoupper(trim((string) ($settings['billing_country'] ?? 'ES'))) === 'ES' && trim((string) ($settings['billing_province'] ?? '')) === '') $missing_fiscal[] = 'provincia';
+        if ($missing_fiscal) $add_incident('billing_fiscal_data_incomplete', 'danger', "Informaci\u{00F3}n fiscal incompleta", 'Falta completar: ' . implode(', ', $missing_fiscal) . '.', 'Completa los datos legales y fiscales antes de emitir nuevas facturas para evitar rechazos o documentos incompletos.', count($missing_fiscal), 'billing_settings');
+    }
+    $provider = (string) ($settings['billing_provider'] ?? 'none');
+    if ((int) ($settings['billing_enabled'] ?? 0) === 1 && $provider === 'praxis' && (int) ($settings['verifactu_enabled'] ?? 0) === 1) {
+        $res = $mysqli->query("SELECT COUNT(*) total FROM verifactu_records WHERE tenant_id = $tenant_id AND status = 'error'");
+        $count = (int) ($res ? ($res->fetch_assoc()['total'] ?? 0) : 0);
+        if ($count > 0) $add_incident('verifactu_failed', 'danger', 'Registros VeriFactu fallidos', 'Hay facturas que AEAT no ha aceptado o que no se han podido enviar.', "Abre Facturaci\u{00F3}n, revisa el error de cada factura y corrige los datos fiscales o la configuraci\u{00F3}n antes de reintentarlo.", $count, 'billing_invoices');
+    }
+    if ((int) ($settings['billing_enabled'] ?? 0) === 1 && $provider === 'simplygest_cloud') {
+        $res = $mysqli->query("SELECT COUNT(*) total FROM movim WHERE tenant_id = $tenant_id AND tipo_movim = 'factura' AND billing_provider = 'simplygest_cloud' AND (external_invoice_id IS NULL OR external_invoice_id = '')");
+        $count = (int) ($res ? ($res->fetch_assoc()['total'] ?? 0) : 0);
+        if ($count > 0) $add_incident('cloud_invoices_pending', 'danger', 'Facturas sin enviar a SimplyGest Cloud', "Estas facturas no tienen confirmaci\u{00F3}n ni identificador de Cloud.", "Comprueba la API Key y la conexi\u{00F3}n con la empresa correcta de Cloud antes de volver a enviarlas.", $count, 'billing_invoices');
+    }
+
+    $res = $mysqli->query("SELECT COUNT(*) total FROM appointments WHERE tenant_id = $tenant_id AND status <> 'cancelled' AND CONCAT(appointment_date, ' ', appointment_time) < NOW() AND COALESCE(payment_status, 'pending') <> 'paid'");
+    $count = (int) ($res ? ($res->fetch_assoc()['total'] ?? 0) : 0);
+    if ($count > 0) $add_incident('past_sessions_unpaid', 'warning', 'Sesiones anteriores pendientes de cobro', 'Hay citas ya realizadas cuyo pago no consta como completado.', 'Revisa las citas y confirma si deben cobrarse, marcarse como pagadas o corregirse porque no asistieron.', $count, 'billing_invoices');
+
+    $res = $mysqli->query("SELECT COUNT(*) total FROM appointments WHERE tenant_id = $tenant_id AND payment_status = 'paid' AND (payment_method IS NULL OR payment_method = '')");
+    $count = (int) ($res ? ($res->fetch_assoc()['total'] ?? 0) : 0);
+    if ($count > 0) $add_incident('paid_without_method', 'warning', 'Pagos sin forma de pago', "Hay citas marcadas como pagadas sin indicar c\u{00F3}mo se cobraron.", 'Edita el pago de cada cita y selecciona efectivo, tarjeta, transferencia u otra forma de pago para mantener informes coherentes.', $count, 'billing_invoices');
+
+    $exports_table = $mysqli->query("SHOW TABLES LIKE 'tenant_data_export_jobs'");
+    if ($exports_table && $exports_table->num_rows > 0) {
+        $res = $mysqli->query("SELECT status, error_message FROM tenant_data_export_jobs WHERE tenant_id = $tenant_id ORDER BY id DESC LIMIT 1");
+        $row = $res ? $res->fetch_assoc() : null;
+        if ($row && ($row['status'] ?? '') === 'failed') $add_incident('data_export_failed', 'danger', "La \u{00FA}ltima exportaci\u{00F3}n ha fallado", (string) (($row['error_message'] ?? '') ?: 'El proceso no pudo completarse.'), "Vuelve a generar la exportaci\u{00F3}n. Si se repite, revisa el espacio disponible y el Log para localizar el error.", 1, $is_superadmin ? 'data_export' : '');
+    }
+
+    $stmt = $mysqli->prepare("SELECT channel, COUNT(*) total FROM app_logs WHERE tenant_id = ? AND channel IN ('email','sms') AND status NOT IN ('ok','success') AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) GROUP BY channel");
+    $stmt->bind_param('i', $tenant_id); $stmt->execute(); $failed_channels = $stmt->get_result();
+    while ($row = $failed_channels->fetch_assoc()) {
+        $channel = strtolower((string) $row['channel']); $count = (int) $row['total'];
+        $label = $channel === 'sms' ? 'SMS' : 'emails';
+        $add_incident('recent_' . $channel . '_failures', 'warning', "Env\u{00ED}os de {$label} fallidos", "Se han registrado fallos de {$label} durante los \u{00FA}ltimos 7 d\u{00ED}as.", "Consulta la pesta\u{00F1}a Log para ver el detalle y comprueba las credenciales, el remitente y el saldo o proveedor del servicio.", $count, 'app_log');
+    }
+
+    echo json_encode(['success' => true, 'incidents' => $incidents], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 } elseif ($action === 'list_app_logs') {
     ensure_app_logs_table($mysqli);
     $search = trim((string) ($_GET['search'] ?? ''));
@@ -6215,6 +6483,7 @@ if ($action === 'generate_invite') {
             'session_notes' => $appointment['session_notes'] ?? '',
             'livekit_enabled' => $livekit_for_professional ? 1 : 0,
             'video_provider' => video_provider_for_professional($mysqli, (int) ($appointment['professional_id'] ?? 0)),
+            'video_recording_enabled' => livekit_recording_enabled_for_professional($mysqli, (int) ($appointment['professional_id'] ?? 0)) ? 1 : 0,
             'default_appointment_location' => trim((string) ($professional_settings['default_appointment_location'] ?? '')),
             'default_location_id' => (int) ($professional_settings['default_location_id'] ?? 0),
             'locations' => fetch_appointment_locations($mysqli, true),
@@ -6249,6 +6518,7 @@ if ($action === 'generate_invite') {
     $stmt = $mysqli->prepare("
         SELECT t.id, t.patient_id, t.appointment_id, t.professional_id, t.title, t.description,
                t.status, t.priority, t.visible_to_patient, t.document_id,
+               t.requires_docx, t.requires_drawing, t.requires_file, t.response_docx_document_id, t.response_drawing_document_id, t.response_file_document_id,
                t.completed_at, t.created_at, t.updated_at,
                d.original_file_name AS attachment_original_name,
                d.mime_type AS attachment_mime_type,
@@ -6281,6 +6551,12 @@ if ($action === 'generate_invite') {
             'status' => $row['status'],
             'priority' => (int) ($row['priority'] ?? 2),
             'visible_to_patient' => (int) ($row['visible_to_patient'] ?? 0),
+            'requires_docx' => (int) ($row['requires_docx'] ?? 0),
+            'requires_drawing' => (int) ($row['requires_drawing'] ?? 0),
+            'requires_file' => (int) ($row['requires_file'] ?? 0),
+            'response_docx_document_id' => (int) ($row['response_docx_document_id'] ?? 0),
+            'response_drawing_document_id' => (int) ($row['response_drawing_document_id'] ?? 0),
+            'response_file_document_id' => (int) ($row['response_file_document_id'] ?? 0),
             'document_id' => (int) ($row['document_id'] ?? 0),
             'attachment_original_name' => $row['attachment_original_name'] ?? '',
             'attachment_mime_type' => $row['attachment_mime_type'] ?? '',
@@ -6376,6 +6652,7 @@ if ($action === 'generate_invite') {
     while ($row = $doc_res->fetch_assoc()) {
         $files[] = [
             'type' => 'patient_document',
+            'document_type' => $row['document_type'] ?? 'file',
             'id' => (int) $row['id'],
             'note_id' => 0,
             'name' => $row['title'] ?: ($row['original_file_name'] ?: 'Documento'),
@@ -6752,9 +7029,8 @@ if ($action === 'generate_invite') {
         '<p>Te enviamos el enlace para tu cita online del ' . htmlspecialchars($appointment_text) . '.</p>' .
         $professional_line .
         '<p><b>Servicio:</b> ' . htmlspecialchars($service_text) . '</p>' .
-        '<p><a href="' . htmlspecialchars($online_session_url) . '">Acceder a la videollamada</a></p>' .
-        '<p>Si el boton no funciona, copia y pega este enlace en tu navegador:<br>' . htmlspecialchars($online_session_url) . '</p>',
-        null,
+        tenant_email_action_button($mysqli, $online_session_url, 'Acceder a la videollamada'),
+        get_professional_reply_to_email($mysqli, (int) ($appointment['professional_id'] ?? 0)),
         $mysqli
     );
 
@@ -6770,11 +7046,11 @@ if ($action === 'generate_invite') {
         echo json_encode(['success' => false, 'error' => 'Canal de recordatorio no valido.']);
         exit;
     }
-    if ($channel === 'email' && !app_feature_enabled_from_db($mysqli, 'reminders.patient24h', false)) {
+    if ($channel === 'email' && !plan_feature_enabled_from_db($mysqli, 'reminders.patient24h', false)) {
         echo json_encode(['success' => false, 'error' => 'Los recordatorios por email no estan disponibles en este plan.']);
         exit;
     }
-    if ($channel === 'sms' && !app_feature_enabled_from_db($mysqli, 'reminders.sms', false)) {
+    if ($channel === 'sms' && !plan_feature_enabled_from_db($mysqli, 'reminders.sms', false)) {
         echo json_encode(['success' => false, 'error' => 'Los recordatorios por SMS no estan disponibles en este plan.']);
         exit;
     }
@@ -6782,7 +7058,8 @@ if ($action === 'generate_invite') {
         echo json_encode(['success' => false, 'error' => 'El envío de emails no está configurado.']);
         exit;
     }
-    if ($channel === 'sms' && !sms_is_configured($mysqli)) {
+    $manual_sms_settings = $channel === 'sms' ? sms_get_settings($mysqli) : [];
+    if ($channel === 'sms' && (!sms_is_configured($mysqli) || (int) ($manual_sms_settings['sms_reminder_enabled'] ?? 0) !== 1)) {
         echo json_encode(['success' => false, 'error' => 'El envío de SMS no está configurado.']);
         exit;
     }
@@ -6814,9 +7091,8 @@ if ($action === 'generate_invite') {
         $online_link_note = '';
         if (($appointment['consultation_type'] ?? '') === 'online' && !empty($context['online_link'])) {
             $online_link_note =
-                '<p><b>Enlace de videollamada:</b><br>' .
-                '<a href="' . htmlspecialchars($context['online_link']) . '">Acceder a la cita online</a></p>' .
-                '<p>Si el boton no funciona, copia y pega este enlace en tu navegador:<br>' . htmlspecialchars($context['online_link']) . '</p>';
+                '<p><b>Enlace de videollamada:</b></p>' .
+                tenant_email_action_button($mysqli, $context['online_link'], 'Acceder a la cita online');
         }
         $payment_note = '';
         if ((int) ($settings['online_payment_enabled'] ?? 0) === 1 && ($appointment['payment_status'] ?? '') !== 'paid') {
@@ -6830,7 +7106,13 @@ if ($action === 'generate_invite') {
             '<p><a href="' . htmlspecialchars($context['manage_link']) . '">Gestionar/cancelar reserva</a></p>' .
             $payment_note;
         $subject = message_template_render($template['subject'] ?: message_template_default_subject('appointment_email_reminder'), $vars);
-        $sent = send_app_email($appointment['patient_email'], $subject, $body, null, $mysqli);
+        $sent = send_app_email(
+            $appointment['patient_email'],
+            $subject,
+            $body,
+            get_professional_reply_to_email($mysqli, (int) ($appointment['professional_id'] ?? 0)),
+            $mysqli
+        );
         $email_error = $sent ? '' : (function_exists('get_app_email_last_error') ? get_app_email_last_error() : '');
         $message = $sent
             ? 'Recordatorio enviado por email a ' . $appointment['patient_email'] . '.'
@@ -6878,6 +7160,20 @@ if ($action === 'generate_invite') {
     echo json_encode($sent
         ? ['success' => true, 'message' => 'Recordatorio enviado por SMS.']
         : ['success' => false, 'error' => $sms_result['error'] ?? 'No se pudo enviar el recordatorio por SMS.']);
+} elseif ($action === 'daily_appointment_recordings') {
+    $appointment_id = (int) ($_GET['appointment_id'] ?? 0);
+    [$can_manage, $appointment] = admin_can_manage_appointment_payment($mysqli, $appointment_id);
+    if (!$can_manage || !$appointment) {
+        echo json_encode(['success' => false, 'error' => 'No autorizado para consultar las grabaciones de esta cita.']);
+        exit;
+    }
+    try {
+        $recordings = daily_sync_appointment_recordings($mysqli, $appointment);
+        echo json_encode(['success' => true, 'recordings' => $recordings]);
+    } catch (Throwable $e) {
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    }
+    exit;
 } elseif ($action === 'regenerate_appointment_livekit_link') {
     ensure_appointment_payment_columns($mysqli);
     $appointment_id = (int) ($_POST['appointment_id'] ?? 0);
@@ -6899,6 +7195,28 @@ if ($action === 'generate_invite') {
         'success' => true,
         'message' => 'Enlace de videollamada regenerado. El enlace anterior ya no es válido.'
     ]);
+} elseif ($action === 'livekit_recording_status') {
+    $appointment_id = (int) ($_GET['appointment_id'] ?? 0);
+    [$can_manage, $appointment] = admin_can_manage_appointment_payment($mysqli, $appointment_id);
+    if (!$can_manage || !$appointment) {
+        echo json_encode(['success' => false, 'error' => 'No autorizado para consultar la configuración de grabación.']);
+        exit;
+    }
+    $professional_id = (int) ($appointment['professional_id'] ?? 0);
+    $settings = cabinet_get_effective_professional_settings($mysqli, $professional_id);
+    $mode = in_array($settings['livekit_recording_mode'] ?? 'audio', ['audio', 'audio_video'], true)
+        ? $settings['livekit_recording_mode']
+        : 'audio';
+    if (!video_recording_video_plan_enabled($mysqli)) $mode = 'audio';
+    echo json_encode([
+        'success' => true,
+        'allowed' => ($appointment['status'] ?? '') === 'booked'
+            && livekit_appointment_enabled($mysqli, $appointment)
+            && livekit_recording_enabled_for_professional($mysqli, $professional_id),
+        'storage_ready' => video_provider_for_professional($mysqli, $professional_id) === 'daily' ? daily_is_configured() : livekit_recording_storage_configured(),
+        'mode' => $mode,
+    ]);
+    exit;
 } elseif ($action === 'start_livekit_recording') {
     ensure_appointment_payment_columns($mysqli);
     ensure_livekit_recording_schema($mysqli);
@@ -7060,7 +7378,7 @@ if ($action === 'generate_invite') {
         foreach ($file_paths as $path) {
             $full_path = stored_upload_full_path($path);
             if ($full_path && is_file($full_path)) {
-                @unlink($full_path);
+                praxis_storage_delete_path($full_path);
             }
         }
         app_log($mysqli, [
@@ -7080,6 +7398,446 @@ if ($action === 'generate_invite') {
         $mysqli->rollback();
         echo json_encode(['success' => false, 'error' => 'No se pudo eliminar la nota.']);
     }
+} elseif (in_array($action, ['save_patient_ai_document', 'export_patient_ai_pdf'], true)) {
+    $patient_id = (int) ($_POST['patient_id'] ?? 0);
+    $appointment_id = (int) ($_POST['appointment_id'] ?? 0);
+    $report_type = trim((string) ($_POST['report_type'] ?? 'clinical_report'));
+    $content = trim((string) ($_POST['content'] ?? ''));
+    $session_token = (string) ($_SESSION['ai_csrf_token'] ?? '');
+    $request_token = (string) ($_POST['csrf_token'] ?? '');
+    if ($session_token === '' || $request_token === '' || !hash_equals($session_token, $request_token)) {
+        echo json_encode(['success' => false, 'error' => 'La sesión ha caducado. Recarga la página e inténtalo de nuevo.']);
+        exit;
+    }
+    if (plan_config_normalize_key(dashboard_config_plan_key_from_db($mysqli), '') !== 'summum') {
+        echo json_encode(['success' => false, 'error' => 'Esta función está disponible en el plan Summum.']);
+        exit;
+    }
+    if (!$is_superadmin && empty($member_permissions['private_patient_data'])) {
+        echo json_encode(['success' => false, 'error' => 'No tienes permiso para utilizar la información privada de este paciente.']);
+        exit;
+    }
+    if (!$is_superadmin && empty($member_permissions['ai_tools'])) {
+        echo json_encode(['success' => false, 'error' => 'No tienes permiso para utilizar las opciones de IA.']);
+        exit;
+    }
+    if ($patient_id <= 0 || !admin_can_access_patient($mysqli, $patient_id) || $content === '' || mb_strlen($content, 'UTF-8') > 60000) {
+        echo json_encode(['success' => false, 'error' => 'No se pudo preparar el documento.']);
+        exit;
+    }
+    if ($appointment_id > 0) {
+        $stmt = $mysqli->prepare("SELECT id FROM appointments WHERE tenant_id = ? AND id = ? AND user_id = ? LIMIT 1");
+        $stmt->bind_param('iii', $tenant_id, $appointment_id, $patient_id);
+        $stmt->execute();
+        if (!$stmt->get_result()->fetch_assoc()) {
+            echo json_encode(['success' => false, 'error' => 'La cita indicada no pertenece a este paciente.']);
+            exit;
+        }
+    }
+    $stmt = $mysqli->prepare("SELECT name FROM users WHERE tenant_id = ? AND id = ? AND role = 'patient' LIMIT 1");
+    $stmt->bind_param('ii', $tenant_id, $patient_id);
+    $stmt->execute();
+    $patient_name = (string) (($stmt->get_result()->fetch_assoc()['name'] ?? ''));
+    $base_title = praxis_ai_document_title($report_type);
+    $title = $base_title . ' · ' . date('d/m/Y');
+    $html = praxis_ai_document_html($title, $content, $patient_name);
+
+    if ($action === 'export_patient_ai_pdf') {
+        try {
+            pdf_output_html($html, $base_title . '-' . date('Y-m-d') . '.pdf', [
+                'title' => $title,
+                'download' => true
+            ]);
+        } catch (Throwable $e) {
+            http_response_code(500);
+            header_remove('Content-Type');
+            header('Content-Type: text/plain; charset=UTF-8');
+            echo 'No se pudo generar el PDF.';
+        }
+        exit;
+    }
+
+    try {
+        $upload_dir = app_tenant_protected_upload_dir('documents');
+        if (!app_ensure_dir($upload_dir)) throw new RuntimeException('No se pudo preparar la carpeta de documentos.');
+        $stored_name = 'ai_document_' . $patient_id . '_' . bin2hex(random_bytes(12)) . '.pdf';
+        $destination = $upload_dir . '/' . $stored_name;
+        $pdf = pdf_render_html($html, ['title' => $title]);
+        $relative_path = app_tenant_protected_upload_relative_path('documents', $stored_name);
+        if (praxis_storage_write_contents($relative_path, $destination, $pdf, 'application/pdf') === false) throw new RuntimeException('No se pudo guardar el PDF.');
+        $file_name = pdf_safe_filename($base_title . '-' . date('Y-m-d'));
+        $file_size = strlen($pdf);
+        $professional_id = current_professional_id_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0));
+        $document_type = 'file';
+        $description = 'Documento preparado con el asistente de IA y revisado por el profesional.';
+        $document_date = date('Y-m-d');
+        $mime_type = 'application/pdf';
+        $status = 'completed';
+        $created_by = (int) ($_SESSION['user_id'] ?? 0);
+        $stmt = $mysqli->prepare("INSERT INTO patient_documents
+            (tenant_id, patient_id, appointment_id, professional_id, document_type, title, description, document_date,
+             file_path, original_file_name, file_size, mime_type, visible_to_patient, status, created_by)
+            VALUES (?, ?, NULLIF(?, 0), NULLIF(?, 0), ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)");
+        $stmt->bind_param('iiiissssssissi', $tenant_id, $patient_id, $appointment_id, $professional_id, $document_type, $title, $description, $document_date, $relative_path, $file_name, $file_size, $mime_type, $status, $created_by);
+        $stmt->execute();
+        $document_id = (int) $mysqli->insert_id;
+        app_log($mysqli, [
+            'action' => 'patient_ai_document_saved', 'status' => 'ok', 'target_type' => 'patient', 'target_id' => $patient_id,
+            'title' => 'Documento IA guardado', 'message' => $base_title,
+            'metadata' => ['patient_id' => $patient_id, 'appointment_id' => $appointment_id, 'document_id' => $document_id, 'content_type' => $report_type]
+        ]);
+        echo json_encode(['success' => true, 'message' => $appointment_id > 0 ? 'Documento guardado y asociado a la cita.' : 'Documento guardado en la ficha del paciente.', 'document_id' => $document_id], JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $e) {
+        error_log('Praxis AI document save error: ' . $e->getMessage());
+        echo json_encode(['success' => false, 'error' => 'No se pudo guardar el documento.']);
+    }
+} elseif ($action === 'generate_patient_ai_content') {
+    $patient_id = (int) ($_POST['patient_id'] ?? 0);
+    $report_type = trim((string) ($_POST['report_type'] ?? 'clinical_report'));
+    $instructions = trim((string) ($_POST['instructions'] ?? ''));
+    $allowed_types = ['clinical_report', 'evolution', 'follow_up_report', 'evolution_summary', 'next_session', 'tasks_summary', 'questionnaires_summary'];
+    $session_token = (string) ($_SESSION['ai_csrf_token'] ?? '');
+    $request_token = (string) ($_POST['csrf_token'] ?? '');
+
+    if ($session_token === '' || $request_token === '' || !hash_equals($session_token, $request_token)) {
+        echo json_encode(['success' => false, 'error' => 'La sesión ha caducado. Recarga la página e inténtalo de nuevo.']);
+        exit;
+    }
+    if (plan_config_normalize_key(dashboard_config_plan_key_from_db($mysqli), '') !== 'summum') {
+        echo json_encode(['success' => false, 'error' => 'Las herramientas de IA están disponibles en el plan Summum.']);
+        exit;
+    }
+    if (!$is_superadmin && empty($member_permissions['private_patient_data'])) {
+        echo json_encode(['success' => false, 'error' => 'No tienes permiso para utilizar la informaci&oacute;n privada de este paciente.']);
+        exit;
+    }
+    if (!$is_superadmin && empty($member_permissions['ai_tools'])) {
+        echo json_encode(['success' => false, 'error' => 'No tienes permiso para utilizar las opciones de IA.']);
+        exit;
+    }
+    if (!in_array($report_type, $allowed_types, true)) {
+        echo json_encode(['success' => false, 'error' => 'El tipo de contenido solicitado no es v&aacute;lido.']);
+        exit;
+    }
+    if ($report_type === 'clinical_report' && !$is_superadmin && empty($member_permissions['reports'])) {
+        echo json_encode(['success' => false, 'error' => 'No tienes permiso para generar informes.']);
+        exit;
+    }
+    if ($patient_id <= 0 || !admin_can_access_patient($mysqli, $patient_id)) {
+        echo json_encode(['success' => false, 'error' => 'No autorizado para acceder a este paciente.']);
+        exit;
+    }
+
+    try {
+        $prepared = praxis_ai_report_context($mysqli, $tenant_id, $patient_id, $report_type);
+        if (!praxis_ai_report_type_sufficient($prepared, $report_type)) {
+        echo json_encode(['success' => false, 'error' => 'Todavía no hay suficiente información para generar este contenido.']);
+            exit;
+        }
+        $generated = praxis_ai_generate_report(
+            (string) $prepared['context'],
+            $report_type,
+            mb_substr($instructions, 0, 1200, 'UTF-8'),
+            $prepared['_redaction_values'] ?? []
+        );
+        $text = str_replace('{NOMBRE_PACIENTE}', (string) ($prepared['_patient_name'] ?? 'El paciente'), (string) $generated['text']);
+        app_log($mysqli, [
+            'action' => 'patient_ai_content_generated',
+            'status' => 'ok',
+            'target_type' => 'patient',
+            'target_id' => $patient_id,
+            'title' => 'Borrador generado con IA',
+            'message' => $report_type,
+            'metadata' => [
+                'patient_id' => $patient_id,
+                'content_type' => $report_type,
+                'model' => $generated['model'] ?? '',
+                'usage' => $generated['usage'] ?? [],
+                'counts' => $prepared['counts'] ?? []
+            ]
+        ]);
+        echo json_encode(['success' => true, 'text' => $text, 'counts' => $prepared['counts'] ?? []], JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $e) {
+        error_log('Praxis AI generation error: ' . $e->getMessage());
+        echo json_encode(['success' => false, 'error' => 'No se pudo generar el borrador en este momento. Inténtalo de nuevo.']);
+    }
+} elseif ($action === 'system_status') {
+    $services = [];
+    $add = static function ($key, $title, $icon, $state, $label, $description, $details = [], $metric = []) use (&$services) {
+        $services[] = compact('key', 'title', 'icon', 'state', 'label', 'description', 'details', 'metric');
+    };
+    $started = microtime(true);
+    $db_ok = @$mysqli->ping();
+    $add('database', 'Base de datos', 'bi-database-check', $db_ok ? 'ok' : 'error', $db_ok ? 'Conexión disponible' : 'Sin conexión', $db_ok ? 'Praxis puede consultar y guardar información.' : 'No se ha podido comprobar la conexión con la base de datos.', [['label' => 'Tiempo de respuesta', 'value' => ((int) round((microtime(true) - $started) * 1000)) . ' ms']]);
+
+    $email = get_email_settings($mysqli);
+    $email_provider = strtolower((string) ($email['email_provider'] ?? 'platform'));
+    $email_labels = ['platform' => 'Plataforma Praxis', 'google' => 'Google Workspace / Gmail', 'smtp' => 'Servidor SMTP'];
+    $email_ok = app_email_is_configured($mysqli);
+    $add('email', 'Correo electrónico', 'bi-envelope-check', $email_ok ? 'ok' : 'warning', $email_ok ? 'Configurado' : 'Requiere configuración', $email_ok ? 'El canal de correo está listo para enviar comunicaciones.' : 'Faltan datos necesarios para poder enviar correos.', [['label' => 'Proveedor', 'value' => $email_labels[$email_provider] ?? ucfirst($email_provider)]]);
+
+    $sms = sms_get_settings($mysqli); $sms_provider = (string) ($sms['sms_provider'] ?? 'none');
+    $sms_ok = sms_is_configured($mysqli); $sms_disabled = $sms_provider === 'none';
+    $add('sms', 'SMS', 'bi-chat-dots', $sms_disabled ? 'disabled' : ($sms_ok ? 'ok' : 'warning'), $sms_disabled ? 'No configurado' : ($sms_ok ? 'Configurado' : 'Configuración incompleta'), $sms_disabled ? 'El envío de SMS no está activado.' : ($sms_ok ? 'El proveedor de SMS está preparado para enviar mensajes.' : 'Revisa las credenciales o el remitente del servicio SMS.'), [['label' => 'Proveedor', 'value' => sms_provider_label($sms_provider)]]);
+
+    $storage = tenant_storage_status($mysqli, (int) $tenant_id); $percent = (float) ($storage['percent'] ?? 0); $limit = (int) ($storage['limit_bytes'] ?? 0);
+    $storage_state = $limit <= 0 ? 'ok' : ($percent >= 100 ? 'error' : ($percent >= 85 ? 'warning' : 'ok'));
+    $add('storage', 'Almacenamiento', 'bi-cloud-check', $storage_state, $limit <= 0 ? 'Sin límite configurado' : ($percent . '% utilizado'), $storage_state === 'error' ? 'No queda espacio disponible para nuevos archivos.' : ($storage_state === 'warning' ? 'El espacio disponible empieza a ser reducido.' : 'El almacenamiento está disponible.'), [['label' => 'Usado', 'value_bytes' => (int) ($storage['used_bytes'] ?? 0)], ['label' => 'Disponible', 'value_bytes' => (int) ($storage['remaining_bytes'] ?? 0)]], ['percent' => $percent, 'used_bytes' => (int) ($storage['used_bytes'] ?? 0), 'limit_bytes' => $limit]);
+
+    $billing = simplygest_cloud_billing_settings($mysqli, (int) $tenant_id); $provider = (string) ($billing['provider'] ?? 'none');
+    if ($provider === 'simplygest_cloud') {
+        if (empty($billing['has_api_key'])) {
+            $add('billing', 'Facturación y VeriFactu', 'bi-receipt-cutoff', 'error', 'Falta la API key', 'La facturación está vinculada a SimplyGest Cloud, pero no hay una API key configurada.', [['label' => 'Proveedor', 'value' => 'SimplyGest Cloud']]);
+        } else {
+            try {
+                $cloud_started = microtime(true); $client = new SimplyGestCloudClient(simplygest_cloud_decrypt((string) $billing['api_key_encrypted']));
+                $account = $client->account(); $client->validateInvoiceAccess();
+                $add('billing', 'Facturación y VeriFactu', 'bi-receipt-cutoff', 'ok', 'Conectado con SimplyGest Cloud', 'La API key es válida y permite consultar la facturación.', [['label' => 'Empresa', 'value' => (string) ($account['name'] ?? 'SimplyGest Cloud')], ['label' => 'Tiempo de respuesta', 'value' => ((int) round((microtime(true) - $cloud_started) * 1000)) . ' ms']]);
+            } catch (Throwable $e) {
+                error_log('System status SimplyGest Cloud: ' . $e->getMessage());
+                $add('billing', 'Facturación y VeriFactu', 'bi-receipt-cutoff', 'error', 'No se puede conectar con Cloud', 'La API key no es válida, no tiene permisos de facturación o SimplyGest Cloud no responde.', [['label' => 'Acción recomendada', 'value' => 'Revisa la API key en Facturación']]);
+            }
+        }
+    } elseif ($provider === 'praxis') {
+        $vf = $mysqli->query("SELECT verifactu_enabled, verifactu_environment FROM payment_settings WHERE tenant_id = " . (int) $tenant_id . " LIMIT 1"); $row = $vf ? ($vf->fetch_assoc() ?: []) : [];
+        $enabled = (int) ($row['verifactu_enabled'] ?? 0) === 1;
+        $add('billing', 'Facturación y VeriFactu', 'bi-receipt-cutoff', $enabled ? 'ok' : 'warning', $enabled ? 'Gestionado por Praxis' : 'VeriFactu no activado', $enabled ? 'Praxis gestiona la facturación y VeriFactu.' : 'La facturación se realiza en Praxis, pero VeriFactu no está activado.', [['label' => 'Entorno', 'value' => $enabled ? ((int) ($row['verifactu_environment'] ?? 0) === 1 ? 'Producción' : 'Pruebas') : 'No aplica']]);
+    } else $add('billing', 'Facturación y VeriFactu', 'bi-receipt-cutoff', 'disabled', 'No configurado', 'La facturación no está activada en Praxis.');
+
+    $livekit_ok = livekit_is_configured(); $daily_ok = daily_is_configured(); $video_ok = $livekit_ok || $daily_ok; $video_details = [];
+    if ($livekit_ok) $video_details[] = ['label' => 'Praxis Video', 'value' => 'Disponible']; if ($daily_ok) $video_details[] = ['label' => 'Daily', 'value' => 'Disponible'];
+    $add('video', 'Videollamadas', 'bi-camera-video', $video_ok ? 'ok' : 'disabled', $video_ok ? 'Disponible' : 'No configurado', $video_ok ? 'Hay al menos un proveedor de videollamadas preparado.' : 'No hay un proveedor automático de videollamadas configurado.', $video_details);
+
+    ensure_app_logs_table($mysqli); $user_id = (int) ($_SESSION['user_id'] ?? 0);
+    $stmt = $mysqli->prepare('SELECT created_at FROM app_logs WHERE tenant_id = ? AND user_id = ? ORDER BY id DESC LIMIT 1'); $stmt->bind_param('ii', $tenant_id, $user_id); $stmt->execute(); $last = $stmt->get_result()->fetch_assoc() ?: [];
+    $stmt = $mysqli->prepare("SELECT COUNT(*) total, MAX(created_at) latest FROM app_logs WHERE tenant_id = ? AND status NOT IN ('ok','success') AND created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)"); $stmt->bind_param('i', $tenant_id); $stmt->execute(); $recent = $stmt->get_result()->fetch_assoc() ?: [];
+    $error_count = (int) ($recent['total'] ?? 0);
+    $add('activity', 'Actividad reciente', 'bi-clock-history', $error_count ? 'warning' : 'ok', $error_count ? ($error_count . ' avisos en 24 h') : 'Sin incidencias recientes', $error_count ? 'Conviene revisar el registro de actividad.' : 'No se han registrado errores durante las últimas 24 horas.', [['label' => 'Última actividad', 'value' => $last['created_at'] ?? 'Sin actividad registrada'], ['label' => 'Último aviso', 'value' => $recent['latest'] ?? 'Ninguno']]);
+
+    $counts = ['ok' => 0, 'warning' => 0, 'error' => 0, 'disabled' => 0]; foreach ($services as $service) $counts[$service['state']]++;
+    echo json_encode(['success' => true, 'overall' => $counts['error'] ? 'error' : ($counts['warning'] ? 'warning' : 'ok'), 'counts' => $counts, 'services' => $services, 'checked_at' => date('Y-m-d H:i:s')], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+} elseif ($action === 'data_import_template') {
+    $entity = trim((string) ($_GET['entity'] ?? ''));
+    $definition = praxis_import_definition($entity);
+    if (!$definition) { http_response_code(404); echo json_encode(['success' => false, 'error' => 'Plantilla no encontrada.']); exit; }
+    header_remove('Content-Type');
+    header('Content-Type: text/csv; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="plantilla-' . $entity . '.csv"');
+    echo praxis_import_csv_contents($entity);
+    exit;
+} elseif ($action === 'data_import_preview' || $action === 'data_import_execute') {
+    $entity = trim((string) ($_POST['entity'] ?? ''));
+    $definition = praxis_import_definition($entity);
+    if (!$definition) { echo json_encode(['success' => false, 'error' => 'Tipo de importación no válido.']); exit; }
+    if (empty($_FILES['import_file']['tmp_name']) || !is_uploaded_file($_FILES['import_file']['tmp_name'])) {
+        echo json_encode(['success' => false, 'error' => 'Selecciona un archivo CSV.']); exit;
+    }
+    $name = strtolower((string) ($_FILES['import_file']['name'] ?? ''));
+    if (!str_ends_with($name, '.csv') || (int) ($_FILES['import_file']['size'] ?? 0) > 5 * 1024 * 1024) {
+        echo json_encode(['success' => false, 'error' => 'El archivo debe ser CSV y no superar 5 MB.']); exit;
+    }
+    $parsed = praxis_import_parse_csv($_FILES['import_file']['tmp_name'], $entity);
+    $partition = ['importable' => [], 'rejected' => [], 'global_errors' => []];
+    if (!empty($parsed['success'])) {
+        $database_errors = praxis_import_database_errors($mysqli, $tenant_id, $entity, $parsed['rows']);
+        $partition = praxis_import_partition_rows($parsed['rows'], $database_errors);
+    }
+    if ($action === 'data_import_preview') {
+        echo json_encode([
+            'success' => $parsed['success'], 'errors' => $parsed['errors'] ?? [],
+            'columns' => $parsed['columns'] ?? ($parsed['expected_columns'] ?? []),
+            'received_columns' => $parsed['received_columns'] ?? [],
+            'rows' => array_slice($partition['importable'], 0, 25),
+            'rejected_rows' => array_slice($partition['rejected'], 0, 100),
+            'importable_rows' => count($partition['importable']),
+            'rejected_count' => count($partition['rejected']),
+            'can_import' => !empty($parsed['success']) && count($partition['importable']) > 0 && !$partition['global_errors'],
+            'total_rows' => count($parsed['rows'] ?? []), 'entity_label' => $definition['label'],
+            'file_hash' => hash_file('sha256', $_FILES['import_file']['tmp_name'])
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    $expected_hash = trim((string) ($_POST['file_hash'] ?? ''));
+    $actual_hash = hash_file('sha256', $_FILES['import_file']['tmp_name']);
+    if (!$parsed['success'] || !$partition['importable'] || $partition['global_errors'] || $expected_hash === '' || !hash_equals($expected_hash, $actual_hash)) {
+        $reason = $parsed['errors'][0] ?? ($partition['global_errors'][0] ?? (!$partition['importable'] ? 'No hay registros que se puedan importar.' : 'El archivo ha cambiado o ya no supera la validación.'));
+        echo json_encode(['success' => false, 'error' => $reason, 'errors' => $parsed['errors'] ?? []]); exit;
+    }
+    $mysqli->begin_transaction();
+    try {
+        $result = praxis_import_execute_rows($mysqli, $tenant_id, $entity, $partition['importable'], (int) $_SESSION['user_id']);
+        $skipped = count($partition['rejected']);
+        app_log($mysqli, [
+            'action' => 'data_import_completed', 'status' => 'ok', 'target_type' => 'tenant', 'target_id' => $tenant_id,
+            'title' => 'Importación de datos completada', 'message' => $definition['label'] . ': ' . $result['created'],
+            'metadata' => ['entity' => $entity, 'created' => $result['created'], 'skipped' => $skipped, 'file_hash' => $actual_hash]
+        ]);
+        $mysqli->commit();
+        echo json_encode(['success' => true, 'created' => $result['created'], 'skipped' => $skipped, 'message' => 'Importación completada correctamente.']);
+    } catch (Throwable $e) {
+        $mysqli->rollback();
+        app_log($mysqli, ['action' => 'data_import_failed', 'status' => 'error', 'target_type' => 'tenant', 'target_id' => $tenant_id, 'title' => 'Importación de datos fallida', 'message' => $e->getMessage()]);
+        echo json_encode(['success' => false, 'error' => 'No se importó ningún registro. ' . $e->getMessage()]);
+    }
+} elseif ($action === 'attendance_certificate_appointments') {
+    $patient_id = (int) ($_GET['patient_id'] ?? 0);
+    $patient_check = $mysqli->prepare("SELECT id FROM users WHERE tenant_id = ? AND id = ? AND role = 'patient' LIMIT 1");
+    $patient_check->bind_param('ii', $tenant_id, $patient_id);
+    $patient_check->execute();
+    if (!$patient_check->get_result()->fetch_assoc()) {
+        echo json_encode(['success' => false, 'error' => 'No autorizado para consultar estas citas.']);
+        exit;
+    }
+    $stmt = $mysqli->prepare("
+        SELECT a.id, a.appointment_date, a.appointment_time,
+               COALESCE(a.duration_minutes, aso.duration_minutes, 60) AS duration_minutes,
+               COALESCE(s.name, 'Consulta') AS service_name,
+               COALESCE(p.display_name, '') AS professional_name
+        FROM appointments a
+        LEFT JOIN appointment_service_options aso ON aso.id = a.service_option_id AND aso.tenant_id = a.tenant_id
+        LEFT JOIN appointment_services s ON s.id = aso.service_id AND s.tenant_id = a.tenant_id
+        LEFT JOIN professionals p ON p.id = a.professional_id AND p.tenant_id = a.tenant_id
+        WHERE a.tenant_id = ? AND a.user_id = ?
+          AND a.status = 'completed'
+        ORDER BY a.appointment_date DESC, a.appointment_time DESC, a.id DESC
+        LIMIT 100
+    ");
+    $stmt->bind_param('ii', $tenant_id, $patient_id);
+    $stmt->execute();
+    echo json_encode(['success' => true, 'appointments' => $stmt->get_result()->fetch_all(MYSQLI_ASSOC)]);
+} elseif ($action === 'attendance_certificate') {
+    $appointment_id = (int) ($_GET['appointment_id'] ?? 0);
+    $stmt = $mysqli->prepare("
+        SELECT a.id, a.user_id AS patient_id, a.appointment_date, a.appointment_time, a.patient_confirmed_at,
+               COALESCE(a.duration_minutes, aso.duration_minutes, 60) AS duration_minutes,
+               COALESCE(s.name, 'consulta profesional') AS service_name,
+               COALESCE(al.name, '') AS location_name,
+               u.name AS patient_name,
+               p.id AS professional_id,
+               COALESCE(p.display_name, '') AS professional_name,
+               COALESCE(p.professional_title, '') AS professional_title,
+               COALESCE(p.license_number, '') AS license_number
+        FROM appointments a
+        INNER JOIN users u ON u.id = a.user_id AND u.tenant_id = a.tenant_id
+        LEFT JOIN appointment_service_options aso ON aso.id = a.service_option_id AND aso.tenant_id = a.tenant_id
+        LEFT JOIN appointment_services s ON s.id = aso.service_id AND s.tenant_id = a.tenant_id
+        LEFT JOIN appointment_locations al ON al.id = a.location_id AND al.tenant_id = a.tenant_id
+        LEFT JOIN professionals p ON p.id = a.professional_id AND p.tenant_id = a.tenant_id
+        WHERE a.tenant_id = ? AND a.id = ?
+          AND a.status = 'completed'
+        LIMIT 1
+    ");
+    $stmt->bind_param('ii', $tenant_id, $appointment_id);
+    $stmt->execute();
+    $appointment = $stmt->get_result()->fetch_assoc();
+    if (!$appointment) {
+        http_response_code(422);
+        header_remove('Content-Type');
+        header('Content-Type: text/plain; charset=UTF-8');
+        echo 'Solo se puede generar el justificante para una cita marcada como realizada.';
+        exit;
+    }
+    $patient_id = (int) ($appointment['patient_id'] ?? 0);
+    $branding = get_public_branding_settings($mysqli);
+    $issuer_name = trim((string) (($branding['legal_owner_name'] ?? '') ?: ($branding['app_name'] ?? 'Centro profesional')));
+    $issuer_nif = trim((string) ($branding['legal_nif'] ?? ''));
+    $issuer_address = trim(implode(', ', array_filter([
+        $branding['legal_address'] ?? '',
+        trim((string) (($branding['legal_postal_code'] ?? '') . ' ' . ($branding['legal_city'] ?? '')))
+    ])));
+    $start = strtotime($appointment['appointment_date'] . ' ' . $appointment['appointment_time']);
+    $end = $start + ((int) $appointment['duration_minutes'] * 60);
+    $professional_line = trim(implode(' · ', array_filter([
+        $appointment['professional_name'] ?? '',
+        $appointment['professional_title'] ?? '',
+        !empty($appointment['license_number']) ? 'N.º colegiado/a ' . $appointment['license_number'] : ''
+    ])));
+    $logo_path = public_asset_local_path((string) ($branding['profile_image_path'] ?? ''));
+    $logo_html = $logo_path && is_file($logo_path)
+        ? '<img src="' . report_h($logo_path) . '" style="max-height:70px;max-width:210px" alt="">'
+        : '';
+    $html = '<!doctype html><html lang="es"><head><meta charset="utf-8"><style>
+        body{font-family:DejaVu Sans,Arial,sans-serif;color:#25252b;font-size:12pt;line-height:1.65}
+        .header{border-bottom:2px solid #6f5aa8;padding-bottom:16px;margin-bottom:46px}.issuer{float:right;text-align:right;font-size:9.5pt;color:#555}
+        h1{text-align:center;font-size:20pt;letter-spacing:.04em;margin:0 0 38px}.content{margin:0 18px}.signature{margin-top:70px;width:52%;margin-left:auto;text-align:center;border-top:1px solid #777;padding-top:10px;font-size:10pt}
+        .footer{position:fixed;bottom:0;left:0;right:0;text-align:center;color:#777;font-size:8.5pt}
+    </style></head><body><div class="header">' . $logo_html . '<div class="issuer"><strong>' . report_h($issuer_name) . '</strong>'
+        . ($issuer_nif !== '' ? '<br>' . report_h($issuer_nif) : '')
+        . ($issuer_address !== '' ? '<br>' . report_h($issuer_address) : '') . '</div><div style="clear:both"></div></div>'
+        . '<h1>JUSTIFICANTE DE ASISTENCIA</h1><div class="content"><p>Se hace constar que <strong>' . report_h($appointment['patient_name'])
+        . '</strong> ha asistido a una <strong>' . report_h($appointment['service_name']) . '</strong> el día <strong>'
+        . report_h(date('d/m/Y', $start)) . '</strong>, desde las <strong>' . report_h(date('H:i', $start))
+        . '</strong> hasta las <strong>' . report_h(date('H:i', $end)) . '</strong> horas'
+        . (!empty($appointment['location_name']) ? ', en ' . report_h($appointment['location_name']) : '') . '.</p>'
+        . '<p>Se expide el presente justificante a petición de la persona interesada, para los efectos oportunos.</p>'
+        . '<p>En ' . report_h($branding['legal_city'] ?? '') . ', a ' . report_h(date('d/m/Y')) . '.</p></div>'
+        . '<div class="signature">' . report_h($professional_line ?: $issuer_name) . '<br>Firma y sello</div>'
+        . '<div class="footer">Este documento acredita exclusivamente la asistencia y no contiene información clínica.</div></body></html>';
+    try {
+        $pdf_options = [
+            'title' => 'Justificante de asistencia', 'author' => $issuer_name,
+            'margin_left' => 20, 'margin_right' => 20, 'margin_top' => 18, 'margin_bottom' => 18,
+            'download' => !empty($_GET['download'])
+        ];
+        if (!empty($_GET['register'])) {
+            $pdf = pdf_render_html($html, $pdf_options);
+            $created_by = (int) ($_SESSION['user_id'] ?? 0);
+            $professional_id = !empty($appointment['professional_id']) ? (int) $appointment['professional_id'] : null;
+            $existing_stmt = $mysqli->prepare("\n                SELECT r.id AS report_id, d.id AS document_id, d.file_path\n                FROM patient_reports r\n                INNER JOIN patient_documents d ON d.id = r.final_document_id AND d.tenant_id = r.tenant_id\n                WHERE r.tenant_id = ? AND r.patient_id = ? AND r.source_type = 'attendance_certificate'\n                  AND d.appointment_id = ?\n                LIMIT 1\n            ");
+            $existing_stmt->bind_param('iii', $tenant_id, $patient_id, $appointment_id);
+            $existing_stmt->execute();
+            $existing = $existing_stmt->get_result()->fetch_assoc() ?: null;
+            $upload_dir = app_tenant_protected_upload_dir('documents');
+            if (!app_ensure_dir($upload_dir)) throw new RuntimeException('No se pudo preparar el almacenamiento del justificante.');
+            $stored_name = $existing && !empty($existing['file_path'])
+                ? basename((string) $existing['file_path'])
+                : 'attendance_' . $patient_id . '_' . $appointment_id . '_' . bin2hex(random_bytes(8)) . '.pdf';
+            $relative_path = $existing && !empty($existing['file_path'])
+                ? (string) $existing['file_path']
+                : app_tenant_protected_upload_relative_path('documents', $stored_name);
+            $local_path = $upload_dir . '/' . $stored_name;
+            if (praxis_storage_write_contents($relative_path, $local_path, $pdf, 'application/pdf') === false) {
+                throw new RuntimeException('No se pudo guardar el justificante.');
+            }
+            $file_size = strlen($pdf);
+            $document_title = 'Justificante de asistencia - ' . date('d/m/Y', $start);
+            $original_name = pdf_safe_filename('justificante-asistencia-' . $appointment['appointment_date']);
+            $snapshot = json_encode(['appointment_id' => $appointment_id, 'appointment_date' => $appointment['appointment_date']], JSON_UNESCAPED_UNICODE);
+            $mysqli->begin_transaction();
+            try {
+                if ($existing) {
+                    $document_id = (int) $existing['document_id'];
+                    $report_id = (int) $existing['report_id'];
+                    $doc_stmt = $mysqli->prepare("UPDATE patient_documents SET professional_id=?, title=?, document_date=?, file_path=?, original_file_name=?, file_size=?, mime_type='application/pdf', status='completed', updated_at=NOW() WHERE tenant_id=? AND id=?");
+                    $document_date = (string) $appointment['appointment_date'];
+                    $doc_stmt->bind_param('issssiii', $professional_id, $document_title, $document_date, $relative_path, $original_name, $file_size, $tenant_id, $document_id);
+                    $doc_stmt->execute();
+                    $report_stmt = $mysqli->prepare("UPDATE patient_reports SET professional_id=?, title=?, status='generated', generated_at=NOW(), source_snapshot_json=?, updated_by=?, updated_at=NOW() WHERE tenant_id=? AND id=?");
+                    $report_stmt->bind_param('issiii', $professional_id, $document_title, $snapshot, $created_by, $tenant_id, $report_id);
+                    $report_stmt->execute();
+                } else {
+                    $document_date = (string) $appointment['appointment_date']; $document_type = 'file'; $description = 'Justificante de asistencia generado desde una cita realizada.'; $status = 'completed';
+                    $doc_stmt = $mysqli->prepare("INSERT INTO patient_documents (tenant_id, patient_id, appointment_id, professional_id, document_type, title, description, document_date, file_path, original_file_name, file_size, mime_type, visible_to_patient, status, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'application/pdf', 0, ?, ?)");
+                    $doc_stmt->bind_param('iiiissssssissi', $tenant_id, $patient_id, $appointment_id, $professional_id, $document_type, $document_title, $description, $document_date, $relative_path, $original_name, $file_size, $status, $created_by);
+                    $doc_stmt->execute(); $document_id = (int) $doc_stmt->insert_id;
+                    $report_key = 'attendance_certificate'; $source_type = 'attendance_certificate'; $visibility = 'internal'; $payment_mode = 'free'; $payment_status = 'not_required';
+                    $report_stmt = $mysqli->prepare("INSERT INTO patient_reports (tenant_id, patient_id, professional_id, report_key, source_type, title, status, visibility, payment_mode, payment_status, final_document_id, generated_at, source_snapshot_json, created_by, updated_by) VALUES (?, ?, ?, ?, ?, ?, 'generated', ?, ?, ?, ?, NOW(), ?, ?, ?)");
+                    $report_stmt->bind_param('iiissssssisii', $tenant_id, $patient_id, $professional_id, $report_key, $source_type, $document_title, $visibility, $payment_mode, $payment_status, $document_id, $snapshot, $created_by, $created_by);
+                    $report_stmt->execute(); $report_id = (int) $report_stmt->insert_id;
+                }
+                $mysqli->commit();
+            } catch (Throwable $e) { $mysqli->rollback(); throw $e; }
+            app_log($mysqli, ['action' => 'attendance_certificate_generated', 'status' => 'ok', 'target_type' => 'appointment', 'target_id' => $appointment_id, 'title' => 'Justificante de asistencia generado', 'message' => (string) $appointment['patient_name'], 'metadata' => ['patient_id' => $patient_id, 'appointment_id' => $appointment_id, 'report_id' => $report_id, 'document_id' => $document_id]]);
+            header_remove('Content-Type'); header('Content-Type: application/pdf'); header('Content-Length: ' . strlen($pdf)); header('Content-Disposition: inline; filename="' . $original_name . '"'); echo $pdf; exit;
+        }
+        pdf_output_html($html, 'justificante-asistencia-' . $appointment['appointment_date'], $pdf_options);
+    } catch (Throwable $e) {
+        http_response_code(422);
+        header_remove('Content-Type');
+        header('Content-Type: text/plain; charset=UTF-8');
+        echo 'No se pudo generar el justificante.';
+    }
+    exit;
 } elseif ($action === 'patient_reports') {
     $patient_id = (int) ($_GET['patient_id'] ?? 0);
     if (!admin_can_access_patient($mysqli, $patient_id)) {
@@ -7227,7 +7985,7 @@ if ($action === 'generate_invite') {
         foreach (array_unique($stored_paths) as $path) {
             $full_path = stored_upload_full_path($path);
             if ($full_path && is_file($full_path)) {
-                @unlink($full_path);
+                praxis_storage_delete_path($full_path);
             }
         }
         app_log($mysqli, [
@@ -9151,6 +9909,8 @@ if ($action === 'generate_invite') {
     while ($row = $res->fetch_assoc()) {
         if ($row['document_type'] === 'questionnaire') {
             $document_type = 'questionnaire';
+        } elseif ($row['document_type'] === 'internal_note') {
+            $document_type = 'internal_note';
         } elseif ($row['document_type'] === 'drawing' || patient_document_is_drawing($row)) {
             $document_type = 'drawing';
         } else {
@@ -9167,12 +9927,13 @@ if ($action === 'generate_invite') {
         $files[] = [
             'type' => $document_type,
             'legacy_type' => '',
+            'document_type' => $row['document_type'] ?? 'file',
             'id' => (int) $row['id'],
             'name' => $row['title'] ?: ($row['original_file_name'] ?: ($document_type === 'questionnaire' ? 'Cuestionario' : ($document_type === 'drawing' ? 'Dibujo' : 'Archivo'))),
             'file_name' => $row['original_file_name'] ?: '',
             'mime_type' => $row['mime_type'] ?: '',
             'appointment_id' => (int) ($row['appointment_id'] ?? 0),
-            'source' => $document_type === 'questionnaire' ? 'Cuestionario' : ($document_type === 'drawing' ? 'Dibujo' : 'Archivo'),
+            'source' => $document_type === 'questionnaire' ? 'Cuestionario' : ($document_type === 'drawing' ? 'Dibujo' : ($document_type === 'internal_note' ? 'Nota interna' : 'Archivo')),
             'date' => $row['updated_at'] ?: ($row['created_at'] ?? $row['document_date']),
             'document_date' => $row['document_date'] ?: '',
             'size' => (int) ($row['file_size'] ?? 0),
@@ -9262,11 +10023,15 @@ if ($action === 'generate_invite') {
         $mysqli->begin_transaction();
         $transaction_started = true;
         if ($document_id > 0) {
-            $stmt = $mysqli->prepare("SELECT id FROM patient_documents WHERE tenant_id = ? AND id = ? AND patient_id = ? LIMIT 1");
+            $stmt = $mysqli->prepare("SELECT id, document_type FROM patient_documents WHERE tenant_id = ? AND id = ? AND patient_id = ? LIMIT 1");
             $stmt->bind_param("iii", $tenant_id, $document_id, $patient_id);
             $stmt->execute();
-            if (!$stmt->get_result()->fetch_assoc()) {
+            $existing_document = $stmt->get_result()->fetch_assoc();
+            if (!$existing_document) {
                 throw new \Exception('No se encontro el documento.');
+            }
+            if ((string) ($existing_document['document_type'] ?? '') === 'internal_note') {
+                throw new \Exception('Las notas internas solo pueden modificarse desde su editor.');
             }
 
             if ($uploaded) {
@@ -9381,7 +10146,14 @@ if ($action === 'generate_invite') {
     $document_id = (int) ($_GET['document_id'] ?? 0);
     $appointment_id = (int) ($_GET['appointment_id'] ?? 0);
     $title = trim((string) ($_GET['title'] ?? ''));
+    $document_type = trim((string) ($_GET['document_type'] ?? 'file'));
+    if (!in_array($document_type, ['file', 'internal_note'], true)) {
+        $document_type = 'file';
+    }
     $visible_to_patient = (int) ($_GET['visible_to_patient'] ?? 0) === 1 ? 1 : 0;
+    if ($document_type === 'internal_note') {
+        $visible_to_patient = 0;
+    }
     $autosave = (int) ($_GET['autosave'] ?? 0) === 1 ? 1 : 0;
 
     if (!admin_can_access_patient($mysqli, $patient_id)) {
@@ -9409,16 +10181,17 @@ if ($action === 'generate_invite') {
         $professional_id = $professional_id > 0 ? $professional_id : null;
         $created_by = (int) ($_SESSION['user_id'] ?? 0);
         $document_date = date('Y-m-d');
-        $document_type = 'file';
         $status = 'completed';
-        $description = $autosave ? 'Documento DOCX autoguardado.' : 'Documento DOCX editado en SGPraxis.';
+        $description = $document_type === 'internal_note'
+            ? 'Nota interna de la sesión. No visible en el Portal.'
+            : ($autosave ? 'Documento DOCX autoguardado.' : 'Documento DOCX editado en SGPraxis.');
 
         $mysqli->begin_transaction();
         $transaction_started = true;
         $creating = $document_id <= 0;
         if ($document_id > 0) {
             $stmt = $mysqli->prepare("
-                SELECT id, patient_id, file_path, original_file_name, file_size, mime_type, editable_file_path, title, document_date
+                SELECT id, patient_id, document_type, file_path, original_file_name, file_size, mime_type, editable_file_path, title, document_date
                 FROM patient_documents
                 WHERE tenant_id = ? AND id = ? AND patient_id = ?
                 LIMIT 1
@@ -9428,6 +10201,11 @@ if ($action === 'generate_invite') {
             $existing = $stmt->get_result()->fetch_assoc();
             if (!$existing || !patient_document_is_docx($existing)) {
                 throw new \Exception('No se encontro un documento DOCX editable.');
+            }
+            $document_type = (string) ($existing['document_type'] ?? $document_type);
+            if ($document_type === 'internal_note') {
+                $visible_to_patient = 0;
+                $description = 'Nota interna de la sesión. No visible en el Portal.';
             }
             if (!empty($existing['file_path'])) {
                 $version_type = $autosave ? 'autosave' : 'revision';
@@ -9453,14 +10231,15 @@ if ($action === 'generate_invite') {
             }
             $stmt = $mysqli->prepare("
                 UPDATE patient_documents
-                SET appointment_id = ?, professional_id = ?, title = ?, description = ?, document_date = ?,
+                SET appointment_id = ?, professional_id = ?, document_type = ?, title = ?, description = ?, document_date = ?,
                     file_path = ?, original_file_name = ?, file_size = ?, mime_type = ?, visible_to_patient = ?, status = ?
                 WHERE tenant_id = ? AND id = ? AND patient_id = ?
             ");
             $stmt->bind_param(
-                "iisssssisisiii",
+                "iissssssisisiii",
                 $appointment_id,
                 $professional_id,
+                $document_type,
                 $display_title,
                 $description,
                 $document_date,
@@ -9484,7 +10263,7 @@ if ($action === 'generate_invite') {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             $stmt->bind_param(
-                "iiiissssssissii",
+                "iiiissssssisisi",
                 $tenant_id,
                 $patient_id,
                 $appointment_db,
@@ -9505,6 +10284,9 @@ if ($action === 'generate_invite') {
             $document_id = (int) $mysqli->insert_id;
         }
 
+        if ($patient_delivery_context) {
+            patient_delivery_attach_document($mysqli, $tenant_id, $patient_delivery_context, $patient_delivery_type, $document_id);
+        }
         $mysqli->commit();
         app_log($mysqli, [
             'action' => $autosave ? 'patient_docx_autosaved' : ($creating ? 'patient_docx_created' : 'patient_docx_saved'),
@@ -9684,6 +10466,9 @@ if ($action === 'generate_invite') {
             $document_id = (int) $mysqli->insert_id;
         }
 
+        if ($patient_delivery_context) {
+            patient_delivery_attach_document($mysqli, $tenant_id, $patient_delivery_context, $patient_delivery_type, $document_id);
+        }
         $mysqli->commit();
         if (!$creating && !empty($previous_paths)) {
             foreach (array_unique($previous_paths) as $old_path) {
@@ -9692,7 +10477,7 @@ if ($action === 'generate_invite') {
                 }
                 $full_old_path = stored_upload_full_path($old_path);
                 if ($full_old_path && is_file($full_old_path)) {
-                    @unlink($full_old_path);
+                    praxis_storage_delete_path($full_old_path);
                 }
             }
         }
@@ -9806,12 +10591,17 @@ if ($action === 'generate_invite') {
         exit;
     }
     $table = $file_type === 'patient_document' ? 'patient_documents' : 'patient_evolution_files';
-    $stmt = $mysqli->prepare("SELECT id, patient_id FROM $table WHERE tenant_id = ? AND id = ? LIMIT 1");
+    $extra_select = $file_type === 'patient_document' ? ', document_type' : '';
+    $stmt = $mysqli->prepare("SELECT id, patient_id$extra_select FROM $table WHERE tenant_id = ? AND id = ? LIMIT 1");
     $stmt->bind_param("ii", $tenant_id, $file_id);
     $stmt->execute();
     $file = $stmt->get_result()->fetch_assoc();
     if (!$file || !admin_can_access_patient($mysqli, (int) $file['patient_id'])) {
         echo json_encode(['success' => false, 'error' => 'No autorizado para cambiar la visibilidad de este archivo.']);
+        exit;
+    }
+    if ($file_type === 'patient_document' && (string) ($file['document_type'] ?? '') === 'internal_note' && $visible === 1) {
+        echo json_encode(['success' => false, 'error' => 'Las notas internas no pueden publicarse en el Portal.']);
         exit;
     }
     $stmt = $mysqli->prepare("UPDATE $table SET visible_to_patient = ? WHERE tenant_id = ? AND id = ?");
@@ -9845,7 +10635,7 @@ if ($action === 'generate_invite') {
     $stmt->execute();
     $full_path = stored_upload_full_path($file['file_path'] ?? '');
     if ($full_path && is_file($full_path)) {
-        @unlink($full_path);
+        praxis_storage_delete_path($full_path);
     }
     app_log($mysqli, [
         'action' => 'patient_evolution_file_deleted',
@@ -9895,7 +10685,7 @@ if ($action === 'generate_invite') {
         foreach (array_unique($paths) as $path) {
             $full_path = stored_upload_full_path($path);
             if ($full_path && is_file($full_path)) {
-                @unlink($full_path);
+                praxis_storage_delete_path($full_path);
             }
         }
         app_log($mysqli, [
@@ -11016,7 +11806,8 @@ if ($action === 'generate_invite') {
         : "";
     $stmt = $mysqli->prepare("
         SELECT t.id, t.patient_id, t.patient_diagnosis_id, t.appointment_id, t.professional_id, t.title, t.description, t.status, t.priority, t.visible_to_patient,
-               t.fitness_exercise_id, t.document_id,
+               t.fitness_exercise_id, t.document_id, t.requires_docx, t.requires_drawing, t.requires_file,
+               t.response_docx_document_id, t.response_drawing_document_id, t.response_file_document_id,
                t.completed_at, t.created_at, t.updated_at,
                p.display_name AS professional_name,
                COALESCE(kp.name, pd.manual_label) AS diagnosis_label,
@@ -11056,6 +11847,12 @@ if ($action === 'generate_invite') {
             'status' => $row['status'],
             'priority' => (int) ($row['priority'] ?? 2),
             'visible_to_patient' => (int) ($row['visible_to_patient'] ?? 0),
+            'requires_docx' => (int) ($row['requires_docx'] ?? 0),
+            'requires_drawing' => (int) ($row['requires_drawing'] ?? 0),
+            'requires_file' => (int) ($row['requires_file'] ?? 0),
+            'response_docx_document_id' => (int) ($row['response_docx_document_id'] ?? 0),
+            'response_drawing_document_id' => (int) ($row['response_drawing_document_id'] ?? 0),
+            'response_file_document_id' => (int) ($row['response_file_document_id'] ?? 0),
             'fitness_exercise_id' => $row['fitness_exercise_id'] ?? '',
             'document_id' => (int) ($row['document_id'] ?? 0),
             'attachment_file_path' => $row['attachment_file_path'] ?? '',
@@ -11089,6 +11886,11 @@ if ($action === 'generate_invite') {
     $task_status_enabled = work_plan_task_status_enabled($mysqli);
     $status = $task_status_enabled && ($_POST['status'] ?? '') === 'completed' ? 'completed' : 'pending';
     $visible_to_patient = (int) ($_POST['visible_to_patient'] ?? 0) === 1 ? 1 : 0;
+    $delivery_type = trim((string) ($_POST['delivery_type'] ?? 'none'));
+    if (!in_array($delivery_type, ['none', 'docx', 'drawing', 'file'], true)) $delivery_type = 'none';
+    $requires_docx = $delivery_type === 'docx' && plan_feature_enabled_from_db($mysqli, 'documents.onlineEditor', false) ? 1 : 0;
+    $requires_drawing = $delivery_type === 'drawing' && plan_feature_enabled_from_db($mysqli, 'documents.drawingBoard', false) ? 1 : 0;
+    $requires_file = $delivery_type === 'file' && plan_feature_enabled_from_db($mysqli, 'documents.uploads', false) ? 1 : 0;
 
     if (!admin_can_access_patient($mysqli, $patient_id)) {
         echo json_encode(['success' => false, 'error' => 'No autorizado para guardar esta tarea.']);
@@ -11144,18 +11946,18 @@ if ($action === 'generate_invite') {
             $completed_by = null;
             $stmt = $mysqli->prepare("
                 UPDATE patient_work_plan_tasks
-                SET appointment_id = ?, title = ?, description = ?, priority = ?, visible_to_patient = ?, status = ?
+                SET appointment_id = ?, title = ?, description = ?, priority = ?, visible_to_patient = ?, status = ?, requires_docx = ?, requires_drawing = ?, requires_file = ?
                 WHERE tenant_id = ? AND id = ? AND patient_id = ?
             ");
-            $stmt->bind_param("issiisiii", $appointment_id_db, $title, $description, $priority, $visible_to_patient, $status, $tenant_id, $task_id, $patient_id);
+            $stmt->bind_param("issiisiiiiii", $appointment_id_db, $title, $description, $priority, $visible_to_patient, $status, $requires_docx, $requires_drawing, $requires_file, $tenant_id, $task_id, $patient_id);
         } else {
             $stmt = $mysqli->prepare("
                 UPDATE patient_work_plan_tasks
                 SET appointment_id = ?, professional_id = ?, title = ?, description = ?, priority = ?, visible_to_patient = ?, status = ?,
-                    completed_at = ?, completed_by = ?
+                    completed_at = ?, completed_by = ?, requires_docx = ?, requires_drawing = ?, requires_file = ?
                 WHERE tenant_id = ? AND id = ? AND patient_id = ?
             ");
-            $stmt->bind_param("iissiissiiii", $appointment_id_db, $professional_id, $title, $description, $priority, $visible_to_patient, $status, $completed_at, $completed_by, $tenant_id, $task_id, $patient_id);
+            $stmt->bind_param("iissiissiiiiiii", $appointment_id_db, $professional_id, $title, $description, $priority, $visible_to_patient, $status, $completed_at, $completed_by, $requires_docx, $requires_drawing, $requires_file, $tenant_id, $task_id, $patient_id);
         }
         $stmt->execute();
     } else {
@@ -11163,10 +11965,10 @@ if ($action === 'generate_invite') {
             $professional_id = null;
         }
         $stmt = $mysqli->prepare("
-            INSERT INTO patient_work_plan_tasks (tenant_id, patient_id, appointment_id, professional_id, title, description, status, priority, visible_to_patient, created_by, completed_at, completed_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO patient_work_plan_tasks (tenant_id, patient_id, appointment_id, professional_id, title, description, status, priority, visible_to_patient, created_by, completed_at, completed_by, requires_docx, requires_drawing, requires_file)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
-        $stmt->bind_param("iiiisssiiisi", $tenant_id, $patient_id, $appointment_id_db, $professional_id, $title, $description, $status, $priority, $visible_to_patient, $session_user_id, $completed_at, $completed_by);
+        $stmt->bind_param("iiiisssiiisiiii", $tenant_id, $patient_id, $appointment_id_db, $professional_id, $title, $description, $status, $priority, $visible_to_patient, $session_user_id, $completed_at, $completed_by, $requires_docx, $requires_drawing, $requires_file);
         $stmt->execute();
         $task_id = $mysqli->insert_id;
     }
@@ -11412,7 +12214,7 @@ if ($action === 'generate_invite') {
         $ids = array_map(fn($template) => (int) $template['id'], $templates);
         $ids_sql = implode(',', $ids);
         $items_res = $mysqli->query("
-            SELECT id, template_id, title, description, priority, fitness_exercise_id, sort_order,
+            SELECT id, template_id, title, description, priority, requires_docx, requires_drawing, requires_file, fitness_exercise_id, sort_order,
                    attachment_file_path, attachment_original_name, attachment_file_size, attachment_mime_type
             FROM work_plan_task_template_items
             WHERE tenant_id = $tenant_id AND template_id IN ($ids_sql)
@@ -11426,6 +12228,9 @@ if ($action === 'generate_invite') {
                 'title' => $item['title'] ?? '',
                 'description' => $item['description'] ?? '',
                 'priority' => (int) ($item['priority'] ?? 2),
+                'requires_docx' => (int) ($item['requires_docx'] ?? 0),
+                'requires_drawing' => (int) ($item['requires_drawing'] ?? 0),
+                'requires_file' => (int) ($item['requires_file'] ?? 0),
                 'fitness_exercise_id' => $item['fitness_exercise_id'] ?? '',
                 'attachment_file_path' => $item['attachment_file_path'] ?? '',
                 'attachment_original_name' => $item['attachment_original_name'] ?? '',
@@ -11523,6 +12328,14 @@ if ($action === 'generate_invite') {
     $title = trim($_POST['title'] ?? '');
     $description = trim($_POST['description'] ?? '');
     $priority = (int) ($_POST['priority'] ?? 2);
+    $delivery_type = trim((string) ($_POST['delivery_type'] ?? 'none'));
+    if (!in_array($delivery_type, ['none', 'docx', 'drawing', 'file'], true)) $delivery_type = 'none';
+    $requires_docx = $delivery_type === 'docx' ? 1 : 0;
+    $requires_drawing = $delivery_type === 'drawing' ? 1 : 0;
+    $requires_file = $delivery_type === 'file' ? 1 : 0;
+    if (!plan_feature_enabled_from_db($mysqli, 'documents.onlineEditor', false)) $requires_docx = 0;
+    if (!plan_feature_enabled_from_db($mysqli, 'documents.drawingBoard', false)) $requires_drawing = 0;
+    if (!plan_feature_enabled_from_db($mysqli, 'documents.uploads', false)) $requires_file = 0;
     $fitness_exercise_id = trim((string) ($_POST['fitness_exercise_id'] ?? ''));
     $attachment = null;
     $session_user_id = (int) ($_SESSION['user_id'] ?? 0);
@@ -11564,17 +12377,17 @@ if ($action === 'generate_invite') {
             $old = $old_stmt->get_result()->fetch_assoc();
             $old_path = stored_upload_full_path($old['attachment_file_path'] ?? '');
             if ($old_path && is_file($old_path)) {
-                @unlink($old_path);
+                praxis_storage_delete_path($old_path);
             }
-            $stmt = $mysqli->prepare("UPDATE work_plan_task_template_items SET title = ?, description = ?, priority = ?, fitness_exercise_id = NULLIF(?, ''), attachment_file_path = ?, attachment_original_name = ?, attachment_file_size = ?, attachment_mime_type = ? WHERE tenant_id = ? AND id = ? AND template_id = ?");
+            $stmt = $mysqli->prepare("UPDATE work_plan_task_template_items SET title = ?, description = ?, priority = ?, requires_docx = ?, requires_drawing = ?, requires_file = ?, fitness_exercise_id = NULLIF(?, ''), attachment_file_path = ?, attachment_original_name = ?, attachment_file_size = ?, attachment_mime_type = ? WHERE tenant_id = ? AND id = ? AND template_id = ?");
             $attachment_path = $attachment['path'];
             $attachment_name = $attachment['name'];
             $attachment_size = $attachment['size'];
             $attachment_mime = $attachment['mime'];
-            $stmt->bind_param("ssisssisiii", $title, $description, $priority, $fitness_exercise_id, $attachment_path, $attachment_name, $attachment_size, $attachment_mime, $tenant_id, $item_id, $template_id);
+            $stmt->bind_param("ssiiiisssisiii", $title, $description, $priority, $requires_docx, $requires_drawing, $requires_file, $fitness_exercise_id, $attachment_path, $attachment_name, $attachment_size, $attachment_mime, $tenant_id, $item_id, $template_id);
         } else {
-            $stmt = $mysqli->prepare("UPDATE work_plan_task_template_items SET title = ?, description = ?, priority = ?, fitness_exercise_id = NULLIF(?, '') WHERE tenant_id = ? AND id = ? AND template_id = ?");
-            $stmt->bind_param("ssisiii", $title, $description, $priority, $fitness_exercise_id, $tenant_id, $item_id, $template_id);
+            $stmt = $mysqli->prepare("UPDATE work_plan_task_template_items SET title = ?, description = ?, priority = ?, requires_docx = ?, requires_drawing = ?, requires_file = ?, fitness_exercise_id = NULLIF(?, '') WHERE tenant_id = ? AND id = ? AND template_id = ?");
+            $stmt->bind_param("ssiiiisiii", $title, $description, $priority, $requires_docx, $requires_drawing, $requires_file, $fitness_exercise_id, $tenant_id, $item_id, $template_id);
         }
         $stmt->execute();
         $linked_document_id = (int) ($existing['document_id'] ?? 0);
@@ -11590,12 +12403,12 @@ if ($action === 'generate_invite') {
         $stmt->execute();
         $sort_row = $stmt->get_result()->fetch_assoc();
         $sort_order = (int) ($sort_row['next_sort'] ?? 10);
-        $stmt = $mysqli->prepare("INSERT INTO work_plan_task_template_items (tenant_id, template_id, title, description, priority, fitness_exercise_id, attachment_file_path, attachment_original_name, attachment_file_size, attachment_mime_type, sort_order) VALUES (?, ?, ?, ?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?)");
+        $stmt = $mysqli->prepare("INSERT INTO work_plan_task_template_items (tenant_id, template_id, title, description, priority, requires_docx, requires_drawing, requires_file, fitness_exercise_id, attachment_file_path, attachment_original_name, attachment_file_size, attachment_mime_type, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?)");
         $attachment_path = $attachment['path'] ?? null;
         $attachment_name = $attachment['name'] ?? null;
         $attachment_size = $attachment['size'] ?? null;
         $attachment_mime = $attachment['mime'] ?? null;
-        $stmt->bind_param("iississsisi", $tenant_id, $template_id, $title, $description, $priority, $fitness_exercise_id, $attachment_path, $attachment_name, $attachment_size, $attachment_mime, $sort_order);
+        $stmt->bind_param("iissiiiisssisi", $tenant_id, $template_id, $title, $description, $priority, $requires_docx, $requires_drawing, $requires_file, $fitness_exercise_id, $attachment_path, $attachment_name, $attachment_size, $attachment_mime, $sort_order);
         $stmt->execute();
         $item_id = $mysqli->insert_id;
     }
@@ -11630,7 +12443,7 @@ if ($action === 'generate_invite') {
     $stmt->bind_param("ii", $tenant_id, $item_id);
     $stmt->execute();
     if ($attachment_path && is_file($attachment_path)) {
-        @unlink($attachment_path);
+        praxis_storage_delete_path($attachment_path);
     }
     echo json_encode(['success' => true, 'message' => 'Tarea de plantilla eliminada correctamente.']);
 } elseif ($action === 'import_work_plan_task_template') {
@@ -11673,7 +12486,7 @@ if ($action === 'generate_invite') {
         }
     }
     $stmt = $mysqli->prepare("
-        SELECT title, description, priority, fitness_exercise_id,
+        SELECT title, description, priority, requires_docx, requires_drawing, requires_file, fitness_exercise_id,
                attachment_file_path, attachment_original_name, attachment_file_size, attachment_mime_type
         FROM work_plan_task_template_items
         WHERE tenant_id = ? AND template_id = ?
@@ -11683,8 +12496,8 @@ if ($action === 'generate_invite') {
     $stmt->execute();
     $items_res = $stmt->get_result();
     $insert = $mysqli->prepare("
-        INSERT INTO patient_work_plan_tasks (tenant_id, patient_id, appointment_id, professional_id, title, description, status, priority, visible_to_patient, fitness_exercise_id, document_id, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, NULLIF(?, ''), ?, ?)
+        INSERT INTO patient_work_plan_tasks (tenant_id, patient_id, appointment_id, professional_id, title, description, status, priority, visible_to_patient, requires_docx, requires_drawing, requires_file, fitness_exercise_id, document_id, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, NULLIF(?, ''), ?, ?)
     ");
     $inserted = 0;
     while ($item = $items_res->fetch_assoc()) {
@@ -11694,6 +12507,9 @@ if ($action === 'generate_invite') {
         }
         $description = $item['description'] ?? '';
         $priority = (int) ($item['priority'] ?? 2);
+        $requires_docx = (int) ($item['requires_docx'] ?? 0);
+        $requires_drawing = (int) ($item['requires_drawing'] ?? 0);
+        $requires_file = (int) ($item['requires_file'] ?? 0);
         $fitness_exercise_id = $item['fitness_exercise_id'] ?? '';
         $document_id = import_task_attachment_as_patient_document(
             $mysqli,
@@ -11703,7 +12519,7 @@ if ($action === 'generate_invite') {
             $professional_id,
             $visible_to_patient_default
         );
-        $insert->bind_param("iiiissiisii", $tenant_id, $patient_id, $appointment_id_db, $professional_id, $title, $description, $priority, $visible_to_patient_default, $fitness_exercise_id, $document_id, $session_user_id);
+        $insert->bind_param("iiiissiiiiisii", $tenant_id, $patient_id, $appointment_id_db, $professional_id, $title, $description, $priority, $visible_to_patient_default, $requires_docx, $requires_drawing, $requires_file, $fitness_exercise_id, $document_id, $session_user_id);
         $insert->execute();
         $inserted++;
     }
@@ -11875,7 +12691,7 @@ if ($action === 'generate_invite') {
         }
         foreach ($file_paths as $file_path) {
             if (is_file($file_path)) {
-                @unlink($file_path);
+                praxis_storage_delete_path($file_path);
             }
         }
         app_log($mysqli, [
@@ -11993,6 +12809,7 @@ if ($action === 'generate_invite') {
     $patient_status = trim($_POST['patient_status'] ?? 'active');
     $waiting_list = isset($_POST['waiting_list']) && $_POST['waiting_list'] === '1' ? 1 : 0;
     $birth_date = trim($_POST['birth_date'] ?? '');
+    $sex = trim((string) ($_POST['sex'] ?? ''));
     $referral_source = trim($_POST['referral_source'] ?? '');
     $knowledge_problem_was_posted = array_key_exists('knowledge_problem_id', $_POST);
     $knowledge_problem_id = max(0, (int) ($_POST['knowledge_problem_id'] ?? 0));
@@ -12096,6 +12913,10 @@ if ($action === 'generate_invite') {
         $patient_status = 'active';
     }
     $birth_date = $birth_date !== '' ? $birth_date : null;
+    if (!in_array($sex, ['', 'female', 'male', 'other', 'prefer_not_say'], true)) {
+        $sex = '';
+    }
+    $sex = $sex !== '' ? $sex : null;
     $referral_source = $referral_source !== '' ? $referral_source : null;
     $knowledge_base_available = app_feature_enabled_from_db($mysqli, 'knowledgeBase.enabled', false);
     if (!$knowledge_base_available) {
@@ -12305,6 +13126,9 @@ if ($action === 'generate_invite') {
             $notes
         );
         $stmt->execute();
+        $stmt = $mysqli->prepare("UPDATE patient_profiles SET sex = ? WHERE tenant_id = ? AND user_id = ?");
+        $stmt->bind_param("sii", $sex, $tenant_id, $patient_id);
+        $stmt->execute();
         $stmt = $mysqli->prepare("UPDATE patient_profiles SET timezone = ? WHERE tenant_id = ? AND user_id = ?");
         $stmt->bind_param("sii", $patient_timezone, $tenant_id, $patient_id);
         $stmt->execute();
@@ -12390,6 +13214,13 @@ if ($action === 'generate_invite') {
             create_initial_patient_evolution_if_needed($mysqli, $tenant_id, $patient_id, $profile_professional_id, $admission_date, $physical_metrics, (int) ($_SESSION['user_id'] ?? 0));
         } elseif (patient_physical_metrics_changed($previous_physical_metrics, $physical_metrics, $physical_sex)) {
             upsert_today_patient_evolution_from_profile_metrics($mysqli, $tenant_id, $patient_id, $profile_professional_id, $physical_metrics, (int) ($_SESSION['user_id'] ?? 0));
+        }
+        if (plan_config_feature_enabled(plan_usage_current_config($mysqli), 'customFields.enabled', false)) {
+            $submittedCustomFields = is_array($_POST['custom_fields'] ?? null) ? $_POST['custom_fields'] : [];
+            [$customFieldsOk, $customFieldsError] = save_custom_field_values(
+                $mysqli, $tenant_id, 'patient', $patient_id, $submittedCustomFields, (int) ($_SESSION['user_id'] ?? 0)
+            );
+            if (!$customFieldsOk) throw new \RuntimeException($customFieldsError);
         }
         $mysqli->commit();
         if (!$creating_patient) {
@@ -12659,6 +13490,7 @@ if ($action === 'generate_invite') {
         echo json_encode(['success' => false, 'error' => 'Las invitaciones del portal no estan disponibles en este plan.']);
         exit;
     }
+    try {
     $patient_id = (int) ($_POST['patient_id'] ?? 0);
     $stmt = $mysqli->prepare("SELECT id, name, email, password_hash FROM users WHERE tenant_id = ? AND id = ? AND role = 'patient'");
     $stmt->bind_param("ii", $tenant_id, $patient_id);
@@ -12673,7 +13505,7 @@ if ($action === 'generate_invite') {
         exit;
     }
     if (empty($patient['email']) || !filter_var($patient['email'], FILTER_VALIDATE_EMAIL)) {
-        echo json_encode(['success' => false, 'error' => 'El paciente necesita un email para enviar la invitacion.']);
+        echo json_encode(['success' => false, 'error' => 'El paciente necesita un email válido para enviar la invitación.']);
         exit;
     }
 
@@ -12681,11 +13513,12 @@ if ($action === 'generate_invite') {
     $stmt = $mysqli->prepare("INSERT INTO invitations (tenant_id, token, user_id) VALUES (?, ?, ?)");
     $stmt->bind_param("isi", $tenant_id, $token, $patient_id);
     $stmt->execute();
-    $link = urlme_shorten_url(app_public_base_url() . 'register.php?token=' . urlencode($token), 'Invitacion registro SimplyGest Praxis');
+    $registration_link = app_public_base_url() . 'register.php?token=' . urlencode($token);
+    $link = urlme_shorten_url($registration_link, 'Invitación registro SimplyGest Praxis') ?: $registration_link;
 
     $sent = send_app_email(
         $patient['email'],
-        'Invitacion para crear tu cuenta',
+        'Invitación para crear tu cuenta',
         '<p>Hola ' . htmlspecialchars($patient['name']) . ',</p>' .
         '<p>Te enviamos la invitaci&oacute;n para crear tu cuenta y poder acceder a la web para gestionar tus citas.</p>' .
         '<p><a href="' . htmlspecialchars($link) . '">Crear mi cuenta</a></p>' .
@@ -12693,6 +13526,10 @@ if ($action === 'generate_invite') {
         null,
         $mysqli
     );
+    $email_error = $sent ? '' : (function_exists('get_app_email_last_error') ? get_app_email_last_error() : '');
+    if (!$sent && $email_error !== '') {
+        error_log('Invitación al Portal para paciente ' . $patient_id . ': ' . $email_error);
+    }
 
     app_log($mysqli, [
         'action' => $sent ? 'patient_portal_invite_sent' : 'patient_portal_invite_failed',
@@ -12700,23 +13537,28 @@ if ($action === 'generate_invite') {
         'channel' => 'email',
         'target_type' => 'patient',
         'target_id' => $patient_id,
-        'title' => $sent ? 'Invitacion al portal enviada' : 'No se pudo enviar invitacion al portal',
+        'title' => $sent ? 'Invitación al Portal enviada' : 'No se pudo enviar la invitación al Portal',
         'message' => $patient['email'] ?? '',
         'metadata' => [
             'patient_id' => $patient_id,
             'email' => $patient['email'] ?? '',
-            'reason' => $sent ? '' : 'Fallo al enviar el email de invitacion.'
+            'reason' => $sent ? '' : ($email_error ?: 'Fallo al enviar el email de invitación.')
         ]
     ]);
 
     echo json_encode($sent
-        ? ['success' => true, 'message' => 'Invitacion enviada correctamente.', 'link' => $link]
-        : ['success' => false, 'error' => 'No se pudo enviar el email de invitacion.']);
+        ? ['success' => true, 'message' => 'Invitación enviada correctamente.', 'link' => $link]
+        : ['success' => false, 'error' => 'No se pudo enviar el email de invitación.' . ($email_error !== '' ? ' Motivo: ' . $email_error : '')]);
+    } catch (Throwable $exception) {
+        error_log('Error preparando la invitación al Portal: ' . $exception->getMessage());
+        echo json_encode(['success' => false, 'error' => 'No se pudo preparar la invitación. Motivo: ' . $exception->getMessage()]);
+    }
 } elseif ($action === 'send_invite_email') {
     if (!app_feature_enabled_from_db($mysqli, 'patientPortal.enabled', false) || !app_feature_enabled_from_db($mysqli, 'patientPortal.invitations', false)) {
-        echo json_encode(['success' => false, 'error' => 'Las invitaciones del portal no estan disponibles en este plan.']);
+        echo json_encode(['success' => false, 'error' => 'Las invitaciones del Portal no están disponibles en este plan.']);
         exit;
     }
+    try {
     $email = trim($_POST['email'] ?? '');
     $posted_link = trim($_POST['link'] ?? '');
     $posted_token = trim($_POST['token'] ?? '');
@@ -12725,32 +13567,28 @@ if ($action === 'generate_invite') {
     $token = $posted_token ?: ($query['token'] ?? '');
 
     if (!$email || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        echo json_encode(['success' => false, 'error' => 'Indica un email valido.']);
+        echo json_encode(['success' => false, 'error' => 'Indica un email válido.']);
         exit;
     }
     if (!preg_match('/^[a-f0-9]{64}$/', $token)) {
-        echo json_encode(['success' => false, 'error' => 'El enlace de invitacion no es valido.']);
+        echo json_encode(['success' => false, 'error' => 'El enlace de invitación no es válido.']);
         exit;
     }
 
-    $stmt = $mysqli->prepare("SELECT id, user_id FROM invitations WHERE token = ? AND used = 0");
-    $stmt->bind_param("s", $token);
+    $stmt = $mysqli->prepare("SELECT id, user_id FROM invitations WHERE tenant_id = ? AND token = ? AND used = 0");
+    $stmt->bind_param("is", $tenant_id, $token);
     $stmt->execute();
-    foreach (array_unique($paths) as $path) {
-        if (is_file($path)) {
-            @unlink($path);
-        }
-    }
     $invitation = $stmt->get_result()->fetch_assoc();
     if (!$invitation) {
-        echo json_encode(['success' => false, 'error' => 'La invitacion no existe o ya fue usada.']);
+        echo json_encode(['success' => false, 'error' => 'La invitación no existe o ya fue utilizada.']);
         exit;
     }
 
-    $link = urlme_shorten_url(app_public_base_url() . 'register.php?token=' . urlencode($token), 'Invitacion registro SimplyGest Praxis');
+    $registration_link = app_public_base_url() . 'register.php?token=' . urlencode($token);
+    $link = urlme_shorten_url($registration_link, 'Invitación registro SimplyGest Praxis') ?: $registration_link;
     $sent = send_app_email(
         $email,
-        'Invitacion para crear tu cuenta',
+        'Invitación para crear tu cuenta',
         '<p>Hola,</p>' .
         '<p>Te enviamos la invitaci&oacute;n para crear tu cuenta y poder acceder a la web para gestionar tus citas.</p>' .
         '<p><a href="' . htmlspecialchars($link) . '">Crear mi cuenta</a></p>' .
@@ -12758,6 +13596,7 @@ if ($action === 'generate_invite') {
         null,
         $mysqli
     );
+    $email_error = $sent ? '' : (function_exists('get_app_email_last_error') ? get_app_email_last_error() : '');
 
     app_log($mysqli, [
         'action' => $sent ? 'patient_portal_invite_sent' : 'patient_portal_invite_failed',
@@ -12765,18 +13604,22 @@ if ($action === 'generate_invite') {
         'channel' => 'email',
         'target_type' => 'patient',
         'target_id' => (int) ($invitation['user_id'] ?? 0),
-        'title' => $sent ? 'Invitacion al portal enviada' : 'No se pudo enviar invitacion al portal',
+        'title' => $sent ? 'Invitación al Portal enviada' : 'No se pudo enviar la invitación al Portal',
         'message' => $email,
         'metadata' => [
             'patient_id' => (int) ($invitation['user_id'] ?? 0),
             'email' => $email,
-            'reason' => $sent ? '' : 'Fallo al enviar el email de invitacion.'
+            'reason' => $sent ? '' : ($email_error ?: 'Fallo al enviar el email de invitación.')
         ]
     ]);
 
     echo json_encode($sent
-        ? ['success' => true, 'message' => 'Invitacion enviada correctamente.']
-        : ['success' => false, 'error' => 'No se pudo enviar el email de invitacion.']);
+        ? ['success' => true, 'message' => 'Invitación enviada correctamente.']
+        : ['success' => false, 'error' => 'No se pudo enviar el email de invitación.' . ($email_error !== '' ? ' Motivo: ' . $email_error : '')]);
+    } catch (Throwable $exception) {
+        error_log('Error enviando una invitación generada: ' . $exception->getMessage());
+        echo json_encode(['success' => false, 'error' => 'No se pudo enviar la invitación. Motivo: ' . $exception->getMessage()]);
+    }
 } elseif ($action === 'export_appointments') {
     $format = strtolower((string) ($_GET['format'] ?? 'xlsx'));
     $current_professional_id = current_professional_id_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0));
@@ -12896,10 +13739,10 @@ if ($action === 'generate_invite') {
         $waiting_list_payload = ['count' => 0, 'has_slot' => false];
     }
     $important_notices = [];
-    if ($is_superadmin) {
+    if ($is_superadmin || $session_role === 'admin') {
         $payment_settings_res = $mysqli->query("
             SELECT online_payment_enabled, environment,
-                   billing_enabled, billing_country, billing_province,
+                   billing_enabled, billing_provider, billing_country, billing_province,
                    legal_owner_name, legal_nif, legal_address, legal_city, legal_postal_code,
                    verifactu_enabled, verifactu_start_date
             FROM payment_settings
@@ -12957,6 +13800,54 @@ if ($action === 'generate_invite') {
         }
         $verifactu_configured = $billing_enabled
             && (int) ($payment_settings_row['verifactu_enabled'] ?? 0) === 1;
+        $billing_provider = (string) ($payment_settings_row['billing_provider'] ?? 'praxis');
+        if ($verifactu_configured && $billing_provider === 'praxis') {
+            $verifactu_records_table = $mysqli->query("SHOW TABLES LIKE 'verifactu_records'");
+            if ($verifactu_records_table && $verifactu_records_table->num_rows > 0) {
+                $verifactu_failed_res = $mysqli->query("
+                    SELECT COUNT(*) AS total
+                    FROM verifactu_records
+                    WHERE tenant_id = $tenant_id
+                      AND status = 'error'
+                ");
+                $verifactu_failed = (int) ($verifactu_failed_res ? ($verifactu_failed_res->fetch_assoc()['total'] ?? 0) : 0);
+                if ($verifactu_failed > 0) {
+                    $important_notices[] = [
+                        'type' => 'verifactu_failed_records',
+                        'level' => 'danger',
+                        'title' => $verifactu_failed === 1
+                            ? 'Hay 1 registro VeriFactu fallido'
+                            : "Hay {$verifactu_failed} registros VeriFactu fallidos",
+                        'message' => 'Revisa las facturas afectadas y el motivo del rechazo o del error de envío.',
+                        'action' => 'billing_invoices',
+                        'action_label' => 'Ver facturas'
+                    ];
+                }
+            }
+        }
+        if ($billing_enabled && $billing_provider === 'simplygest_cloud') {
+            $cloud_pending_res = $mysqli->query("
+                SELECT COUNT(*) AS total
+                FROM movim
+                WHERE tenant_id = $tenant_id
+                  AND tipo_movim = 'factura'
+                  AND billing_provider = 'simplygest_cloud'
+                  AND (external_invoice_id IS NULL OR external_invoice_id = '')
+            ");
+            $cloud_pending = (int) ($cloud_pending_res ? ($cloud_pending_res->fetch_assoc()['total'] ?? 0) : 0);
+            if ($cloud_pending > 0) {
+                $important_notices[] = [
+                    'type' => 'cloud_invoices_pending',
+                    'level' => 'danger',
+                    'title' => $cloud_pending === 1
+                        ? 'Hay 1 factura sin enviar a Cloud'
+                        : "Hay {$cloud_pending} facturas sin enviar a Cloud",
+                    'message' => 'Comprueba la conexión con SimplyGest Cloud y revisa las facturas pendientes.',
+                    'action' => 'billing_invoices',
+                    'action_label' => 'Ver facturas'
+                ];
+            }
+        }
         // Read signing independently from billing/VeriFactu. This keeps the
         // certificate notice active even when billing is disabled.
         $signature_settings = signature_settings_values($mysqli);
@@ -13064,6 +13955,26 @@ if ($action === 'generate_invite') {
         }
         $data_exports_table = $mysqli->query("SHOW TABLES LIKE 'tenant_data_export_jobs'");
         if ($data_exports_table && $data_exports_table->num_rows > 0) {
+            $latest_data_export_res = $mysqli->query("
+                SELECT status, error_message
+                FROM tenant_data_export_jobs
+                WHERE tenant_id = $tenant_id
+                ORDER BY id DESC
+                LIMIT 1
+            ");
+            $latest_data_export = $latest_data_export_res ? $latest_data_export_res->fetch_assoc() : null;
+            if ($latest_data_export && (string) ($latest_data_export['status'] ?? '') === 'failed') {
+                $important_notices[] = [
+                    'type' => 'data_export_failed',
+                    'level' => 'danger',
+                    'title' => "La exportaci\u{00F3}n de datos ha fallado",
+                    'message' => trim((string) ($latest_data_export['error_message'] ?? '')) !== ''
+                        ? (string) $latest_data_export['error_message']
+                        : "No se pudo completar la \u{00FA}ltima exportaci\u{00F3}n. Revisa el estado o vuelve a intentarlo.",
+                    'action' => $is_superadmin ? 'data_export' : '',
+                    'action_label' => $is_superadmin ? "Revisar exportaci\u{00F3}n" : ''
+                ];
+            }
             $data_export_res = $mysqli->query("
                 SELECT id, expires_at
                 FROM tenant_data_export_jobs
@@ -13081,8 +13992,8 @@ if ($action === 'generate_invite') {
                     'level' => 'info',
                     'title' => 'Tu exportación de datos ya está disponible',
                     'message' => 'Descárgala antes del ' . date('d/m/Y H:i', strtotime((string) $data_export['expires_at'])) . '. Después se eliminará automáticamente.',
-                    'action' => 'data_export',
-                    'action_label' => 'Descargar'
+                    'action' => $is_superadmin ? 'data_export' : '',
+                    'action_label' => $is_superadmin ? 'Descargar' : ''
                 ];
             }
         }
@@ -13115,6 +14026,52 @@ if ($action === 'generate_invite') {
         }
     }
 
+    // Internal team tasks are personal to the signed-in member, so this
+    // notice is deliberately built outside the superadmin-only settings block.
+    if (
+        ($is_superadmin || !empty($member_permissions['team_notes']))
+        && in_array(plan_config_normalize_key(dashboard_config_plan_key_from_db($mysqli), ''), ['magister', 'summum'], true)
+    ) {
+        $team_notes_table = $mysqli->query("SHOW TABLES LIKE 'team_notes'");
+        if ($team_notes_table && $team_notes_table->num_rows > 0) {
+            $viewer_user_id = (int) ($_SESSION['user_id'] ?? 0);
+            $team_tasks_res = $mysqli->query("
+                SELECT
+                    COUNT(*) AS pending_count,
+                    SUM(CASE WHEN due_at IS NOT NULL AND due_at < NOW() THEN 1 ELSE 0 END) AS overdue_count,
+                    MIN(due_at) AS next_due_at
+                FROM team_notes
+                WHERE tenant_id = $tenant_id
+                  AND item_type = 'task'
+                  AND status = 'pending'
+                  AND (
+                    author_user_id = $viewer_user_id
+                    OR visibility = 'team'
+                    OR (visibility = 'professional' AND target_user_id = $viewer_user_id)
+                  )
+            ");
+            $team_tasks = $team_tasks_res ? ($team_tasks_res->fetch_assoc() ?: []) : [];
+            $pending_team_tasks = (int) ($team_tasks['pending_count'] ?? 0);
+            $overdue_team_tasks = (int) ($team_tasks['overdue_count'] ?? 0);
+            if ($pending_team_tasks > 0) {
+                $task_title = $overdue_team_tasks > 0
+                    ? ($overdue_team_tasks === 1 ? 'Tienes 1 tarea interna vencida' : "Tienes {$overdue_team_tasks} tareas internas vencidas")
+                    : ($pending_team_tasks === 1 ? 'Tienes 1 tarea interna pendiente' : "Tienes {$pending_team_tasks} tareas internas pendientes");
+                $task_message = $overdue_team_tasks > 0
+                    ? 'Revísalas para evitar que queden asuntos del equipo sin atender.'
+                    : 'Consulta las notas y tareas internas del equipo.';
+                $important_notices[] = [
+                    'type' => 'team_tasks_pending',
+                    'level' => $overdue_team_tasks > 0 ? 'danger' : 'warning',
+                    'title' => $task_title,
+                    'message' => $task_message,
+                    'action' => 'team_notes',
+                    'action_label' => 'Ver tareas'
+                ];
+            }
+        }
+    }
+
     echo json_encode([
         'success' => true,
         'current' => quick_appointment_payload($current, $dashboard_photo),
@@ -13133,6 +14090,8 @@ if ($action === 'generate_invite') {
     $planning_scope = $_GET['planning_scope'] ?? '3days';
     $requested_professional_raw = $_GET['professional_id'] ?? '';
     $requested_professional_id = (int) $requested_professional_raw;
+    $past_professional_raw = $_GET['past_professional_id'] ?? $requested_professional_raw;
+    $past_professional_id = (int) $past_professional_raw;
     $where_extra = '';
     $professional_filter = '';
     $limit_sql = 'LIMIT 10';
@@ -13159,6 +14118,13 @@ if ($action === 'generate_invite') {
         }
     } elseif (!$is_superadmin) {
         $professional_filter = $current_professional_id > 0 ? " AND a.professional_id = " . $current_professional_id : " AND 1 = 0";
+    }
+    $past_professional_filter = '';
+    if ($is_superadmin) {
+        if ($past_professional_raw === 'current') $past_professional_id = $current_professional_id;
+        if ($past_professional_raw !== 'all' && $past_professional_id > 0) $past_professional_filter = " AND a.professional_id = " . $past_professional_id;
+    } else {
+        $past_professional_filter = $current_professional_id > 0 ? " AND a.professional_id = " . $current_professional_id : " AND 1 = 0";
     }
 
     $res = $mysqli->query("
@@ -13204,6 +14170,22 @@ if ($action === 'generate_invite') {
             'payment_status' => $row['payment_status'] ?? 'pending',
             'payment_method' => $row['payment_method'],
             'patient_bonus_id' => $row['patient_bonus_id']
+        ];
+    }
+
+    $past_res = $mysqli->query("\n        SELECT a.id, a.appointment_date, a.appointment_time, a.status, a.consultation_type, a.service_type, a.online_session_url,\n               COALESCE(a.duration_minutes, so.duration_minutes, 60) AS duration_minutes, s.name AS service_name,\n               COALESCE(a.payment_status, 'pending') AS payment_status, a.payment_method, a.patient_bonus_id,\n               u.name, u.email, u.phone, p.id AS professional_id, p.display_name AS professional_name,\n               p.public_photo_path AS professional_photo_path, pu.role AS professional_user_role\n        FROM appointments a\n        LEFT JOIN appointment_service_options so ON so.id = a.service_option_id AND so.tenant_id = a.tenant_id\n        LEFT JOIN appointment_services s ON s.id = so.service_id AND s.tenant_id = a.tenant_id\n        LEFT JOIN professionals p ON p.id = a.professional_id AND p.tenant_id = a.tenant_id\n        LEFT JOIN users pu ON pu.id = p.user_id AND pu.tenant_id = p.tenant_id\n        JOIN users u ON u.id = a.user_id AND u.tenant_id = a.tenant_id\n        WHERE a.tenant_id = $tenant_id AND a.status <> 'cancelled'\n          AND CONCAT(a.appointment_date, ' ', a.appointment_time) < NOW()\n          $past_professional_filter\n        ORDER BY a.appointment_date DESC, a.appointment_time DESC, a.id DESC\n    ");
+    $past_appointments = [];
+    while ($row = $past_res->fetch_assoc()) {
+        $past_appointments[] = [
+            'id' => (int) $row['id'], 'appointment_date' => $row['appointment_date'],
+            'appointment_time' => substr($row['appointment_time'], 0, 5), 'duration_minutes' => (int) ($row['duration_minutes'] ?? 60),
+            'status' => $row['status'] ?? 'booked', 'patient_name' => $row['name'], 'patient_email' => $row['email'],
+            'patient_phone' => member_patient_phone($row['phone'] ?? ''), 'professional_id' => (int) ($row['professional_id'] ?? 0),
+            'professional_name' => $row['professional_name'] ?? '',
+            'professional_photo_path' => professional_photo_with_dashboard_fallback($row, $dashboard_photo),
+            'consultation_type' => $row['consultation_type'] ?? 'presencial', 'online_session_url' => $row['online_session_url'] ?? '',
+            'service_label' => appointment_service_option_label($row), 'payment_status' => $row['payment_status'] ?? 'pending',
+            'payment_method' => $row['payment_method'], 'patient_bonus_id' => $row['patient_bonus_id']
         ];
     }
 
@@ -13342,6 +14324,7 @@ if ($action === 'generate_invite') {
     echo json_encode([
         'success' => true,
         'appointments' => $appointments,
+        'past_appointments' => $past_appointments,
         'cancelled_appointments' => $cancelled_appointments,
         'planning_appointments' => $planning_appointments,
         'professionals' => $professionals,
@@ -13575,6 +14558,12 @@ if ($action === 'generate_invite') {
         'pending_payment_count' => 0,
         'active_bonus_count' => 0,
         'active_bonus_sessions' => 0,
+        'patients_by_age' => [],
+        'patients_by_status' => [],
+        'sessions_by_service' => [],
+        'sessions_by_communication' => [],
+        'sessions_by_month' => [],
+        'billing_by_month' => [],
         'top_patients' => [],
         'professional_summary' => [],
         'reports' => [
@@ -13677,6 +14666,75 @@ if ($action === 'generate_invite') {
         $stats['active_bonus_count'] = (int) $row['total'];
         $stats['active_bonus_sessions'] = (int) $row['sessions'];
     }
+
+    $res = $mysqli->query("
+        SELECT age_group label, COUNT(*) total
+        FROM (
+            SELECT CASE
+                WHEN pp.birth_date IS NULL THEN 'Sin indicar'
+                WHEN TIMESTAMPDIFF(YEAR, pp.birth_date, CURDATE()) < 18 THEN 'Menos de 18'
+                WHEN TIMESTAMPDIFF(YEAR, pp.birth_date, CURDATE()) BETWEEN 18 AND 29 THEN '18-29'
+                WHEN TIMESTAMPDIFF(YEAR, pp.birth_date, CURDATE()) BETWEEN 30 AND 44 THEN '30-44'
+                WHEN TIMESTAMPDIFF(YEAR, pp.birth_date, CURDATE()) BETWEEN 45 AND 59 THEN '45-59'
+                ELSE '60 o más'
+            END age_group
+            FROM users u
+            $patient_join
+            WHERE u.tenant_id = $tenant_id AND u.role = 'patient' $patient_filter
+        ) age_rows
+        GROUP BY age_group
+        ORDER BY FIELD(age_group, 'Menos de 18', '18-29', '30-44', '45-59', '60 o más', 'Sin indicar')
+    ");
+    while ($row = $res->fetch_assoc()) $stats['patients_by_age'][] = ['label' => $row['label'], 'value' => (int) $row['total']];
+
+    $res = $mysqli->query("
+        SELECT COALESCE(pp.patient_status, 'active') status_key, COUNT(DISTINCT u.id) total
+        FROM users u
+        $patient_join
+        WHERE u.tenant_id = $tenant_id AND u.role = 'patient' $patient_filter
+        GROUP BY COALESCE(pp.patient_status, 'active')
+    ");
+    $status_labels = ['active' => 'Activo', 'paused' => 'En pausa', 'discharged' => 'Alta', 'inactive' => 'Baja'];
+    while ($row = $res->fetch_assoc()) $stats['patients_by_status'][] = ['label' => $status_labels[$row['status_key']] ?? ucfirst((string) $row['status_key']), 'value' => (int) $row['total']];
+
+    $res = $mysqli->query("
+        SELECT COALESCE(NULLIF(s.name, ''), 'Sin servicio') label, COUNT(*) total
+        FROM appointments a
+        LEFT JOIN appointment_service_options aso ON aso.id=a.service_option_id AND aso.tenant_id=a.tenant_id
+        LEFT JOIN appointment_services s ON s.id=aso.service_id AND s.tenant_id=aso.tenant_id
+        WHERE a.appointment_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) $appointment_filter_a
+        GROUP BY COALESCE(NULLIF(s.name, ''), 'Sin servicio')
+        ORDER BY total DESC LIMIT 10
+    ");
+    while ($row = $res->fetch_assoc()) $stats['sessions_by_service'][] = ['label' => $row['label'], 'value' => (int) $row['total']];
+
+    $res = $mysqli->query("
+        SELECT COALESCE(NULLIF(a.consultation_type, ''), 'presencial') type_key, COUNT(*) total
+        FROM appointments a
+        WHERE a.appointment_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) $appointment_filter_a
+        GROUP BY COALESCE(NULLIF(a.consultation_type, ''), 'presencial')
+    ");
+    $communication_labels = ['presencial' => 'Presencial', 'online' => 'Videollamada', 'video' => 'Videollamada', 'domicilio' => 'A domicilio', 'home' => 'A domicilio'];
+    while ($row = $res->fetch_assoc()) $stats['sessions_by_communication'][] = ['label' => $communication_labels[$row['type_key']] ?? ucfirst((string) $row['type_key']), 'value' => (int) $row['total']];
+
+    $res = $mysqli->query("
+        SELECT DATE_FORMAT(a.appointment_date, '%Y-%m') month_key, COUNT(*) total
+        FROM appointments a
+        WHERE a.appointment_date >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 11 MONTH), '%Y-%m-01') $appointment_filter_a
+        GROUP BY DATE_FORMAT(a.appointment_date, '%Y-%m') ORDER BY month_key
+    ");
+    while ($row = $res->fetch_assoc()) $stats['sessions_by_month'][] = ['label' => $row['month_key'], 'value' => (int) $row['total']];
+
+    $res = $mysqli->query("
+        SELECT DATE_FORMAT(a.appointment_date, '%Y-%m') month_key,
+               COALESCE(SUM(CASE WHEN COALESCE(a.payment_status,'pending')='paid' THEN COALESCE(aso.price,0) ELSE 0 END),0) collected,
+               COALESCE(SUM(CASE WHEN COALESCE(a.payment_status,'pending')<>'paid' AND a.status='booked' THEN COALESCE(aso.price,0) ELSE 0 END),0) pending
+        FROM appointments a
+        LEFT JOIN appointment_service_options aso ON aso.id=a.service_option_id AND aso.tenant_id=a.tenant_id
+        WHERE a.appointment_date >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 11 MONTH), '%Y-%m-01') $appointment_filter_a
+        GROUP BY DATE_FORMAT(a.appointment_date, '%Y-%m') ORDER BY month_key
+    ");
+    while ($row = $res->fetch_assoc()) $stats['billing_by_month'][] = ['label' => $row['month_key'], 'collected' => (float) $row['collected'], 'pending' => (float) $row['pending']];
 
     $res = $mysqli->query("
         SELECT u.name, u.email, COUNT(*) AS sessions
@@ -13991,6 +15049,19 @@ if ($action === 'generate_invite') {
     }
     $stmt->execute();
     echo json_encode(['success' => true, 'deleted' => $stmt->affected_rows]);
+} elseif ($action === 'save_last_calendar_view') {
+    ensure_cabinet_schema($mysqli);
+    $professional_id = current_professional_id_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0));
+    $view = trim((string) ($_POST['view'] ?? ''));
+    if ($professional_id <= 0 || !in_array($view, ['month', 'week', 'agenda', 'list'], true)) {
+        echo json_encode(['success' => false, 'error' => 'No se pudo guardar la vista seleccionada.']);
+        exit;
+    }
+    if (!cabinet_save_last_calendar_view($mysqli, $professional_id, $view)) {
+        echo json_encode(['success' => false, 'error' => 'No se pudo guardar la vista seleccionada.']);
+        exit;
+    }
+    echo json_encode(['success' => true]);
 } elseif ($action === 'get_my_professional_profile') {
     ensure_cabinet_schema($mysqli);
     $professional_id = current_professional_id_for_user($mysqli, (int) ($_SESSION['user_id'] ?? 0));
@@ -14080,16 +15151,19 @@ if ($action === 'generate_invite') {
         $location_id = normalize_location_id($mysqli, $payload['default_location_id'] ?? 0);
         $location_text = trim((string) ($payload['default_appointment_location'] ?? ''));
         $plan_config = plan_config_for_key(dashboard_config_plan_key_from_db($mysqli));
-        $livekit_allowed = plan_config_feature_enabled($plan_config, 'livekit.enabled', false);
-        $recording_allowed = plan_config_feature_enabled($plan_config, 'livekit.recording', false);
-        $video_provider = strtolower(trim((string) ($payload['video_provider'] ?? 'manual')));
-        if (!$livekit_allowed || !in_array($video_provider, ['livekit', 'daily', 'manual'], true)) {
+        $livekit_allowed = plan_config_feature_enabled($plan_config, 'videoCalls.integrated', plan_config_feature_enabled($plan_config, 'livekit.enabled', false));
+        $recording_allowed = plan_config_feature_enabled($plan_config, 'videoCalls.recordingAudio', plan_config_feature_enabled($plan_config, 'livekit.recording', false));
+        $video_recording_allowed = plan_config_feature_enabled($plan_config, 'videoCalls.recordingVideo', false);
+        $video_provider = strtolower(trim((string) ($payload['video_provider'] ?? 'daily')));
+        if ($video_provider === 'livekit') $video_provider = 'daily';
+        if (!$livekit_allowed || !in_array($video_provider, ['daily', 'manual'], true)) {
             $video_provider = 'manual';
         }
         $livekit_enabled = $video_provider === 'manual' ? 0 : 1;
         $recording_enabled = $livekit_enabled && $recording_allowed && !empty($payload['livekit_recording_enabled']) ? 1 : 0;
         $recording_mode = in_array($payload['livekit_recording_mode'] ?? 'audio', ['audio', 'audio_video'], true)
             ? $payload['livekit_recording_mode'] : 'audio';
+        if (!$video_recording_allowed) $recording_mode = 'audio';
 
         $mysqli->begin_transaction();
         $stmt = $mysqli->prepare("
@@ -14123,7 +15197,7 @@ if ($action === 'generate_invite') {
 
         if (professional_knowledge_sector_columns_available($mysqli)) {
             $knowledge_mode = (string) ($payload['knowledge_sector_mode'] ?? 'own');
-            if (!knowledge_multi_sector_enabled($mysqli) || !in_array($knowledge_mode, ['own', 'related', 'custom'], true)) {
+            if (!knowledge_multi_sector_enabled($mysqli) || !in_array($knowledge_mode, ['own', 'tenant', 'related', 'custom'], true)) {
                 $knowledge_mode = 'own';
             }
             $knowledge_keys = normalize_knowledge_sector_keys($payload['knowledge_sector_keys'] ?? []);
@@ -14213,10 +15287,10 @@ if ($action === 'generate_invite') {
             'default_appointment_location' => $row['default_appointment_location'] ?? '',
             'default_location_id' => (int) ($row['default_location_id'] ?? 0),
             'livekit_enabled' => (int) ($row['livekit_enabled'] ?? 1),
-            'video_provider' => (string) ($row['video_provider'] ?? (!empty($row['livekit_enabled']) ? 'livekit' : 'manual')),
+            'video_provider' => (string) ($row['video_provider'] ?? (!empty($row['livekit_enabled']) ? 'daily' : 'manual')),
             'livekit_recording_enabled' => (int) ($row['livekit_recording_enabled'] ?? 0),
             'livekit_recording_mode' => in_array($row['livekit_recording_mode'] ?? 'audio', ['audio', 'audio_video'], true) ? $row['livekit_recording_mode'] : 'audio',
-            'knowledge_sector_mode' => in_array($row['knowledge_sector_mode'] ?? 'own', ['own', 'related', 'custom'], true) ? $row['knowledge_sector_mode'] : 'own',
+            'knowledge_sector_mode' => in_array($row['knowledge_sector_mode'] ?? 'own', ['own', 'tenant', 'related', 'custom'], true) ? $row['knowledge_sector_mode'] : 'own',
             'knowledge_sector_keys' => normalize_knowledge_sector_keys($row['knowledge_sector_keys_json'] ?? ''),
             'role' => in_array($row['role'] ?? 'admin', ['superadmin', 'admin', 'reception', 'administration', 'technical'], true) ? $row['role'] : 'admin',
             'member_permissions' => cabinet_normalize_member_permissions($row['member_permissions_json'] ?? null, $row['role'] ?? 'admin'),
@@ -14258,6 +15332,7 @@ if ($action === 'generate_invite') {
         'enabled' => true,
         'multi_sector_enabled' => knowledge_multi_sector_enabled($mysqli),
         'main_sector' => $main_sector,
+        'tenant_sectors' => tenant_knowledge_sector_keys($mysqli),
         'related_sectors' => $related,
         'sectors' => $available
     ]);
@@ -14520,8 +15595,9 @@ if ($action === 'generate_invite') {
     ensure_cabinet_schema($mysqli);
     admin_ensure_password_reset_table($mysqli);
     $cabinet_plan_config = plan_config_for_key(dashboard_config_plan_key_from_db($mysqli));
-    $cabinet_plan_allows_livekit = plan_config_feature_enabled($cabinet_plan_config, 'livekit.enabled', false);
-    $cabinet_plan_allows_livekit_recording = plan_config_feature_enabled($cabinet_plan_config, 'livekit.recording', false);
+    $cabinet_plan_allows_livekit = plan_config_feature_enabled($cabinet_plan_config, 'videoCalls.integrated', plan_config_feature_enabled($cabinet_plan_config, 'livekit.enabled', false));
+    $cabinet_plan_allows_livekit_recording = plan_config_feature_enabled($cabinet_plan_config, 'videoCalls.recordingAudio', plan_config_feature_enabled($cabinet_plan_config, 'livekit.recording', false));
+    $cabinet_plan_allows_video_recording = plan_config_feature_enabled($cabinet_plan_config, 'videoCalls.recordingVideo', false);
     $cabinet_plan_allows_member_types = plan_config_feature_enabled($cabinet_plan_config, 'team.memberTypes', false);
     $cabinet_plan_allows_member_permissions = plan_config_feature_enabled($cabinet_plan_config, 'team.permissions', false);
 
@@ -14631,8 +15707,9 @@ if ($action === 'generate_invite') {
             $professional_session_durations = normalize_available_session_durations(explode(',', (string) ($professional['available_session_durations'] ?? '')), $mysqli);
             $default_appointment_location = trim((string) ($professional['default_appointment_location'] ?? ''));
             $default_location_id = normalize_location_id($mysqli, $professional['default_location_id'] ?? 0);
-            $video_provider = strtolower(trim((string) ($professional['video_provider'] ?? (!empty($professional['livekit_enabled']) ? 'livekit' : 'manual'))));
-            if (!$cabinet_plan_allows_livekit || !in_array($video_provider, ['livekit', 'daily', 'manual'], true)) {
+            $video_provider = strtolower(trim((string) ($professional['video_provider'] ?? (!empty($professional['livekit_enabled']) ? 'daily' : 'manual'))));
+            if ($video_provider === 'livekit') $video_provider = 'daily';
+            if (!$cabinet_plan_allows_livekit || !in_array($video_provider, ['daily', 'manual'], true)) {
                 $video_provider = 'manual';
             }
             $livekit_enabled = $video_provider === 'manual' ? 0 : 1;
@@ -14641,8 +15718,9 @@ if ($action === 'generate_invite') {
             if (!in_array($livekit_recording_mode, ['audio', 'audio_video'], true)) {
                 $livekit_recording_mode = 'audio';
             }
+            if (!$cabinet_plan_allows_video_recording) $livekit_recording_mode = 'audio';
             $knowledge_sector_mode = (string) ($professional['knowledge_sector_mode'] ?? 'own');
-            if (!knowledge_multi_sector_enabled($mysqli) || !in_array($knowledge_sector_mode, ['own', 'related', 'custom'], true)) {
+            if (!knowledge_multi_sector_enabled($mysqli) || !in_array($knowledge_sector_mode, ['own', 'tenant', 'related', 'custom'], true)) {
                 $knowledge_sector_mode = 'own';
             }
             $knowledge_sector_keys = normalize_knowledge_sector_keys($professional['knowledge_sector_keys'] ?? []);
@@ -14681,11 +15759,18 @@ if ($action === 'generate_invite') {
             $stmt->bind_param("is", $tenant_id, $email);
             $stmt->execute();
             $email_owner = $stmt->get_result()->fetch_assoc();
+            $preserve_legacy_patient_account = $email_owner
+                && ($email_owner['role'] ?? '') === 'patient'
+                && $professional_id > 0
+                && $user_id > 0
+                && (int) $email_owner['id'] === $user_id;
             if ($email_owner && ($email_owner['role'] ?? '') === 'patient') {
-                throw new \Exception(
-                    'Ese email ya pertenece a un paciente del centro. '
-                    . 'No se puede convertir una cuenta de paciente en miembro del equipo.'
-                );
+                if (!$preserve_legacy_patient_account) {
+                    throw new \Exception(
+                        'Ese email ya pertenece a un paciente del centro. '
+                        . 'No se puede convertir una cuenta de paciente en miembro del equipo.'
+                    );
+                }
             }
             if ($email_owner && (int) $email_owner['id'] !== $user_id) {
                 if ($user_id > 0) {
@@ -14714,9 +15799,11 @@ if ($action === 'generate_invite') {
                 $is_active = 1;
             }
 
-            $stmt = $mysqli->prepare("UPDATE users SET name = ?, email = ?, role = ? WHERE tenant_id = ? AND id = ?");
-            $stmt->bind_param("sssii", $display_name, $email, $role, $tenant_id, $user_id);
-            $stmt->execute();
+            if (!$preserve_legacy_patient_account) {
+                $stmt = $mysqli->prepare("UPDATE users SET name = ?, email = ?, role = ? WHERE tenant_id = ? AND id = ?");
+                $stmt->bind_param("sssii", $display_name, $email, $role, $tenant_id, $user_id);
+                $stmt->execute();
+            }
 
             $slug = cabinet_slugify($display_name . '-' . $user_id);
             $sort_order = ($index + 1) * 10;
@@ -14778,9 +15865,12 @@ if ($action === 'generate_invite') {
             }
         }
 
+        $password_setup_email_errors = [];
         foreach ($password_setup_users as $setup_user_id => $setup_user) {
             if (!send_professional_password_setup_email($mysqli, (int) $setup_user_id, $setup_user['name'], $setup_user['email'])) {
-                throw new \Exception('No se pudo enviar el email para crear la contraseña del miembro. Revisa la configuración de email.');
+                $email_error = function_exists('get_app_email_last_error') ? get_app_email_last_error() : '';
+                $password_setup_email_errors[] = $email_error ?: 'No se pudo enviar el email para crear la contraseña.';
+                error_log('Alta de miembro ' . (int) $setup_user_id . ': ' . end($password_setup_email_errors));
             }
         }
         $app_name_res = $mysqli->query("SELECT app_name FROM payment_settings WHERE tenant_id = $tenant_id");
@@ -14798,7 +15888,11 @@ if ($action === 'generate_invite') {
         $saved_settings = $settings_res ? $settings_res->fetch_assoc() : ['show_team_public' => $show_team_public, 'allow_patient_transfer' => $allow_patient_transfer, 'new_patient_booking_mode' => $new_patient_booking_mode, 'new_patient_fixed_professional_id' => $new_patient_fixed_professional_id];
         echo json_encode([
             'success' => true,
-            'message' => trim('Equipo guardado correctamente.' . $planning_cron_message),
+            'message' => trim('Equipo guardado correctamente.' . $planning_cron_message
+                . ($password_setup_email_errors
+                    ? ' El miembro se ha creado, pero no se pudo enviar el email para crear su contraseña. Motivo: ' . implode(' | ', array_unique($password_setup_email_errors))
+                    : '')),
+            'email_warning' => $password_setup_email_errors ? implode(' | ', array_unique($password_setup_email_errors)) : '',
             'settings' => [
                 'show_team_public' => (int) ($saved_settings['show_team_public'] ?? 0),
                 'allow_patient_transfer' => (int) ($saved_settings['allow_patient_transfer'] ?? 0),
@@ -14812,7 +15906,7 @@ if ($action === 'generate_invite') {
     }
 } elseif (in_array($action, [
     'subscription_overview', 'subscription_client_token', 'subscription_create',
-    'subscription_change_plan', 'subscription_update_payment_method', 'subscription_cancel'
+    'subscription_change_plan', 'subscription_update_payment_method', 'subscription_cancel', 'subscription_invoices'
 ], true)) {
     if (!$is_superadmin) {
         echo json_encode(['success' => false, 'error' => 'Solo el superadmin puede gestionar la suscripción.']);
@@ -14875,8 +15969,16 @@ if ($action === 'generate_invite') {
                     ['key' => 'magister', 'name' => 'Magister', 'price' => praxis_braintree_plan_price('magister'), 'tagline' => 'Para centros que necesitan crecer y trabajar en equipo.', 'features' => ['Portal y reservas online', 'Hasta tres profesionales', 'Base de conocimiento y bonos', 'Calendarios y recordatorios']],
                     ['key' => 'summum', 'name' => 'Summum', 'price' => praxis_braintree_plan_price('summum'), 'tagline' => 'La experiencia completa, sin renunciar a ninguna herramienta.', 'features' => ['Pagos y facturación integrada', 'Equipo sin límite y permisos', 'Videollamadas y editores online', 'Personalización avanzada']],
                 ],
-                'invoices_pending_implementation' => true,
+                'invoices_pending_implementation' => false,
             ], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        if ($action === 'subscription_invoices') {
+            $stmt = $mysqli->prepare("SELECT id, full_invoice_number, issued_at, plan_key, concept, taxable_base, tax_name, tax_rate, tax_amount, total, currency
+                FROM sgpfacturas WHERE tenant_id = ? AND environment = 'production' ORDER BY issued_at DESC, id DESC LIMIT 250");
+            $stmt->bind_param('i', $tenant_id); $stmt->execute();
+            echo json_encode(['success' => true, 'invoices' => $stmt->get_result()->fetch_all(MYSQLI_ASSOC)], JSON_UNESCAPED_UNICODE);
             exit;
         }
 
@@ -14903,6 +16005,10 @@ if ($action === 'generate_invite') {
         }
 
         if ($action === 'subscription_create') {
+            praxis_subscription_invoice_assert_recipient_ready($mysqli, $tenant_id);
+            if ((int) ($tenant['subscription_granted'] ?? 0) === 1) {
+                throw new RuntimeException('No necesitas contratar un plan mientras dispongas de una suscripción de cortesía.');
+            }
             $plan_key = strtolower(trim((string) ($_POST['plan_key'] ?? '')));
             $nonce = trim((string) ($_POST['payment_method_nonce'] ?? ''));
             if (!in_array($plan_key, ['novus', 'magister', 'summum'], true)) {
@@ -14942,6 +16048,7 @@ if ($action === 'generate_invite') {
             if (!in_array($plan_key, ['novus', 'magister', 'summum'], true)) throw new InvalidArgumentException('Selecciona un plan válido.');
             if ($plan_key === (string) ($subscription['plan_key'] ?? '')) throw new InvalidArgumentException('Ya tienes contratado ese plan.');
             if ($nonce === '') throw new InvalidArgumentException('Confirma la forma de pago para aplicar el cambio.');
+            praxis_subscription_invoice_assert_recipient_ready($mysqli, $tenant_id);
             praxis_braintree_change_plan_with_proration($mysqli, $subscription, $plan_key, $nonce);
             praxis_subscription_send_notification($mysqli, 'subscription_plan_changed', array_merge($subscription, ['plan_key' => $plan_key]),
                 'plan|' . $environment . '|' . $subscription['provider_subscription_id'] . '|' . $plan_key . '|' . microtime(true));
@@ -15115,7 +16222,7 @@ if ($action === 'generate_invite') {
             if (!preg_match('/^#[0-9a-f]{6}$/', $color)) {
                 throw new \Exception('Selecciona un color válido.');
             }
-            if (!in_array($initial_view, ['dashboard', 'month', 'week', 'patients', 'upcoming'], true)) {
+            if (!in_array($initial_view, ['dashboard', 'month', 'week', 'agenda', 'list', 'patients', 'upcoming', 'remember'], true)) {
                 $initial_view = 'month';
             }
             $stmt = $mysqli->prepare("UPDATE payment_settings SET app_name = ?, site_tagline = ?, site_phone = ?, primary_color = ?, initial_calendar_view = ? WHERE tenant_id = ?");
@@ -15220,6 +16327,7 @@ if ($action === 'generate_invite') {
         }
     }
     $settings['current_professional_id'] = $current_professional_id;
+    $settings['platform_email_configured'] = platform_email_is_configured() ? 1 : 0;
     $tenant = function_exists('current_tenant') ? current_tenant() : null;
     $settings['tenant_timezone'] = tenant_timezone(is_array($tenant) ? $tenant : null);
     $tenant_plan_key = plan_config_normalize_key(is_array($tenant) ? ($tenant['plan_key'] ?? '') : '', '');
@@ -15233,7 +16341,7 @@ if ($action === 'generate_invite') {
     if (!plan_config_feature_enabled($settings['plan_config'], 'billing.enabled', false)) {
         $settings['billing_enabled'] = 0;
     }
-    $settings['livekit_plan_enabled'] = plan_config_feature_enabled($settings['plan_config'], 'livekit.enabled', false) ? 1 : 0;
+    $settings['livekit_plan_enabled'] = plan_config_feature_enabled($settings['plan_config'], 'videoCalls.integrated', plan_config_feature_enabled($settings['plan_config'], 'livekit.enabled', false)) ? 1 : 0;
     if (!$settings['livekit_plan_enabled']) {
         $settings['livekit_enabled'] = 0;
         $settings['video_provider'] = 'manual';
@@ -15579,12 +16687,20 @@ if ($action === 'generate_invite') {
     $created_by = (int) ($_SESSION['user_id'] ?? 0);
     try {
         $existing_keys = suggested_legal_document_existing_keys($mysqli, $definitions);
+        $duplicated_keys = array_values(array_filter($keys, static function ($key) use ($existing_keys) {
+            return !empty($existing_keys[$key]) && ($existing_keys[$key]['template_type'] ?? '') === 'generated';
+        }));
+        if ($duplicated_keys) {
+            echo json_encode([
+                'success' => false,
+                'error' => count($duplicated_keys) === 1
+                    ? 'Este consentimiento ya está añadido.'
+                    : 'Algunos de los consentimientos seleccionados ya están añadidos.'
+            ], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
         foreach ($keys as $key) {
             if (empty($definitions[$key])) {
-                continue;
-            }
-            if (!empty($existing_keys[$key]) && ($existing_keys[$key]['template_type'] ?? '') === 'generated') {
-                $skipped++;
                 continue;
             }
             $definition = $definitions[$key];
@@ -16330,7 +17446,7 @@ if ($action === 'generate_invite') {
         if ($old_file_path !== '' && $old_file_path !== $generated['path']) {
             $old_full_path = stored_upload_full_path($old_file_path);
             if ($old_full_path !== '' && is_file($old_full_path)) {
-                @unlink($old_full_path);
+                praxis_storage_delete_path($old_full_path);
             }
         }
         app_log($mysqli, [
@@ -16356,7 +17472,7 @@ if ($action === 'generate_invite') {
         if ($generated && !empty($generated['path'])) {
             $generated_path = stored_upload_full_path($generated['path']);
             if ($generated_path !== '' && is_file($generated_path)) {
-                @unlink($generated_path);
+                praxis_storage_delete_path($generated_path);
             }
         }
         echo json_encode(['success' => false, 'error' => 'No se pudo firmar el consentimiento: ' . $e->getMessage()]);
@@ -16791,7 +17907,8 @@ if ($action === 'generate_invite') {
     $rows = [];
     $stmt = $mysqli->prepare("
         SELECT m.id, m.numero_factura, m.fecha, m.destinatario_nombre, m.destinatario_nif, m.concepto,
-               m.base_imponible, m.iva_porcentaje, m.iva_importe, m.total, m.forma_pago, m.verifactu_estado, m.created_at,
+               m.base_imponible, m.iva_porcentaje, m.iva_importe, m.total, m.forma_pago, m.verifactu_estado,
+               m.billing_provider, m.external_invoice_id, m.created_at,
                COALESCE(NULLIF(m.destinatario_email, ''), NULLIF(pp.invoice_email, ''), u.email, '') AS recipient_email
         FROM movim m
         LEFT JOIN patient_professionals ppf
@@ -16822,6 +17939,8 @@ if ($action === 'generate_invite') {
             'total' => number_format((float) $row['total'], 2, '.', ''),
             'forma_pago' => $row['forma_pago'] ?? '',
             'verifactu_estado' => $row['verifactu_estado'] ?? '',
+            'billing_provider' => $row['billing_provider'] ?? 'praxis',
+            'external_invoice_id' => $row['external_invoice_id'] ?? '',
             'created_at' => $row['created_at'],
             'recipient_email' => $row['recipient_email'] ?? '',
             'email_ready' => $email_ready
@@ -17461,6 +18580,11 @@ if ($action === 'generate_invite') {
     $legal_uses_non_technical_cookies = isset($_POST['legal_uses_non_technical_cookies']) && $_POST['legal_uses_non_technical_cookies'] === '1' ? 1 : 0;
     $legal_terms_notes = trim($_POST['legal_terms_notes'] ?? '');
     $billing_enabled = isset($_POST['billing_enabled']) && $_POST['billing_enabled'] === '1' ? 1 : 0;
+    if (($_POST['billing_provider_managed'] ?? '') === '1') {
+        $currentBillingEnabled = $mysqli->query("SELECT billing_enabled FROM payment_settings WHERE tenant_id = $tenant_id LIMIT 1");
+        $currentBillingEnabled = $currentBillingEnabled ? $currentBillingEnabled->fetch_assoc() : null;
+        $billing_enabled = (int) ($currentBillingEnabled['billing_enabled'] ?? 0);
+    }
     $billing_country = strtoupper(trim($_POST['billing_country'] ?? 'ES'));
     $billing_province = trim($_POST['billing_province'] ?? '');
     $billing_session_concept = trim($_POST['billing_session_concept'] ?? '');
@@ -17593,7 +18717,7 @@ if ($action === 'generate_invite') {
     $break_start_time = normalize_time_field($_POST['break_start_time'] ?? '', '');
     $break_end_time = normalize_time_field($_POST['break_end_time'] ?? '', '');
     $available_weekdays = normalize_available_weekdays($_POST['available_weekdays'] ?? []);
-    $email_provider = $_POST['email_provider'] ?? 'phpmailer';
+    $email_provider = $_POST['email_provider'] ?? 'platform';
     $smtp_host = trim($_POST['smtp_host'] ?? '');
     $smtp_port = (int) ($_POST['smtp_port'] ?? 587);
     $smtp_username = trim($_POST['smtp_username'] ?? '');
@@ -17630,8 +18754,10 @@ if ($action === 'generate_invite') {
     $send_patient_calendar_link = isset($_POST['send_patient_calendar_link']) && $_POST['send_patient_calendar_link'] === '1' ? 1 : 0;
     if ($email_provider === 'google') {
         $admin_notification_email = $google_connected_email;
-    } else {
+    } elseif ($email_provider === 'phpmailer') {
         $admin_notification_email = $smtp_from_email;
+    } else {
+        $admin_notification_email = get_tenant_reply_to_email($mysqli);
     }
     $show_profile_image_public = isset($_POST['show_profile_image_public']) && $_POST['show_profile_image_public'] === '1' ? 1 : 0;
     $show_prices_public = isset($_POST['show_prices_public']) && $_POST['show_prices_public'] === '1' ? 1 : 0;
@@ -17767,7 +18893,7 @@ if ($action === 'generate_invite') {
     if (!is_array($billing_service_tax)) {
         $billing_service_tax = [];
     }
-    if (!in_array($initial_calendar_view, ['dashboard', 'week', 'month', 'patients', 'upcoming'], true)) {
+    if (!in_array($initial_calendar_view, ['dashboard', 'week', 'month', 'agenda', 'list', 'patients', 'upcoming', 'remember'], true)) {
         $initial_calendar_view = 'month';
     }
 
@@ -17867,7 +18993,7 @@ if ($action === 'generate_invite') {
         'default_appointment_location' => trim((string) ($current_professional_settings['default_appointment_location'] ?? '')),
         'default_location_id' => !empty($current_professional_settings['default_location_id']) ? (int) $current_professional_settings['default_location_id'] : null,
         'livekit_enabled' => !empty($current_professional_settings['livekit_enabled']) ? 1 : 0,
-        'video_provider' => $current_professional_settings['video_provider'] ?? (!empty($current_professional_settings['livekit_enabled']) ? 'livekit' : 'manual'),
+        'video_provider' => $current_professional_settings['video_provider'] ?? (!empty($current_professional_settings['livekit_enabled']) ? 'daily' : 'manual'),
         'livekit_recording_enabled' => !empty($current_professional_settings['livekit_recording_enabled']) ? 1 : 0,
         'livekit_recording_mode' => $current_professional_settings['livekit_recording_mode'] ?? 'audio',
         'min_booking_notice_days' => $min_booking_notice_days,
@@ -17887,7 +19013,7 @@ if ($action === 'generate_invite') {
         exit;
     }
 
-    if (!in_array($email_provider, ['phpmailer', 'google'], true)) {
+    if (!in_array($email_provider, ['platform', 'phpmailer', 'google'], true)) {
         echo json_encode(['success' => false, 'error' => 'Proveedor de email inválido']);
         exit;
     }

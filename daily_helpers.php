@@ -48,7 +48,7 @@ function daily_api_request($method, $path, array $payload = [])
     $status = (int) curl_getinfo($curl, CURLINFO_HTTP_CODE);
     $error = curl_error($curl);
     curl_close($curl);
-    $data = is_string($body) ? json_decode($body, true) : null;
+    $data = is_string($body) && trim($body) !== '' ? json_decode($body, true) : [];
     if ($body === false || $status < 200 || $status >= 300 || !is_array($data)) {
         $message = is_array($data) ? (string) ($data['info'] ?? $data['error'] ?? '') : '';
         throw new RuntimeException($message ?: ($error ?: 'Daily devolvio un error HTTP ' . $status . '.'));
@@ -56,21 +56,43 @@ function daily_api_request($method, $path, array $payload = [])
     return $data;
 }
 
-function daily_ensure_room($room_name, $expires)
+function daily_ensure_room($room_name, $expires, $recording_mode = '')
 {
+    $recording_type = $recording_mode === 'audio' ? 'cloud-audio-only' : ($recording_mode === 'audio_video' ? 'cloud' : '');
     try {
         $room = daily_api_request('GET', 'rooms/' . rawurlencode($room_name));
+        if ($recording_type !== '') {
+            try {
+                $room = daily_api_request('POST', 'rooms/' . rawurlencode($room_name), [
+                    'properties' => ['enable_recording' => $recording_type]
+                ]);
+            } catch (Throwable $recording_error) {
+                error_log('Daily recording room config: ' . $recording_error->getMessage());
+            }
+        }
     } catch (Throwable $e) {
-        $room = daily_api_request('POST', 'rooms', [
-            'name' => $room_name,
-            'privacy' => 'private',
-            'properties' => [
-                'exp' => max(time() + 3600, (int) $expires),
-                'enable_chat' => true,
-                'enable_screenshare' => true,
-                'eject_at_room_exp' => true
-            ]
-        ]);
+        $properties = [
+            'exp' => max(time() + 3600, (int) $expires),
+            'enable_chat' => true,
+            'enable_screenshare' => true,
+            'eject_at_room_exp' => true
+        ];
+        if ($recording_type !== '') $properties['enable_recording'] = $recording_type;
+        try {
+            $room = daily_api_request('POST', 'rooms', [
+                'name' => $room_name,
+                'privacy' => 'private',
+                'properties' => $properties
+            ]);
+        } catch (Throwable $create_error) {
+            if ($recording_type === '') throw $create_error;
+            unset($properties['enable_recording']);
+            $room = daily_api_request('POST', 'rooms', [
+                'name' => $room_name,
+                'privacy' => 'private',
+                'properties' => $properties
+            ]);
+        }
     }
     return (string) ($room['url'] ?? (daily_domain() . '/' . $room_name));
 }

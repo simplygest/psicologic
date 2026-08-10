@@ -62,9 +62,8 @@ function video_provider_for_professional($mysqli, $professional_id)
     }
     $settings = cabinet_get_effective_professional_settings($mysqli, (int) $professional_id);
     $provider = strtolower(trim((string) ($settings['video_provider'] ?? '')));
-    if (!in_array($provider, ['livekit', 'daily', 'manual'], true)) {
-        $provider = !empty($settings['livekit_enabled']) ? 'livekit' : 'manual';
-    }
+    if ($provider === 'livekit') $provider = 'daily';
+    if (!in_array($provider, ['daily', 'manual'], true)) $provider = !empty($settings['livekit_enabled']) ? 'daily' : 'manual';
     return $provider;
 }
 
@@ -85,7 +84,7 @@ function livekit_enabled_for_professional($mysqli, $professional_id)
         return false;
     }
     $plan_config = plan_config_for_key(dashboard_config_plan_key_from_db($mysqli));
-    if (!plan_config_feature_enabled($plan_config, 'livekit.enabled', false)) {
+    if (!plan_config_feature_enabled($plan_config, 'videoCalls.integrated', plan_config_feature_enabled($plan_config, 'livekit.enabled', false))) {
         return false;
     }
     $provider = video_provider_for_professional($mysqli, $professional_id);

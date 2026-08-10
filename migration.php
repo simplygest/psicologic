@@ -99,7 +99,41 @@ function migration_add_index_if_missing($mysqli, $table, $index, $definition)
 
 $tenant_id = current_tenant_id();
 
+$only_migration = trim((string) ($_GET['only'] ?? ($_POST['only'] ?? '')));
+if ($only_migration === 'platform_email_provider') {
+    migration_run($mysqli, 'Habilitar correo de SimplyGest Praxis', "ALTER TABLE payment_settings MODIFY email_provider ENUM('platform','phpmailer','google') NOT NULL DEFAULT 'platform'");
+    $has_errors = count(array_filter($migration_results, fn($row) => $row['status'] === 'error')) > 0;
+    if (!$is_cli) {
+        header('Content-Type: application/json; charset=UTF-8');
+        if ($has_errors) {
+            http_response_code(500);
+        }
+    }
+    echo json_encode([
+        'success' => !$has_errors,
+        'migration' => $only_migration,
+        'results' => $migration_results,
+    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    exit($has_errors ? 1 : 0);
+}
+if ($only_migration === 'patient_sex') {
+    migration_add_column_if_missing($mysqli, 'patient_profiles', 'sex', "VARCHAR(24) DEFAULT NULL AFTER birth_date");
+    $has_errors = count(array_filter($migration_results, fn($row) => $row['status'] === 'error')) > 0;
+    if (!$is_cli) {
+        header('Content-Type: application/json; charset=UTF-8');
+        if ($has_errors) http_response_code(500);
+    }
+    echo json_encode([
+        'success' => !$has_errors,
+        'migration' => $only_migration,
+        'results' => $migration_results,
+    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    exit($has_errors ? 1 : 0);
+}
+
 migration_add_column_if_missing($mysqli, 'tenants', 'signup_email', 'VARCHAR(190) DEFAULT NULL AFTER tenant_name');
+migration_add_column_if_missing($mysqli, 'tenants', 'knowledge_sector_keys_json', 'TEXT DEFAULT NULL AFTER sector_texts_key');
+migration_run($mysqli, 'Inicializar especialidades de tenants existentes', "UPDATE tenants SET knowledge_sector_keys_json = JSON_ARRAY(sector_texts_key) WHERE knowledge_sector_keys_json IS NULL OR knowledge_sector_keys_json = ''");
 migration_add_index_if_missing($mysqli, 'tenants', 'uq_tenants_signup_email', 'UNIQUE KEY `uq_tenants_signup_email` (`signup_email`)');
 migration_add_column_if_missing($mysqli, 'tenants', 'subscription_granted', 'TINYINT(1) NOT NULL DEFAULT 0 AFTER registered_at');
 migration_add_column_if_missing($mysqli, 'tenants', 'subscription_granted_until', 'DATETIME DEFAULT NULL AFTER subscription_granted');
@@ -111,7 +145,19 @@ migration_add_column_if_missing($mysqli, 'work_plan_task_template_items', 'attac
 migration_add_column_if_missing($mysqli, 'work_plan_task_template_items', 'attachment_original_name', "VARCHAR(255) DEFAULT NULL AFTER attachment_file_path");
 migration_add_column_if_missing($mysqli, 'work_plan_task_template_items', 'attachment_file_size', "INT UNSIGNED DEFAULT NULL AFTER attachment_original_name");
 migration_add_column_if_missing($mysqli, 'work_plan_task_template_items', 'attachment_mime_type', "VARCHAR(120) DEFAULT NULL AFTER attachment_file_size");
+migration_add_column_if_missing($mysqli, 'work_plan_task_template_items', 'requires_docx', "TINYINT(1) NOT NULL DEFAULT 0 AFTER priority");
+migration_add_column_if_missing($mysqli, 'work_plan_task_template_items', 'requires_drawing', "TINYINT(1) NOT NULL DEFAULT 0 AFTER requires_docx");
+migration_add_column_if_missing($mysqli, 'work_plan_task_template_items', 'requires_file', "TINYINT(1) NOT NULL DEFAULT 0 AFTER requires_drawing");
 migration_add_column_if_missing($mysqli, 'patient_work_plan_tasks', 'document_id', "INT UNSIGNED DEFAULT NULL AFTER fitness_exercise_id");
+migration_add_column_if_missing($mysqli, 'patient_work_plan_tasks', 'requires_docx', "TINYINT(1) NOT NULL DEFAULT 0 AFTER visible_to_patient");
+migration_add_column_if_missing($mysqli, 'patient_work_plan_tasks', 'requires_drawing', "TINYINT(1) NOT NULL DEFAULT 0 AFTER requires_docx");
+migration_add_column_if_missing($mysqli, 'patient_work_plan_tasks', 'requires_file', "TINYINT(1) NOT NULL DEFAULT 0 AFTER requires_drawing");
+migration_add_column_if_missing($mysqli, 'patient_work_plan_tasks', 'response_docx_document_id', "INT UNSIGNED DEFAULT NULL AFTER requires_file");
+migration_add_column_if_missing($mysqli, 'patient_work_plan_tasks', 'response_drawing_document_id', "INT UNSIGNED DEFAULT NULL AFTER response_docx_document_id");
+migration_add_column_if_missing($mysqli, 'patient_work_plan_tasks', 'response_file_document_id', "INT UNSIGNED DEFAULT NULL AFTER response_drawing_document_id");
+migration_add_index_if_missing($mysqli, 'patient_work_plan_tasks', 'idx_work_plan_response_docx', "INDEX idx_work_plan_response_docx (response_docx_document_id)");
+migration_add_index_if_missing($mysqli, 'patient_work_plan_tasks', 'idx_work_plan_response_drawing', "INDEX idx_work_plan_response_drawing (response_drawing_document_id)");
+migration_add_index_if_missing($mysqli, 'patient_work_plan_tasks', 'idx_work_plan_response_file', "INDEX idx_work_plan_response_file (response_file_document_id)");
 migration_add_index_if_missing($mysqli, 'patient_work_plan_tasks', 'idx_work_plan_document', "INDEX idx_work_plan_document (document_id)");
 migration_add_column_if_missing($mysqli, 'patient_work_plan_tasks', 'patient_diagnosis_id', "INT UNSIGNED DEFAULT NULL AFTER patient_id");
 migration_add_index_if_missing($mysqli, 'patient_work_plan_tasks', 'idx_work_plan_diagnosis', "INDEX idx_work_plan_diagnosis (patient_diagnosis_id)");
@@ -119,6 +165,7 @@ migration_add_column_if_missing($mysqli, 'payment_settings', 'time_tracking_enab
 migration_add_column_if_missing($mysqli, 'payment_settings', 'time_tracking_notify_missing_clock_in', 'TINYINT(1) NOT NULL DEFAULT 0');
 migration_add_column_if_missing($mysqli, 'payment_settings', 'time_tracking_require_clock_in', 'TINYINT(1) NOT NULL DEFAULT 0');
 migration_add_column_if_missing($mysqli, 'payment_settings', 'time_tracking_logout_on_clock_out', 'TINYINT(1) NOT NULL DEFAULT 0');
+migration_run($mysqli, 'Habilitar correo de SimplyGest Praxis', "ALTER TABLE payment_settings MODIFY email_provider ENUM('platform','phpmailer','google') NOT NULL DEFAULT 'platform'");
 
 try {
     ensure_time_tracking_schema($mysqli);
@@ -324,6 +371,50 @@ if (migration_table_exists($mysqli, 'tenants')) {
     migration_log('skip', 'tenants no existe');
 }
 
+migration_run($mysqli, 'CREATE API keys table', "
+    CREATE TABLE IF NOT EXISTS tenant_api_keys (
+        id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        tenant_id INT UNSIGNED NOT NULL,
+        created_by_user_id INT UNSIGNED DEFAULT NULL,
+        key_prefix VARCHAR(24) NOT NULL,
+        key_hash CHAR(64) NOT NULL,
+        access_mode ENUM('read','read_write') NOT NULL DEFAULT 'read',
+        expires_at DATETIME DEFAULT NULL,
+        last_used_at DATETIME DEFAULT NULL,
+        last_used_ip VARCHAR(45) DEFAULT NULL,
+        revoked_at DATETIME DEFAULT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_tenant_api_keys_hash (key_hash),
+        KEY idx_tenant_api_keys_tenant (tenant_id, revoked_at),
+        KEY idx_tenant_api_keys_prefix (key_prefix)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+");
+migration_run($mysqli, 'CREATE API usage table', "
+    CREATE TABLE IF NOT EXISTS tenant_api_usage (
+        api_key_id INT UNSIGNED NOT NULL,
+        window_started_at DATETIME NOT NULL,
+        request_count INT UNSIGNED NOT NULL DEFAULT 0,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (api_key_id, window_started_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+");
+migration_run($mysqli, 'CREATE API log table', "
+    CREATE TABLE IF NOT EXISTS tenant_api_log (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        tenant_id INT UNSIGNED NOT NULL,
+        api_key_id INT UNSIGNED NOT NULL,
+        request_id VARCHAR(36) NOT NULL,
+        method VARCHAR(10) NOT NULL,
+        endpoint VARCHAR(190) NOT NULL,
+        response_status SMALLINT UNSIGNED NOT NULL,
+        ip_address VARCHAR(45) DEFAULT NULL,
+        duration_ms INT UNSIGNED NOT NULL DEFAULT 0,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_tenant_api_log_tenant_date (tenant_id, created_at),
+        KEY idx_tenant_api_log_key_date (api_key_id, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+");
+
 migration_run($mysqli, 'CREATE TABLE patient_profiles', "
     CREATE TABLE IF NOT EXISTS patient_profiles (
         user_id INT UNSIGNED NOT NULL PRIMARY KEY,
@@ -344,6 +435,7 @@ migration_run($mysqli, 'CREATE TABLE patient_profiles', "
         deletion_mode VARCHAR(24) DEFAULT NULL,
         waiting_list TINYINT(1) NOT NULL DEFAULT 0,
         birth_date DATE DEFAULT NULL,
+        sex VARCHAR(24) DEFAULT NULL,
         referral_source VARCHAR(80) DEFAULT NULL,
         knowledge_problem_id INT UNSIGNED DEFAULT NULL,
         manual_diagnosis VARCHAR(500) DEFAULT NULL,
@@ -401,6 +493,7 @@ migration_add_column_if_missing($mysqli, 'patient_profiles', 'invoice_phone', "V
 migration_add_column_if_missing($mysqli, 'patient_profiles', 'invoice_address', "VARCHAR(255) DEFAULT NULL AFTER invoice_phone");
 migration_add_column_if_missing($mysqli, 'patient_profiles', 'timezone', "VARCHAR(64) DEFAULT NULL AFTER invoice_address");
 migration_add_column_if_missing($mysqli, 'patient_profiles', 'waiting_list', "TINYINT(1) NOT NULL DEFAULT 0 AFTER patient_status");
+migration_add_column_if_missing($mysqli, 'patient_profiles', 'sex', "VARCHAR(24) DEFAULT NULL AFTER birth_date");
 migration_add_column_if_missing($mysqli, 'patient_profiles', 'deletion_requested_at', "DATETIME DEFAULT NULL AFTER patient_status");
 migration_add_column_if_missing($mysqli, 'patient_profiles', 'deletion_reason', "VARCHAR(500) DEFAULT NULL AFTER deletion_requested_at");
 migration_add_column_if_missing($mysqli, 'patient_profiles', 'deletion_mode', "VARCHAR(24) DEFAULT NULL AFTER deletion_reason");
@@ -539,6 +632,16 @@ migration_add_column_if_missing($mysqli, 'appointments', 'service_type', "VARCHA
 migration_add_column_if_missing($mysqli, 'appointments', 'service_option_id', "INT UNSIGNED DEFAULT NULL AFTER service_type");
 migration_add_column_if_missing($mysqli, 'appointments', 'duration_minutes', "SMALLINT UNSIGNED DEFAULT NULL AFTER service_option_id");
 migration_run($mysqli, 'MODIFY appointments.status', "ALTER TABLE appointments MODIFY status VARCHAR(32) NOT NULL DEFAULT 'booked'");
+migration_run($mysqli, 'CREATE TABLE appointment_video_presence', "
+    CREATE TABLE IF NOT EXISTS appointment_video_presence (
+        tenant_id INT UNSIGNED NOT NULL,
+        appointment_id INT UNSIGNED NOT NULL,
+        professional_id INT UNSIGNED NOT NULL,
+        last_seen_at DATETIME NOT NULL,
+        PRIMARY KEY (tenant_id, appointment_id),
+        INDEX idx_video_presence_seen (last_seen_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+");
 
 try {
     ensure_cabinet_schema($mysqli);
@@ -550,19 +653,35 @@ migration_add_column_if_missing($mysqli, 'professional_settings', 'default_appoi
 migration_add_column_if_missing($mysqli, 'professional_settings', 'default_location_id', "INT UNSIGNED DEFAULT NULL AFTER default_appointment_location");
 migration_add_column_if_missing($mysqli, 'professional_settings', 'livekit_enabled', "TINYINT(1) NOT NULL DEFAULT 1 AFTER default_appointment_location");
 $video_provider_was_missing = !migration_column_exists($mysqli, 'professional_settings', 'video_provider');
-migration_add_column_if_missing($mysqli, 'professional_settings', 'video_provider', "VARCHAR(20) NOT NULL DEFAULT 'livekit' AFTER livekit_enabled");
+migration_add_column_if_missing($mysqli, 'professional_settings', 'video_provider', "VARCHAR(20) NOT NULL DEFAULT 'daily' AFTER livekit_enabled");
 if ($video_provider_was_missing && migration_column_exists($mysqli, 'professional_settings', 'video_provider')) {
-    migration_run($mysqli, 'Inicializar proveedor de videollamada', "UPDATE professional_settings SET video_provider = CASE WHEN livekit_enabled = 1 THEN 'livekit' ELSE 'manual' END");
+    migration_run($mysqli, 'Inicializar proveedor de videollamada', "UPDATE professional_settings SET video_provider = CASE WHEN livekit_enabled = 1 THEN 'daily' ELSE 'manual' END");
 }
 migration_add_column_if_missing($mysqli, 'professional_settings', 'livekit_recording_enabled', "TINYINT(1) NOT NULL DEFAULT 0 AFTER livekit_enabled");
 migration_add_column_if_missing($mysqli, 'professional_settings', 'livekit_recording_mode', "VARCHAR(20) NOT NULL DEFAULT 'audio' AFTER livekit_recording_enabled");
 
 try {
     ensure_livekit_recording_schema($mysqli, true);
+    migration_add_column_if_missing($mysqli, 'appointment_recordings', 'provider', "VARCHAR(20) NOT NULL DEFAULT 'livekit' AFTER professional_id");
+    migration_add_index_if_missing($mysqli, 'appointment_recordings', 'uniq_appointment_recordings_provider_id', 'UNIQUE KEY `uniq_appointment_recordings_provider_id` (`provider`, `egress_id`)');
     migration_log('ok', 'LiveKit recording: professional_settings/appointment_recordings');
 } catch (Throwable $e) {
     migration_log('error', 'LiveKit recording: ' . $e->getMessage());
 }
+
+migration_run($mysqli, 'CREATE TABLE daily_webhook_events', "
+    CREATE TABLE IF NOT EXISTS daily_webhook_events (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        event_id VARCHAR(180) NOT NULL,
+        event_type VARCHAR(80) NOT NULL,
+        room_name VARCHAR(180) DEFAULT NULL,
+        payload_json LONGTEXT NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        UNIQUE KEY uniq_daily_webhook_event (event_id),
+        INDEX idx_daily_webhook_type_created (event_type, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+");
 
 migration_run($mysqli, 'CREATE TABLE appointment_locations', "
     CREATE TABLE IF NOT EXISTS appointment_locations (
@@ -624,6 +743,16 @@ migration_add_column_if_missing($mysqli, 'movim', 'tax_system', "VARCHAR(16) NOT
 migration_add_column_if_missing($mysqli, 'movim', 'tax_exemption_reason', "VARCHAR(500) DEFAULT NULL AFTER tax_system");
 migration_add_column_if_missing($mysqli, 'movim', 'destinatario_direccion', "VARCHAR(255) DEFAULT NULL AFTER destinatario_email");
 migration_add_column_if_missing($mysqli, 'payment_settings', 'verifactu_enabled', "TINYINT(1) NOT NULL DEFAULT 1 AFTER billing_exemption_reason");
+$billing_provider_was_missing = !migration_column_exists($mysqli, 'payment_settings', 'billing_provider');
+migration_add_column_if_missing($mysqli, 'payment_settings', 'billing_provider', "VARCHAR(24) NOT NULL DEFAULT 'none' AFTER billing_enabled");
+migration_add_column_if_missing($mysqli, 'payment_settings', 'cloud_api_key_encrypted', "TEXT DEFAULT NULL AFTER billing_provider");
+migration_add_column_if_missing($mysqli, 'payment_settings', 'cloud_account_name', "VARCHAR(190) DEFAULT NULL AFTER cloud_api_key_encrypted");
+migration_add_column_if_missing($mysqli, 'payment_settings', 'cloud_api_verified_at', "DATETIME DEFAULT NULL AFTER cloud_account_name");
+if ($billing_provider_was_missing) {
+    migration_run($mysqli, 'Inicializar proveedor de facturación', "UPDATE payment_settings SET billing_provider = CASE WHEN billing_enabled = 1 THEN 'praxis' ELSE 'none' END");
+}
+migration_add_column_if_missing($mysqli, 'movim', 'billing_provider', "VARCHAR(24) NOT NULL DEFAULT 'praxis' AFTER tipo_movim");
+migration_add_column_if_missing($mysqli, 'movim', 'external_invoice_id', "VARCHAR(80) DEFAULT NULL AFTER billing_provider");
 migration_add_column_if_missing($mysqli, 'payment_settings', 'verifactu_environment', "TINYINT(1) NOT NULL DEFAULT 0 AFTER verifactu_enabled");
 migration_add_column_if_missing($mysqli, 'payment_settings', 'verifactu_taxpayer_type', "VARCHAR(20) NOT NULL DEFAULT 'self_employed' AFTER verifactu_environment");
 migration_add_column_if_missing($mysqli, 'payment_settings', 'verifactu_activation_mode', "VARCHAR(16) NOT NULL DEFAULT 'official' AFTER verifactu_taxpayer_type");
@@ -851,6 +980,66 @@ migration_run($mysqli, 'Crear subscription_transactions', "CREATE TABLE IF NOT E
     KEY idx_subscription_transactions_subscription (subscription_id, processed_at),
     KEY idx_subscription_transactions_tenant (tenant_id, processed_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+migration_run($mysqli, 'Crear secuencias de facturas de suscripcion Praxis', "CREATE TABLE IF NOT EXISTS sgp_invoice_sequences (
+    series VARCHAR(10) NOT NULL,
+    fiscal_year SMALLINT UNSIGNED NOT NULL,
+    next_number INT UNSIGNED NOT NULL DEFAULT 1,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (series, fiscal_year)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+migration_run($mysqli, 'Crear facturas de suscripcion Praxis', "CREATE TABLE IF NOT EXISTS sgpfacturas (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT UNSIGNED NOT NULL,
+    subscription_id BIGINT UNSIGNED NOT NULL,
+    subscription_transaction_id BIGINT UNSIGNED NOT NULL,
+    provider VARCHAR(24) NOT NULL DEFAULT 'braintree',
+    environment VARCHAR(16) NOT NULL DEFAULT 'production',
+    provider_transaction_id VARCHAR(100) NOT NULL,
+    series VARCHAR(10) NOT NULL DEFAULT 'P',
+    fiscal_year SMALLINT UNSIGNED NOT NULL,
+    invoice_number INT UNSIGNED NOT NULL,
+    full_invoice_number VARCHAR(40) NOT NULL,
+    issued_at DATETIME NOT NULL,
+    payment_date DATETIME DEFAULT NULL,
+    plan_key VARCHAR(32) NOT NULL,
+    concept VARCHAR(255) NOT NULL,
+    currency CHAR(3) NOT NULL DEFAULT 'EUR',
+    taxable_base DECIMAL(12,2) NOT NULL,
+    tax_name VARCHAR(20) NOT NULL DEFAULT 'NO_SUJETO',
+    tax_rate DECIMAL(7,4) NOT NULL DEFAULT 0,
+    tax_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+    total DECIMAL(12,2) NOT NULL,
+    payment_method VARCHAR(40) DEFAULT NULL,
+    payment_method_last4 VARCHAR(8) DEFAULT NULL,
+    recipient_name VARCHAR(255) NOT NULL,
+    recipient_tax_id VARCHAR(50) NOT NULL,
+    recipient_email VARCHAR(255) DEFAULT NULL,
+    recipient_address VARCHAR(500) NOT NULL,
+    recipient_city VARCHAR(120) NOT NULL,
+    recipient_province VARCHAR(120) NOT NULL,
+    recipient_postal_code VARCHAR(20) NOT NULL,
+    recipient_country CHAR(2) NOT NULL DEFAULT 'ES',
+    issuer_name VARCHAR(255) NOT NULL,
+    issuer_tax_id VARCHAR(50) NOT NULL,
+    issuer_email VARCHAR(255) DEFAULT NULL,
+    issuer_address VARCHAR(500) NOT NULL,
+    issuer_city VARCHAR(120) DEFAULT NULL,
+    issuer_province VARCHAR(120) NOT NULL,
+    issuer_postal_code VARCHAR(20) DEFAULT NULL,
+    issuer_country CHAR(2) NOT NULL DEFAULT 'ES',
+    pdf_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    email_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    internal_sync_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    verifactu_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    error_message TEXT DEFAULT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_sgpfacturas_transaction (provider, environment, provider_transaction_id),
+    UNIQUE KEY uq_sgpfacturas_number (series, fiscal_year, invoice_number),
+    UNIQUE KEY uq_sgpfacturas_subscription_transaction (subscription_transaction_id),
+    KEY idx_sgpfacturas_tenant_date (tenant_id, issued_at),
+    KEY idx_sgpfacturas_status (pdf_status, email_status, internal_sync_status, verifactu_status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 migration_run($mysqli, 'Crear subscription_webhook_events', "CREATE TABLE IF NOT EXISTS subscription_webhook_events (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     provider VARCHAR(24) NOT NULL DEFAULT 'braintree',
@@ -914,6 +1103,188 @@ migration_run($mysqli, 'CREATE TABLE document_signatures', "
         INDEX idx_document_signatures_source (tenant_id, source_type, source_id),
         INDEX idx_document_signatures_professional (tenant_id, professional_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+");
+
+migration_run($mysqli, 'CREATE TABLE team_notes', "
+    CREATE TABLE IF NOT EXISTS team_notes (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        tenant_id INT UNSIGNED NOT NULL,
+        author_user_id INT UNSIGNED NOT NULL,
+        target_user_id INT UNSIGNED DEFAULT NULL,
+        item_type ENUM('note','alert','task') NOT NULL DEFAULT 'note',
+        visibility ENUM('private','team','professional') NOT NULL DEFAULT 'private',
+        title VARCHAR(180) NOT NULL,
+        content TEXT DEFAULT NULL,
+        priority ENUM('low','normal','high') NOT NULL DEFAULT 'normal',
+        due_at DATETIME DEFAULT NULL,
+        show_in_agenda TINYINT(1) NOT NULL DEFAULT 0,
+        agenda_duration_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 30,
+        is_pinned TINYINT(1) NOT NULL DEFAULT 0,
+        status ENUM('pending','completed') NOT NULL DEFAULT 'pending',
+        completed_at DATETIME DEFAULT NULL,
+        completed_by INT UNSIGNED DEFAULT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        INDEX idx_team_notes_visible (tenant_id, visibility, target_user_id, status),
+        INDEX idx_team_notes_due (tenant_id, status, due_at),
+        INDEX idx_team_notes_author (tenant_id, author_user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+");
+migration_add_column_if_missing($mysqli, 'team_notes', 'show_in_agenda', "TINYINT(1) NOT NULL DEFAULT 0 AFTER due_at");
+migration_add_column_if_missing($mysqli, 'team_notes', 'agenda_duration_minutes', "SMALLINT UNSIGNED NOT NULL DEFAULT 30 AFTER show_in_agenda");
+
+migration_run($mysqli, 'CREATE TABLE custom_field_definitions', "
+    CREATE TABLE IF NOT EXISTS custom_field_definitions (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, tenant_id INT UNSIGNED NOT NULL,
+        name VARCHAR(180) NOT NULL, entity_type ENUM('patient','appointment') NOT NULL,
+        field_type ENUM('text','number','date','boolean','select') NOT NULL DEFAULT 'text',
+        options_json TEXT DEFAULT NULL, is_required TINYINT(1) NOT NULL DEFAULT 0,
+        is_active TINYINT(1) NOT NULL DEFAULT 1, sort_order INT NOT NULL DEFAULT 0,
+        created_by INT UNSIGNED DEFAULT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id), INDEX idx_custom_fields_tenant_entity (tenant_id, entity_type, is_active, sort_order)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+");
+migration_run($mysqli, 'CREATE TABLE custom_field_values', "
+    CREATE TABLE IF NOT EXISTS custom_field_values (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, tenant_id INT UNSIGNED NOT NULL,
+        field_id BIGINT UNSIGNED NOT NULL, entity_type ENUM('patient','appointment') NOT NULL,
+        entity_id BIGINT UNSIGNED NOT NULL, value_text TEXT DEFAULT NULL, updated_by INT UNSIGNED DEFAULT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id), UNIQUE KEY uq_custom_field_value (tenant_id, field_id, entity_type, entity_id),
+        INDEX idx_custom_field_values_entity (tenant_id, entity_type, entity_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+");
+
+migration_run($mysqli, 'CREATE TABLE team_cloud_files', "
+    CREATE TABLE IF NOT EXISTS team_cloud_files (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        tenant_id INT UNSIGNED NOT NULL,
+        author_user_id INT UNSIGNED NOT NULL,
+        visibility ENUM('private','team') NOT NULL DEFAULT 'private',
+        title VARCHAR(180) NOT NULL,
+        description VARCHAR(500) DEFAULT NULL,
+        file_path VARCHAR(500) NOT NULL,
+        original_file_name VARCHAR(255) NOT NULL,
+        file_extension VARCHAR(20) DEFAULT NULL,
+        file_size BIGINT UNSIGNED NOT NULL DEFAULT 0,
+        mime_type VARCHAR(120) NOT NULL DEFAULT 'application/octet-stream',
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        INDEX idx_team_cloud_visible (tenant_id, visibility, author_user_id, created_at),
+        INDEX idx_team_cloud_name (tenant_id, title)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+");
+
+migration_run($mysqli, 'CREATE TABLE legal_acceptances', "
+    CREATE TABLE IF NOT EXISTS legal_acceptances (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        tenant_id INT UNSIGNED NOT NULL,
+        user_id INT UNSIGNED NOT NULL,
+        acceptance_type VARCHAR(40) NOT NULL DEFAULT 'signup',
+        terms_version VARCHAR(32) NOT NULL,
+        privacy_version VARCHAR(32) NOT NULL,
+        accepted_ip VARCHAR(45) DEFAULT NULL,
+        accepted_user_agent VARCHAR(500) DEFAULT NULL,
+        accepted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        INDEX idx_legal_acceptances_tenant (tenant_id, accepted_at),
+        INDEX idx_legal_acceptances_user (user_id, accepted_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+");
+
+migration_run($mysqli, 'CREATE TABLE professional_availability_blocks', "
+    CREATE TABLE IF NOT EXISTS professional_availability_blocks (
+        id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        tenant_id INT UNSIGNED NOT NULL,
+        professional_id INT UNSIGNED NOT NULL,
+        block_date DATE NOT NULL,
+        start_time TIME NOT NULL,
+        end_time TIME NOT NULL,
+        reason VARCHAR(180) NOT NULL DEFAULT '',
+        created_by INT UNSIGNED DEFAULT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_availability_blocks_calendar (tenant_id, professional_id, block_date, start_time),
+        INDEX idx_availability_blocks_creator (tenant_id, created_by)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+");
+
+migration_run($mysqli, 'Crear conexiones financieras', "
+    CREATE TABLE IF NOT EXISTS financial_connections (
+        id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        tenant_id INT UNSIGNED NOT NULL,
+        connection_type ENUM('bank','utility') NOT NULL,
+        service VARCHAR(120) NOT NULL,
+        display_name VARCHAR(180) NOT NULL,
+        token_encrypted TEXT NOT NULL,
+        status VARCHAR(30) NOT NULL DEFAULT 'active',
+        products_json LONGTEXT DEFAULT NULL,
+        last_sync_at DATETIME DEFAULT NULL,
+        last_error VARCHAR(500) DEFAULT NULL,
+        created_by INT UNSIGNED DEFAULT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_financial_connections_tenant_type (tenant_id, connection_type)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+");
+
+migration_run($mysqli, 'Crear datos externos financieros', "
+    CREATE TABLE IF NOT EXISTS financial_external_items (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        tenant_id INT UNSIGNED NOT NULL,
+        connection_id INT UNSIGNED NOT NULL,
+        item_type ENUM('account','transaction','utility_invoice') NOT NULL,
+        external_id VARCHAR(190) NOT NULL,
+        product_id VARCHAR(190) DEFAULT NULL,
+        occurred_on DATE DEFAULT NULL,
+        description VARCHAR(500) DEFAULT NULL,
+        amount DECIMAL(14,2) DEFAULT NULL,
+        balance DECIMAL(14,2) DEFAULT NULL,
+        currency CHAR(3) NOT NULL DEFAULT 'EUR',
+        payload_json LONGTEXT NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_financial_external_item (tenant_id, connection_id, item_type, external_id),
+        INDEX idx_financial_items_date (tenant_id, item_type, occurred_on),
+        CONSTRAINT fk_financial_item_connection FOREIGN KEY (connection_id) REFERENCES financial_connections(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+");
+
+migration_run($mysqli, 'Crear configuración meteorológica', "
+    CREATE TABLE IF NOT EXISTS weather_settings (
+        tenant_id INT UNSIGNED NOT NULL PRIMARY KEY,
+        enabled TINYINT(1) NOT NULL DEFAULT 1,
+        location_mode ENUM('auto','manual') NOT NULL DEFAULT 'auto',
+        location_query VARCHAR(500) DEFAULT NULL,
+        resolved_location VARCHAR(500) DEFAULT NULL,
+        latitude DECIMAL(10,7) DEFAULT NULL,
+        longitude DECIMAL(10,7) DEFAULT NULL,
+        updated_by INT UNSIGNED DEFAULT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+");
+
+migration_run($mysqli, 'Crear caché de previsión meteorológica', "
+    CREATE TABLE IF NOT EXISTS weather_forecast_cache (
+        tenant_id INT UNSIGNED NOT NULL,
+        location_hash CHAR(64) NOT NULL,
+        forecast_json LONGTEXT NOT NULL,
+        fetched_at DATETIME NOT NULL,
+        expires_at DATETIME NOT NULL,
+        PRIMARY KEY (tenant_id, location_hash),
+        INDEX idx_weather_cache_expiry (expires_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+");
+
+migration_run($mysqli, 'Usar Daily como videollamada integrada predeterminada', "
+    ALTER TABLE professional_settings MODIFY video_provider VARCHAR(20) NOT NULL DEFAULT 'daily'
+");
+migration_run($mysqli, 'Migrar proveedores LiveKit existentes a Daily', "
+    UPDATE professional_settings SET video_provider = 'daily' WHERE video_provider = 'livekit'
 ");
 
 $has_errors = count(array_filter($migration_results, fn($row) => $row['status'] === 'error')) > 0;

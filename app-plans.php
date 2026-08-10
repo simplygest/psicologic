@@ -120,6 +120,10 @@ $plans = [
     'magister' => praxis_plans_read_config('magister'),
     'summum' => praxis_plans_read_config('summum'),
 ];
+foreach ($plans as $plan_key => &$plan) {
+    $plan['features']['ai.assistedReports'] = $plan_key === 'summum';
+}
+unset($plan);
 
 $common_features = [
     'Agenda visual con vistas mensual y semanal.',
@@ -154,8 +158,8 @@ $plan_summaries = [
 ];
 
 $plan_summaries['novus']['tagline'] = 'Para profesionales que necesitan agenda, pacientes y seguimiento básico sin portal ni módulos avanzados.';
-$plan_summaries['magister']['tagline'] = 'Para centros que necesitan portal, equipo, bonos, conocimiento sectorial y sincronización, sin pagos online ni facturación.';
-$plan_summaries['summum']['tagline'] = 'La experiencia completa: pagos online, facturación, cuestionarios personalizados, videollamada integrada, base multisectorial y personalización avanzada.';
+$plan_summaries['magister']['tagline'] = 'Para centros que necesitan portal, equipo, bonos, conocimiento sectorial, notas internas y nube de archivos, sin pagos online ni facturación.';
+$plan_summaries['summum']['tagline'] = 'La experiencia completa: informes y resúmenes con IA, pagos online, facturación, cuestionarios interactivos, videollamada, base multisectorial y personalización avanzada.';
 
 $feature_labels = [
     'patientPortal.enabled' => 'Portal privado para pacientes o clientes',
@@ -174,7 +178,12 @@ $feature_labels = [
     'knowledgeBase.enabled' => 'Base de conocimiento por sector',
     'knowledgeBase.importTasks' => 'Importación de recomendaciones al plan de trabajo',
     'knowledgeBase.multiSector' => 'Consulta de bases de conocimiento relacionadas',
-    'questionnaires.enabled' => 'Constructor de cuestionarios personalizados',
+    'questionnaires.enabled' => 'Cuestionarios personalizados con documentos y pizarra desde el Portal',
+    'customFields.enabled' => 'Campos personalizados para pacientes y citas',
+    'ai.assistedReports' => 'Informes y resúmenes profesionales asistidos por IA',
+    'teamTools.enabled' => 'Notas, avisos y tareas internas del equipo',
+    'teamCloud.enabled' => 'Nube de archivos privada y compartida',
+    'api.enabled' => 'API para integraciones externas',
     'documents.uploads' => 'Subida de archivos y adjuntos',
     'documents.onlineEditor' => 'Editor online de documentos',
     'documents.drawingBoard' => 'Pizarra online de dibujo',
@@ -190,7 +199,10 @@ $feature_labels = [
     'reminders.patient24h' => 'Recordatorios de cita por email',
     'reminders.sms' => 'Recordatorios de cita por SMS',
     'calendarSync.enabled' => 'Sincronización con calendarios online',
-    'livekit.enabled' => 'Videollamada integrada con grabaci&oacute;n de audio/video opcional',
+    'livekit.enabled' => 'Videollamada integrada (compatibilidad)',
+    'videoCalls.integrated' => 'Videollamada integrada',
+    'videoCalls.recordingAudio' => 'Grabación de videollamada en audio',
+    'videoCalls.recordingVideo' => 'Grabación de videollamada en audio y vídeo',
     'branding.customLogo' => 'Logotipo propio en dashboard y portal',
     'branding.customDomain' => 'Usa tu propio dominio o subdominio para acceder a la aplicación',
     'team.enabled' => 'Equipo de trabajo con varios profesionales',
@@ -225,13 +237,20 @@ $plan_highlight_features = [
         'catalog.customServices',
         'digitalSignature.tenant',
         'legalConsents.handwrittenSignature',
+        'teamTools.enabled',
+        'teamCloud.enabled',
+        'videoCalls.integrated',
+        'videoCalls.recordingAudio',
     ],
     'summum' => [
+        'ai.assistedReports',
+        'teamTools.enabled',
+        'teamCloud.enabled',
         'questionnaires.enabled',
         'billing.enabled',
         'billing.fiscalData',
         ['onlinePayments.enabled', 'payments.online'],
-        'livekit.enabled',
+        'videoCalls.recordingVideo',
         'documents.onlineEditor',
         'documents.drawingBoard',
         'digitalSignature.professional',
@@ -275,15 +294,20 @@ $comparison_groups = [
         ['label' => 'Duraciones de cita personalizables', 'feature' => 'catalog.customDurations'],
         ['label' => 'Salas y ubicaciones personalizables', 'feature' => 'catalog.customLocations'],
         ['label' => 'Sincronización con calendarios online', 'feature' => 'calendarSync.enabled'],
-        ['label' => 'Videollamada integrada con grabaci&oacute;n de audio/video opcional', 'feature' => 'livekit.enabled'],
+        ['label' => 'Videollamada integrada', 'feature' => 'videoCalls.integrated'],
+        ['label' => 'Grabación de videollamada en audio', 'feature' => 'videoCalls.recordingAudio'],
+        ['label' => 'Grabación de videollamada en audio y vídeo', 'feature' => 'videoCalls.recordingVideo'],
     ],
     'Seguimiento profesional' => [
         ['label' => 'Tareas, pautas o ejercicios asignables', 'feature' => 'tasks.enabled'],
         ['label' => 'Plantillas reutilizables de tareas o rutinas', 'feature' => 'taskTemplates.enabled'],
-        ['label' => 'Creaci&oacute;n de cuestionarios personalizados', 'feature' => 'questionnaires.enabled'],
+        ['label' => 'Creación de cuestionarios personalizados', 'feature' => 'questionnaires.enabled'],
+        ['label' => 'Campos personalizados para pacientes y citas', 'feature' => 'customFields.enabled', 'limit' => 'maxCustomFields'],
+        ['label' => 'El paciente o cliente puede crear documentos y usar la pizarra desde el Portal para completar tareas o cuestionarios', 'feature' => 'questionnaires.enabled'],
         ['label' => 'Bonos y sesiones prepagadas', 'feature' => 'bonuses.enabled'],
     ],
     'Base de conocimiento e informes' => [
+        ['label' => 'Informes clínicos, de evolución y resúmenes profesionales asistidos por IA', 'feature' => 'ai.assistedReports'],
         ['label' => 'Editor online de documentos', 'feature' => 'documents.onlineEditor'],
         ['label' => 'Pizarra online de dibujo', 'feature' => 'documents.drawingBoard'],
         ['label' => 'Firma de documentos con certificado del centro', 'feature' => 'digitalSignature.tenant'],
@@ -309,6 +333,8 @@ $comparison_groups = [
         ['label' => 'Facturación integrada', 'feature' => 'billing.enabled'],
     ],
     'Equipo, marca y personalización' => [
+        ['label' => 'Notas, avisos y tareas internas para todo el equipo o profesionales concretos', 'feature' => 'teamTools.enabled'],
+        ['label' => 'Nube de archivos con contenido privado o compartido con el equipo', 'feature' => 'teamCloud.enabled'],
         ['label' => 'Equipo de trabajo con varios profesionales', 'feature' => 'team.enabled'],
         ['label' => 'Miembros del equipo', 'limit' => 'teamMembers'],
         ['label' => 'Tipos de miembro no profesional: recepción, administración y técnico', 'feature' => 'team.memberTypes'],
@@ -388,6 +414,7 @@ foreach ($comparison_groups as $group_title => $features) {
     <title>Planes y precios | SimplyGest Praxis</title>
     <link rel="icon" href="<?= htmlspecialchars($brand_icon_url, ENT_QUOTES, 'UTF-8') ?>">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/commercial-pages.css?v=<?= filemtime(__DIR__ . '/css/commercial-pages.css') ?>">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
@@ -720,6 +747,8 @@ foreach ($comparison_groups as $group_title => $features) {
             vertical-align: -5px;
             margin-right: .45rem;
         }
+        .sg-footer a { color: inherit; text-underline-offset: 3px; }
+        .sg-footer a:hover { color: var(--sg-primary); }
 
         @media (max-width: 991.98px) {
             .sg-common-grid {
@@ -743,6 +772,12 @@ foreach ($comparison_groups as $group_title => $features) {
                 <a class="sg-nav-link" href="./">Inicio</a>
                 <a class="sg-nav-link" href="./#sectores">Sectores</a>
                 <a class="sg-nav-link is-active" href="app-plans.php">Planes</a>
+                <a class="sg-nav-link" href="acceso.php">Acceder</a>
+                <a class="btn btn-primary btn-sm" href="signup.php">Probar 15 d&iacute;as</a>
+            </div>
+            <div class="d-flex d-md-none align-items-center gap-2">
+                <a class="sg-nav-link" href="acceso.php">Acceder</a>
+                <a class="btn btn-primary btn-sm" href="signup.php">Probar</a>
             </div>
         </div>
     </nav>
@@ -873,6 +908,9 @@ foreach ($comparison_groups as $group_title => $features) {
                                                 <?php $enabled = !empty($feature['common']) || praxis_plans_feature_enabled($plan, $feature['feature'] ?? ''); ?>
                                                 <td class="text-center">
                                                     <?php if (isset($feature['limit'])): ?>
+                                                        <?php if (!$enabled): ?>
+                                                            <span class="sg-cross" title="No incluido"><i class="bi bi-dash-lg"></i></span>
+                                                        <?php else: ?>
                                                         <?php
                                                         $limit_value = praxis_plans_limit_value($plan, $feature['limit'], null);
                                                         $limit_badge = ($limit_value === null || $limit_value === '' || (int) $limit_value === 0)
@@ -886,6 +924,7 @@ foreach ($comparison_groups as $group_title => $features) {
                                                                 <?= (int) $limit_badge ?>
                                                             <?php endif; ?>
                                                         </span>
+                                                        <?php endif; ?>
                                                     <?php else: ?>
                                                         <span class="<?= $enabled ? 'sg-check' : 'sg-cross' ?>" title="<?= $enabled ? 'Incluido' : 'No incluido' ?>">
                                                             <i class="bi <?= $enabled ? 'bi-check-lg' : 'bi-dash-lg' ?>"></i>
@@ -904,14 +943,7 @@ foreach ($comparison_groups as $group_title => $features) {
         </section>
     </main>
 
-    <footer class="sg-footer">
-        <div class="container">
-            <?php if ($brand_icon_url !== ''): ?>
-                <img src="<?= htmlspecialchars($brand_icon_url, ENT_QUOTES, 'UTF-8') ?>" alt="">
-            <?php endif; ?>
-            <?= htmlspecialchars($app_name, ENT_QUOTES, 'UTF-8') ?> - <?= (int) $year ?>
-        </div>
-    </footer>
+    <?php $commercial_footer_logo_url=$brand_logo_url;$commercial_footer_app_name=$app_name;$commercial_footer_year=(int)$year;require __DIR__ . '/commercial_footer.php'; ?>
 </body>
 
 </html>

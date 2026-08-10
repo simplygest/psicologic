@@ -21,6 +21,7 @@
             "knowledgeBase.importTasks": true,
             "knowledgeBase.multiSector": false,
             "questionnaires.enabled": false,
+            "customFields.enabled": true,
             "documents.uploads": true,
             "documents.onlineEditor": false,
             "documents.drawingBoard": false,
@@ -45,9 +46,14 @@
             "calendarSync.enabled": true,
             "livekit.enabled": false,
             "livekit.recording": false,
+            "videoCalls.integrated": true,
+            "videoCalls.recordingAudio": true,
+            "videoCalls.recordingVideo": false,
             "branding.customLogo": true,
             "branding.customDomain": false,
             "team.enabled": true,
+            "teamTools.enabled": true,
+            "teamCloud.enabled": true,
             "team.memberTypes": false,
             "team.permissions": false,
             "timeTracking.enabled": false,
@@ -58,10 +64,13 @@
             "catalog.discounts": true,
             "appointments.attendanceStatus": true,
             "billing.fiscalData": false,
-            "ui.customization": false
+            "ui.customization": false,
+            "api.enabled": false
         },
         "limits": {
             "teamMembers": 3,
+            "maxCustomFields": 2,
+            "storageBytes": 5368709120,
             "appointmentDurations": [
                 60,
                 90,

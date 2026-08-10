@@ -19,7 +19,28 @@ $braintree_environment = praxis_braintree_environment();
 if ($is_superadmin && empty($_SESSION['subscription_csrf_token'])) {
   $_SESSION['subscription_csrf_token'] = bin2hex(random_bytes(32));
 }
+if ($is_superadmin && empty($_SESSION['api_keys_csrf_token'])) {
+  $_SESSION['api_keys_csrf_token'] = bin2hex(random_bytes(32));
+}
 $is_admin = in_array($_SESSION['role'], ['admin', 'superadmin', 'reception', 'administration', 'technical'], true);
+if ($is_admin && empty($_SESSION['ai_csrf_token'])) {
+  $_SESSION['ai_csrf_token'] = bin2hex(random_bytes(32));
+}
+if ($is_admin && empty($_SESSION['team_tools_csrf_token'])) {
+  $_SESSION['team_tools_csrf_token'] = bin2hex(random_bytes(32));
+}
+if ($is_admin && empty($_SESSION['support_csrf_token'])) {
+  $_SESSION['support_csrf_token'] = bin2hex(random_bytes(32));
+}
+if ($is_admin && empty($_SESSION['financial_hub_csrf_token'])) {
+  $_SESSION['financial_hub_csrf_token'] = bin2hex(random_bytes(32));
+}
+if ($is_admin && empty($_SESSION['weather_csrf_token'])) {
+  $_SESSION['weather_csrf_token'] = bin2hex(random_bytes(32));
+}
+if ($is_admin && empty($_SESSION['billing_cloud_csrf_token'])) {
+  $_SESSION['billing_cloud_csrf_token'] = bin2hex(random_bytes(32));
+}
 if ($is_admin) {
   ensure_cabinet_schema($mysqli);
 }
@@ -43,15 +64,32 @@ $can_view_patient_phone = $is_superadmin || !empty($member_permissions['view_pat
 $can_access_billing = $is_superadmin || !empty($member_permissions['billing']);
 $can_access_reports = $is_superadmin || !empty($member_permissions['reports']);
 $can_access_private_patient_data = $is_superadmin || !empty($member_permissions['private_patient_data']);
+$can_access_ai_tools = $is_superadmin || !empty($member_permissions['ai_tools']);
+$can_access_team_notes = $is_superadmin || !empty($member_permissions['team_notes']);
+$can_access_team_files = $is_superadmin || !empty($member_permissions['team_files']);
 $can_create_patients = $is_superadmin || !empty($member_permissions['create_patients']);
 $can_create_appointments = $is_superadmin || !empty($member_permissions['create_appointments']);
 $can_cancel_appointments = $is_superadmin || !empty($member_permissions['cancel_appointments']);
+$can_issue_attendance_certificates = $is_superadmin || !empty($member_permissions['issue_attendance_certificates']);
 $branding = get_public_branding_settings($mysqli);
+$support_contact_email = '';
+if ($is_admin) {
+  $support_tenant_id = current_tenant_id();
+  $stmt_support_contact = $mysqli->prepare('SELECT signup_email FROM tenants WHERE id = ? LIMIT 1');
+  $stmt_support_contact->bind_param('i', $support_tenant_id);
+  $stmt_support_contact->execute();
+  $support_contact_email = trim((string) (($stmt_support_contact->get_result()->fetch_assoc()['signup_email'] ?? '')));
+  $stmt_support_contact->close();
+}
 $public_site_enabled = !in_array(plan_config_normalize_key($branding['plan_key'] ?? 'novus', 'novus'), ['initium', 'novus'], true)
   && !empty($branding['public_site_enabled']);
 $current_professional_preferences = $current_user_professional_id > 0
   ? cabinet_get_professional_preferences($mysqli, $current_user_professional_id)
-  : ['initial_calendar_view' => ($branding['initial_calendar_view'] ?? 'month'), 'timezone' => tenant_timezone()];
+  : [
+      'initial_calendar_view' => (($branding['initial_calendar_view'] ?? 'month') === 'remember' ? 'month' : ($branding['initial_calendar_view'] ?? 'month')),
+      'initial_calendar_view_mode' => ($branding['initial_calendar_view'] ?? 'month'),
+      'timezone' => tenant_timezone(),
+    ];
 $plan_config = plan_config_for_key($branding['plan_key'] ?? 'default');
 $billing_plan_enabled = plan_config_feature_enabled($plan_config, 'billing.enabled', false);
 $online_payments_plan_enabled = plan_config_feature_enabled($plan_config, 'onlinePayments.enabled', false)
@@ -59,7 +97,10 @@ $online_payments_plan_enabled = plan_config_feature_enabled($plan_config, 'onlin
 $email_reminders_plan_enabled = plan_config_feature_enabled($plan_config, 'reminders.patient24h', false);
 $sms_reminders_plan_enabled = plan_config_feature_enabled($plan_config, 'reminders.sms', false);
 $email_reminders_configured = $email_reminders_plan_enabled && app_email_is_configured($mysqli);
-$sms_reminders_configured = $sms_reminders_plan_enabled && sms_is_configured($mysqli);
+$sms_reminder_settings = $sms_reminders_plan_enabled ? sms_get_settings($mysqli) : [];
+$sms_reminders_configured = $sms_reminders_plan_enabled
+  && sms_is_configured($mysqli)
+  && (int) ($sms_reminder_settings['sms_reminder_enabled'] ?? 0) === 1;
 $calendar_sync_plan_enabled = plan_config_feature_enabled($plan_config, 'calendarSync.enabled', false);
 $ui_customization_plan_enabled = plan_config_feature_enabled($plan_config, 'ui.customization', false);
 $custom_locations_plan_enabled = plan_config_feature_enabled($plan_config, 'catalog.customLocations', false);
@@ -71,6 +112,13 @@ $tenant_signature_plan_enabled = plan_config_feature_enabled($plan_config, 'digi
 $professional_signature_plan_enabled = plan_config_feature_enabled($plan_config, 'digitalSignature.professional', false);
 $time_tracking_plan_enabled = plan_config_feature_enabled($plan_config, 'timeTracking.enabled', false);
 $questionnaires_plan_enabled = plan_config_feature_enabled($plan_config, 'questionnaires.enabled', false);
+$api_plan_enabled = plan_config_feature_enabled($plan_config, 'api.enabled', false);
+$financial_hub_plan_enabled = plan_config_feature_enabled($plan_config, 'financialHub.enabled', false);
+$custom_fields_plan_enabled = plan_config_feature_enabled($plan_config, 'customFields.enabled', false);
+$custom_fields_plan_limit = (int) plan_config_limit_value($plan_config, 'maxCustomFields', 0);
+$ai_tools_enabled = plan_config_normalize_key($branding['plan_key'] ?? '', '') === 'summum' && $can_access_ai_tools;
+$team_tools_plan_enabled = plan_config_feature_enabled($plan_config, 'teamTools.enabled', false);
+$team_cloud_plan_enabled = plan_config_feature_enabled($plan_config, 'teamCloud.enabled', false);
 $time_tracking_enabled = $is_admin && $time_tracking_plan_enabled && time_tracking_enabled($mysqli);
 $patient_portal_enabled = plan_config_feature_enabled($plan_config, 'patientPortal.enabled', false);
 $legal_consent_templates_enabled = plan_config_feature_enabled($plan_config, 'legalConsents.templates', false);
@@ -240,6 +288,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css?v=<?= filemtime(__DIR__ . '/css/style.css') ?>">
+  <link rel="stylesheet" href="css/speech-dictation.css?v=<?= filemtime(__DIR__ . '/css/speech-dictation.css') ?>">
   <?php if ($questionnaires_plan_enabled): ?><link rel="stylesheet" href="css/questionnaires.css?v=<?= filemtime(__DIR__ . '/css/questionnaires.css') ?>"><?php endif; ?>
   <style>:root { --primary-color: <?= htmlspecialchars($primary_color) ?>; --dashboard-navbar-text: <?= htmlspecialchars($navbar_text_color) ?>; --dashboard-navbar-control-bg: <?= htmlspecialchars($navbar_control_bg) ?>; --dashboard-navbar-control-hover-bg: <?= htmlspecialchars($navbar_control_hover_bg) ?>; }</style>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
@@ -257,6 +306,10 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
       </a>
       <div class="d-flex align-items-center gap-2">
         <?php if ($is_admin): ?>
+          <button class="navbar-weather d-none btn btn-light btn-sm text-start" type="button" id="navbar-weather" title="Previsión meteorológica">
+            <img src="" alt="" id="navbar-weather-icon">
+            <span><strong id="navbar-weather-temperature"></strong><small id="navbar-weather-description"></small></span>
+          </button>
           <button class="btn btn-light btn-sm" type="button" id="btn-global-search" title="Buscar">
             <i class="bi bi-search"></i>
           </button>
@@ -290,11 +343,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
               </li>
             <?php endif; ?>
             <?php if ($is_superadmin): ?>
-              <li>
-                <button class="dropdown-item" id="btn-open-data-export" type="button">
-                  <i class="bi bi-file-earmark-zip me-2"></i>Exportar todos mis datos
-                </button>
-              </li>
+              <li><button class="dropdown-item" id="btn-system-status" type="button"><i class="bi bi-activity me-2"></i>Estado del sistema</button></li>
               <li>
                 <button class="dropdown-item" id="btn-open-initial-onboarding" type="button">
                   <i class="bi bi-stars me-2"></i>Asistente inicial
@@ -310,9 +359,9 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
             <?php endif; ?>
             <?php if ($is_admin): ?>
               <li>
-                <a class="dropdown-item" href="<?= htmlspecialchars($sector_help_url) ?>">
+                <button class="dropdown-item" id="btn-open-help" type="button">
                   <i class="bi bi-question-circle me-2"></i>Ayuda
-                </a>
+                </button>
               </li>
             <?php endif; ?>
             <li><hr class="dropdown-divider"></li>
@@ -354,15 +403,12 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
             <?php if ($questionnaires_plan_enabled && $can_access_settings): ?>
               <button class="dashboard-side-nav-item btn-dashboard-main-view" type="button" data-dashboard-main-view="questionnaires"><i class="bi bi-ui-checks"></i><span>Cuestionarios</span></button>
             <?php endif; ?>
-            <?php if ($can_access_settings): ?>
-              <button class="dashboard-side-nav-item btn-dashboard-main-view" type="button" data-dashboard-main-view="configuration"><i class="bi bi-gear"></i><span>Configuraci&oacute;n</span></button>
-            <?php endif; ?>
-            <button class="dashboard-side-nav-item <?= $can_create_patients ? ($invitations_feature_enabled ? '' : 'plan-locked') : 'd-none' ?>" id="btn-sidebar-generate-invite" type="button"
-              <?= $invitations_feature_enabled ? 'data-dashboard-action="invite"' : 'disabled aria-disabled="true" title="Disponible en un plan superior"' ?>>
-              <i class="bi bi-link-45deg"></i><span>Invitaci&oacute;n</span><?= $invitations_feature_enabled ? '' : '<i class="bi bi-lock-fill plan-lock-icon"></i>' ?>
-            </button>
-            <button class="dashboard-side-nav-item <?= $can_access_statistics ? ($statistics_feature_enabled ? '' : 'plan-locked') : 'd-none' ?>" id="btn-sidebar-admin-stats" type="button"
-              <?= $statistics_feature_enabled ? 'data-dashboard-action="stats"' : 'disabled aria-disabled="true" title="Disponible en un plan superior"' ?>>
+            <button class="dashboard-side-nav-item btn-dashboard-main-view <?= $can_access_team_notes ? ($team_tools_plan_enabled ? '' : 'plan-locked') : 'd-none' ?>" type="button"
+              <?= $team_tools_plan_enabled ? 'data-dashboard-main-view="team-notes"' : 'disabled title="Disponible en los planes Magister y Summum"' ?>><i class="bi bi-pin-angle"></i><span>Notas y tareas</span><?= $team_tools_plan_enabled ? '' : '<i class="bi bi-lock-fill plan-lock-icon"></i>' ?></button>
+            <button class="dashboard-side-nav-item btn-dashboard-main-view <?= $can_access_team_files ? ($team_cloud_plan_enabled ? '' : 'plan-locked') : 'd-none' ?>" type="button"
+              <?= $team_cloud_plan_enabled ? 'data-dashboard-main-view="team-files"' : 'disabled title="Disponible en los planes Magister y Summum"' ?>><i class="bi bi-cloud"></i><span>Praxis Cloud</span><?= $team_cloud_plan_enabled ? '' : '<i class="bi bi-lock-fill plan-lock-icon"></i>' ?></button>
+            <button class="dashboard-side-nav-item btn-dashboard-main-view <?= $can_access_statistics ? ($statistics_feature_enabled ? '' : 'plan-locked') : 'd-none' ?>" id="btn-sidebar-admin-stats" type="button"
+              <?= $statistics_feature_enabled ? 'data-dashboard-main-view="statistics"' : 'disabled aria-disabled="true" title="Disponible en un plan superior"' ?>>
               <i class="bi bi-bar-chart"></i><span>Estad&iacute;sticas</span><?= $statistics_feature_enabled ? '' : '<i class="bi bi-lock-fill plan-lock-icon"></i>' ?>
             </button>
             <button class="dashboard-side-nav-item <?= $bonuses_feature_enabled ? '' : 'plan-locked' ?>" id="btn-sidebar-admin-bonuses" type="button"
@@ -371,15 +417,22 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
             </button>
             <button class="dashboard-side-nav-item <?= $can_access_billing ? ($billing_plan_enabled ? '' : 'plan-locked') : 'd-none' ?>" id="btn-sidebar-admin-invoices" type="button"
               <?= $billing_plan_enabled ? 'data-dashboard-action="invoices" data-bs-toggle="modal" data-bs-target="#invoicesModal"' : 'disabled title="Disponible en un plan superior"' ?>>
-              <i class="bi bi-receipt"></i><span>Facturas</span><?= $billing_plan_enabled ? '' : '<i class="bi bi-lock-fill plan-lock-icon"></i>' ?>
+              <i class="bi bi-receipt"></i><span>Facturaci&oacute;n</span><?= $billing_plan_enabled ? '' : '<i class="bi bi-lock-fill plan-lock-icon"></i>' ?>
             </button>
             <button class="dashboard-side-nav-item <?= $time_tracking_plan_enabled ? ($time_tracking_enabled ? '' : 'd-none') : 'plan-locked' ?>" id="btn-sidebar-time-tracking" type="button"
               <?= $time_tracking_plan_enabled ? 'data-bs-toggle="modal" data-bs-target="#timeTrackingHistoryModal"' : 'disabled title="Disponible en el plan Summum"' ?>>
               <i class="bi bi-stopwatch"></i><span>Control horario</span><?= $time_tracking_plan_enabled ? '' : '<i class="bi bi-lock-fill plan-lock-icon"></i>' ?>
             </button>
-            <?php if ($is_superadmin): ?>
+            <button class="dashboard-side-nav-item <?= $can_create_patients ? ($invitations_feature_enabled ? '' : 'plan-locked') : 'd-none' ?>" id="btn-sidebar-generate-invite" type="button"
+              <?= $invitations_feature_enabled ? 'data-dashboard-action="invite"' : 'disabled aria-disabled="true" title="Disponible en un plan superior"' ?>>
+              <i class="bi bi-link-45deg"></i><span>Invitaci&oacute;n</span><?= $invitations_feature_enabled ? '' : '<i class="bi bi-lock-fill plan-lock-icon"></i>' ?>
+            </button>
+            <?php if ($can_access_settings): ?>
+              <button class="dashboard-side-nav-item btn-dashboard-main-view" type="button" data-dashboard-main-view="configuration"><i class="bi bi-gear"></i><span>Configuraci&oacute;n</span></button>
+            <?php endif; ?>
+            <?php if ($is_superadmin || $session_role === 'admin'): ?>
               <button class="dashboard-side-nav-item" id="btn-sidebar-admin-log" type="button" data-dashboard-action="app-log">
-                <i class="bi bi-activity"></i><span>Log</span>
+                <i class="bi bi-activity"></i><span>Log e Incidencias</span><span class="d-none ms-auto" id="app-incidents-nav-indicator" aria-label="Hay incidencias pendientes"></span>
               </button>
             <?php endif; ?>
           </div>
@@ -416,11 +469,11 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
         <div class="dashboard-action-buttons d-flex gap-2 flex-wrap align-items-center">
         <button class="btn btn-primary <?= $can_create_patients ? '' : 'd-none' ?>" id="btn-generate-invite"><i class="bi bi-link-45deg"></i> Generar
           Invitación</button>
-        <button class="btn btn-primary <?= $can_access_appointments ? '' : 'd-none' ?>" id="btn-upcoming-appointments" type="button"><i class="bi bi-list-check"></i> Pr&oacute;ximas citas</button>
+        <button class="btn btn-primary <?= $can_access_appointments ? '' : 'd-none' ?>" id="btn-upcoming-appointments" type="button"><i class="bi bi-list-check"></i> Citas</button>
           <button class="btn btn-primary <?= $can_access_statistics ? '' : 'd-none' ?>" id="btn-admin-stats" type="button"><i class="bi bi-bar-chart"></i> Estad&iacute;sticas</button>
           <button class="btn btn-primary" id="btn-admin-bonuses" type="button"><i class="bi bi-card-list"></i> Bonos</button>
           <button class="btn btn-primary <?= $billing_plan_enabled ? ($can_access_billing ? '' : 'd-none') : 'plan-locked' ?>" id="btn-admin-invoices" type="button"
-            <?= $billing_plan_enabled ? 'data-bs-toggle="modal" data-bs-target="#invoicesModal"' : 'disabled title="Disponible en un plan superior"' ?>><i class="bi bi-receipt"></i> Facturas<?= $billing_plan_enabled ? '' : ' <i class="bi bi-lock-fill"></i>' ?></button>
+            <?= $billing_plan_enabled ? 'data-bs-toggle="modal" data-bs-target="#invoicesModal"' : 'disabled title="Disponible en un plan superior"' ?>><i class="bi bi-receipt"></i> Facturaci&oacute;n<?= $billing_plan_enabled ? '' : ' <i class="bi bi-lock-fill"></i>' ?></button>
           <button class="btn btn-primary <?= $time_tracking_enabled ? '' : 'd-none' ?>" id="btn-time-tracking" type="button" data-bs-toggle="modal" data-bs-target="#timeTrackingModal"><i class="bi bi-stopwatch"></i> Fichar</button>
         <button class="btn btn-primary <?= $can_access_patients ? '' : 'd-none' ?>" id="btn-admin-patients" type="button"><i class="bi bi-people"></i> <?= $is_superadmin ? htmlspecialchars($patient_label_title_plural, ENT_QUOTES, 'UTF-8') : 'Mis ' . htmlspecialchars($patient_label_plural, ENT_QUOTES, 'UTF-8') ?></button>
         </div>
@@ -431,15 +484,17 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
           <ul class="dropdown-menu">
             <li><button class="dropdown-item btn-dashboard-main-view" type="button" data-dashboard-main-view="dashboard"><i class="bi bi-grid-1x2 me-2"></i>Dashboard</button></li>
             <li class="<?= $can_create_patients ? '' : 'd-none' ?>"><button class="dropdown-item" type="button" id="btn-mobile-generate-invite"><i class="bi bi-link-45deg me-2"></i>Generar invitaci&oacute;n</button></li>
-            <li class="<?= $can_access_appointments ? '' : 'd-none' ?>"><button class="dropdown-item" type="button" id="btn-mobile-upcoming-appointments"><i class="bi bi-list-check me-2"></i>Pr&oacute;ximas citas</button></li>
+            <li class="<?= $can_access_appointments ? '' : 'd-none' ?>"><button class="dropdown-item" type="button" id="btn-mobile-upcoming-appointments"><i class="bi bi-list-check me-2"></i>Citas</button></li>
             <li class="<?= $can_access_statistics ? '' : 'd-none' ?>"><button class="dropdown-item" type="button" id="btn-mobile-admin-stats"><i class="bi bi-bar-chart me-2"></i>Estad&iacute;sticas</button></li>
             <li><button class="dropdown-item" type="button" id="btn-mobile-admin-bonuses"><i class="bi bi-card-list me-2"></i>Bonos</button></li>
             <li class="<?= $billing_plan_enabled ? ($can_access_billing ? '' : 'd-none') : '' ?>"><button class="dropdown-item <?= $billing_plan_enabled ? '' : 'plan-locked' ?>" type="button" id="btn-mobile-admin-invoices"
-              <?= $billing_plan_enabled ? 'data-bs-toggle="modal" data-bs-target="#invoicesModal"' : 'disabled title="Disponible en un plan superior"' ?>><i class="bi bi-receipt me-2"></i>Facturas<?= $billing_plan_enabled ? '' : '<i class="bi bi-lock-fill float-end"></i>' ?></button></li>
+              <?= $billing_plan_enabled ? 'data-bs-toggle="modal" data-bs-target="#invoicesModal"' : 'disabled title="Disponible en un plan superior"' ?>><i class="bi bi-receipt me-2"></i>Facturaci&oacute;n<?= $billing_plan_enabled ? '' : '<i class="bi bi-lock-fill float-end"></i>' ?></button></li>
             <li class="<?= $time_tracking_enabled ? '' : 'd-none' ?>"><button class="dropdown-item" type="button" id="btn-mobile-time-tracking" data-bs-toggle="modal" data-bs-target="#timeTrackingHistoryModal"><i class="bi bi-stopwatch me-2"></i>Control horario</button></li>
             <li class="<?= $can_access_patients ? '' : 'd-none' ?>"><button class="dropdown-item" type="button" id="btn-mobile-admin-patients"><i class="bi bi-people me-2"></i><?= $is_superadmin ? htmlspecialchars($patient_label_title_plural, ENT_QUOTES, 'UTF-8') : 'Mis ' . htmlspecialchars($patient_label_plural, ENT_QUOTES, 'UTF-8') ?></button></li>
             <?php if ($knowledge_base_enabled && !$body_map_enabled && $can_access_patients): ?><li><button class="dropdown-item btn-dashboard-main-view" type="button" data-dashboard-main-view="knowledge"><i class="bi bi-journal-medical me-2"></i>Base de Conocimiento</button></li><?php endif; ?>
             <?php if ($questionnaires_plan_enabled && $can_access_settings): ?><li><button class="dropdown-item btn-dashboard-main-view" type="button" data-dashboard-main-view="questionnaires"><i class="bi bi-ui-checks me-2"></i>Cuestionarios</button></li><?php endif; ?>
+            <?php if ($can_access_team_notes): ?><li><button class="dropdown-item btn-dashboard-main-view <?= $team_tools_plan_enabled ? '' : 'plan-locked' ?>" type="button" <?= $team_tools_plan_enabled ? 'data-dashboard-main-view="team-notes"' : 'disabled' ?>><i class="bi bi-pin-angle me-2"></i>Notas y tareas</button></li><?php endif; ?>
+            <?php if ($can_access_team_files): ?><li><button class="dropdown-item btn-dashboard-main-view <?= $team_cloud_plan_enabled ? '' : 'plan-locked' ?>" type="button" <?= $team_cloud_plan_enabled ? 'data-dashboard-main-view="team-files"' : 'disabled' ?>><i class="bi bi-cloud me-2"></i>Praxis Cloud</button></li><?php endif; ?>
             <?php if ($can_access_settings): ?><li><button class="dropdown-item btn-dashboard-main-view" type="button" data-dashboard-main-view="configuration"><i class="bi bi-gear me-2"></i>Configuraci&oacute;n</button></li><?php endif; ?>
           </ul>
         </div>
@@ -447,11 +502,13 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
         <div class="btn-group ms-auto dashboard-view-switcher" id="admin-dashboard-view-switcher" role="group" aria-label="Vista del dashboard">
           <button class="btn btn-outline-primary btn-dashboard-view <?= $can_access_agenda ? '' : 'd-none' ?>" type="button" data-dashboard-view="month"><i class="bi bi-calendar3"></i> Mes</button>
           <button class="btn btn-outline-primary btn-dashboard-view <?= $can_access_agenda ? '' : 'd-none' ?>" type="button" data-dashboard-view="week"><i class="bi bi-calendar-week"></i> Semana</button>
-          <button class="btn btn-outline-primary btn-dashboard-view d-none <?= $can_access_agenda ? 'd-lg-inline-flex' : '' ?>" type="button" data-dashboard-view="agenda"><i class="bi bi-layout-three-columns"></i> Agenda</button>
+          <button class="btn btn-outline-primary btn-dashboard-view d-none <?= $can_access_agenda ? 'd-lg-inline-flex' : '' ?>" type="button" data-dashboard-view="agenda"><i class="bi bi-layout-three-columns"></i> Columnas</button>
+          <button class="btn btn-outline-primary btn-dashboard-view <?= $can_access_agenda ? '' : 'd-none' ?>" type="button" data-dashboard-view="list"><i class="bi bi-list-ul"></i> Lista</button>
         </div>
       </div>
     <?php else: ?>
       <?php if ($questionnaires_plan_enabled): ?><div id="portal-questionnaire-dashboard-alert" class="alert alert-warning small mb-3 d-none"></div><?php endif; ?>
+      <div id="portal-tasks-dashboard-alert" class="alert alert-warning small mb-3 d-none"></div>
       <div class="mb-4 d-flex gap-2 flex-wrap align-items-center dashboard-actions-bar" id="patient-bonus-actions">
         <div class="dashboard-action-buttons d-flex gap-2 flex-wrap align-items-center">
           <button class="btn btn-primary" id="btn-patient-portal-appointments" type="button"><i class="bi bi-calendar-check"></i> Mis citas</button>
@@ -615,11 +672,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                 <button class="nav-link" id="appointment-session-tab" data-bs-toggle="tab" data-bs-target="#appointment-session-panel" type="button" role="tab">Tareas</button>
               </li>
               <li class="nav-item" role="presentation">
-                <button class="nav-link" id="appointment-private-notes-tab" data-bs-toggle="tab" data-bs-target="#appointment-private-notes-panel" type="button" role="tab">Notas de la sesi&oacute;n</button>
-              </li>
-              <li class="nav-item" role="presentation">
-                <button class="nav-link <?= $document_uploads_enabled ? '' : 'plan-locked' ?>" id="appointment-files-tab" data-bs-toggle="tab" data-bs-target="#appointment-files-panel" type="button" role="tab"
-                  <?= $document_uploads_enabled ? '' : 'disabled aria-disabled="true" title="Disponible en un plan superior"' ?>>Archivos<?= $document_uploads_enabled ? '' : ' <i class="bi bi-lock-fill ms-1"></i>' ?></button>
+                <button class="nav-link" id="appointment-files-tab" data-bs-toggle="tab" data-bs-target="#appointment-files-panel" type="button" role="tab">Notas y archivos</button>
               </li>
               <li class="nav-item" role="presentation">
                 <button class="nav-link <?= $questionnaires_plan_enabled ? '' : 'plan-locked' ?>" id="appointment-questionnaires-tab" type="button" role="tab"
@@ -675,20 +728,28 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
               </div>
               <div class="tab-pane fade" id="appointment-session-panel" role="tabpanel" aria-labelledby="appointment-session-tab">
                 <div id="appointment-session-alert" class="alert d-none"></div>
+                <div class="d-flex justify-content-end mb-3">
+                  <button type="button" class="btn btn-outline-primary btn-sm btn-open-patient-ai <?= $can_access_ai_tools ? '' : 'd-none' ?>" data-ai-context="next_session"
+                    <?= $ai_tools_enabled ? '' : 'disabled title="Disponible en el plan Summum"' ?>>
+                    <i class="bi bi-stars"></i> Preparar sesi&oacute;n con IA
+                  </button>
+                </div>
                 <div id="appointment-session-content">
                   <div class="text-center text-muted py-4">Cargando sesi&oacute;n...</div>
                 </div>
               </div>
-              <div class="tab-pane fade" id="appointment-private-notes-panel" role="tabpanel" aria-labelledby="appointment-private-notes-tab">
-                <div id="appointment-private-notes-alert" class="alert d-none"></div>
-                <div class="alert alert-info small mb-3">
-                  Nota privada, no visible por el paciente. Disponible solo en los informes internos.
-                </div>
-                <label class="form-label" for="appointment-private-session-notes">Notas de la sesi&oacute;n</label>
-                <textarea class="form-control" id="appointment-private-session-notes" rows="10" placeholder="Notas, apuntes o informaci&oacute;n interna de esta cita..."></textarea>
-              </div>
               <div class="tab-pane fade" id="appointment-files-panel" role="tabpanel" aria-labelledby="appointment-files-tab">
                 <div id="appointment-files-alert" class="alert d-none"></div>
+                <section id="appointment-recordings-section" class="card border-0 bg-body-tertiary mb-3 d-none">
+                  <div class="card-body">
+                    <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+                      <h6 class="mb-0"><i class="bi bi-record-circle me-2"></i>Grabaciones de videollamada</h6>
+                      <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-refresh-appointment-recordings"><i class="bi bi-arrow-clockwise"></i> Actualizar</button>
+                    </div>
+                    <div id="appointment-recordings-content" class="small text-muted">Abre esta pesta&ntilde;a para consultar las grabaciones.</div>
+                  </div>
+                </section>
+                <textarea class="d-none" id="appointment-private-session-notes" aria-hidden="true" tabindex="-1"></textarea>
                 <div id="appointment-files-content">
                   <div class="text-center text-muted py-4">Cargando archivos...</div>
                 </div>
@@ -712,6 +773,9 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
             </div>
             <button type="button" class="btn btn-outline-secondary" id="btn-open-patient-from-appointment-detail">
               <i class="bi bi-person-lines-fill"></i> Ver ficha del <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?>
+            </button>
+            <button type="button" class="btn btn-outline-success d-none" id="btn-appointment-attendance-certificate">
+              <i class="bi bi-file-earmark-check"></i> Justificante de asistencia
             </button>
             <button type="button" class="btn btn-outline-primary" id="btn-book-another-appointment">
               <i class="bi bi-calendar-plus"></i> Reservar otra cita
@@ -975,15 +1039,21 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                 </li>
               <?php endif; ?>
               <li class="nav-item <?= $can_access_private_patient_data ? '' : 'd-none' ?>" role="presentation">
+                <button class="nav-link" id="patient-clinical-history-tab" type="button" role="tab">Historia cl&iacute;nica</button>
+              </li>
+              <li class="nav-item d-none" role="presentation">
+                <button class="nav-link" id="patient-clinical-summary-tab" data-bs-toggle="tab" data-bs-target="#patient-clinical-summary-panel" type="button" role="tab">Resumen</button>
+              </li>
+              <li class="nav-item d-none" role="presentation">
                 <button class="nav-link" id="patient-diagnosis-tab" data-bs-toggle="tab" data-bs-target="#patient-diagnosis-panel" type="button" role="tab"><?= htmlspecialchars(ucfirst($sector_texts['clinicalTerms']['diagnosis'] ?? 'Diagnóstico')) ?></button>
               </li>
-              <li class="nav-item <?= $can_access_private_patient_data ? '' : 'd-none' ?>" role="presentation">
-                <button class="nav-link" id="patient-history-tab" data-bs-toggle="tab" data-bs-target="#patient-history-panel" type="button" role="tab">Historial de citas</button>
+              <li class="nav-item d-none" role="presentation">
+                <button class="nav-link" id="patient-history-tab" data-bs-toggle="tab" data-bs-target="#patient-history-panel" type="button" role="tab">Sesiones</button>
               </li>
-              <li class="nav-item <?= $can_access_private_patient_data ? '' : 'd-none' ?>" role="presentation">
+              <li class="nav-item d-none" role="presentation">
                 <button class="nav-link" id="patient-work-plan-tab" data-bs-toggle="tab" data-bs-target="#patient-work-plan-panel" type="button" role="tab">Plan de trabajo</button>
               </li>
-              <li class="nav-item <?= $can_access_private_patient_data ? '' : 'd-none' ?>" role="presentation">
+              <li class="nav-item d-none" role="presentation">
                 <button class="nav-link" id="patient-evolution-tab" data-bs-toggle="tab" data-bs-target="#patient-evolution-panel" type="button" role="tab">Evoluci&oacute;n</button>
               </li>
               <li class="nav-item <?= $can_access_private_patient_data ? '' : 'd-none' ?>" role="presentation">
@@ -1001,7 +1071,27 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                 <button class="nav-link" id="patient-bonuses-tab" data-bs-toggle="tab" data-bs-target="#patient-bonuses-panel" type="button" role="tab">Bonos</button>
               </li>
             </ul>
+            <div class="patient-clinical-navigation d-none mb-4" id="patient-clinical-navigation">
+              <div class="d-none d-md-flex flex-wrap justify-content-center gap-2" role="group" aria-label="Secciones de la historia cl&iacute;nica">
+                <button type="button" class="btn btn-sm btn-primary patient-clinical-section-btn" data-clinical-tab="patient-clinical-summary-tab"><i class="bi bi-grid-1x2 me-1"></i>Resumen</button>
+                <button type="button" class="btn btn-sm btn-outline-primary patient-clinical-section-btn" data-clinical-tab="patient-diagnosis-tab"><i class="bi <?= $body_map_enabled ? 'bi-person-bounding-box' : 'bi-clipboard2-pulse' ?> me-1"></i><?= $body_map_enabled ? 'Valoraci&oacute;n corporal' : htmlspecialchars(ucfirst($sector_texts['clinicalTerms']['diagnosis'] ?? 'Diagnóstico'), ENT_QUOTES, 'UTF-8') ?></button>
+                <button type="button" class="btn btn-sm btn-outline-primary patient-clinical-section-btn" data-clinical-tab="patient-work-plan-tab"><i class="bi bi-list-check me-1"></i>Plan de trabajo</button>
+                <button type="button" class="btn btn-sm btn-outline-primary patient-clinical-section-btn" data-clinical-tab="patient-evolution-tab"><i class="bi bi-graph-up-arrow me-1"></i>Evoluci&oacute;n</button>
+                <button type="button" class="btn btn-sm btn-outline-primary patient-clinical-section-btn" data-clinical-tab="patient-history-tab"><i class="bi bi-calendar2-check me-1"></i>Sesiones</button>
+              </div>
+              <select class="form-select form-select-sm d-md-none" id="patient-clinical-section-select" aria-label="Secci&oacute;n de la historia cl&iacute;nica">
+                <option value="patient-clinical-summary-tab">Resumen</option>
+                <option value="patient-diagnosis-tab"><?= $body_map_enabled ? 'Valoración corporal' : htmlspecialchars(ucfirst($sector_texts['clinicalTerms']['diagnosis'] ?? 'Diagnóstico'), ENT_QUOTES, 'UTF-8') ?></option>
+                <option value="patient-work-plan-tab">Plan de trabajo</option>
+                <option value="patient-evolution-tab">Evoluci&oacute;n</option>
+                <option value="patient-history-tab">Sesiones</option>
+              </select>
+            </div>
             <div class="tab-content">
+              <div class="tab-pane fade" id="patient-clinical-summary-panel" role="tabpanel" aria-labelledby="patient-clinical-summary-tab">
+                <div class="alert alert-info small">Vista resumida de la informaci&oacute;n cl&iacute;nica registrada. Cada dato se mantiene en su secci&oacute;n correspondiente.</div>
+                <div id="patient-clinical-summary-content"><div class="text-center text-muted py-4">Selecciona un <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?> guardado para consultar su historia cl&iacute;nica.</div></div>
+              </div>
               <div class="tab-pane fade show active" id="patient-data-panel" role="tabpanel" aria-labelledby="patient-data-tab">
                 <form id="patient-editor-form">
                   <input type="hidden" id="patient-editor-id" name="patient_id">
@@ -1110,9 +1200,19 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                     <label class="form-label">Edad</label>
                     <div class="form-control bg-light" id="patient-editor-age">-</div>
                   </div>
-                  <div class="col-md-6">
+                  <div class="col-md-4">
                     <label class="form-label" for="patient-editor-referral-source">Fuente / derivaci&oacute;n</label>
                     <input type="text" class="form-control" id="patient-editor-referral-source" name="referral_source" form="patient-editor-form" placeholder="<?= $patient_referral_placeholder ?>">
+                  </div>
+                  <div class="col-md-4">
+                    <label class="form-label" for="patient-editor-sex">Sexo</label>
+                    <select class="form-select" id="patient-editor-sex" name="sex" form="patient-editor-form">
+                      <option value="">Sin especificar</option>
+                      <option value="female">Mujer</option>
+                      <option value="male">Hombre</option>
+                      <option value="other">Otro</option>
+                      <option value="prefer_not_say">Prefiero no indicarlo</option>
+                    </select>
                   </div>
                   <input type="hidden" id="patient-editor-emergency-name" name="emergency_contact_name" form="patient-editor-form">
                   <input type="hidden" id="patient-editor-emergency-nif" name="emergency_contact_nif" form="patient-editor-form">
@@ -1161,6 +1261,14 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                       <option value="">Sin servicio preferido</option>
                     </select>
                   </div>
+                  <?php if ($custom_fields_plan_enabled): ?>
+                    <div class="col-12"><hr class="my-1"></div>
+                    <div class="col-12">
+                      <h6 class="mb-1">Campos personalizados</h6>
+                      <div class="small text-muted mb-3">Informaci&oacute;n adicional configurada por el centro.</div>
+                      <div class="row g-3" id="patient-custom-fields"><div class="col-12 text-muted small">Guarda primero el <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?>.</div></div>
+                    </div>
+                  <?php endif; ?>
                 </div>
               </div>
               <div class="tab-pane fade" id="patient-contacts-panel" role="tabpanel" aria-labelledby="patient-contacts-tab">
@@ -1602,6 +1710,10 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   </div>
                 </div>
                 <div class="d-flex justify-content-end gap-2 mb-3 flex-wrap">
+                  <button class="btn btn-outline-primary btn-sm btn-open-patient-ai <?= $can_access_ai_tools ? '' : 'd-none' ?>" type="button" data-ai-context="tasks_summary"
+                    <?= $ai_tools_enabled ? '' : 'disabled title="Disponible en el plan Summum"' ?>>
+                    <i class="bi bi-stars"></i> Resumir plan con IA
+                  </button>
                   <button class="btn btn-outline-primary btn-sm" type="button" id="btn-show-patient-work-plan-form">
                     <i class="bi bi-plus-lg"></i> Crear tarea manualmente
                   </button>
@@ -1643,7 +1755,9 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   </div>
                 <?php endif; ?>
                 <div id="patient-evolution-records-view">
-                  <div class="d-flex justify-content-end mb-3">
+                  <div class="d-flex justify-content-end gap-2 mb-3">
+                    <button class="btn btn-outline-primary btn-sm btn-open-patient-ai <?= $can_access_ai_tools ? '' : 'd-none' ?>" type="button" data-ai-context="evolution_summary"
+                      <?= $ai_tools_enabled ? '' : 'disabled title="Disponible en el plan Summum"' ?>><i class="bi bi-stars"></i> Resumir evoluci&oacute;n con IA</button>
                     <button class="btn btn-primary btn-sm" type="button" id="btn-show-patient-evolution-form">
                       <i class="bi bi-plus-lg"></i> Nuevo registro
                     </button>
@@ -1686,7 +1800,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                     </button>
                     <button type="button" class="btn btn-outline-primary btn-sm" id="btn-create-patient-drawing"
                       <?= $drawing_board_enabled ? '' : 'disabled title="Disponible en un plan superior"' ?>>
-                      <i class="bi bi-brush"></i> Crear dibujo
+                      <i class="bi bi-brush"></i> Usar pizarra
                     </button>
                     <button type="button" class="btn btn-primary btn-sm" id="btn-show-patient-document-form"
                       <?= $document_uploads_enabled ? '' : 'disabled title="La subida de adjuntos está disponible en un plan superior"' ?>>
@@ -1720,13 +1834,25 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                 <div class="alert alert-info small mb-3" id="patient-legal-documents-info-alert">
                   A&ntilde;ade aqu&iacute; los consentimientos y documentos legales firmados/aceptados, o indica si han sido aceptados de forma externa.
                 </div>
+                <?php if ($can_access_settings): ?>
+                  <div class="d-flex justify-content-end gap-2 flex-wrap mb-3">
+                    <button type="button" class="btn btn-outline-primary btn-sm <?= $legal_consent_templates_enabled ? '' : 'plan-locked' ?>" id="btn-suggested-patient-legal-documents"
+                      <?= $legal_consent_templates_enabled ? '' : 'disabled title="Disponible en un plan superior"' ?>>
+                      <i class="bi bi-stars"></i> Plantillas sugeridas
+                    </button>
+                    <button type="button" class="btn btn-primary btn-sm <?= $legal_consent_templates_enabled ? '' : 'plan-locked' ?>" id="btn-new-patient-legal-document"
+                      <?= $legal_consent_templates_enabled ? '' : 'disabled title="Disponible en un plan superior"' ?>>
+                      <i class="bi bi-plus-lg"></i> Nuevo consentimiento
+                    </button>
+                  </div>
+                <?php endif; ?>
                 <div class="table-responsive">
                   <table class="table align-middle">
                     <thead>
                       <tr>
                         <th>Documento</th>
                         <th>Estado</th>
-                        <th>Firmado</th>
+                        <th class="text-center">Firmado</th>
                         <th class="text-end">Acciones</th>
                       </tr>
                     </thead>
@@ -1746,6 +1872,11 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                 <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
                   <h6 class="mb-0">Informes disponibles</h6>
                   <div class="d-flex gap-2 flex-wrap">
+                    <button type="button" class="btn btn-outline-success btn-sm <?= $can_issue_attendance_certificates ? '' : 'd-none' ?>" id="btn-show-attendance-certificate" disabled>
+                      <i class="bi bi-file-earmark-check"></i> Justificante de asistencia
+                    </button>
+                    <button type="button" class="btn btn-outline-primary btn-sm btn-open-patient-ai <?= $can_access_ai_tools ? '' : 'd-none' ?>" data-ai-context="clinical_report"
+                      <?= $ai_tools_enabled ? '' : 'disabled title="Disponible en el plan Summum"' ?>><i class="bi bi-stars"></i> Generar borrador con IA</button>
                     <button type="button" class="btn btn-primary btn-sm" id="btn-show-custom-patient-report" disabled>
                       <i class="bi bi-upload"></i> A&ntilde;adir plantilla de informe
                     </button>
@@ -2326,7 +2457,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
             </div>
             <div class="d-flex gap-2 ms-auto me-2">
               <button type="button" class="btn btn-outline-primary btn-sm" id="btn-drawing-editor-new">
-                <i class="bi bi-brush"></i> Dibujo en blanco
+                <i class="bi bi-brush"></i> Pizarra en blanco
               </button>
             </div>
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -2598,11 +2729,36 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
       </div>
     </div>
 
+    <div class="modal fade" id="attendanceCertificateModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Generar justificante de asistencia</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div id="attendance-certificate-alert" class="alert d-none"></div>
+            <p class="text-muted small">Solo aparecen citas marcadas como realizadas.</p>
+            <label class="form-label" for="attendance-certificate-appointment">Cita</label>
+            <select class="form-select" id="attendance-certificate-appointment" disabled>
+              <option value="">Cargando citas...</option>
+            </select>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-success" id="btn-generate-attendance-certificate" disabled>
+              <i class="bi bi-file-earmark-pdf"></i> Generar PDF
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="modal fade" id="upcomingAppointmentsModal" tabindex="-1" aria-hidden="true">
       <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title">Pr&oacute;ximas citas</h5>
+            <h5 class="modal-title">Citas</h5>
             <div class="d-flex align-items-center gap-2 ms-auto">
               <button class="btn btn-sm btn-outline-secondary btn-export-modal-table" type="button" data-table-target="#upcomingAppointmentsModal" data-export-type="print" title="Imprimir"><i class="bi bi-printer"></i></button>
               <div class="dropdown">
@@ -2619,7 +2775,10 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
             <div id="upcoming-appointments-alert" class="alert d-none"></div>
             <ul class="nav nav-tabs mb-3" id="upcoming-appointments-tabs" role="tablist">
               <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="upcoming-list-tab" data-bs-toggle="tab" data-bs-target="#upcoming-list-panel" type="button" role="tab">Listado</button>
+                <button class="nav-link active" id="upcoming-list-tab" data-bs-toggle="tab" data-bs-target="#upcoming-list-panel" type="button" role="tab">Pr&oacute;ximas citas</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="past-list-tab" data-bs-toggle="tab" data-bs-target="#past-list-panel" type="button" role="tab">Citas anteriores</button>
               </li>
               <li class="nav-item" role="presentation">
                 <button class="nav-link" id="cancelled-list-tab" data-bs-toggle="tab" data-bs-target="#cancelled-list-panel" type="button" role="tab">Canceladas</button>
@@ -2700,6 +2859,25 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   </table>
                 </div>
                 <div class="text-end text-muted small mt-2" id="cancelled-appointments-count"></div>
+              </div>
+              <div class="tab-pane fade" id="past-list-panel" role="tabpanel" aria-labelledby="past-list-tab">
+                <div class="row g-2 mb-3">
+                  <div class="<?= $is_superadmin ? 'col-md-9' : 'col-md-12' ?>">
+                    <input type="search" class="form-control" id="past-appointments-search" placeholder="Buscar por <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?>, email, tel&eacute;fono, profesional, servicio, estado o pago">
+                  </div>
+                  <?php if ($is_superadmin): ?>
+                    <div class="col-md-3">
+                      <select class="form-select" id="past-appointments-professional"><option value="current">Profesional actual</option></select>
+                    </div>
+                  <?php endif; ?>
+                </div>
+                <div class="table-responsive upcoming-appointments-table-wrap">
+                  <table class="table align-middle">
+                    <thead><tr><th>Fecha</th><th>Profesional</th><th><?= htmlspecialchars($patient_label_title_singular, ENT_QUOTES, 'UTF-8') ?></th><th>Servicio</th><th>Modalidad</th><th>Estado</th><th>Pago</th><th class="text-end no-export">Acciones</th></tr></thead>
+                    <tbody id="past-appointments-body"><tr><td colspan="8" class="text-center text-muted py-4">Cargando...</td></tr></tbody>
+                  </table>
+                </div>
+                <div class="text-end text-muted small mt-2" id="past-appointments-count"></div>
               </div>
               <div class="tab-pane fade" id="upcoming-planning-panel" role="tabpanel" aria-labelledby="upcoming-planning-tab">
                 <div class="row g-2 mb-3 justify-content-end">
@@ -2865,6 +3043,16 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   <label class="form-label" for="patient-work-plan-description">Descripci&oacute;n / actividad</label>
                   <textarea class="form-control" id="patient-work-plan-description" name="description" rows="4"></textarea>
                 </div>
+                <div class="col-12">
+                  <label class="form-label" for="patient-work-plan-delivery-type">Requerir documento o dibujo</label>
+                  <select class="form-select" id="patient-work-plan-delivery-type" name="delivery_type">
+                    <option value="none">No requiere entrega</option>
+                    <option value="docx" <?= $online_document_editor_enabled ? '' : 'disabled' ?>>Documento</option>
+                    <option value="drawing" <?= $drawing_board_enabled ? '' : 'disabled' ?>>Pizarra</option>
+                    <option value="file" <?= $document_uploads_enabled ? '' : 'disabled' ?>>Otro archivo</option>
+                  </select>
+                  <div class="form-text">El <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?> podr&aacute; crear un documento, un dibujo o subir otro archivo desde el Portal.</div>
+                </div>
                 <div class="col-12" id="patient-work-plan-status-field">
                   <div class="form-check">
                     <input class="form-check-input" type="checkbox" id="patient-work-plan-completed">
@@ -2892,7 +3080,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
       <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title">Facturas emitidas</h5>
+            <h5 class="modal-title">Facturaci&oacute;n</h5>
             <div class="d-flex align-items-center gap-2 ms-auto">
               <button class="btn btn-sm btn-outline-secondary btn-export-modal-table" type="button" data-table-target="#invoicesModal" data-export-type="print" title="Imprimir"><i class="bi bi-printer"></i></button>
               <div class="dropdown">
@@ -2906,8 +3094,16 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
             </div>
           </div>
           <div class="modal-body">
-            <div id="invoices-modal-alert" class="alert d-none"></div>
-            <div class="row g-2 mb-3">
+            <ul class="nav nav-tabs mb-3" id="billing-hub-tabs" role="tablist">
+              <li class="nav-item"><button class="nav-link active" type="button" data-bs-toggle="tab" data-bs-target="#billing-invoices-panel"><i class="bi bi-receipt me-1"></i>Facturas</button></li>
+              <li class="nav-item"><button class="nav-link" type="button" data-bs-toggle="tab" data-bs-target="#billing-payments-panel"><i class="bi bi-cash-stack me-1"></i>Cobros</button></li>
+              <li class="nav-item"><button class="nav-link <?= $financial_hub_plan_enabled ? '' : 'disabled' ?>" type="button" <?= $financial_hub_plan_enabled ? 'data-bs-toggle="tab" data-bs-target="#billing-banks-panel"' : 'disabled title="Disponible en el plan Summum"' ?>><i class="bi bi-bank me-1"></i>Mis bancos<?= $financial_hub_plan_enabled ? '' : ' <i class="bi bi-lock-fill ms-1"></i>' ?></button></li>
+              <li class="nav-item"><button class="nav-link <?= $financial_hub_plan_enabled ? '' : 'disabled' ?>" type="button" <?= $financial_hub_plan_enabled ? 'data-bs-toggle="tab" data-bs-target="#billing-utilities-panel"' : 'disabled title="Disponible en el plan Summum"' ?>><i class="bi bi-lightning-charge me-1"></i>Mis suministros<?= $financial_hub_plan_enabled ? '' : ' <i class="bi bi-lock-fill ms-1"></i>' ?></button></li>
+            </ul>
+            <div class="tab-content">
+              <div class="tab-pane fade show active" id="billing-invoices-panel">
+                <div id="invoices-modal-alert" class="alert d-none"></div>
+                <div class="row g-2 mb-3">
               <div class="col-md-6">
                 <div class="input-group">
                   <span class="input-group-text"><i class="bi bi-search"></i></span>
@@ -2920,8 +3116,8 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
               <div class="col-md-3">
                 <input type="date" class="form-control" id="invoices-date-to" aria-label="Fecha hasta">
               </div>
-            </div>
-            <div class="table-responsive">
+                </div>
+                <div class="table-responsive">
               <table class="table align-middle">
                 <thead>
                   <tr>
@@ -2938,10 +3134,43 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   <tr><td colspan="7" class="text-center text-muted py-4">Cargando facturas...</td></tr>
                 </tbody>
               </table>
+                </div>
+              </div>
+              <div class="tab-pane fade" id="billing-payments-panel">
+                <div id="billing-payments-alert" class="alert d-none"></div>
+                <div class="row g-2 mb-3">
+                  <div class="col-md-6"><div class="input-group"><span class="input-group-text"><i class="bi bi-search"></i></span><input type="search" class="form-control" id="billing-payments-search" placeholder="Buscar por paciente, concepto o factura"></div></div>
+                  <div class="col-md-3"><input type="date" class="form-control" id="billing-payments-date-from" aria-label="Fecha desde"></div>
+                  <div class="col-md-3"><input type="date" class="form-control" id="billing-payments-date-to" aria-label="Fecha hasta"></div>
+                </div>
+                <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Fecha</th><th>Paciente</th><th>Concepto</th><th>Origen</th><th>M&eacute;todo</th><th>Factura</th><th class="text-end">Importe</th></tr></thead><tbody id="billing-payments-list"><tr><td colspan="7" class="text-center text-muted py-4">Abre esta pesta&ntilde;a para cargar los cobros.</td></tr></tbody></table></div>
+              </div>
+              <div class="tab-pane fade" id="billing-banks-panel">
+                <div class="d-flex justify-content-between align-items-center mb-3"><div><h6 class="mb-1">Mis bancos</h6><p class="text-muted small mb-0">Consulta los movimientos de tus cuentas bancarias sin salir de Praxis. Se muestran solo los &uacute;ltimos 30 d&iacute;as.</p></div><button class="btn btn-primary btn-sm btn-financial-connect" type="button" data-type="bank"><i class="bi bi-plus-lg"></i> A&ntilde;adir banco</button></div>
+                <div id="billing-banks-alert" class="alert d-none"></div><div id="billing-banks-connections" class="d-flex gap-2 flex-wrap mb-3"></div>
+                <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Fecha</th><th>Concepto</th><th class="text-end">Importe</th><th class="text-end">Saldo</th></tr></thead><tbody id="billing-banks-items"><tr><td colspan="4" class="text-center text-muted py-4">A&ntilde;ade o selecciona un banco.</td></tr></tbody></table></div>
+              </div>
+              <div class="tab-pane fade" id="billing-utilities-panel">
+                <div class="d-flex justify-content-between align-items-center mb-3"><div><h6 class="mb-1">Mis suministros</h6><p class="text-muted small mb-0">Consulta y descarga desde aqu&iacute; las facturas originales de tus empresas de electricidad, gas, telefon&iacute;a, agua y otros proveedores.</p></div><button class="btn btn-primary btn-sm btn-financial-connect" type="button" data-type="utility"><i class="bi bi-plus-lg"></i> A&ntilde;adir suministro</button></div>
+                <div id="billing-utilities-alert" class="alert d-none"></div><div id="billing-utilities-connections" class="d-flex gap-2 flex-wrap mb-3"></div>
+                <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Fecha</th><th>Concepto</th><th class="text-end">Importe</th><th class="text-end"><span class="visually-hidden">Factura</span></th></tr></thead><tbody id="billing-utilities-items"><tr><td colspan="4" class="text-center text-muted py-4">A&ntilde;ade o selecciona un suministro.</td></tr></tbody></table></div>
+              </div>
             </div>
           </div>
         </div>
       </div>
+    </div>
+
+    <div class="modal fade" id="financialConnectionModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+      <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable"><div class="modal-content"><form id="financial-connection-form">
+        <div class="modal-header"><h5 class="modal-title" id="financial-connection-title">A&ntilde;adir conexi&oacute;n</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body"><div class="alert alert-info"><div><i class="bi bi-shield-check me-2"></i>SimplyGest Praxis no almacena tus claves. Solo tendr&aacute;s que hacer esto una vez.</div><div class="small mt-2">Al continuar, confirmas que has le&iacute;do y aceptas la <a href="https://www.arcopay.io/politica-de-privacidad.html" target="_blank" rel="noopener noreferrer">Pol&iacute;tica de Privacidad</a> y el <a href="https://www.arcopay.io/aviso-legal.html" target="_blank" rel="noopener noreferrer">Aviso Legal</a> de Arcopay.</div></div><div id="financial-connection-alert" class="alert d-none"></div><input type="hidden" id="financial-connection-type" name="type" value="bank"><input type="hidden" id="financial-service" name="service"><input type="hidden" id="financial-display-name" name="display_name"><input type="hidden" id="financial-session-id" name="session_id"><input type="hidden" id="financial-counter-id" name="counter_id"><input type="hidden" id="financial-account-id" name="account_id">
+          <div class="financial-wizard-step" id="financial-step-provider"><div class="input-group mb-3"><span class="input-group-text"><i class="bi bi-search"></i></span><input type="search" class="form-control" id="financial-provider-search" placeholder="Buscar banco..."></div><div id="financial-provider-list" class="financial-provider-list"><div class="text-center text-muted py-5">Cargando entidades...</div></div></div>
+          <div class="financial-wizard-step d-none" id="financial-step-credentials"><div id="financial-selected-provider" class="financial-selected-provider mb-3"></div><p class="text-muted">Introduce los datos con los que accedes habitualmente.</p><div class="row g-3" id="financial-credential-fields"></div></div>
+          <div class="financial-wizard-step d-none" id="financial-step-challenge"><div id="financial-challenge-content"></div></div>
+          <div class="financial-wizard-step d-none" id="financial-step-products"><h6>Elige qu&eacute; quieres a&ntilde;adir</h6><p class="text-muted small">Selecciona una o varias cuentas, tarjetas o contratos.</p><div id="financial-products-list" class="financial-products-list"></div></div>
+        </div><div class="modal-footer"><button type="button" class="btn btn-outline-secondary me-auto" data-bs-dismiss="modal">Cancelar</button><button type="button" class="btn btn-outline-secondary" id="btn-financial-back"><i class="bi bi-arrow-left"></i> Anterior</button><button class="btn btn-primary" id="btn-save-financial-connection" type="submit">Continuar</button></div>
+      </form><div class="financial-wizard-loading d-none" id="financial-wizard-loading" role="status" aria-live="polite"><div class="spinner-border text-primary" aria-hidden="true"></div><h6 class="mt-3 mb-1" id="financial-wizard-loading-title">Conectando con tu entidad...</h6><p class="text-muted mb-0">Este proceso puede tardar hasta un minuto. No cierres esta ventana.</p></div></div></div>
     </div>
 
     <div class="modal fade" id="sendInvoiceEmailModal" tabindex="-1" aria-hidden="true">
@@ -3065,12 +3294,12 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
       </div>
     <?php endif; ?>
 
-    <?php if ($is_superadmin): ?>
+    <?php if ($is_superadmin || $session_role === 'admin'): ?>
       <div class="modal fade" id="appLogModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
           <div class="modal-content">
             <div class="modal-header">
-              <h5 class="modal-title">Log de actividad</h5>
+              <h5 class="modal-title">Log e Incidencias</h5>
               <div class="d-flex align-items-center gap-2 ms-auto">
                 <button class="btn btn-sm btn-outline-secondary btn-export-modal-table" type="button" data-table-target="#appLogModal" data-export-type="print" title="Imprimir"><i class="bi bi-printer"></i></button>
                 <div class="dropdown">
@@ -3085,6 +3314,12 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
             </div>
             <div class="modal-body">
               <div id="app-log-alert" class="alert d-none"></div>
+              <ul class="nav nav-tabs mb-3" id="app-log-tabs" role="tablist">
+                <li class="nav-item" role="presentation"><button class="nav-link active" id="app-log-tab" data-bs-toggle="tab" data-bs-target="#app-log-panel" type="button" role="tab">Log</button></li>
+                <li class="nav-item" role="presentation"><button class="nav-link" id="app-incidents-tab" data-bs-toggle="tab" data-bs-target="#app-incidents-panel" type="button" role="tab">Incidencias <span class="badge text-bg-danger d-none" id="app-incidents-count"></span></button></li>
+              </ul>
+              <div class="tab-content">
+              <div class="tab-pane fade show active" id="app-log-panel" role="tabpanel">
               <div class="row g-2 mb-3">
                 <div class="col-md-6">
                   <div class="input-group">
@@ -3115,6 +3350,15 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                     <tr><td colspan="6" class="text-center text-muted py-4">Cargando log...</td></tr>
                   </tbody>
                 </table>
+              </div>
+              </div>
+              <div class="tab-pane fade" id="app-incidents-panel" role="tabpanel">
+                <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                  <p class="text-muted small mb-0">Aqu&iacute; se muestran situaciones que conviene revisar para evitar interrupciones o datos incoherentes.</p>
+                  <button class="btn btn-sm btn-outline-secondary flex-shrink-0" type="button" id="btn-refresh-app-incidents"><i class="bi bi-arrow-clockwise me-1"></i>Actualizar</button>
+                </div>
+                <div id="app-incidents-list"><div class="text-center text-muted py-5">Cargando incidencias...</div></div>
+              </div>
               </div>
             </div>
           </div>
@@ -3271,9 +3515,12 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                     <div class="col-12">
                       <label class="form-label" for="onboarding-initial-view">Elige qué quieres ver primero cuando inicies sesión</label>
                       <select class="form-select" id="onboarding-initial-view">
+                        <option value="remember">Recordar la &uacute;ltima vista usada</option>
                         <option value="dashboard">Dashboard</option>
                         <option value="month">Agenda mensual</option>
                         <option value="week">Agenda semanal</option>
+                        <option value="agenda">Agenda por columnas</option>
+                        <option value="list">Agenda en lista</option>
                         <option value="patients"><?= htmlspecialchars($patient_label_title_plural, ENT_QUOTES, 'UTF-8') ?></option>
                         <option value="upcoming">Citas</option>
                       </select>
@@ -3286,7 +3533,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
               <section class="onboarding-step d-none" data-step="4">
                 <div class="onboarding-step-heading">
                   <div class="onboarding-step-icon"><i class="bi bi-window"></i></div>
-                  <div><h3>Portal y reservas</h3><p>Tu portal permite que tus pacientes o clientes consulten y gestionen sus citas desde su propio espacio.</p></div>
+                  <div><h3>Portal y reservas</h3><p>Tu portal permite que tus <?= htmlspecialchars($patient_label_plural, ENT_QUOTES, 'UTF-8') ?> consulten y gestionen sus citas desde su propio espacio.</p></div>
                 </div>
                 <div class="onboarding-form-card">
                   <div class="onboarding-portal-card">
@@ -3368,7 +3615,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
               </li>
               <li class="nav-item <?= $is_superadmin ? '' : 'd-none' ?>" role="presentation">
                 <button class="nav-link" id="services-settings-tab" data-bs-toggle="tab" data-bs-target="#services-settings-panel"
-                  type="button" role="tab">Precios</button>
+                  type="button" role="tab">Tarifas</button>
               </li>
               <li class="nav-item <?= $is_superadmin ? '' : 'd-none' ?>" role="presentation">
                 <button class="nav-link" id="bonuses-settings-tab" data-bs-toggle="tab" data-bs-target="#bonuses-settings-panel"
@@ -3385,6 +3632,11 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
               <li class="nav-item" role="presentation">
                 <button class="nav-link" id="task-templates-settings-tab" data-bs-toggle="tab" data-bs-target="#task-templates-settings-panel"
                   type="button" role="tab">Mis Tareas</button>
+              </li>
+              <li class="nav-item <?= $is_superadmin ? '' : 'd-none' ?>" role="presentation">
+                <button class="nav-link <?= $custom_fields_plan_enabled ? '' : 'plan-locked' ?>" id="custom-fields-settings-tab"
+                  <?= $custom_fields_plan_enabled ? 'data-bs-toggle="tab" data-bs-target="#custom-fields-settings-panel"' : 'disabled title="Disponible en los planes Magister y Summum"' ?>
+                  type="button" role="tab">Campos personalizados<?= $custom_fields_plan_enabled ? '' : ' <i class="bi bi-lock-fill"></i>' ?></button>
               </li>
               <li class="nav-item" role="presentation">
                 <button class="nav-link <?= $questionnaires_plan_enabled ? '' : 'plan-locked' ?>" id="questionnaires-settings-tab"
@@ -3410,6 +3662,10 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                 <button class="nav-link <?= $calendar_sync_plan_enabled ? '' : 'plan-locked' ?>" id="calendar-settings-tab"
                   <?= $calendar_sync_plan_enabled ? 'data-bs-toggle="tab" data-bs-target="#calendar-settings-panel"' : 'disabled title="Disponible en los planes Magister y Summum"' ?>
                   type="button" role="tab">Calendario online<?= $calendar_sync_plan_enabled ? '' : ' <i class="bi bi-lock-fill"></i>' ?></button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="weather-settings-tab" data-bs-toggle="tab" data-bs-target="#weather-settings-panel"
+                  type="button" role="tab">Previsión meteorológica</button>
               </li>
               <li class="nav-item <?= $is_superadmin ? '' : 'd-none' ?>" role="presentation">
                 <button class="nav-link" id="interface-settings-tab" data-bs-toggle="tab" data-bs-target="#interface-settings-panel"
@@ -3441,8 +3697,16 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   type="button" role="tab">Control horario<?= $time_tracking_plan_enabled ? '' : ' <i class="bi bi-lock-fill"></i>' ?></button>
               </li>
               <li class="nav-item <?= $is_superadmin ? '' : 'd-none' ?>" role="presentation">
+                <button class="nav-link <?= $api_plan_enabled ? '' : 'plan-locked' ?>" id="api-settings-tab"
+                  <?= $api_plan_enabled ? 'data-bs-toggle="tab" data-bs-target="#api-settings-panel"' : 'disabled title="Disponible en el plan Summum"' ?>
+                  type="button" role="tab">API<?= $api_plan_enabled ? '' : ' <i class="bi bi-lock-fill"></i>' ?></button>
+              </li>
+              <li class="nav-item <?= $is_superadmin ? '' : 'd-none' ?>" role="presentation">
                 <button class="nav-link" id="subscription-settings-tab" data-bs-toggle="tab" data-bs-target="#subscription-settings-panel"
                   type="button" role="tab">Suscripci&oacute;n</button>
+              </li>
+              <li class="nav-item <?= $is_superadmin ? '' : 'd-none' ?>" role="presentation">
+                <button class="nav-link" id="subscription-invoices-settings-tab" data-bs-toggle="tab" data-bs-target="#subscription-invoices-settings-panel" type="button" role="tab">Mis facturas</button>
               </li>
             </ul>
 
@@ -3614,7 +3878,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                         <th>Duración</th>
                         <th>Modalidad</th>
                         <th>Precio</th>
-                        <?php if ($discounts_plan_enabled): ?><th>% Descuento</th><?php endif; ?>
+                        <?php if ($discounts_plan_enabled): ?><th class="services-discount-column">% Descuento</th><?php endif; ?>
                         <?php if ($billing_plan_enabled): ?>
                           <th id="services-tax-column-title">IVA</th>
                         <?php endif; ?>
@@ -3716,6 +3980,19 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                 <div id="questionnaires-list"><div class="text-center text-muted py-4">Abre esta pesta&ntilde;a para cargar los cuestionarios.</div></div>
               </div>
 
+              <div class="tab-pane fade" id="custom-fields-settings-panel" role="tabpanel" aria-labelledby="custom-fields-settings-tab">
+                <div id="custom-fields-settings-alert" class="alert d-none small"></div>
+                <div class="alert alert-info small d-flex gap-2 align-items-start">
+                  <i class="bi bi-input-cursor-text fs-5"></i>
+                  <div>Crea datos adicionales para las fichas de tus <?= htmlspecialchars($patient_label_plural, ENT_QUOTES, 'UTF-8') ?> o para las citas y sesiones. Los campos obligatorios se solicitar&aacute;n al guardar.</div>
+                </div>
+                <div class="d-flex justify-content-between align-items-center gap-2 mb-3 flex-wrap">
+                  <div><h6 class="mb-0">Campos disponibles</h6><div class="small text-muted"><?= $custom_fields_plan_limit > 0 ? 'Tu plan permite hasta ' . $custom_fields_plan_limit . ' campos activos.' : 'Puedes crear todos los campos que necesites.' ?></div></div>
+                  <button type="button" class="btn btn-primary btn-sm" id="btn-new-custom-field"><i class="bi bi-plus-lg"></i> Nuevo campo</button>
+                </div>
+                <div id="custom-fields-settings-list"><div class="text-center text-muted py-4">Abre esta pesta&ntilde;a para cargar los campos.</div></div>
+              </div>
+
               <div class="tab-pane fade" id="interface-settings-panel" role="tabpanel" aria-labelledby="interface-settings-tab">
                 <div id="interface-settings-alert" class="alert d-none"></div>
                 <div class="interface-settings-compact">
@@ -3790,9 +4067,12 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                     <label class="col-lg-2 col-form-label" for="initial-calendar-view">Vista inicial</label>
                     <div class="col-lg-10">
                       <select class="form-select" id="initial-calendar-view">
+                        <option value="remember">Recordar la &uacute;ltima vista usada</option>
                         <option value="dashboard">Dashboard</option>
                         <option value="month">Mensual</option>
                         <option value="week">Semanal</option>
+                        <option value="agenda">Columnas</option>
+                        <option value="list">Lista semanal</option>
                         <option value="patients"><?= htmlspecialchars($patient_label_title_plural, ENT_QUOTES, 'UTF-8') ?></option>
                         <option value="upcoming">Citas</option>
                       </select>
@@ -3987,10 +4267,16 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   <label class="col-lg-2 col-form-label" for="email-provider">Sistema</label>
                   <div class="col-lg-10">
                     <select class="form-select" id="email-provider">
-                      <option value="phpmailer">PHPMailer / SMTP</option>
-                      <option value="google">Google Gmail API</option>
+                      <option value="platform">SimplyGest Praxis (recomendado)</option>
+                      <option value="google">Google Gmail</option>
+                      <option value="phpmailer">Servidor SMTP propio</option>
                     </select>
                   </div>
+                </div>
+
+                <div id="platform-email-settings-block" class="alert alert-info small py-2 mb-3">
+                  <i class="bi bi-envelope-check me-2"></i>
+                  Los correos autom&aacute;ticos se enviar&aacute;n desde SimplyGest Praxis con el nombre de tu centro. No necesitas configurar ninguna cuenta.
                 </div>
 
                 <div id="smtp-settings-block">
@@ -4247,6 +4533,49 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                 </div>
               </div>
 
+              <div class="tab-pane fade" id="weather-settings-panel" role="tabpanel" aria-labelledby="weather-settings-tab">
+                <div id="weather-settings-alert" class="alert d-none"></div>
+                <div class="d-flex align-items-center gap-3 mb-4">
+                  <div class="weather-settings-preview-icon"><i class="bi bi-cloud-sun"></i></div>
+                  <div>
+                    <h6 class="mb-1">Previsión meteorológica</h6>
+                    <div class="text-muted small">Muestra el tiempo en el calendario, el navbar y el dashboard.</div>
+                  </div>
+                </div>
+                <div class="form-check form-switch mb-4">
+                  <input class="form-check-input" type="checkbox" id="weather-enabled" checked>
+                  <label class="form-check-label fw-semibold" for="weather-enabled">Mostrar la previsión del tiempo</label>
+                </div>
+                <div id="weather-settings-location-fields">
+                  <div class="weather-location-option mb-3">
+                    <div class="form-check">
+                      <input class="form-check-input" type="radio" name="weather-location-mode" id="weather-location-auto" value="auto" checked>
+                      <label class="form-check-label fw-semibold" for="weather-location-auto">Usar mi ubicación automáticamente</label>
+                    </div>
+                    <div class="small text-muted mt-1 ms-4">Si no se puede obtener, se utilizará la dirección configurada del centro.</div>
+                    <div class="d-flex align-items-center flex-wrap gap-2 mt-2 ms-4">
+                      <span class="badge text-bg-secondary" id="weather-permission-status">Comprobando permiso...</span>
+                      <button type="button" class="btn btn-sm btn-outline-primary" id="btn-weather-request-location"><i class="bi bi-geo-alt me-1"></i>Solicitar ubicación</button>
+                    </div>
+                    <div class="small text-muted mt-2 ms-4" id="weather-center-fallback"></div>
+                  </div>
+                  <div class="weather-location-option">
+                    <div class="form-check">
+                      <input class="form-check-input" type="radio" name="weather-location-mode" id="weather-location-manual" value="manual">
+                      <label class="form-check-label fw-semibold" for="weather-location-manual">Indicar una ubicación manualmente</label>
+                    </div>
+                    <div class="input-group mt-2 ms-4 weather-manual-location-fields">
+                      <input type="text" class="form-control" id="weather-location-query" maxlength="500" placeholder="Ciudad, código postal o dirección">
+                      <button type="button" class="btn btn-outline-primary" id="btn-weather-resolve-location">Comprobar</button>
+                    </div>
+                    <input type="hidden" id="weather-location-latitude">
+                    <input type="hidden" id="weather-location-longitude">
+                    <input type="hidden" id="weather-location-resolved">
+                    <div class="alert alert-success py-2 mt-2 ms-4 mb-0 d-none" id="weather-location-result"></div>
+                  </div>
+                </div>
+              </div>
+
               <div class="tab-pane fade" id="legal-settings-panel" role="tabpanel" aria-labelledby="legal-settings-tab">
                 <div id="legal-settings-alert" class="alert d-none"></div>
                 <div class="row g-3 align-items-start mb-3">
@@ -4433,6 +4762,52 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   </div>
                 </div>
               <?php endif; ?>
+              <div class="tab-pane fade <?= ($is_superadmin && $api_plan_enabled) ? '' : 'd-none' ?>" id="api-settings-panel" role="tabpanel" aria-labelledby="api-settings-tab">
+                <div id="api-settings-alert" class="alert d-none small py-2"></div>
+                <div class="alert alert-info small py-2 mb-4">
+                  Conecta aplicaciones externas con los datos de tu centro. La clave identifica al centro completo: comp&aacute;rtela solo con servicios de confianza.
+                </div>
+                <div class="row g-4">
+                  <div class="col-12">
+                    <h6 class="mb-3">Acceso a la API</h6>
+                    <div class="mb-3">
+                      <label class="form-label" for="api-access-mode">Permisos de la clave</label>
+                      <select class="form-select form-select-sm" id="api-access-mode">
+                        <option value="read">Solo lectura</option>
+                        <option value="read_write">Lectura y escritura</option>
+                      </select>
+                      <div class="form-text">Solo lectura permite consultar datos. Lectura y escritura permite adem&aacute;s crear pacientes y citas.</div>
+                    </div>
+                    <div id="api-key-empty" class="border rounded p-3 mb-3">
+                      <div class="fw-semibold mb-1">Todav&iacute;a no hay una API Key activa</div>
+                      <div class="small text-muted">Genera una cuando vayas a configurar la integraci&oacute;n externa.</div>
+                    </div>
+                    <div id="api-key-active" class="border rounded p-3 mb-3 d-none">
+                      <div class="d-flex justify-content-between align-items-start gap-3">
+                        <div>
+                          <div class="fw-semibold">API Key activa</div>
+                          <code id="api-key-prefix"></code><span class="text-muted">&hellip;</span>
+                          <div class="small text-muted mt-2" id="api-key-meta"></div>
+                        </div>
+                        <span class="badge text-bg-success">Activa</span>
+                      </div>
+                    </div>
+                    <div id="api-key-generated" class="alert alert-warning d-none">
+                      <div class="fw-semibold mb-1">Copia esta clave ahora</div>
+                      <div class="small mb-2">Por seguridad no volver&aacute; a mostrarse completa.</div>
+                      <div class="input-group input-group-sm">
+                        <input class="form-control font-monospace" id="api-key-value" type="text" readonly>
+                        <button class="btn btn-outline-dark" type="button" id="btn-copy-api-key"><i class="bi bi-copy"></i> Copiar</button>
+                      </div>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2">
+                      <button class="btn btn-primary btn-sm" type="button" id="btn-generate-api-key"><i class="bi bi-key me-1"></i><span>Generar API Key</span></button>
+                      <button class="btn btn-outline-danger btn-sm d-none" type="button" id="btn-revoke-api-key"><i class="bi bi-x-circle me-1"></i>Revocar acceso</button>
+                      <a class="btn btn-outline-secondary btn-sm" href="api-docs.php" target="_blank" rel="noopener"><i class="bi bi-book me-1"></i>Documentaci&oacute;n</a>
+                    </div>
+                  </div>
+                </div>
+              </div>
               <div class="tab-pane fade <?= $is_superadmin ? '' : 'd-none' ?>" id="subscription-settings-panel" role="tabpanel" aria-labelledby="subscription-settings-tab">
                 <div id="subscription-settings-alert" class="alert d-none small py-2"></div>
                 <div id="subscription-sandbox-alert" class="alert alert-danger small py-2 <?= $braintree_environment === 'sandbox' ? '' : 'd-none' ?>">
@@ -4473,15 +4848,56 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   </div>
                 </div>
               </div>
+              <div class="tab-pane fade <?= $is_superadmin ? '' : 'd-none' ?>" id="subscription-invoices-settings-panel" role="tabpanel" aria-labelledby="subscription-invoices-settings-tab">
+                <div class="d-flex justify-content-between align-items-start gap-3 mb-3"><p class="text-muted small mb-0">Aqu&iacute; podr&aacute;s ver y descargar las facturas de tu suscripci&oacute;n a SimplyGest Praxis.</p><button class="btn btn-sm btn-outline-secondary" type="button" id="btn-refresh-subscription-invoices"><i class="bi bi-arrow-clockwise me-1"></i>Actualizar</button></div>
+                <div id="subscription-invoices-alert" class="alert d-none"></div>
+                <div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>Factura</th><th>Fecha</th><th>Concepto</th><th class="text-end">Base</th><th class="text-end">Impuesto</th><th class="text-end">Total</th><th></th></tr></thead><tbody id="subscription-invoices-body"><tr><td colspan="7" class="text-center text-muted py-5">Cargando facturas...</td></tr></tbody></table></div>
+              </div>
               <div class="tab-pane fade <?= ($is_superadmin && $billing_plan_enabled) ? '' : 'd-none' ?>" id="billing-settings-panel" role="tabpanel" aria-labelledby="billing-settings-tab">
                 <div id="billing-settings-alert" class="alert d-none"></div>
                 <div class="alert alert-info py-2 small mb-3">
-                  Al habilitar la facturaci&oacute;n, se emitir&aacute;n autom&aacute;ticamente las facturas cada vez que se reciba un pago online o se marque una reserva, bono o informe como &quot;pagado&quot;.
+                  Elige qui&eacute;n emitir&aacute; las facturas cuando se reciba un pago online o se marque una reserva, bono o informe como &quot;pagado&quot;.
                 </div>
-                <div class="form-check form-switch mb-4">
-                  <input class="form-check-input" type="checkbox" id="billing-enabled">
-                  <label class="form-check-label" for="billing-enabled">Activar emisi&oacute;n de facturas</label>
+                <input type="checkbox" class="d-none" id="billing-enabled">
+                <div class="row g-3 mb-4" id="billing-provider-options">
+                  <div class="col-lg-4">
+                    <label class="billing-provider-card border rounded p-3 h-100 d-block" for="billing-provider-none">
+                      <input class="form-check-input me-2 billing-provider-option" type="radio" name="billing-provider" id="billing-provider-none" value="none">
+                      <strong>No emitir facturas</strong>
+                      <span class="d-block text-muted small mt-2">Praxis registrar&aacute; los cobros sin generar facturas.</span>
+                    </label>
+                  </div>
+                  <div class="col-lg-4">
+                    <label class="billing-provider-card border rounded p-3 h-100 d-block" for="billing-provider-praxis">
+                      <input class="form-check-input me-2 billing-provider-option" type="radio" name="billing-provider" id="billing-provider-praxis" value="praxis">
+                      <strong>SimplyGest Praxis</strong>
+                      <span class="d-block text-muted small mt-2">Praxis numera, crea y env&iacute;a las facturas a VeriFactu.</span>
+                    </label>
+                  </div>
+                  <div class="col-lg-4">
+                    <label class="billing-provider-card border rounded p-3 h-100 d-block" for="billing-provider-cloud">
+                      <input class="form-check-input me-2 billing-provider-option" type="radio" name="billing-provider" id="billing-provider-cloud" value="simplygest_cloud">
+                      <strong>SimplyGest Cloud</strong>
+                      <span class="d-block text-muted small mt-2">Cloud crea, numera y gestiona el env&iacute;o obligatorio a VeriFactu.</span>
+                    </label>
+                  </div>
                 </div>
+                <div id="cloud-billing-settings-block" class="border rounded p-3 mb-4 d-none">
+                  <h6 class="mb-2">Conexi&oacute;n con SimplyGest Cloud</h6>
+                  <p class="text-muted small">La numeraci&oacute;n y la configuraci&oacute;n fiscal se administran en SimplyGest Cloud. Praxis solo registrar&aacute; la referencia cuando Cloud confirme que la factura ha sido creada correctamente.</p>
+                  <div id="cloud-billing-connection-status" class="alert alert-secondary small py-2">Todav&iacute;a no se ha comprobado la conexi&oacute;n.</div>
+                  <label class="form-label" for="cloud-billing-api-key">API Key de SimplyGest Cloud</label>
+                  <div class="row g-3 align-items-start">
+                    <div class="col-lg-8">
+                      <input type="password" class="form-control" id="cloud-billing-api-key" autocomplete="new-password" placeholder="Escribe la API Key">
+                      <div class="form-text" id="cloud-billing-api-key-help">Debe permitir lectura y creaci&oacute;n de ingresos/ventas.</div>
+                    </div>
+                    <div class="col-lg-4">
+                      <button class="btn btn-outline-primary w-100" type="button" id="btn-verify-cloud-billing"><i class="bi bi-shield-check me-1"></i>Comprobar conexi&oacute;n</button>
+                    </div>
+                  </div>
+                </div>
+                <div id="praxis-billing-settings-block">
                 <div class="border-top pt-3 mt-4" id="verifactu-settings-block">
                   <h6 class="mb-3">VeriFactu</h6>
                   <div class="alert alert-info py-2 small mb-2">
@@ -4506,7 +4922,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                 <div class="border-top pt-3 mt-4">
                   <h6 class="mb-3">Fiscalidad de las facturas</h6>
                   <div class="alert alert-warning py-2 small mb-3">
-                    Indica en la pesta&ntilde;a Precios si cada servicio est&aacute; exento o sujeto a impuesto. La exenci&oacute;n sanitaria depende tanto del servicio prestado como de la cualificaci&oacute;n del profesional.
+                    Indica en la pesta&ntilde;a Tarifas si cada servicio est&aacute; exento o sujeto a impuesto. La exenci&oacute;n sanitaria depende tanto del servicio prestado como de la cualificaci&oacute;n del profesional.
                   </div>
                   <div class="row g-3 mb-3">
                     <div class="col-md-6">
@@ -4549,6 +4965,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                     <input type="text" class="form-control" id="billing-report-concept" maxlength="255" placeholder="Informe {titulo}">
                     <div class="form-text">Variable: {titulo}</div>
                   </div>
+                </div>
                 </div>
               </div>
               <div class="tab-pane fade <?= ($is_superadmin && $tenant_signature_plan_enabled) ? '' : 'd-none' ?>" id="signature-settings-panel" role="tabpanel" aria-labelledby="signature-settings-tab">
@@ -4919,6 +5336,16 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                 <label class="form-label" for="task-template-item-description">Descripci&oacute;n / actividad</label>
                 <textarea class="form-control" id="task-template-item-description" rows="4"></textarea>
               </div>
+              <div class="mb-3 <?= ($online_document_editor_enabled || $drawing_board_enabled || $document_uploads_enabled) ? '' : 'opacity-50' ?>">
+                <label class="form-label" for="task-template-item-delivery-type">Requerir documento o dibujo</label>
+                <select class="form-select" id="task-template-item-delivery-type">
+                  <option value="none">No requiere entrega</option>
+                  <option value="docx" <?= $online_document_editor_enabled ? '' : 'disabled' ?>>Documento</option>
+                  <option value="drawing" <?= $drawing_board_enabled ? '' : 'disabled' ?>>Pizarra</option>
+                  <option value="file" <?= $document_uploads_enabled ? '' : 'disabled' ?>>Otro archivo</option>
+                </select>
+                <div class="form-text">El <?= htmlspecialchars($patient_label_singular, ENT_QUOTES, 'UTF-8') ?> podr&aacute; crear un documento, un dibujo o subir otro archivo desde el Portal.</div>
+              </div>
               <div class="mb-3 <?= $document_uploads_enabled ? '' : 'opacity-50' ?>">
                 <label class="form-label" for="task-template-item-file">Archivo asociado (opcional)</label>
                 <input type="file" class="form-control" id="task-template-item-file" name="attachment" accept=".pdf,.docx,.jpg,.jpeg,.png,.webp,.gif"
@@ -5139,9 +5566,8 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                   <label class="col-lg-2 col-form-label" for="professional-editor-video-provider">Videollamadas</label>
                   <div class="col-lg-10">
                     <select class="form-select" id="professional-editor-video-provider">
-                      <option value="livekit">LiveKit</option>
-                      <option value="daily">Daily</option>
-                      <option value="manual">Enlace manual (Zoom, Teams u otro proveedor)</option>
+                      <option value="daily">Videollamada integrada</option>
+                      <option value="manual">Usar enlace propio (Zoom, Teams u otro proveedor)</option>
                     </select>
                     <div class="form-text" id="professional-editor-livekit-help">El proveedor se aplica a las citas online de este profesional.</div>
                   </div>
@@ -5169,6 +5595,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                     <div class="d-flex flex-column flex-md-row gap-2">
                       <select class="form-select" id="professional-editor-knowledge-mode">
                         <option value="own">Solo sector principal</option>
+                        <option value="tenant">Especialidades del centro</option>
                         <option value="related">Sector principal y relacionados</option>
                         <option value="custom">Personalizado</option>
                       </select>
@@ -5226,7 +5653,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                     <div class="col-md-6">
                       <label class="form-label" for="professional-editor-initial-view">Vista inicial</label>
                       <select class="form-select form-select-sm" id="professional-editor-initial-view">
-                        <option value="">Usar la del centro</option><option value="dashboard">Dashboard</option><option value="month">Mes</option><option value="week">Semana</option><option value="patients">Pacientes</option><option value="upcoming">Pr&oacute;ximas citas</option>
+                        <option value="">Usar la del centro</option><option value="remember">Recordar la &uacute;ltima vista usada</option><option value="dashboard">Dashboard</option><option value="month">Mes</option><option value="week">Semana</option><option value="agenda">Columnas</option><option value="list">Lista</option><option value="patients">Pacientes</option><option value="upcoming">Pr&oacute;ximas citas</option>
                       </select>
                     </div>
                     <div class="col-md-6">
@@ -5325,6 +5752,24 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                     </div>
                     <div class="col-md-6">
                       <div class="form-check form-switch">
+                        <input class="form-check-input professional-permission-check" type="checkbox" id="professional-permission-ai-tools" data-permission="ai_tools">
+                        <label class="form-check-label" for="professional-permission-ai-tools">Opciones IA</label>
+                      </div>
+                    </div>
+                    <div class="col-md-6">
+                      <div class="form-check form-switch">
+                        <input class="form-check-input professional-permission-check" type="checkbox" id="professional-permission-team-notes" data-permission="team_notes">
+                        <label class="form-check-label" for="professional-permission-team-notes">Notas/Tareas</label>
+                      </div>
+                    </div>
+                    <div class="col-md-6">
+                      <div class="form-check form-switch">
+                        <input class="form-check-input professional-permission-check" type="checkbox" id="professional-permission-team-files" data-permission="team_files">
+                        <label class="form-check-label" for="professional-permission-team-files">Praxis Cloud</label>
+                      </div>
+                    </div>
+                    <div class="col-md-6">
+                      <div class="form-check form-switch">
                         <input class="form-check-input professional-permission-check" type="checkbox" id="professional-permission-create-appointments" data-permission="create_appointments">
                         <label class="form-check-label" for="professional-permission-create-appointments">Crear citas</label>
                       </div>
@@ -5333,6 +5778,12 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
                       <div class="form-check form-switch">
                         <input class="form-check-input professional-permission-check" type="checkbox" id="professional-permission-cancel-appointments" data-permission="cancel_appointments">
                         <label class="form-check-label" for="professional-permission-cancel-appointments">Cancelar citas</label>
+                      </div>
+                    </div>
+                    <div class="col-md-6">
+                      <div class="form-check form-switch">
+                        <input class="form-check-input professional-permission-check" type="checkbox" id="professional-permission-attendance-certificates" data-permission="issue_attendance_certificates">
+                        <label class="form-check-label" for="professional-permission-attendance-certificates">Emitir justificantes de asistencia</label>
                       </div>
                     </div>
                     <div class="col-md-6">
@@ -5386,8 +5837,8 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body">
-            <div class="alert alert-info small">
-              Elige qu&eacute; base de conocimiento quieres usar para tus diagn&oacute;sticos y objetivos. A&ntilde;adir varios sectores puede hacer que aparezcan diagn&oacute;sticos, t&eacute;cnicas o tareas duplicadas en el buscador.
+            <div class="alert alert-info small" id="professional-knowledge-sectors-info">
+              Elige qu&eacute; bases de conocimiento quieres utilizar. La interfaz conservar&aacute; la nomenclatura del sector principal del centro.
             </div>
             <div id="professional-knowledge-sectors-list" class="d-flex flex-column gap-2"></div>
           </div>
@@ -6067,6 +6518,29 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
   </div>
 
   <?php if ($is_superadmin): ?>
+  <div class="modal fade" id="systemStatusModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content">
+      <div class="modal-header"><div><h5 class="modal-title"><i class="bi bi-activity me-2"></i>Estado del sistema</h5><div class="small text-muted" id="system-status-checked-at">Comprobando servicios...</div></div><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+      <div class="modal-body bg-body-tertiary"><div id="system-status-alert" class="alert d-none small"></div><div id="system-status-overview" class="mb-4"></div><div id="system-status-grid" class="row g-3"><div class="col-12 text-center py-5"><div class="spinner-border text-primary"></div><p class="text-muted mt-3 mb-0">Comprobando servicios e integraciones...</p></div></div></div>
+      <div class="modal-footer"><button type="button" class="btn btn-outline-secondary me-auto" data-bs-dismiss="modal">Cerrar</button><button type="button" class="btn btn-primary" id="btn-refresh-system-status"><i class="bi bi-arrow-clockwise me-1"></i>Volver a comprobar</button></div>
+    </div></div>
+  </div>
+  <div class="modal fade" id="dataImportModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title"><i class="bi bi-database-up me-2"></i>Importar datos</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="d-flex align-items-center gap-2 mb-4" id="data-import-steps"><span class="badge rounded-pill text-bg-primary" data-import-step-badge="1">1</span><small>Introducci&oacute;n</small><hr class="flex-grow-1"><span class="badge rounded-pill text-bg-secondary" data-import-step-badge="2">2</span><small>Formato</small><hr class="flex-grow-1"><span class="badge rounded-pill text-bg-secondary" data-import-step-badge="3">3</span><small>Archivo</small><hr class="flex-grow-1"><span class="badge rounded-pill text-bg-secondary" data-import-step-badge="4">4</span><small>Vista previa</small><hr class="flex-grow-1"><span class="badge rounded-pill text-bg-secondary" data-import-step-badge="5">5</span><small>Resultado</small></div>
+        <div id="data-import-alert" class="alert d-none"></div>
+        <section data-import-step="1"><div class="alert alert-info small">Este asistente te ayudar&aacute; a importar datos de pacientes, citas o miembros del equipo de forma sencilla.</div><p>Indica qu&eacute; datos quieres importar</p><div class="row g-3"><div class="col-md-4"><button class="btn btn-outline-primary w-100 p-4 data-import-entity" data-entity="patients"><i class="bi bi-people fs-2 d-block mb-2"></i>Pacientes</button></div><div class="col-md-4"><button class="btn btn-outline-primary w-100 p-4 data-import-entity" data-entity="professionals"><i class="bi bi-person-badge fs-2 d-block mb-2"></i>Profesionales</button></div><div class="col-md-4"><button class="btn btn-outline-primary w-100 p-4 data-import-entity" data-entity="appointments"><i class="bi bi-calendar3 fs-2 d-block mb-2"></i>Citas / Agenda</button></div></div></section>
+        <section data-import-step="2" class="d-none"><h6 id="data-import-format-title"></h6><p>Descarga la plantilla de ejemplo y rell&eacute;nala con tus datos, respetando los nombres, n&uacute;mero y orden de las columnas. La plantilla incluye datos de prueba para que sepas en qu&eacute; formato debe ir cada campo.</p><a class="btn btn-outline-primary" id="data-import-template-link" href="#"><i class="bi bi-download me-1"></i>Descargar plantilla de ejemplo</a></section>
+        <section data-import-step="3" class="d-none"><label class="form-label" for="data-import-file">Archivo CSV</label><input class="form-control" type="file" id="data-import-file" accept=".csv,text/csv"><div class="form-text">M&aacute;ximo 5 MB y 5.000 registros. Si trabajas con Excel, guarda la hoja como CSV UTF-8 antes de importarla.</div></section>
+        <section data-import-step="4" class="d-none"><div id="data-import-preview-summary" class="mb-3"></div><div class="table-responsive"><table class="table table-sm table-striped"><thead id="data-import-preview-head"></thead><tbody id="data-import-preview-body"></tbody></table></div></section>
+        <section data-import-step="5" class="d-none"><div id="data-import-result" class="text-center py-5"></div></section>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-outline-secondary me-auto" data-bs-dismiss="modal">Cerrar</button><button type="button" class="btn btn-outline-secondary" id="btn-data-import-back">Atr&aacute;s</button><button type="button" class="btn btn-primary" id="btn-data-import-next">Continuar</button></div>
+    </div></div>
+  </div>
+
   <div class="modal fade" id="dataExportModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
       <div class="modal-content">
@@ -6188,8 +6662,153 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
           <div id="questionnaire-options-editor" class="mt-4 d-none"><div class="d-flex justify-content-between align-items-center mb-2"><div><h6 class="mb-0">Opciones</h6><span class="small text-muted" id="questionnaire-correct-help"></span></div><button class="btn btn-outline-primary btn-sm" type="button" id="btn-add-questionnaire-option"><i class="bi bi-plus"></i> Opci&oacute;n</button></div><div id="questionnaire-option-list"></div></div>
           <div id="questionnaire-boolean-correct" class="mt-4 d-none"><label class="form-label small" for="questionnaire-question-boolean-correct">Respuesta correcta</label><select class="form-select form-select-sm" id="questionnaire-question-boolean-correct"><option value="">Sin respuesta correcta</option><option value="yes">S&iacute;</option><option value="no">No</option></select></div>
           <div id="questionnaire-text-correct" class="mt-4 d-none"><label class="form-label small" for="questionnaire-question-text-correct">Respuesta correcta <span class="text-muted">(opcional)</span></label><input class="form-control form-control-sm" id="questionnaire-question-text-correct"></div>
+          <div id="questionnaire-delivery-help" class="alert alert-info small py-2 px-3 mt-4 mb-0 d-none"></div>
         </div>
         <div class="modal-footer justify-content-between"><button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button><button type="button" class="btn btn-primary btn-sm" id="btn-save-questionnaire-question">Guardar pregunta</button></div>
+      </div>
+    </div>
+  </div>
+  <?php endif; ?>
+
+  <?php if ($custom_fields_plan_enabled && $is_superadmin): ?>
+  <div class="modal fade" id="customFieldModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-md modal-dialog-centered"><div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title" id="custom-field-modal-title">Nuevo campo personalizado</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <form id="custom-field-form"><div class="modal-body">
+        <div id="custom-field-modal-alert" class="alert d-none small"></div><input type="hidden" id="custom-field-id" name="id" value="0">
+        <div class="mb-3"><label class="form-label small" for="custom-field-name">Nombre del campo</label><input class="form-control form-control-sm" id="custom-field-name" name="name" maxlength="180" required></div>
+        <div class="row g-3">
+          <div class="col-sm-6"><label class="form-label small" for="custom-field-entity">Se aplica a</label><select class="form-select form-select-sm" id="custom-field-entity" name="entity_type"><option value="patient"><?= htmlspecialchars($patient_label_title_singular, ENT_QUOTES, 'UTF-8') ?></option><option value="appointment">Cita / sesi&oacute;n</option></select></div>
+          <div class="col-sm-6"><label class="form-label small" for="custom-field-type">Tipo</label><select class="form-select form-select-sm" id="custom-field-type" name="field_type"><option value="text">Texto</option><option value="number">Num&eacute;rico</option><option value="date">Fecha</option><option value="boolean">S&iacute; / No</option><option value="select">Lista de opciones</option></select></div>
+          <div class="col-12 d-none" id="custom-field-options-wrap"><label class="form-label small" for="custom-field-options">Opciones</label><textarea class="form-control form-control-sm" id="custom-field-options" rows="4" placeholder="Una opci&oacute;n por l&iacute;nea"></textarea><div class="form-text">Escribe una opci&oacute;n en cada l&iacute;nea.</div></div>
+          <div class="col-sm-6"><label class="form-label small" for="custom-field-order">Orden</label><input class="form-control form-control-sm" type="number" id="custom-field-order" name="sort_order" value="0" min="0" max="9999"></div>
+          <div class="col-sm-6 d-flex align-items-end"><div class="form-check form-switch mb-1"><input class="form-check-input" type="checkbox" id="custom-field-required" name="is_required" value="1"><label class="form-check-label small" for="custom-field-required">Campo obligatorio</label></div></div>
+        </div>
+      </div><div class="modal-footer justify-content-between"><button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button><button type="submit" class="btn btn-primary btn-sm" id="btn-save-custom-field">Guardar campo</button></div></form>
+    </div></div>
+  </div>
+  <?php endif; ?>
+
+  <?php if ($is_admin): ?>
+  <div class="modal fade" id="teamNoteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered"><div class="modal-content"><form id="team-note-form">
+      <div class="modal-header"><h5 class="modal-title" id="team-note-modal-title">Nueva nota o tarea</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="alert d-none small" id="team-note-modal-alert"></div><input type="hidden" id="team-note-id" value="0">
+        <div class="row g-3">
+          <div class="col-md-4"><label class="form-label" for="team-note-type">Tipo</label><select class="form-select form-select-sm" id="team-note-type"><option value="note">Nota</option><option value="alert">Aviso</option><option value="task">Tarea</option></select></div>
+          <div class="col-md-4"><label class="form-label" for="team-note-visibility">Visible para</label><select class="form-select form-select-sm" id="team-note-visibility"><option value="private">Solo para m&iacute;</option><option value="team">Todo el equipo</option><option value="professional">Un profesional</option></select></div>
+          <div class="col-md-4 d-none" id="team-note-target-wrap"><label class="form-label" for="team-note-target">Profesional</label><select class="form-select form-select-sm" id="team-note-target"></select></div>
+          <div class="col-12"><label class="form-label" for="team-note-title">T&iacute;tulo</label><input class="form-control form-control-sm" id="team-note-title" maxlength="180" required></div>
+          <div class="col-12"><label class="form-label" for="team-note-content">Contenido</label><textarea class="form-control form-control-sm" id="team-note-content" rows="5" maxlength="12000"></textarea></div>
+          <div class="col-md-6"><label class="form-label" for="team-note-due">Fecha y hora <span class="text-muted fw-normal">(opcional)</span></label><input type="datetime-local" class="form-control form-control-sm" id="team-note-due"></div>
+          <div class="col-md-3"><label class="form-label" for="team-note-priority">Prioridad</label><select class="form-select form-select-sm" id="team-note-priority"><option value="low">Baja</option><option value="normal" selected>Normal</option><option value="high">Alta</option></select></div>
+          <div class="col-md-3 d-flex align-items-end"><div class="form-check form-switch mb-1"><input class="form-check-input" type="checkbox" id="team-note-pinned"><label class="form-check-label" for="team-note-pinned">Destacar</label></div></div>
+          <div class="col-12"><div class="border rounded p-3 bg-body-tertiary"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="team-note-show-agenda"><label class="form-check-label fw-semibold" for="team-note-show-agenda"><i class="bi bi-calendar3 me-1"></i>Mostrar tambi&eacute;n en la Agenda</label></div><div class="row g-2 mt-1 d-none" id="team-note-agenda-options"><div class="col-sm-6 col-lg-4"><label class="form-label small" for="team-note-agenda-duration">Duraci&oacute;n visual</label><select class="form-select form-select-sm" id="team-note-agenda-duration"><option value="15">15 minutos</option><option value="30" selected>30 minutos</option><option value="45">45 minutos</option><option value="60">1 hora</option><option value="90">1 hora y 30 minutos</option><option value="120">2 horas</option></select></div><div class="col-sm-6 d-flex align-items-end"><span class="form-text mb-1">No ocupa el hueco ni impide crear una cita.</span></div></div></div></div>
+        </div>
+      </div>
+      <div class="modal-footer justify-content-between"><div><button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button><button type="button" class="btn btn-outline-danger btn-sm ms-2 d-none" id="btn-delete-team-note-modal"><i class="bi bi-trash me-1"></i>Eliminar</button></div><button class="btn btn-primary btn-sm" type="submit" id="btn-save-team-note">Guardar</button></div>
+    </form></div></div>
+  </div>
+
+  <div class="modal fade" id="teamFileUploadModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered"><div class="modal-content"><form id="team-file-upload-form" enctype="multipart/form-data">
+      <div class="modal-header"><h5 class="modal-title">Subir archivo</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body"><div class="alert d-none small" id="team-file-upload-alert"></div><div class="row g-3">
+        <div class="col-12"><label class="form-label" for="team-file-input">Archivo</label><input type="file" class="form-control form-control-sm" id="team-file-input" required accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.rtf,.jpg,.jpeg,.png,.webp,.gif,.zip"><div class="form-text">PDF, documentos, hojas de c&aacute;lculo, im&aacute;genes o ZIP. M&aacute;ximo 25 MB.</div></div>
+        <div class="col-md-8"><label class="form-label" for="team-file-title">Nombre <span class="text-muted fw-normal">(opcional)</span></label><input class="form-control form-control-sm" id="team-file-title" maxlength="180" placeholder="Se usar&aacute; el nombre del archivo si lo dejas vac&iacute;o"></div>
+        <div class="col-md-4"><label class="form-label" for="team-file-visibility">Visibilidad</label><select class="form-select form-select-sm" id="team-file-visibility"><option value="private">Privado</option><option value="team">Todo el equipo</option></select></div>
+        <div class="col-12"><label class="form-label" for="team-file-description">Descripci&oacute;n <span class="text-muted fw-normal">(opcional)</span></label><textarea class="form-control form-control-sm" id="team-file-description" rows="2" maxlength="500"></textarea></div>
+      </div></div>
+      <div class="modal-footer justify-content-between"><button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary btn-sm" type="submit" id="btn-upload-team-file"><i class="bi bi-cloud-arrow-up"></i> Subir</button></div>
+    </form></div></div>
+  </div>
+
+  <div class="modal fade" id="teamFileEditModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content"><form id="team-file-edit-form">
+      <div class="modal-header"><h5 class="modal-title">Editar archivo</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body"><input type="hidden" id="team-file-edit-id"><div class="mb-3"><label class="form-label" for="team-file-edit-title">Nombre</label><input class="form-control form-control-sm" id="team-file-edit-title" maxlength="180" required></div><div><label class="form-label" for="team-file-edit-visibility">Visibilidad</label><select class="form-select form-select-sm" id="team-file-edit-visibility"><option value="private">Privado</option><option value="team">Todo el equipo</option></select></div></div>
+      <div class="modal-footer justify-content-between"><button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button><button class="btn btn-primary btn-sm" type="submit">Guardar cambios</button></div>
+    </form></div></div>
+  </div>
+
+  <div class="modal fade" id="patientAiModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div>
+            <h5 class="modal-title mb-1"><i class="bi bi-stars me-2 text-primary"></i><span id="patient-ai-title">Asistente con IA</span></h5>
+            <div class="text-muted small" id="patient-ai-subtitle"></div>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div id="patient-ai-alert" class="alert d-none small"></div>
+          <div id="patient-ai-form-view">
+            <div class="alert alert-light border small py-2 px-3 mb-3">
+              <i class="bi bi-shield-check text-primary me-1"></i>
+              La IA puede cometer errores. Revisa siempre el borrador antes de utilizarlo.
+              <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline" id="btn-open-patient-ai-notice">Uso responsable de la IA</button>
+            </div>
+            <div class="mb-3 d-none" id="patient-ai-report-type-wrap">
+              <label class="form-label" for="patient-ai-report-type">Tipo de informe</label>
+              <select class="form-select form-select-sm" id="patient-ai-report-type">
+                <option value="clinical_report">Informe cl&iacute;nico</option>
+                <option value="evolution">Informe de evoluci&oacute;n</option>
+                <option value="follow_up_report">Informe de seguimiento</option>
+              </select>
+            </div>
+            <label class="form-label" for="patient-ai-instructions">Indicaciones adicionales <span class="text-muted fw-normal">(opcional)</span></label>
+            <textarea class="form-control form-control-sm" id="patient-ai-instructions" rows="6" maxlength="1200" placeholder="Por ejemplo: destaca los cambios observados durante el &uacute;ltimo mes."></textarea>
+          </div>
+          <div id="patient-ai-loading-view" class="d-none py-4 text-center">
+            <div class="spinner-border text-primary mb-3" role="status"></div>
+            <h6 id="patient-ai-loading-text">Preparando la informaci&oacute;n...</h6>
+            <div class="progress mt-3" style="height: 6px"><div class="progress-bar progress-bar-striped progress-bar-animated" id="patient-ai-progress" style="width: 18%"></div></div>
+          </div>
+          <div id="patient-ai-result-view" class="d-none">
+            <label class="form-label" for="patient-ai-result">Borrador generado</label>
+            <textarea class="form-control" id="patient-ai-result" rows="16"></textarea>
+            <div class="alert alert-warning small mt-3 mb-0">Revisa y adapta el contenido antes de utilizarlo. La decisi&oacute;n final corresponde siempre al profesional.</div>
+          </div>
+        </div>
+        <div class="modal-footer justify-content-between">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn-outline-primary btn-sm d-none" id="btn-copy-patient-ai"><i class="bi bi-clipboard"></i> Copiar</button>
+            <button type="button" class="btn btn-primary btn-sm" id="btn-generate-patient-ai"><i class="bi bi-stars"></i> Generar borrador</button>
+            <div class="dropdown d-none" id="patient-ai-actions-wrap">
+              <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-folder-check"></i> Guardar / exportar</button>
+              <ul class="dropdown-menu dropdown-menu-end">
+                <li><button class="dropdown-item patient-ai-save-document" type="button" data-associate-appointment="0"><i class="bi bi-folder-plus me-2"></i>Guardar en Documentaci&oacute;n</button></li>
+                <li class="d-none" id="patient-ai-save-appointment-item"><button class="dropdown-item patient-ai-save-document" type="button" data-associate-appointment="1"><i class="bi bi-calendar2-check me-2"></i>Guardar asociado a esta cita</button></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><button class="dropdown-item" type="button" id="btn-download-patient-ai-pdf"><i class="bi bi-file-earmark-pdf me-2"></i>Descargar PDF</button></li>
+                <li><button class="dropdown-item" type="button" id="btn-print-patient-ai"><i class="bi bi-printer me-2"></i>Imprimir</button></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="patientAiNoticeModal" tabindex="-1" aria-hidden="true" data-help-button="off">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="bi bi-shield-check me-2 text-primary"></i>Uso responsable de la IA</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <p>Las funciones de inteligencia artificial son herramientas de apoyo y pueden cometer errores o interpretar incorrectamente la informaci&oacute;n.</p>
+          <p>El contenido generado debe ser revisado y aprobado por un profesional antes de guardarlo, compartirlo o utilizarlo. El profesional mantiene en todo momento la responsabilidad sobre el resultado final.</p>
+          <p>Praxis minimiza y seudonimiza la informaci&oacute;n enviada, excluyendo los datos identificativos y las notas internas o privadas.</p>
+          <p class="mb-0 small text-muted">Puedes ampliar esta informaci&oacute;n en nuestra <a href="privacidad.html" target="_blank" rel="noopener">Pol&iacute;tica de Privacidad</a> y en las <a href="condiciones.html" target="_blank" rel="noopener">Condiciones del servicio</a>.</p>
+        </div>
+        <div class="modal-footer justify-content-start">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+        </div>
       </div>
     </div>
   </div>
@@ -6207,7 +6826,8 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
     const IS_SUPERADMIN = <?= $is_superadmin ? 'true' : 'false' ?>;
     const CURRENT_USER_ID = <?= (int) $_SESSION['user_id'] ?>;
     const MEMBER_PERMISSIONS = <?= json_encode($member_permissions, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
-    const INITIAL_CALENDAR_VIEW = <?= json_encode(in_array(($current_professional_preferences['initial_calendar_view'] ?? 'month'), ['dashboard', 'week', 'month', 'patients', 'upcoming'], true) ? $current_professional_preferences['initial_calendar_view'] : 'month') ?>;
+    const INITIAL_CALENDAR_VIEW = <?= json_encode(in_array(($current_professional_preferences['initial_calendar_view'] ?? 'month'), ['dashboard', 'week', 'month', 'agenda', 'list', 'patients', 'upcoming'], true) ? $current_professional_preferences['initial_calendar_view'] : 'month') ?>;
+    const REMEMBER_LAST_CALENDAR_VIEW = <?= (($current_professional_preferences['initial_calendar_view_mode'] ?? '') === 'remember') ? 'true' : 'false' ?>;
     const EFFECTIVE_PROFESSIONAL_TIMEZONE = <?= json_encode($current_professional_preferences['timezone'] ?? tenant_timezone()) ?>;
     const DASHBOARD_CONFIG_MODE = <?= json_encode($dashboard_config_mode) ?>;
     const DASHBOARD_CONFIG = <?= json_encode($dashboard_config, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
@@ -6226,6 +6846,34 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
     const TIME_TRACKING_PLAN_ENABLED = <?= $time_tracking_plan_enabled ? 'true' : 'false' ?>;
     const INITIAL_TIME_TRACKING_ENABLED = <?= $time_tracking_enabled ? 'true' : 'false' ?>;
     const SUBSCRIPTION_CSRF_TOKEN = <?= json_encode($is_superadmin ? ($_SESSION['subscription_csrf_token'] ?? '') : '') ?>;
+    const API_KEYS_CSRF_TOKEN = <?= json_encode($is_superadmin ? ($_SESSION['api_keys_csrf_token'] ?? '') : '') ?>;
+    const AI_TOOLS_ENABLED = <?= $ai_tools_enabled ? 'true' : 'false' ?>;
+    const AI_CSRF_TOKEN = <?= json_encode($is_admin ? ($_SESSION['ai_csrf_token'] ?? '') : '') ?>;
+    const TEAM_TOOLS_CSRF_TOKEN = <?= json_encode($is_admin ? ($_SESSION['team_tools_csrf_token'] ?? '') : '') ?>;
+    const SUPPORT_CSRF_TOKEN = <?= json_encode($is_admin ? ($_SESSION['support_csrf_token'] ?? '') : '') ?>;
+    const FINANCIAL_HUB_CSRF_TOKEN = <?= json_encode($is_admin ? ($_SESSION['financial_hub_csrf_token'] ?? '') : '') ?>;
+    const WEATHER_CSRF_TOKEN = <?= json_encode($is_admin ? ($_SESSION['weather_csrf_token'] ?? '') : '') ?>;
+    const BILLING_CLOUD_CSRF_TOKEN = <?= json_encode($is_admin ? ($_SESSION['billing_cloud_csrf_token'] ?? '') : '') ?>;
+    const FINANCIAL_HUB_ENABLED = <?= $financial_hub_plan_enabled ? 'true' : 'false' ?>;
+    const TEAM_NOTES_ENABLED = <?= ($team_tools_plan_enabled && $can_access_team_notes) ? 'true' : 'false' ?>;
+    const TEAM_FILES_ENABLED = <?= ($team_cloud_plan_enabled && $can_access_team_files) ? 'true' : 'false' ?>;
+    window.SGPraxisHelp = {
+      enabled: <?= $is_admin ? 'true' : 'false' ?>,
+      academyBase: '/academy/',
+      generalUrl: 'help_center.php',
+      supportContactEmail: <?= json_encode($support_contact_email, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>
+    };
+    window.SGPRAxisSpeechDictation = {
+      language: 'es-ES',
+      selectors: [
+        '#patient-editor-initial-reason', '#patient-editor-background', '#patient-editor-support-network',
+        '#patient-evolution-description', '#patient-evolution-observations', '#patient-evolution-next-steps',
+        '#patient-work-plan-description', '#appointment-session-task-description',
+        '#appointment-session-note-description', '#appointment-session-note-observations', '#appointment-session-note-next',
+        '#task-template-description', '#task-template-item-description', '#team-note-content',
+        '#patient-ai-instructions', '#patient-ai-result'
+      ]
+    };
   </script>
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -6233,7 +6881,7 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
     <script src="https://js.braintreegateway.com/web/dropin/1.47.0/js/dropin.min.js"></script>
   <?php endif; ?>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <?php if ($physical_metrics_available): ?>
+  <?php if ($physical_metrics_available || ($is_admin && $can_access_statistics && $statistics_feature_enabled)): ?>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <?php endif; ?>
   <?php if ($body_map_enabled): ?>
@@ -6243,12 +6891,18 @@ $navbar_image_url = $navbar_image_path !== '' ? app_upload_asset_url($navbar_ima
     <script src="js/autofirma/autoscript.js?v=<?= filemtime(__DIR__ . '/js/autofirma/autoscript.js') ?>" charset="UTF-8"></script>
   <?php endif; ?>
   <script src="js/app.js?v=<?= filemtime(__DIR__ . '/js/app.js') ?>" charset="UTF-8"></script>
+  <?php if ($is_admin): ?><script src="js/help-center.js?v=<?= filemtime(__DIR__ . '/js/help-center.js') ?>" charset="UTF-8"></script><?php endif; ?>
+  <script src="js/speech-dictation.js?v=<?= filemtime(__DIR__ . '/js/speech-dictation.js') ?>" charset="UTF-8"></script>
   <?php if ($questionnaires_plan_enabled): ?>
-    <script>window.SGPRAxisPatientQuestionnaires = {isAdmin: <?= $is_admin ? 'true' : 'false' ?>, patientLabel: <?= json_encode($patient_label_singular, JSON_UNESCAPED_UNICODE) ?>};</script>
+    <script>window.SGPRAxisPatientQuestionnaires = {isAdmin: <?= $is_admin ? 'true' : 'false' ?>, patientLabel: <?= json_encode($patient_label_singular, JSON_UNESCAPED_UNICODE) ?>, aiEnabled: <?= $ai_tools_enabled ? 'true' : 'false' ?>};</script>
     <script src="js/patient-questionnaires.js?v=<?= filemtime(__DIR__ . '/js/patient-questionnaires.js') ?>" charset="UTF-8"></script>
   <?php endif; ?>
   <?php if ($questionnaires_plan_enabled && $is_admin): ?>
     <script>window.SGPRAxisQuestionnaireAssets = {script: <?= json_encode('js/questionnaires.js?v=' . filemtime(__DIR__ . '/js/questionnaires.js')) ?>};</script>
+  <?php endif; ?>
+  <?php if ($custom_fields_plan_enabled): ?>
+    <script>window.SGPRAxisCustomFields = {limit: <?= $custom_fields_plan_limit ?>, superadmin: <?= $is_superadmin ? 'true' : 'false' ?>};</script>
+    <script src="js/custom-fields.js?v=<?= filemtime(__DIR__ . '/js/custom-fields.js') ?>" charset="UTF-8"></script>
   <?php endif; ?>
 </body>
 
