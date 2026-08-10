@@ -192,7 +192,6 @@ if ($counterpart_photo_path !== '') {
 $professional_initial = strtoupper(substr($professional_name, 0, 1));
 $appointment_start_label = date('d/m/Y · H:i', $start_time);
 $appointment_end_label = date('H:i', $end_time);
-$dashboard_session_url = tenant_public_base_url() . 'dashboard.php?open_appointment=' . $appointment_id;
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -241,11 +240,6 @@ $dashboard_session_url = tenant_public_base_url() . 'dashboard.php?open_appointm
     <nav class="navbar call-navbar">
         <div class="container call-shell">
             <span class="navbar-brand mb-0 d-flex align-items-center gap-2"><span class="navbar-icon"><i class="bi bi-camera-video"></i></span><?= htmlspecialchars($app_name, ENT_QUOTES, 'UTF-8') ?></span>
-            <?php if ($is_professional_viewer): ?>
-                <a class="btn btn-sm btn-light" href="<?= htmlspecialchars($dashboard_session_url, ENT_QUOTES, 'UTF-8') ?>" target="sgpraxis_dashboard">
-                    <i class="bi bi-journal-medical me-1"></i> Abrir sesi&oacute;n en SGPraxis
-                </a>
-            <?php endif; ?>
         </div>
     </nav>
     <main class="container call-shell py-4 py-md-5">
