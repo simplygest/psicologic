@@ -18122,7 +18122,7 @@ function renderAppointmentModalitySessionCard(app = {}) {
             <div class="appointment-online-link-wrap mt-3">
                 ${usesLivekit ? `
                     <div class="alert alert-light border mb-0">
-                        <i class="bi bi-camera-video me-1"></i> Esta cita usar&aacute; una sala privada de ${app.video_provider === 'daily' ? 'Daily' : 'LiveKit'}. El acceso se genera autom&aacute;ticamente para cada participante.
+                        <i class="bi bi-camera-video me-1"></i> El acceso a la videollamada se genera autom&aacute;ticamente para cada participante.
                     </div>
                 ` : `
                     <label class="form-label" for="appointment-online-session-url" id="appointment-online-session-label">${fieldLabel}</label>
@@ -20286,7 +20286,7 @@ function appLogActionLabel(action) {
         legal_document_deleted: 'Documento legal eliminado',
         suggested_legal_documents_created: 'Plantillas legales sugeridas',
         service_legal_documents_updated: 'Consentimientos asignados a servicios',
-        livekit_recording_blocked: 'Grabación LiveKit bloqueada',
+        livekit_recording_blocked: 'Grabación de videollamada bloqueada',
         patient_legal_document_uploaded: 'Consentimiento subido',
         patient_legal_document_accepted: 'Consentimiento aceptado',
         patient_legal_document_unaccepted: 'Consentimiento desmarcado',
